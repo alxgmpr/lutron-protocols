@@ -1,6 +1,6 @@
 esphome:
   name: pico-trigger
-  friendly_name: Pico RF Capture Trigger
+  friendly_name: Pico RF Transmitter
 
 esp32:
   board: esp32dev
@@ -34,7 +34,7 @@ external_components:
       type: local
       path: custom_components
 
-# SPI bus - working pin config
+# SPI bus for CC1101
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
@@ -46,179 +46,50 @@ lutron_cc1101:
   cs_pin: GPIO21
   gdo0_pin: GPIO2
 
-# GPIO outputs for relay board (move to these pins)
-output:
-  - platform: gpio
-    id: output_on
-    pin:
-      number: GPIO13
-      inverted: true
-
-  - platform: gpio
-    id: output_off
-    pin:
-      number: GPIO14
-      inverted: true
-
-  - platform: gpio
-    id: output_raise
-    pin:
-      number: GPIO15
-      inverted: true
-
-  - platform: gpio
-    id: output_lower
-    pin:
-      number: GPIO22
-      inverted: true
-
-# Button entities
+# RF transmit buttons for Pico 05851117
+# Button codes: ON=0x02, OFF=0x04, RAISE=0x05, LOWER=0x06, FAVORITE=0x03
 button:
-  # Existing relay-triggered buttons
-  - platform: output
-    name: "Pico On"
-    id: pico_on
-    output: output_on
-    duration: 200ms
-
-  - platform: output
-    name: "Pico Off"
-    id: pico_off
-    output: output_off
-    duration: 200ms
-
-  - platform: output
-    name: "Pico Raise"
-    id: pico_raise
-    output: output_raise
-    duration: 200ms
-
-  - platform: output
-    name: "Pico Lower"
-    id: pico_lower
-    output: output_lower
-    duration: 200ms
-
-  # Hold buttons for dimming
   - platform: template
-    name: "Pico Raise Hold"
-    id: pico_raise_hold
-    on_press:
-      - output.turn_on: output_raise
-      - delay: 2s
-      - output.turn_off: output_raise
-
-  - platform: template
-    name: "Pico Lower Hold"
-    id: pico_lower_hold
-    on_press:
-      - output.turn_on: output_lower
-      - delay: 2s
-      - output.turn_off: output_lower
-
-  # Pair and reset sequences
-  - platform: template
-    name: "Pico Pair Mode"
-    id: pico_pair
-    on_press:
-      - output.turn_on: output_off
-      - delay: 10s
-      - output.turn_off: output_off
-
-  - platform: template
-    name: "Pico Factory Reset"
-    id: pico_reset
-    on_press:
-      - output.turn_on: output_off
-      - delay: 150ms
-      - output.turn_off: output_off
-      - delay: 200ms
-      - output.turn_on: output_off
-      - delay: 150ms
-      - output.turn_off: output_off
-      - delay: 200ms
-      - output.turn_on: output_off
-      - delay: 6s
-      - output.turn_off: output_off
-      - delay: 300ms
-      - output.turn_on: output_off
-      - delay: 150ms
-      - output.turn_off: output_off
-      - delay: 200ms
-      - output.turn_on: output_off
-      - delay: 150ms
-      - output.turn_off: output_off
-      - delay: 200ms
-      - output.turn_on: output_off
-      - delay: 150ms
-      - output.turn_off: output_off
-
-  - platform: template
-    name: "Pico On Hold"
-    id: pico_on_hold
-    on_press:
-      - output.turn_on: output_on
-      - delay: 2s
-      - output.turn_off: output_on
-
-  - platform: template
-    name: "Pico Off Hold"
-    id: pico_off_hold
-    on_press:
-      - output.turn_on: output_off
-      - delay: 2s
-      - output.turn_off: output_off
-
-  # CC1101 RF transmit buttons - replay captured handheld Pico (08692d70)
-  # Device ID bytes in packet match the label read as hex bytes left-to-right
-  # Pass as byte-swapped uint32 so little-endian storage gives correct order
-  - platform: template
-    name: "RF TX On (08692d70)"
-    id: rf_tx_on
+    name: "RF On"
+    id: rf_on
+    icon: "mdi:lightbulb-on"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_button_press(0x702d6908, 4);
-          ESP_LOGI("lutron", "Sent ON command for device 08692d70");
+          id(lutron_radio)->send_button_press(0x17118505, 0x02);
+          ESP_LOGI("lutron", "Sent ON command");
 
   - platform: template
-    name: "RF TX Off (08692d70)"
-    id: rf_tx_off
+    name: "RF Off"
+    id: rf_off
+    icon: "mdi:lightbulb-off"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_button_press(0x702d6908, 8);
-          ESP_LOGI("lutron", "Sent OFF command for device 08692d70");
-
-  # RF transmit for handheld Pico (05851117) - the one we analyzed
-  # Short format: type=0x88, button ON=0x02, OFF=0x04
-  - platform: template
-    name: "RF TX On (05851117)"
-    id: rf_tx_on_new
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x17118505, 2);
-          ESP_LOGI("lutron", "Sent ON command for device 05851117");
+          id(lutron_radio)->send_button_press(0x17118505, 0x04);
+          ESP_LOGI("lutron", "Sent OFF command");
 
   - platform: template
-    name: "RF TX Off (05851117)"
-    id: rf_tx_off_new
+    name: "RF Raise"
+    id: rf_raise
+    icon: "mdi:arrow-up-bold"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_button_press(0x17118505, 4);
-          ESP_LOGI("lutron", "Sent OFF command for device 05851117");
-
-  # RF transmit for old Pico (0595e68d) - keeping for reference
-  - platform: template
-    name: "RF TX On (0595e68d)"
-    id: rf_tx_on_esp
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x8de69505, 2);
-          ESP_LOGI("lutron", "Sent ON command for device 0595e68d");
+          id(lutron_radio)->send_button_press(0x17118505, 0x05);
+          ESP_LOGI("lutron", "Sent RAISE command");
 
   - platform: template
-    name: "RF TX Off (0595e68d)"
-    id: rf_tx_off_esp
+    name: "RF Lower"
+    id: rf_lower
+    icon: "mdi:arrow-down-bold"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_button_press(0x8de69505, 4);
-          ESP_LOGI("lutron", "Sent OFF command for device 0595e68d");
+          id(lutron_radio)->send_button_press(0x17118505, 0x06);
+          ESP_LOGI("lutron", "Sent LOWER command");
+
+  - platform: template
+    name: "RF Favorite"
+    id: rf_favorite
+    icon: "mdi:star"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x17118505, 0x03);
+          ESP_LOGI("lutron", "Sent FAVORITE/STOP command");

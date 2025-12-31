@@ -49,27 +49,47 @@ Example (ON button): `89 12 05 85 11 17 21 0E 03 00 02 01 05 85 11 17 00 40 00 2
 
 ## Button Codes
 
-| Button | Code | Long format bytes 17-21 |
-|--------|------|------------------------|
-| ON | 0x02 | `40 00 20 00 00` |
-| OFF | 0x04 | `40 00 22 00 00` |
-| RAISE | 0x05 | `42 02 01 00 16` |
-| LOWER | 0x06 | `42 02 01 00 16` (assumed) |
-| FAVORITE | 0x03 | TBD |
+| Button | Code | Short byte 7 | Long format bytes 17-21 |
+|--------|------|--------------|------------------------|
+| ON | 0x02 | 0x04 | `40 00 20 00 00` |
+| FAVORITE | 0x03 | 0x04 | `40 00 21 00 00` |
+| OFF | 0x04 | 0x04 | `40 00 22 00 00` |
+| RAISE | 0x05 | 0x0C | `42 02 01 00 16` |
+| LOWER | 0x06 | 0x0C | `42 02 00 00 43` |
+
+### Three Packet Format Types
+
+**Standard Short (byte 7 = 0x04):** ON, OFF, FAVORITE
+- Bytes 12-21: 0xCC padding
+
+**Medium Short (byte 7 = 0x0C):** RAISE, LOWER (dimming buttons)
+- Bytes 12-15: Device ID repeated
+- Byte 16: 0x00
+- Bytes 17-19: `42 00 02`
+- Bytes 20-21: 0xCC padding
+
+**Long (byte 7 = 0x0E):** All buttons
+- Full extended format with device ID and button-specific flags
 
 ### Long Format Extended Bytes Pattern
 
-For ON/OFF buttons:
+For ON/OFF/FAVORITE buttons:
 - Byte 17: `0x40`
 - Byte 18: `0x00`
-- Byte 19: `0x1E + button_code` (ON=0x20, OFF=0x22)
+- Byte 19: `0x1E + button_code` (ON=0x20, FAVORITE=0x21, OFF=0x22)
 - Bytes 20-21: `0x00 0x00`
 
-For RAISE/LOWER buttons:
+For RAISE button:
 - Byte 17: `0x42`
 - Byte 18: `0x02`
 - Byte 19: `0x01`
 - Bytes 20-21: `0x00 0x16`
+
+For LOWER button:
+- Byte 17: `0x42`
+- Byte 18: `0x02`
+- Byte 19: `0x00`
+- Bytes 20-21: `0x00 0x43` (byte 21 may vary: 0x43, 0x2D observed)
 
 ## Packet Type System
 

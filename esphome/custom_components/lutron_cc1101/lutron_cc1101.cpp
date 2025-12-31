@@ -297,7 +297,7 @@ void LutronCC1101::transmit_packet_(const uint8_t *packet, size_t len) {
 }
 
 void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
-  ESP_LOGI(TAG, "Sending button %d press for device %08X", button, device_id);
+  ESP_LOGI(TAG, "Sending button 0x%02X press for device %08X", button, device_id);
 
   uint8_t packet[24];
 
@@ -305,13 +305,14 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   uint8_t type_base = this->type_alternate_ ? 0x8A : 0x88;
   this->type_alternate_ = !this->type_alternate_;
 
-  // Real Pico sends short format packets first, then long format
-  // Short format: ~5 packets
-  // Long format: ~5-9 packets
+  // Button categories:
+  // - ON (0x02), OFF (0x04), FAVORITE (0x03): Standard format
+  // - RAISE (0x05), LOWER (0x06): Dimming format with byte 7 = 0x0C
+  bool is_dimming = (button == 0x05 || button == 0x06);
 
   // --- PHASE 1: SHORT FORMAT PACKETS ---
   for (int rep = 0; rep < 5; rep++) {
-    memset(packet, 0xCC, sizeof(packet));  // Broadcast padding
+    memset(packet, 0xCC, sizeof(packet));
 
     packet[0] = type_base;       // 0x88 or 0x8A (short format)
     packet[1] = this->tx_sequence_;
@@ -320,23 +321,39 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[4] = (device_id >> 16) & 0xFF;
     packet[5] = (device_id >> 24) & 0xFF;
     packet[6] = 0x21;
-    packet[7] = 0x04;  // Short format indicator
     packet[8] = 0x03;
     packet[9] = 0x00;
     packet[10] = button;
-    packet[11] = 0x00;  // Short format has 0x00 here
-    // Bytes 12-21 already set to 0xCC by memset
+    packet[11] = 0x00;
 
-    // Calculate CRC over bytes 0-21
+    if (is_dimming) {
+      // RAISE/LOWER use "medium" format with byte 7 = 0x0C
+      packet[7] = 0x0C;
+      // Device ID repeated in bytes 12-15
+      packet[12] = (device_id >> 0) & 0xFF;
+      packet[13] = (device_id >> 8) & 0xFF;
+      packet[14] = (device_id >> 16) & 0xFF;
+      packet[15] = (device_id >> 24) & 0xFF;
+      packet[16] = 0x00;
+      packet[17] = 0x42;
+      packet[18] = 0x00;
+      packet[19] = 0x02;
+      // bytes 20-21 remain 0xCC from memset
+    } else {
+      // ON/OFF/FAVORITE use standard short format
+      packet[7] = 0x04;
+      // bytes 12-21 remain 0xCC from memset
+    }
+
     uint16_t crc = this->calc_crc_(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
-    ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X btn=%02X CRC=%04X",
-             this->tx_sequence_, packet[0], button, crc);
+    ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X byte7=%02X btn=%02X CRC=%04X",
+             this->tx_sequence_, packet[0], packet[7], button, crc);
 
     this->transmit_packet_(packet, 24);
-    this->tx_sequence_ += 2;  // Observed increment
+    this->tx_sequence_ += 2;
     delay(70);
   }
 
@@ -344,7 +361,7 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   for (int rep = 0; rep < 5; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    packet[0] = type_base | 0x01;  // 0x89 or 0x8B (long format = short + 1)
+    packet[0] = type_base | 0x01;  // 0x89 or 0x8B (long format)
     packet[1] = this->tx_sequence_;
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
@@ -357,32 +374,37 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[10] = button;
     packet[11] = 0x01;  // Long format extended flag
 
-    // Device ID repeated in long format
+    // Device ID repeated
     packet[12] = (device_id >> 0) & 0xFF;
     packet[13] = (device_id >> 8) & 0xFF;
     packet[14] = (device_id >> 16) & 0xFF;
     packet[15] = (device_id >> 24) & 0xFF;
-
     packet[16] = 0x00;
 
     // Button-specific extended data
-    if (button == 0x05 || button == 0x06) {
-      // RAISE/LOWER have different structure
+    if (button == 0x05) {
+      // RAISE: 42 02 01 00 16
       packet[17] = 0x42;
       packet[18] = 0x02;
       packet[19] = 0x01;
       packet[20] = 0x00;
       packet[21] = 0x16;
+    } else if (button == 0x06) {
+      // LOWER: 42 02 00 00 43
+      packet[17] = 0x42;
+      packet[18] = 0x02;
+      packet[19] = 0x00;
+      packet[20] = 0x00;
+      packet[21] = 0x43;
     } else {
-      // ON/OFF structure
+      // ON/OFF/FAVORITE: 40 00 XX 00 00 where XX = 0x1E + button
       packet[17] = 0x40;
       packet[18] = 0x00;
-      packet[19] = 0x1E + button;  // ON(0x02)->0x20, OFF(0x04)->0x22
+      packet[19] = 0x1E + button;  // ON=0x20, FAVORITE=0x21, OFF=0x22
       packet[20] = 0x00;
       packet[21] = 0x00;
     }
 
-    // Calculate CRC over bytes 0-21
     uint16_t crc = this->calc_crc_(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
