@@ -81,6 +81,7 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
   void set_gdo0_pin(GPIOPin *gdo0_pin) { this->gdo0_pin_ = gdo0_pin; }
 
   void send_button_press(uint32_t device_id, uint8_t button);
+  void send_level(uint32_t device_id, uint8_t level_percent);
   void send_raw_packet(const uint8_t *packet, size_t len);
 
  protected:

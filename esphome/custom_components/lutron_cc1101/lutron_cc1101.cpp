@@ -424,6 +424,77 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   ESP_LOGI(TAG, "Button press complete (sent 5 short + 5 long packets)");
 }
 
+void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
+  ESP_LOGI(TAG, "Sending level %d%% to device %08X", level_percent, device_id);
+
+  // Clamp level to 0-100
+  if (level_percent > 100) level_percent = 100;
+
+  // Convert percentage to 16-bit value (0x0000 = 0%, 0xFFFF = 100%)
+  uint16_t level_value = (uint16_t)((uint32_t)level_percent * 65535 / 100);
+
+  uint8_t packet[24];
+
+  // Bridge-style level command packet structure (based on capture analysis)
+  // Send multiple packets like the bridge does
+  for (int rep = 0; rep < 5; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    // Packet type increments: 0x81, 0x82, 0x83...
+    packet[0] = 0x81 + (this->tx_sequence_ / 32) % 3;
+    packet[1] = this->tx_sequence_;
+
+    // Target device ID
+    packet[2] = (device_id >> 0) & 0xFF;
+    packet[3] = (device_id >> 8) & 0xFF;
+    packet[4] = (device_id >> 16) & 0xFF;
+    packet[5] = (device_id >> 24) & 0xFF;
+
+    // Protocol constants from bridge capture
+    packet[6] = 0x21;
+    packet[7] = 0x0E;  // Long format
+    packet[8] = 0x00;
+    packet[9] = 0x07;  // Level command type
+    packet[10] = 0x03;
+
+    // Unknown constants from bridge capture (may be zone/group ID)
+    packet[11] = 0xC3;
+    packet[12] = 0xC6;
+    packet[13] = 0xFE;
+    packet[14] = 0x40;
+
+    packet[15] = 0x02;
+
+    // Level value (16-bit big-endian)
+    packet[16] = (level_value >> 8) & 0xFF;
+    packet[17] = level_value & 0xFF;
+
+    packet[18] = 0x00;
+    packet[19] = 0x01;
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    // Calculate CRC
+    uint16_t crc = this->calc_crc_(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    ESP_LOGD(TAG, "TX LEVEL seq=%02X type=%02X dev=%02X%02X%02X%02X level=%04X CRC=%04X",
+             this->tx_sequence_, packet[0],
+             packet[2], packet[3], packet[4], packet[5],
+             level_value, crc);
+
+    this->transmit_packet_(packet, 24);
+    this->tx_sequence_ += 6;
+
+    if (rep < 4) {
+      delay(70);
+    }
+  }
+
+  ESP_LOGI(TAG, "Level command complete");
+}
+
 void LutronCC1101::send_raw_packet(const uint8_t *packet, size_t len) {
   this->transmit_packet_(packet, len);
 }
