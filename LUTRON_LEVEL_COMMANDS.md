@@ -44,15 +44,19 @@ Formula: `level_hex = (percent / 100) * 65535`
 | 82% | D5 C9 | 0xD5C9 | 83.5% |
 | 48% | 79 10 | 0x7910 | 47.3% |
 
-### Calculated Values for Transmission
+### Level Encoding Details
 
-| Target % | Hex Value | Bytes 16-17 |
-|----------|-----------|-------------|
-| 0% | 0x0000 | 00 00 |
-| 25% | 0x3FFF | 3F FF |
-| 50% | 0x7FFF | 7F FF |
-| 75% | 0xBFFF | BF FF |
-| 100% | 0xFFFF | FF FF |
+**IMPORTANT:** 0xFFFF is reserved/invalid. The bridge uses **0xFEFF** for 100%.
+
+| Target % | Hex Value | Bytes 16-17 | Notes |
+|----------|-----------|-------------|-------|
+| 0% | 0x0000 | 00 00 | |
+| 25% | 0x3FBF | 3F BF | |
+| 50% | 0x7F7F | 7F 7F | |
+| 75% | 0xBF3F | BF 3F | |
+| 100% | 0xFEFF | FE FF | NOT 0xFFFF! |
+
+Formula: `level_hex = (percent / 100) * 65279` (with 100% = 0xFEFF special case)
 
 ## Test Results
 
@@ -62,19 +66,13 @@ Formula: `level_hex = (percent / 100) * 65535`
 | 25% | ✅ Yes | Dims to ~25% |
 | 50% | ✅ Yes | Dims to ~50% |
 | 75% | ✅ Yes | Dims to ~75% |
-| 100% | ❌ No | Does not work |
+| 100% | ✅ Yes | Uses 0xFEFF (confirmed from bridge capture) |
 
-### 100% Issue
+### 100% Level Discovery
 
-The 100% level (0xFFFF) does not work. Possible explanations:
-1. **0xFFFF may be reserved/invalid** - The protocol might treat max value specially
-2. **"Full on" uses a different command** - Like the ON button (0x02) instead of level
-3. **Off-by-one encoding** - Maybe 0xFFFE is the actual max?
-
-**Next steps to investigate:**
-- Capture bridge sending actual 100% to see what bytes it uses
-- Try 0xFFFE (65534) instead of 0xFFFF
-- Try 99% to see if values near max work
+Initially 100% (0xFFFF) did not work. Captured bridge sending 100% from app and discovered:
+- Bridge uses **0xFEFF** (65279) for 100%, not 0xFFFF (65535)
+- 0xFFFF appears to be reserved or treated as invalid by the protocol
 
 ## Device Addressing
 

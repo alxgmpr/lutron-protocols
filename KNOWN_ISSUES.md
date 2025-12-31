@@ -71,19 +71,10 @@ ESPHome/Arduino framework may introduce timing jitter in packet transmission.
 
 ---
 
-### 100% level command fails
-**Status:** Under investigation
+### ~~100% level command fails~~ SOLVED
+**Status:** ✅ Fixed
 
-**Symptom:** Bridge-style level commands work for 0%, 25%, 50%, 75% but NOT 100%.
-
-**Possible causes:**
-1. **0xFFFF is reserved/invalid** - Protocol may treat max value specially
-2. **"Full on" uses different command** - May require ON button (0x02) instead
-3. **Off-by-one encoding** - Maybe 0xFFFE is actual max
-
-**Next steps:**
-- Capture bridge sending actual 100% from app
-- Try 0xFFFE (99.998%) or 99%
+**Solution:** Bridge uses **0xFEFF** for 100%, not 0xFFFF. Captured actual bridge traffic and confirmed 0xFFFF is reserved/invalid.
 
 ---
 
@@ -94,7 +85,7 @@ ESPHome/Arduino framework may introduce timing jitter in packet transmission.
 | 2024-12-31 | ON/OFF for 05851117 | Partial | Works ~30-50% of time |
 | 2024-12-31 | Dual format (short+long) | Improved | Better than short-only |
 | 2024-12-31 | Level 0/25/50/75% (AF902C00) | ✅ Working | Bridge-style commands |
-| 2024-12-31 | Level 100% (AF902C00) | ❌ Failed | 0xFFFF doesn't work |
+| 2024-12-31 | Level 100% (AF902C00) | ✅ Fixed | Use 0xFEFF not 0xFFFF |
 
 ---
 

@@ -430,8 +430,14 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
   // Clamp level to 0-100
   if (level_percent > 100) level_percent = 100;
 
-  // Convert percentage to 16-bit value (0x0000 = 0%, 0xFFFF = 100%)
-  uint16_t level_value = (uint16_t)((uint32_t)level_percent * 65535 / 100);
+  // Convert percentage to 16-bit value (0x0000 = 0%, 0xFEFF = 100%)
+  // Note: 0xFFFF is reserved/invalid - bridge uses 0xFEFF for 100%
+  uint16_t level_value;
+  if (level_percent == 100) {
+    level_value = 0xFEFF;  // Special case: 100% = 0xFEFF
+  } else {
+    level_value = (uint16_t)((uint32_t)level_percent * 65279 / 100);
+  }
 
   uint8_t packet[24];
 
