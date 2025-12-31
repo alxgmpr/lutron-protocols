@@ -1,0 +1,159 @@
+esphome:
+  name: pico-trigger
+  friendly_name: Pico RF Capture Trigger
+
+esp32:
+  board: esp32dev  # adjust for your specific board
+  framework:
+    type: esp-idf
+
+wifi:
+  ssid: gompper-sage-iot
+  password: 7qnUoWuiVbExHaU
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
+
+ota:
+  platform: esphome
+  password: "7044c3afee47264f4ed06f86eaa51f3f"
+
+# Web server for REST API access
+web_server:
+  port: 80
+  auth:
+    username: admin
+    password: claude
+
+# GPIO outputs - directly to SSR control pins
+# Active LOW since you're pulling the Pico buttons low
+output:
+  - platform: gpio
+    id: output_on
+    pin:
+      number: GPIO18
+      inverted: true  # HIGH = relay open, LOW = relay closed (pulling pico low)
+    
+  - platform: gpio
+    id: output_off
+    pin:
+      number: GPIO19
+      inverted: true
+    
+  - platform: gpio
+    id: output_raise
+    pin:
+      number: GPIO21
+      inverted: true
+    
+  - platform: gpio
+    id: output_lower
+    pin:
+      number: GPIO22
+      inverted: true
+
+# Button entities - momentary triggers via web API
+button:
+  - platform: output
+    name: "Pico On"
+    id: pico_on
+    output: output_on
+    duration: 200ms  # button press duration
+    
+  - platform: output
+    name: "Pico Off"
+    id: pico_off
+    output: output_off
+    duration: 200ms
+    
+  - platform: output
+    name: "Pico Raise"
+    id: pico_raise
+    output: output_raise
+    duration: 200ms
+    
+  - platform: output
+    name: "Pico Lower"
+    id: pico_lower
+    output: output_lower
+    duration: 200ms
+
+# Bonus: template buttons for longer hold patterns (dimming)
+  - platform: template
+    name: "Pico Raise Hold"
+    id: pico_raise_hold
+    on_press:
+      - output.turn_on: output_raise
+      - delay: 2s
+      - output.turn_off: output_raise
+      
+  - platform: template
+    name: "Pico Lower Hold"
+    id: pico_lower_hold
+    on_press:
+      - output.turn_on: output_lower
+      - delay: 2s
+      - output.turn_off: output_lower
+
+  # Pair mode: Hold bottom (off) button for ~10 seconds
+  - platform: template
+    name: "Pico Pair Mode"
+    id: pico_pair
+    on_press:
+      - output.turn_on: output_off
+      - delay: 10s
+      - output.turn_off: output_off
+
+  # Factory Reset sequence: 3 quick presses, hold 3rd for 6s, then 3 more quick presses
+  # Uses the "off" button (bottom button on 5-button Pico)
+  - platform: template
+    name: "Pico Factory Reset"
+    id: pico_reset
+    on_press:
+      # First 3 quick presses
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      # Third press - hold for 6 seconds
+      - output.turn_on: output_off
+      - delay: 6s
+      - output.turn_off: output_off
+      - delay: 300ms
+      # Final 3 quick presses
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+
+  # Custom sequence for testing - configurable hold duration
+  - platform: template
+    name: "Pico On Hold"
+    id: pico_on_hold
+    on_press:
+      - output.turn_on: output_on
+      - delay: 2s
+      - output.turn_off: output_on
+
+  - platform: template
+    name: "Pico Off Hold"
+    id: pico_off_hold
+    on_press:
+      - output.turn_on: output_off
+      - delay: 2s
+      - output.turn_off: output_off

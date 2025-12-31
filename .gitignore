@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# Raw capture files (large binary)
+*.raw
+
+# ESPHome build artifacts
+esphome/.esphome/
+esphome/**/.pioenvs/
+esphome/**/.piolibdeps/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Lutron project files (contain database)
+*.ra3
+*.hw
+*.lut
+*.mdf
+*.ldf
+
+# Metadata
+.lutron-metadata.json
+lutron_hacks/
+*.pcapng
+lutron_caseta-*.pem

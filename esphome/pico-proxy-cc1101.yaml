@@ -1,0 +1,224 @@
+esphome:
+  name: pico-trigger
+  friendly_name: Pico RF Capture Trigger
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+wifi:
+  ssid: gompper-sage-iot
+  password: 7qnUoWuiVbExHaU
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
+
+ota:
+  platform: esphome
+  password: "test"
+
+web_server:
+  port: 80
+  auth:
+    username: admin
+    password: claude
+
+# External component for Lutron CC1101
+external_components:
+  - source:
+      type: local
+      path: custom_components
+
+# SPI bus - working pin config
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+
+# Lutron CC1101 component
+lutron_cc1101:
+  id: lutron_radio
+  cs_pin: GPIO21
+  gdo0_pin: GPIO2
+
+# GPIO outputs for relay board (move to these pins)
+output:
+  - platform: gpio
+    id: output_on
+    pin:
+      number: GPIO13
+      inverted: true
+
+  - platform: gpio
+    id: output_off
+    pin:
+      number: GPIO14
+      inverted: true
+
+  - platform: gpio
+    id: output_raise
+    pin:
+      number: GPIO15
+      inverted: true
+
+  - platform: gpio
+    id: output_lower
+    pin:
+      number: GPIO22
+      inverted: true
+
+# Button entities
+button:
+  # Existing relay-triggered buttons
+  - platform: output
+    name: "Pico On"
+    id: pico_on
+    output: output_on
+    duration: 200ms
+
+  - platform: output
+    name: "Pico Off"
+    id: pico_off
+    output: output_off
+    duration: 200ms
+
+  - platform: output
+    name: "Pico Raise"
+    id: pico_raise
+    output: output_raise
+    duration: 200ms
+
+  - platform: output
+    name: "Pico Lower"
+    id: pico_lower
+    output: output_lower
+    duration: 200ms
+
+  # Hold buttons for dimming
+  - platform: template
+    name: "Pico Raise Hold"
+    id: pico_raise_hold
+    on_press:
+      - output.turn_on: output_raise
+      - delay: 2s
+      - output.turn_off: output_raise
+
+  - platform: template
+    name: "Pico Lower Hold"
+    id: pico_lower_hold
+    on_press:
+      - output.turn_on: output_lower
+      - delay: 2s
+      - output.turn_off: output_lower
+
+  # Pair and reset sequences
+  - platform: template
+    name: "Pico Pair Mode"
+    id: pico_pair
+    on_press:
+      - output.turn_on: output_off
+      - delay: 10s
+      - output.turn_off: output_off
+
+  - platform: template
+    name: "Pico Factory Reset"
+    id: pico_reset
+    on_press:
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 6s
+      - output.turn_off: output_off
+      - delay: 300ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+      - delay: 200ms
+      - output.turn_on: output_off
+      - delay: 150ms
+      - output.turn_off: output_off
+
+  - platform: template
+    name: "Pico On Hold"
+    id: pico_on_hold
+    on_press:
+      - output.turn_on: output_on
+      - delay: 2s
+      - output.turn_off: output_on
+
+  - platform: template
+    name: "Pico Off Hold"
+    id: pico_off_hold
+    on_press:
+      - output.turn_on: output_off
+      - delay: 2s
+      - output.turn_off: output_off
+
+  # CC1101 RF transmit buttons - replay captured handheld Pico (08692d70)
+  # Device ID bytes in packet match the label read as hex bytes left-to-right
+  # Pass as byte-swapped uint32 so little-endian storage gives correct order
+  - platform: template
+    name: "RF TX On (08692d70)"
+    id: rf_tx_on
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x702d6908, 4);
+          ESP_LOGI("lutron", "Sent ON command for device 08692d70");
+
+  - platform: template
+    name: "RF TX Off (08692d70)"
+    id: rf_tx_off
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x702d6908, 8);
+          ESP_LOGI("lutron", "Sent OFF command for device 08692d70");
+
+  # RF transmit for handheld Pico (05851117) - the one we analyzed
+  # Short format: type=0x88, button ON=0x02, OFF=0x04
+  - platform: template
+    name: "RF TX On (05851117)"
+    id: rf_tx_on_new
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x17118505, 2);
+          ESP_LOGI("lutron", "Sent ON command for device 05851117");
+
+  - platform: template
+    name: "RF TX Off (05851117)"
+    id: rf_tx_off_new
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x17118505, 4);
+          ESP_LOGI("lutron", "Sent OFF command for device 05851117");
+
+  # RF transmit for old Pico (0595e68d) - keeping for reference
+  - platform: template
+    name: "RF TX On (0595e68d)"
+    id: rf_tx_on_esp
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x8de69505, 2);
+          ESP_LOGI("lutron", "Sent ON command for device 0595e68d");
+
+  - platform: template
+    name: "RF TX Off (0595e68d)"
+    id: rf_tx_off_esp
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x8de69505, 4);
+          ESP_LOGI("lutron", "Sent OFF command for device 0595e68d");
