@@ -602,36 +602,40 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
 void LutronCC1101::send_pairing(uint32_t device_id, uint8_t button) {
   ESP_LOGI(TAG, "Sending PAIRING request for device %08X button 0x%02X", device_id, button);
 
-  // Full 45-byte pairing packet structure (decoded from 3 different remotes):
+  // Pairing packet is 53 bytes (0x35) including 2-byte CRC at end
+  // Based on Lutron STM32 firmware: packets with (type & 0xE0) == 0xA0 are 53 bytes
+  // CRC polynomial: 0xCA0F
   //
   // Byte  Field         Notes
-  // 0     Type          0xB9/0xBA/0xBB (we use 0xBB)
-  // 1     Seq           Sequence number
+  // 0     Type          0xBB for 5-button Pico
+  // 1     Seq           Sequence number (increments by +6)
   // 2-5   DevID         Device ID (little-endian)
-  // 6-7   Header        21 25 (always)
-  // 8-9   Const         04 00 (always)
+  // 6-7   Header        21 25 (pairing indicator)
+  // 8-9   Const         04 00
   // 10    Button        Button code
-  // 11-12 Flags         03 00 (always)
-  // 13-17 Broadcast     FF FF FF FF FF (always)
-  // 18-19 Const         0D 05 (always)
+  // 11-12 Flags         03 00
+  // 13-17 Broadcast     FF FF FF FF FF
+  // 18-19 Const         0D 05
   // 20-23 DevID2        Device ID again
   // 24-27 DevID3        Device ID again
-  // 28-29 Const         00 20 (always)
-  // 30    Button2       Same as byte 10!
-  // 31    Const         00 (always)
-  // 32-33 Const         08 07 (always)
-  // 34    Button3       Same as byte 10!
-  // 35-36 Const         01 07 (always)
-  // 37    Const         02 (always)
-  // 38    DevType       Varies (we use 0x06 like 5-button Pico)
-  // 39-40 Const         00 00 (always)
-  // 41-44 Broadcast2    FF FF FF FF (always)
+  // 28-29 Const         00 20
+  // 30    Button2       Same as byte 10
+  // 31    Const         00
+  // 32-33 Const         08 07
+  // 34    Button3       Same as byte 10
+  // 35-36 Const         01 07
+  // 37    Const         02
+  // 38    DevType       0x06 for 5-button Pico
+  // 39-40 Const         00 00
+  // 41-44 Broadcast2    FF FF FF FF
+  // 45-50 Padding       CC CC CC CC CC CC
+  // 51-52 CRC           2-byte CRC (polynomial 0xCA0F)
 
-  uint8_t packet[45];
+  uint8_t packet[53];
 
   // Send pairing packets at ~75ms intervals for about 6 seconds
   for (int rep = 0; rep < 80; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+    memset(packet, 0xCC, sizeof(packet));  // Fill with 0xCC padding
 
     packet[0] = 0xBB;  // Use consistent type (5-button Pico style)
     packet[1] = this->tx_sequence_;
@@ -694,11 +698,18 @@ void LutronCC1101::send_pairing(uint32_t device_id, uint8_t button) {
     packet[43] = 0xFF;
     packet[44] = 0xFF;
 
-    ESP_LOGD(TAG, "TX PAIRING seq=%02X type=%02X dev=%08X btn=%02X (45 bytes)",
-             this->tx_sequence_, packet[0], device_id, button);
+    // Bytes 45-50 are CC padding (already set by memset)
 
-    this->transmit_packet_(packet, 45);
-    this->tx_sequence_ += 2;
+    // Calculate and append CRC (bytes 51-52)
+    uint16_t crc = this->calc_crc_(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    ESP_LOGD(TAG, "TX PAIRING seq=%02X type=%02X dev=%08X btn=%02X CRC=%04X",
+             this->tx_sequence_, packet[0], device_id, button, crc);
+
+    this->transmit_packet_(packet, 53);
+    this->tx_sequence_ += 6;  // Increment by 6 like real devices
 
     delay(75);  // 75ms between packets
   }
@@ -762,12 +773,11 @@ void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t 
            device_id, button, pkt_type, dev_type, short_format);
 
   if (short_format) {
-    // Short 18-byte format (like 0xBA packets observed)
-    // BA 00 08 4B 1E BB 21 25 04 00 0B 03 00 FF FF FF FF FE
-    uint8_t packet[18];
+    // Short 24-byte format (matching 0x8A captures)
+    uint8_t packet[24];
 
     for (int rep = 0; rep < 80; rep++) {
-      memset(packet, 0x00, sizeof(packet));
+      memset(packet, 0xCC, sizeof(packet));
 
       packet[0] = pkt_type;
       packet[1] = this->tx_sequence_;
@@ -776,28 +786,27 @@ void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t 
       packet[4] = (device_id >> 16) & 0xFF;
       packet[5] = (device_id >> 24) & 0xFF;
       packet[6] = 0x21;
-      packet[7] = 0x25;
-      packet[8] = 0x04;
+      packet[7] = 0x04;
+      packet[8] = 0x03;
       packet[9] = 0x00;
       packet[10] = button;
-      packet[11] = 0x03;
-      packet[12] = 0x00;
-      packet[13] = 0xFF;
-      packet[14] = 0xFF;
-      packet[15] = 0xFF;
-      packet[16] = 0xFF;
-      packet[17] = 0xFE;  // Note: ends with FE not FF
+      packet[11] = 0x00;
 
-      this->transmit_packet_(packet, 18);
-      this->tx_sequence_ += 2;
+      uint16_t crc = this->calc_crc_(packet, 22);
+      packet[22] = (crc >> 8) & 0xFF;
+      packet[23] = crc & 0xFF;
+
+      ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X CRC=%04X", this->tx_sequence_, pkt_type, crc);
+      this->transmit_packet_(packet, 24);
+      this->tx_sequence_ += 6;
       delay(75);
     }
   } else {
-    // Long 45-byte format
-    uint8_t packet[45];
+    // Long 53-byte format (matching 0xBB captures)
+    uint8_t packet[53];
 
     for (int rep = 0; rep < 80; rep++) {
-      memset(packet, 0x00, sizeof(packet));
+      memset(packet, 0xCC, sizeof(packet));
 
       packet[0] = pkt_type;
       packet[1] = this->tx_sequence_;
@@ -819,7 +828,6 @@ void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t 
       packet[17] = 0xFF;
       packet[18] = 0x0D;
       packet[19] = 0x05;
-      // Device ID x2
       packet[20] = (device_id >> 0) & 0xFF;
       packet[21] = (device_id >> 8) & 0xFF;
       packet[22] = (device_id >> 16) & 0xFF;
@@ -838,7 +846,7 @@ void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t 
       packet[35] = 0x01;
       packet[36] = 0x07;
       packet[37] = 0x02;
-      packet[38] = dev_type;  // Variable device type
+      packet[38] = dev_type;
       packet[39] = 0x00;
       packet[40] = 0x00;
       packet[41] = 0xFF;
@@ -846,8 +854,13 @@ void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t 
       packet[43] = 0xFF;
       packet[44] = 0xFF;
 
-      this->transmit_packet_(packet, 45);
-      this->tx_sequence_ += 2;
+      uint16_t crc = this->calc_crc_(packet, 51);
+      packet[51] = (crc >> 8) & 0xFF;
+      packet[52] = crc & 0xFF;
+
+      ESP_LOGD(TAG, "TX LONG seq=%02X type=%02X CRC=%04X", this->tx_sequence_, pkt_type, crc);
+      this->transmit_packet_(packet, 53);
+      this->tx_sequence_ += 6;
       delay(75);
     }
   }
