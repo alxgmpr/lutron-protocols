@@ -110,7 +110,9 @@ Verified against captured packets.
 [22-23] CRC
 ```
 
-**Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) appear to be some kind of identifier. This may be why level commands only work for bridge-paired devices - this could be the bridge's address or a zone identifier assigned during bridge pairing.
+**Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
+
+**Bridge address (for reference):** `04 d0 b5 91` - no obvious relationship to `C3 C6 FE 40` found yet.
 
 ### Pairing Packet (53 bytes)
 ```
@@ -182,15 +184,50 @@ Verified against captured packets.
 
 3. **Why does device ID repeat 3 times in pairing?**
 
-4. **What determines button-specific bytes 17-21 in long format?**
-   - ON/OFF/FAV use `40 00 XX 00 00` where XX = 0x1E + button
-   - RAISE uses `42 02 01 00 16`
-   - LOWER uses `42 02 00 00 43`
-   - What's the formula?
+4. **What determines button-specific bytes 17-21 in long format?** ✅ PARTIALLY SOLVED
+   - ON/OFF/FAV use `40 00 XX 00 00` where XX = 0x1E + button_code
+     - ON (0x02): 0x1E + 0x02 = 0x20 ✅
+     - FAV (0x03): 0x1E + 0x03 = 0x21 ✅
+     - OFF (0x04): 0x1E + 0x04 = 0x22 ✅
+   - RAISE uses `42 02 01 00 16` ← Formula still unknown
+   - LOWER uses `42 02 00 00 43` ← Formula still unknown
 
 5. **Type alternation**: Real Pico alternates 0x88↔0x8A between presses. Is this required or cosmetic?
 
 6. **GFSK vs 2-FSK**: Why does 2-FSK work for commands but GFSK breaks things?
+
+---
+
+## Cross-Reference Findings (lutron_hacks)
+
+### Lamp Unit Response Packets (Type 0xA1-0xA3)
+lutron_hacks captures show lamp units (PD-3PCL) transmit response packets that include BOTH:
+- Their own device ID (bytes 2-5)
+- The Pico's device ID (bytes 17-20)
+
+This confirms **bidirectional communication** exists in the protocol. Example:
+```
+a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
+      └──────────┘                               └──────────┘    └── Command (0x20=ON)
+      Lamp unit ID                               Pico ID
+```
+
+### Different Systems Have Different Zone Bytes
+- lutron_hacks system: `2c 0f 7c fe 06 40`
+- Our system: `C3 C6 FE 40`
+- Common suffix: `FE 40` may be protocol constants
+- Varying prefix is bridge/zone specific
+
+### Byte 6 Values
+- `0x21` - Used by Pico remotes and bridge commands
+- `0x00` - Used by lamp units (PD-3PCL) in lutron_hacks
+
+### Byte 7 (Format) Values
+- `0x04` - Short button command
+- `0x0C` - Dimming command (with extended data)
+- `0x0E` - Long format (button release, level commands)
+- `0x1A` - Lamp unit response format
+- `0x10` - Bridge pairing beacon
 
 ---
 
@@ -204,6 +241,8 @@ Verified against captured packets.
 | 2024-12-31 | Level commands | ✅ Working | 100% reliable now |
 | 2024-12-31 | Pairing | ❌ Failed | Unknown blocker |
 | 2024-12-31 | GFSK modulation | ❌ Failed | Reverted to 2-FSK |
+| 2024-12-31 | lutron_hacks cross-ref | ✅ Done | Zone bytes differ per bridge |
+| 2024-12-31 | Command byte formula | ✅ Solved | ON/OFF/FAV = 0x1E + button |
 
 ---
 
@@ -220,7 +259,9 @@ Verified against captured packets.
 
 1. ~~Fix button reliability~~ ✅ DONE
 2. ~~Clean up code for library use~~ ✅ DONE
-3. Research level command bytes 11-14 (C3 C6 FE 40)
+3. ~~Research level command bytes 11-14 (C3 C6 FE 40)~~ ✅ DONE - Confirmed bridge/zone-specific
 4. Investigate pairing handshake (need RX capability)
 5. Try pairing with real Pico ID, different button
 6. Document device type codes
+7. Implement RX mode to capture bridge/lamp responses
+8. Investigate relationship between bridge address and zone bytes
