@@ -3,7 +3,7 @@
 ## Reliability Issues
 
 ### Commands only work every ~3rd press
-**Status:** FIX APPLIED - Testing needed
+**Status:** ✅ SOLVED
 
 **Symptom:** RF TX commands work approximately every 3rd button press. Never takes more than 3 presses to work, but rarely works on the first press.
 
