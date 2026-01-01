@@ -5,6 +5,7 @@ from esphome import pins
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ['spi']
+CODEOWNERS = ['@custom']
 
 lutron_cc1101_ns = cg.esphome_ns.namespace('lutron_cc1101')
 LutronCC1101 = lutron_cc1101_ns.class_('LutronCC1101', cg.Component, spi.SPIDevice)

@@ -9,317 +9,59 @@ static const char *const TAG = "lutron_cc1101";
 void LutronCC1101::setup() {
   ESP_LOGI(TAG, "Setting up Lutron CC1101...");
 
-  // Initialize SPI
+  // Initialize SPI first
   this->spi_setup();
 
-  // Setup GDO0 pin
-  if (this->gdo0_pin_ != nullptr) {
-    this->gdo0_pin_->setup();
-  }
+  // Initialize radio (pass this as SPI interface)
+  this->radio_.init(this, this->gdo0_pin_);
 
-  // Generate CRC table (polynomial 0xCA0F)
-  for (int i = 0; i < 256; i++) {
-    uint16_t crc = i << 8;
-    for (int j = 0; j < 8; j++) {
-      if (crc & 0x8000) {
-        crc = ((crc << 1) ^ 0xCA0F) & 0xFFFF;
-      } else {
-        crc = (crc << 1) & 0xFFFF;
-      }
-    }
-    this->crc_table_[i] = crc;
-  }
-
-  // Initialize CC1101
-  this->reset_();
-  delay(10);
-
-  // Verify CC1101 is responding by reading PARTNUM and VERSION
-  uint8_t partnum = this->read_status_register_(0x30);  // PARTNUM
-  uint8_t version = this->read_status_register_(0x31);  // VERSION
-  ESP_LOGI(TAG, "CC1101 PARTNUM=0x%02X VERSION=0x%02X (expected 0x00, 0x14)", partnum, version);
-
-  if (version != 0x14) {
-    ESP_LOGE(TAG, "CC1101 not detected! Check wiring. Got version 0x%02X", version);
+  if (!this->radio_.is_initialized()) {
+    ESP_LOGE(TAG, "Failed to initialize CC1101 radio");
     return;
   }
 
-  this->configure_lutron_();
+  // Create pairing handler
+  this->pairing_ = new LutronPairing(&this->radio_);
 
-  // Verify configuration was written
-  uint8_t freq2 = this->read_register_(CC1101_FREQ2);
-  uint8_t freq1 = this->read_register_(CC1101_FREQ1);
-  uint8_t freq0 = this->read_register_(CC1101_FREQ0);
-  ESP_LOGI(TAG, "Frequency regs: %02X %02X %02X (expected 10 AD 52)", freq2, freq1, freq0);
-
-  ESP_LOGI(TAG, "CC1101 initialized for Lutron CCA (433.602844 MHz GFSK 62.5 kBaud)");
+  ESP_LOGI(TAG, "Lutron CC1101 ready");
 }
 
 void LutronCC1101::dump_config() {
   ESP_LOGCONFIG(TAG, "Lutron CC1101:");
-  LOG_PIN("  GDO0 Pin: ", this->gdo0_pin_);
+  ESP_LOGCONFIG(TAG, "  Status: %s", this->radio_.is_initialized() ? "OK" : "FAILED");
 }
 
-void LutronCC1101::reset_() {
-  // Manual reset sequence using CS toggling
-  this->disable();  // CS high
-  delayMicroseconds(5);
-  this->enable();   // CS low
-  delayMicroseconds(10);
-  this->disable();  // CS high
-  delayMicroseconds(45);
-
-  this->strobe_(CC1101_SRES);
-  delay(10);
-}
-
-void LutronCC1101::strobe_(uint8_t cmd) {
-  this->enable();
-  this->transfer_byte(cmd);
-  this->disable();
-}
-
-void LutronCC1101::write_register_(uint8_t reg, uint8_t value) {
-  this->enable();
-  this->transfer_byte(reg | CC1101_WRITE_SINGLE);
-  this->transfer_byte(value);
-  this->disable();
-}
-
-uint8_t LutronCC1101::read_register_(uint8_t reg) {
-  this->enable();
-  this->transfer_byte(reg | CC1101_READ_SINGLE);
-  uint8_t value = this->transfer_byte(0);
-  this->disable();
-  return value;
-}
-
-uint8_t LutronCC1101::read_status_register_(uint8_t reg) {
-  this->enable();
-  this->transfer_byte(reg | CC1101_READ_BURST);  // Status registers use burst read
-  uint8_t value = this->transfer_byte(0);
-  this->disable();
-  return value;
-}
-
-void LutronCC1101::write_burst_(uint8_t reg, const uint8_t *data, size_t len) {
-  this->enable();
-  this->transfer_byte(reg | CC1101_WRITE_BURST);
-  for (size_t i = 0; i < len; i++) {
-    this->transfer_byte(data[i]);
-  }
-  this->disable();
-}
-
-void LutronCC1101::configure_lutron_() {
-  this->strobe_(CC1101_SIDLE);
-  delay(1);
-
-  // Frequency: 433.602844 MHz
-  // FREQ = 433602844 * 2^16 / 26000000 = 0x10AD52
-  this->write_register_(CC1101_FREQ2, 0x10);
-  this->write_register_(CC1101_FREQ1, 0xAD);
-  this->write_register_(CC1101_FREQ0, 0x52);
-
-  // Data rate: 62.4847 kBaud
-  this->write_register_(CC1101_MDMCFG4, 0x0B);
-  this->write_register_(CC1101_MDMCFG3, 0x3B);
-
-  // Modulation: 2-FSK, no sync word (trying simpler modulation first)
-  // GFSK (0x30) wasn't producing correct output, trying 2-FSK (0x00)
-  this->write_register_(CC1101_MDMCFG2, 0x00);  // 2-FSK, no sync
-  this->write_register_(CC1101_MDMCFG1, 0x00);
-  this->write_register_(CC1101_MDMCFG0, 0x00);
-
-  // Deviation: 41.2 kHz
-  this->write_register_(CC1101_DEVIATN, 0x45);
-
-  // Packet config - fixed length mode for easier TX
-  this->write_register_(CC1101_PKTCTRL1, 0x00);
-  this->write_register_(CC1101_PKTCTRL0, 0x00);  // Fixed length, no CRC by CC1101
-
-  // No address filtering
-  this->write_register_(CC1101_ADDR, 0x00);
-  this->write_register_(CC1101_CHANNR, 0x00);
-
-  // Frequency synthesizer
-  this->write_register_(CC1101_FSCTRL1, 0x06);
-  this->write_register_(CC1101_FSCTRL0, 0x00);
-
-  // Calibration
-  this->write_register_(CC1101_MCSM0, 0x18);  // Auto-calibrate on IDLE->RX/TX
-
-  // AGC
-  this->write_register_(CC1101_AGCCTRL2, 0x43);
-  this->write_register_(CC1101_AGCCTRL1, 0x40);
-  this->write_register_(CC1101_AGCCTRL0, 0x91);
-
-  // Front end config
-  this->write_register_(CC1101_FREND1, 0x56);
-  this->write_register_(CC1101_FREND0, 0x10);
-
-  // Frequency calibration
-  this->write_register_(CC1101_FSCAL3, 0xE9);
-  this->write_register_(CC1101_FSCAL2, 0x2A);
-  this->write_register_(CC1101_FSCAL1, 0x00);
-  this->write_register_(CC1101_FSCAL0, 0x1F);
-
-  // GDO pins config
-  this->write_register_(CC1101_IOCFG2, 0x29);  // CHIP_RDYn
-  this->write_register_(CC1101_IOCFG0, 0x06);  // Sync word sent/received
-
-  // PA Table - set TX power (+10 dBm for E07 module)
-  uint8_t pa_table[] = {0xC0};
-  this->write_burst_(CC1101_PATABLE, pa_table, 1);
-
-  ESP_LOGD(TAG, "CC1101 configured");
-}
-
-uint16_t LutronCC1101::calc_crc_(const uint8_t *data, size_t len) {
-  uint16_t crc_reg = 0;
-  for (size_t i = 0; i < len; i++) {
-    uint8_t crc_upper = crc_reg >> 8;
-    crc_reg = (((crc_reg << 8) & 0xFF00) + data[i]) ^ this->crc_table_[crc_upper];
-  }
-  return crc_reg;
-}
-
-void LutronCC1101::transmit_packet_(const uint8_t *packet, size_t len) {
-  // Build raw bit stream with Lutron encoding:
-  // - Preamble: 32 bits of alternating 1010...
-  // - Sync byte 0xFF with 10-bit encoding
-  // - 0xFA 0xDE prefix with 10-bit encoding
-  // - Data bytes with 10-bit encoding (LSB first + "10" suffix)
-
-  // Calculate total bits needed
-  // Preamble: 32 bits
-  // Each byte: 10 bits (8 data + 2 framing)
-  // Bytes: 1 (sync) + 2 (prefix) + len (data) + trailing
-  size_t total_bits = 32 + (1 + 2 + len) * 10 + 16;
-  size_t total_bytes = (total_bits + 7) / 8;
-
+void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
   uint8_t tx_buffer[128];
-  memset(tx_buffer, 0, sizeof(tx_buffer));
 
-  int bit_pos = 0;
+  size_t encoded_len = this->encoder_.encode_packet(
+      packet, len, tx_buffer, sizeof(tx_buffer), 32, 16);
 
-  // Helper lambda to set a bit
-  auto set_bit = [&tx_buffer, &bit_pos](int val) {
-    if (val) {
-      tx_buffer[bit_pos / 8] |= (1 << (7 - (bit_pos % 8)));
-    }
-    bit_pos++;
-  };
-
-  // Helper lambda to encode a byte using async serial N81 format
-  // Start bit (0) + 8 data bits LSB first + Stop bit (1)
-  auto encode_byte = [&set_bit](uint8_t byte) {
-    set_bit(0);  // Start bit
-    for (int i = 0; i < 8; i++) {
-      set_bit((byte >> i) & 1);  // Data bits LSB first
-    }
-    set_bit(1);  // Stop bit
-  };
-
-  // Preamble: alternating bits starting with 1 (like real Pico)
-  // Real captures show: 101010101010... pattern
-  for (int i = 0; i < 32; i++) {
-    set_bit((i + 1) % 2);  // Start with 1: 1,0,1,0,1,0...
+  if (encoded_len == 0) {
+    ESP_LOGE(TAG, "Failed to encode packet");
+    return;
   }
 
-  // Sync byte 0xFF
-  encode_byte(0xFF);
-
-  // Prefix 0xFA 0xDE
-  encode_byte(0xFA);
-  encode_byte(0xDE);
-
-  // Data bytes
-  for (size_t i = 0; i < len; i++) {
-    encode_byte(packet[i]);
-  }
-
-  // Trailing zeros
-  for (int i = 0; i < 16; i++) {
-    set_bit(0);
-  }
-
-  total_bytes = (bit_pos + 7) / 8;
-
-  // Set packet length and transmit
-  this->strobe_(CC1101_SIDLE);
-  delay(2);
-
-  uint8_t state_before = this->read_status_register_(0x35);  // MARCSTATE
-  ESP_LOGD(TAG, "MARCSTATE before TX: 0x%02X", state_before);
-
-  this->strobe_(CC1101_SFTX);  // Flush TX FIFO
-  delay(1);
-
-  this->write_register_(CC1101_PKTLEN, total_bytes);
-
-  // Write data to TX FIFO
-  this->write_burst_(CC1101_TXFIFO, tx_buffer, total_bytes);
-
-  // Check FIFO status
-  uint8_t txbytes = this->read_status_register_(0x3A);  // TXBYTES
-  ESP_LOGD(TAG, "TXBYTES after fill: %d (expected %d)", txbytes & 0x7F, total_bytes);
-
-  // Start transmission
-  this->strobe_(CC1101_STX);
-
-  // Wait for transmission to complete
-  delay(5);
-  uint8_t state_during = this->read_status_register_(0x35);
-  ESP_LOGD(TAG, "MARCSTATE during TX: 0x%02X (0x13=TX)", state_during);
-
-  // Wait for TX to complete - poll MARCSTATE until back to IDLE
-  int timeout = 100;
-  uint8_t last_state = 0;
-  while (timeout-- > 0) {
-    uint8_t state = this->read_status_register_(0x35);
-    if (state != last_state) {
-      ESP_LOGD(TAG, "State transition: 0x%02X -> 0x%02X", last_state, state);
-      last_state = state;
-    }
-    if (state == 0x01) break;  // IDLE
-    delay(1);
-  }
-
-  uint8_t state_after = this->read_status_register_(0x35);
-  uint8_t txbytes_after = this->read_status_register_(0x3A);  // Check for underflow
-  ESP_LOGD(TAG, "After TX: MARCSTATE=0x%02X TXBYTES=0x%02X timeout=%d", state_after, txbytes_after, timeout);
-
-  this->strobe_(CC1101_SIDLE);
-  delay(2);
-
-  ESP_LOGD(TAG, "Transmitted %d bits (%d bytes)", bit_pos, total_bytes);
+  this->radio_.transmit_raw(tx_buffer, encoded_len);
 }
 
 void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
-  ESP_LOGI(TAG, "Sending button 0x%02X press for device %08X", button, device_id);
+  ESP_LOGI(TAG, "Button 0x%02X for device %08X", button, device_id);
 
   uint8_t packet[24];
 
-  // Type base alternates between button presses (0x88/89 vs 0x8A/8B)
-  uint8_t type_base = this->type_alternate_ ? 0x8A : 0x88;
+  // Type alternates between presses
+  uint8_t type_base = this->type_alternate_ ? PKT_TYPE_BUTTON_SHORT_B : PKT_TYPE_BUTTON_SHORT_A;
   this->type_alternate_ = !this->type_alternate_;
 
-  // Button categories:
-  // - ON (0x02), OFF (0x04), FAVORITE (0x03): Standard format
-  // - RAISE (0x05), LOWER (0x06): Dimming format with byte 7 = 0x0C
-  bool is_dimming = (button == 0x05 || button == 0x06);
-
-  // Reset sequence for this button press (real Pico starts each press at 0x00)
+  bool is_dimming = (button == LUTRON_BUTTON_RAISE || button == LUTRON_BUTTON_LOWER);
   uint8_t seq = 0x00;
 
-  // --- PHASE 1: SHORT FORMAT PACKETS ---
-  // Real Pico sends 6 short packets with alternating +2/+4 increments:
-  // seq: 0x00, 0x02, 0x06, 0x08, 0x0C, 0x0E
+  // --- PHASE 1: SHORT FORMAT (6 packets) ---
   for (int rep = 0; rep < 6; rep++) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = type_base;       // 0x88 or 0x8A (short format)
+    packet[0] = type_base;
     packet[1] = seq;
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
@@ -332,9 +74,7 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[11] = 0x00;
 
     if (is_dimming) {
-      // RAISE/LOWER use "medium" format with byte 7 = 0x0C
       packet[7] = 0x0C;
-      // Device ID repeated in bytes 12-15
       packet[12] = (device_id >> 0) & 0xFF;
       packet[13] = (device_id >> 8) & 0xFF;
       packet[14] = (device_id >> 16) & 0xFF;
@@ -343,294 +83,309 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
       packet[17] = 0x42;
       packet[18] = 0x00;
       packet[19] = 0x02;
-      // bytes 20-21 remain 0xCC from memset
     } else {
-      // ON/OFF/FAVORITE use standard short format
       packet[7] = 0x04;
-      // bytes 12-21 remain 0xCC from memset
     }
 
-    uint16_t crc = this->calc_crc_(packet, 22);
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
-    ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X byte7=%02X btn=%02X CRC=%04X",
-             seq, packet[0], packet[7], button, crc);
-
-    this->transmit_packet_(packet, 24);
-
-    // Real Pico uses alternating +2/+4 increments: 0→2→6→8→C→E
+    this->transmit_packet(packet, 24);
     seq += (rep % 2 == 0) ? 2 : 4;
     delay(70);
   }
 
-  // --- PHASE 2: LONG FORMAT PACKETS ---
-  // Long packets start around 0x0C and increment by +6
-  // Real Pico sends many long packets (10+) with +6 increments
-  seq = 0x0C;  // Start where short packets overlap
+  // --- PHASE 2: LONG FORMAT (10 packets) ---
+  seq = 0x0C;
 
   for (int rep = 0; rep < 10; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    packet[0] = type_base | 0x01;  // 0x89 or 0x8B (long format)
+    packet[0] = type_base | 0x01;  // Long format
     packet[1] = seq;
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
     packet[4] = (device_id >> 16) & 0xFF;
     packet[5] = (device_id >> 24) & 0xFF;
     packet[6] = 0x21;
-    packet[7] = 0x0E;  // Long format indicator
+    packet[7] = 0x0E;
     packet[8] = 0x03;
     packet[9] = 0x00;
     packet[10] = button;
-    packet[11] = 0x01;  // Long format extended flag
+    packet[11] = 0x01;
 
-    // Device ID repeated
     packet[12] = (device_id >> 0) & 0xFF;
     packet[13] = (device_id >> 8) & 0xFF;
     packet[14] = (device_id >> 16) & 0xFF;
     packet[15] = (device_id >> 24) & 0xFF;
     packet[16] = 0x00;
 
-    // Button-specific extended data
-    if (button == 0x05) {
-      // RAISE: 42 02 01 00 16
-      packet[17] = 0x42;
-      packet[18] = 0x02;
-      packet[19] = 0x01;
-      packet[20] = 0x00;
-      packet[21] = 0x16;
-    } else if (button == 0x06) {
-      // LOWER: 42 02 00 00 43
-      packet[17] = 0x42;
-      packet[18] = 0x02;
-      packet[19] = 0x00;
-      packet[20] = 0x00;
-      packet[21] = 0x43;
+    if (button == LUTRON_BUTTON_RAISE) {
+      packet[17] = 0x42; packet[18] = 0x02; packet[19] = 0x01;
+      packet[20] = 0x00; packet[21] = 0x16;
+    } else if (button == LUTRON_BUTTON_LOWER) {
+      packet[17] = 0x42; packet[18] = 0x02; packet[19] = 0x00;
+      packet[20] = 0x00; packet[21] = 0x43;
     } else {
-      // ON/OFF/FAVORITE: 40 00 XX 00 00 where XX = 0x1E + button
-      packet[17] = 0x40;
-      packet[18] = 0x00;
-      packet[19] = 0x1E + button;  // ON=0x20, FAVORITE=0x21, OFF=0x22
-      packet[20] = 0x00;
-      packet[21] = 0x00;
+      packet[17] = 0x40; packet[18] = 0x00;
+      packet[19] = 0x1E + button;
+      packet[20] = 0x00; packet[21] = 0x00;
     }
 
-    uint16_t crc = this->calc_crc_(packet, 22);
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
-    ESP_LOGD(TAG, "TX LONG seq=%02X type=%02X btn=%02X ext=%02X%02X%02X%02X%02X CRC=%04X",
-             seq, packet[0], button,
-             packet[17], packet[18], packet[19], packet[20], packet[21], crc);
-
-    this->transmit_packet_(packet, 24);
-    seq += 6;  // Long packets always +6
-
-    if (rep < 9) {
-      delay(70);
-    }
+    this->transmit_packet(packet, 24);
+    seq += 6;
+    if (rep < 9) delay(70);
   }
 
-  ESP_LOGI(TAG, "Button press complete (sent 6 short + 10 long packets)");
+  ESP_LOGI(TAG, "Button press complete");
 }
 
 void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
-  ESP_LOGI(TAG, "Sending level %d%% to device %08X", level_percent, device_id);
+  ESP_LOGI(TAG, "Level %d%% for device %08X", level_percent, device_id);
 
-  // Clamp level to 0-100
   if (level_percent > 100) level_percent = 100;
 
-  // Convert percentage to 16-bit value (0x0000 = 0%, 0xFEFF = 100%)
-  // Note: 0xFFFF is reserved/invalid - bridge uses 0xFEFF for 100%
   uint16_t level_value;
   if (level_percent == 100) {
-    level_value = 0xFEFF;  // Special case: 100% = 0xFEFF
+    level_value = 0xFEFF;
   } else {
     level_value = (uint16_t)((uint32_t)level_percent * 65279 / 100);
   }
 
   uint8_t packet[24];
-
-  // Reset sequence for this command (like button presses do)
   uint8_t seq = 0x00;
 
-  // Bridge-style level command packet structure (based on capture analysis)
-  // Send multiple packets like the bridge does
   for (int rep = 0; rep < 8; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    // Packet type cycles: 0x81, 0x82, 0x83
     packet[0] = 0x81 + (rep % 3);
     packet[1] = seq;
-
-    // Target device ID
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
     packet[4] = (device_id >> 16) & 0xFF;
     packet[5] = (device_id >> 24) & 0xFF;
-
-    // Protocol constants from bridge capture
     packet[6] = 0x21;
-    packet[7] = 0x0E;  // Long format
+    packet[7] = 0x0E;
     packet[8] = 0x00;
-    packet[9] = 0x07;  // Level command type
+    packet[9] = 0x07;
     packet[10] = 0x03;
-
-    // Unknown constants from bridge capture (may be zone/group ID)
     packet[11] = 0xC3;
     packet[12] = 0xC6;
     packet[13] = 0xFE;
     packet[14] = 0x40;
-
     packet[15] = 0x02;
-
-    // Level value (16-bit big-endian)
     packet[16] = (level_value >> 8) & 0xFF;
     packet[17] = level_value & 0xFF;
-
     packet[18] = 0x00;
     packet[19] = 0x01;
     packet[20] = 0x00;
     packet[21] = 0x00;
 
-    // Calculate CRC
-    uint16_t crc = this->calc_crc_(packet, 22);
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
-    ESP_LOGD(TAG, "TX LEVEL seq=%02X type=%02X dev=%02X%02X%02X%02X level=%04X CRC=%04X",
-             seq, packet[0],
-             packet[2], packet[3], packet[4], packet[5],
-             level_value, crc);
-
-    this->transmit_packet_(packet, 24);
+    this->transmit_packet(packet, 24);
     seq += 6;
+    if (rep < 7) delay(70);
+  }
 
-    if (rep < 7) {
-      delay(70);
+  ESP_LOGI(TAG, "Level command complete");
+}
+
+void LutronCC1101::send_pairing_b9(uint32_t device_id) {
+  if (this->pairing_ != nullptr) {
+    this->pairing_->send_pairing_b9(device_id, 5);
+  }
+}
+
+void LutronCC1101::send_test_packet(uint32_t device_id) {
+  ESP_LOGI(TAG, "=== TEST PACKET FOR RTL-SDR CAPTURE ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X", device_id);
+  ESP_LOGI(TAG, "Sending 5 copies of 0xB9 pairing packet...");
+
+  // Build a 0xB9 pairing packet (47 bytes)
+  uint8_t packet[47];
+  memset(packet, 0x00, sizeof(packet));
+
+  packet[0] = 0xB9;  // Type
+  packet[1] = 0x00;  // Sequence
+
+  // Device ID - 1st instance (little-endian)
+  packet[2] = (device_id >> 0) & 0xFF;
+  packet[3] = (device_id >> 8) & 0xFF;
+  packet[4] = (device_id >> 16) & 0xFF;
+  packet[5] = (device_id >> 24) & 0xFF;
+
+  // Constants from real Pico capture
+  packet[6] = 0x21;
+  packet[7] = 0x25;
+  packet[8] = 0x04;
+  packet[9] = 0x00;
+  packet[10] = 0x04;
+  packet[11] = 0x03;
+  packet[12] = 0x00;
+
+  // Broadcast (5 bytes)
+  packet[13] = 0xFF;
+  packet[14] = 0xFF;
+  packet[15] = 0xFF;
+  packet[16] = 0xFF;
+  packet[17] = 0xFF;
+
+  packet[18] = 0x0D;
+  packet[19] = 0x05;
+
+  // Device ID - 2nd instance
+  packet[20] = (device_id >> 0) & 0xFF;
+  packet[21] = (device_id >> 8) & 0xFF;
+  packet[22] = (device_id >> 16) & 0xFF;
+  packet[23] = (device_id >> 24) & 0xFF;
+
+  // Device ID - 3rd instance
+  packet[24] = (device_id >> 0) & 0xFF;
+  packet[25] = (device_id >> 8) & 0xFF;
+  packet[26] = (device_id >> 16) & 0xFF;
+  packet[27] = (device_id >> 24) & 0xFF;
+
+  // More constants from capture
+  packet[28] = 0x00;
+  packet[29] = 0x20;
+  packet[30] = 0x03;  // Button 3 = FAVORITE
+  packet[31] = 0x00;
+  packet[32] = 0x08;
+  packet[33] = 0x07;
+  packet[34] = 0x03;
+  packet[35] = 0x01;
+  packet[36] = 0x07;
+  packet[37] = 0x02;
+  packet[38] = 0x06;
+  packet[39] = 0x00;
+
+  // Final broadcast (4 bytes)
+  packet[40] = 0xFF;
+  packet[41] = 0xFF;
+  packet[42] = 0xFF;
+  packet[43] = 0xFF;
+
+  // Padding
+  packet[44] = 0xCC;
+
+  // Calculate and append CRC (bytes 0-44)
+  uint16_t crc = this->encoder_.calc_crc(packet, 45);
+  packet[45] = (crc >> 8) & 0xFF;
+  packet[46] = crc & 0xFF;
+
+  // Log the packet
+  ESP_LOGI(TAG, "Packet (47 bytes):");
+  char hex[150];
+  int pos = 0;
+  for (int i = 0; i < 47 && pos < 140; i++) {
+    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", packet[i]);
+  }
+  ESP_LOGI(TAG, "%s", hex);
+  ESP_LOGI(TAG, "CRC: 0x%04X", crc);
+
+  // Send 5 times with gaps
+  for (int i = 0; i < 5; i++) {
+    ESP_LOGI(TAG, "TX %d/5", i + 1);
+    this->transmit_packet(packet, 47);
+    if (i < 4) delay(200);
+  }
+
+  ESP_LOGI(TAG, "=== TEST COMPLETE ===");
+}
+
+void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int duration_seconds) {
+  ESP_LOGI(TAG, "=== SENDING PAIRING BEACON ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X, Type: 0x%02X, Duration: %ds", device_id, beacon_type, duration_seconds);
+
+  // Validate beacon type
+  if (beacon_type != 0x91 && beacon_type != 0x92 && beacon_type != 0x93) {
+    ESP_LOGW(TAG, "Invalid beacon type, using 0x92");
+    beacon_type = 0x92;
+  }
+
+  uint8_t packet[24];
+  uint8_t seq = 1;
+
+  // Calculate timing - real bridge sends at ~65ms intervals
+  // We'll send pairs of packets (like the real bridge does)
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (duration_seconds * 1000);
+  int packet_count = 0;
+
+  while (millis() < end_time) {
+    // Build beacon packet (24 bytes with CRC)
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = beacon_type;
+    packet[1] = seq;
+
+    // Device ID (zone ID) - in big-endian like captures show
+    // Bridge uses af902c00 format - we'll use similar with our device ID
+    // Format the device_id as a zone ID (swap endianness for RF)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+
+    packet[6] = 0x21;  // Protocol marker
+    packet[7] = 0x08;  // Format
+    packet[8] = 0x00;
+
+    // Broadcast address
+    packet[9] = 0xFF;
+    packet[10] = 0xFF;
+    packet[11] = 0xFF;
+    packet[12] = 0xFF;
+    packet[13] = 0xFF;
+
+    // Pairing mode command marker
+    packet[14] = 0x08;
+    packet[15] = 0x01;
+
+    // Padding (already 0xCC from memset)
+    // packet[16-21] = 0xCC
+
+    // Calculate CRC
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    // Transmit
+    this->transmit_packet(packet, 24);
+    packet_count++;
+
+    // Increment sequence (real bridge uses steps of 5-6)
+    seq = (seq + 5) & 0xFF;
+
+    // Send a second packet quickly (bridge sends pairs)
+    packet[1] = seq;
+    crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    packet_count++;
+    seq = (seq + 1) & 0xFF;
+
+    // Wait ~65ms between pairs (matching real bridge timing)
+    delay(63);
+
+    // Log progress every second
+    if ((packet_count % 30) == 0) {
+      ESP_LOGI(TAG, "Beacon TX: %d packets sent, %lds remaining",
+               packet_count, (end_time - millis()) / 1000);
     }
   }
 
-  ESP_LOGI(TAG, "Level command complete (sent 8 packets)");
-}
-
-void LutronCC1101::send_pairing(uint32_t device_id, uint8_t button) {
-  ESP_LOGI(TAG, "Sending PAIRING request for device %08X button 0x%02X", device_id, button);
-
-  // Pairing packet is 53 bytes (0x35) including 2-byte CRC at end
-  // Based on Lutron STM32 firmware: packets with (type & 0xE0) == 0xA0 are 53 bytes
-  // CRC polynomial: 0xCA0F
-  //
-  // Byte  Field         Notes
-  // 0     Type          0xBB for 5-button Pico
-  // 1     Seq           Sequence number (increments by +6)
-  // 2-5   DevID         Device ID (little-endian)
-  // 6-7   Header        21 25 (pairing indicator)
-  // 8-9   Const         04 00
-  // 10    Button        Button code
-  // 11-12 Flags         03 00
-  // 13-17 Broadcast     FF FF FF FF FF
-  // 18-19 Const         0D 05
-  // 20-23 DevID2        Device ID again
-  // 24-27 DevID3        Device ID again
-  // 28-29 Const         00 20
-  // 30    Button2       Same as byte 10
-  // 31    Const         00
-  // 32-33 Const         08 07
-  // 34    Button3       Same as byte 10
-  // 35-36 Const         01 07
-  // 37    Const         02
-  // 38    DevType       0x06 for 5-button Pico
-  // 39-40 Const         00 00
-  // 41-44 Broadcast2    FF FF FF FF
-  // 45-50 Padding       CC CC CC CC CC CC
-  // 51-52 CRC           2-byte CRC (polynomial 0xCA0F)
-
-  uint8_t packet[53];
-
-  // Send pairing packets at ~75ms intervals for about 6 seconds
-  for (int rep = 0; rep < 80; rep++) {
-    memset(packet, 0xCC, sizeof(packet));  // Fill with 0xCC padding
-
-    packet[0] = 0xBB;  // Use consistent type (5-button Pico style)
-    packet[1] = this->tx_sequence_;
-
-    // Device ID (first instance)
-    packet[2] = (device_id >> 0) & 0xFF;
-    packet[3] = (device_id >> 8) & 0xFF;
-    packet[4] = (device_id >> 16) & 0xFF;
-    packet[5] = (device_id >> 24) & 0xFF;
-
-    packet[6] = 0x21;
-    packet[7] = 0x25;  // Pairing format indicator
-    packet[8] = 0x04;
-    packet[9] = 0x00;
-    packet[10] = button;  // Button code (appears 3 times!)
-    packet[11] = 0x03;
-    packet[12] = 0x00;
-
-    // Broadcast address (FF FF FF FF FF)
-    packet[13] = 0xFF;
-    packet[14] = 0xFF;
-    packet[15] = 0xFF;
-    packet[16] = 0xFF;
-    packet[17] = 0xFF;
-
-    packet[18] = 0x0D;
-    packet[19] = 0x05;
-
-    // Device ID (second instance)
-    packet[20] = (device_id >> 0) & 0xFF;
-    packet[21] = (device_id >> 8) & 0xFF;
-    packet[22] = (device_id >> 16) & 0xFF;
-    packet[23] = (device_id >> 24) & 0xFF;
-
-    // Device ID (third instance)
-    packet[24] = (device_id >> 0) & 0xFF;
-    packet[25] = (device_id >> 8) & 0xFF;
-    packet[26] = (device_id >> 16) & 0xFF;
-    packet[27] = (device_id >> 24) & 0xFF;
-
-    packet[28] = 0x00;
-    packet[29] = 0x20;
-    packet[30] = button;  // Button appears again!
-    packet[31] = 0x00;
-
-    packet[32] = 0x08;
-    packet[33] = 0x07;
-    packet[34] = button;  // Button appears third time!
-    packet[35] = 0x01;
-    packet[36] = 0x07;
-
-    packet[37] = 0x02;
-    packet[38] = 0x06;  // Device type (0x06 for 5-button Pico)
-    packet[39] = 0x00;
-    packet[40] = 0x00;
-
-    // Final broadcast
-    packet[41] = 0xFF;
-    packet[42] = 0xFF;
-    packet[43] = 0xFF;
-    packet[44] = 0xFF;
-
-    // Bytes 45-50 are CC padding (already set by memset)
-
-    // Calculate and append CRC (bytes 51-52)
-    uint16_t crc = this->calc_crc_(packet, 51);
-    packet[51] = (crc >> 8) & 0xFF;
-    packet[52] = crc & 0xFF;
-
-    ESP_LOGD(TAG, "TX PAIRING seq=%02X type=%02X dev=%08X btn=%02X CRC=%04X",
-             this->tx_sequence_, packet[0], device_id, button, crc);
-
-    this->transmit_packet_(packet, 53);
-    this->tx_sequence_ += 6;  // Increment by 6 like real devices
-
-    delay(75);  // 75ms between packets
-  }
-
-  ESP_LOGI(TAG, "Pairing sequence complete (sent 80 packets over ~6 seconds)");
+  ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
 }
 
 }  // namespace lutron_cc1101

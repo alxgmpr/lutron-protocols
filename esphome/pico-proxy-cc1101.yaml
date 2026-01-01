@@ -124,3 +124,108 @@ button:
     on_press:
       - lambda: |-
           id(lutron_radio)->send_level(0x002C90AF, 100);
+
+  # PAIRING - Uses 0xB9 format from real Pico capture
+  - platform: template
+    name: "PAIR (0xB9)"
+    icon: "mdi:link-plus"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_pairing_b9(0x17118505);
+
+  # TEST - Single packet for RTL-SDR capture analysis
+  - platform: template
+    name: "TEST PKT"
+    id: test_pkt
+    icon: "mdi:access-point"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_test_packet(0x17118505);
+
+  # PAIR with NEW unique device ID for ESP32
+  - platform: template
+    name: "PAIR ESP32"
+    id: pair_esp32
+    icon: "mdi:link-variant-plus"
+    on_press:
+      - lambda: |-
+          // Unique device ID for ESP32 (not the real Pico's ID)
+          // Using 0xCC110001 = "CC1101" with suffix 01
+          id(lutron_radio)->send_pairing_b9(0xCC110001);
+
+  # Scene Pico 084b1ebb buttons (Bright/Entertain/Relax/Off)
+  # Scene Picos use button codes 0x08-0x0B, NOT 0x02-0x06 like dimmer Picos
+  - platform: template
+    name: "Bright (084b1ebb)"
+    id: rf_bright_084b1ebb
+    icon: "mdi:brightness-7"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x084b1ebb, 0x08);
+
+  - platform: template
+    name: "Entertain (084b1ebb)"
+    id: rf_entertain_084b1ebb
+    icon: "mdi:party-popper"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x084b1ebb, 0x09);
+
+  - platform: template
+    name: "Relax (084b1ebb)"
+    id: rf_relax_084b1ebb
+    icon: "mdi:sofa"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x084b1ebb, 0x0A);
+
+  - platform: template
+    name: "Off (084b1ebb)"
+    id: rf_off_084b1ebb
+    icon: "mdi:lightbulb-off"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0x084b1ebb, 0x0B);
+
+  # =====================================================
+  # BRIDGE EMULATION - Pairing Beacons
+  # These should make dimmers/picos flash as if bridge
+  # is in pairing mode!
+  # =====================================================
+
+  # Main beacon button - sends 0x92 beacons for 10 seconds
+  - platform: template
+    name: "BEACON (Pairing Mode)"
+    id: beacon_pairing
+    icon: "mdi:broadcast"
+    on_press:
+      - lambda: |-
+          // Send 0x92 pairing beacons for 10 seconds
+          // This should make nearby devices flash!
+          id(lutron_radio)->send_beacon(0xCC110001, 0x92, 10);
+
+  # Quick 5-second beacon for testing
+  - platform: template
+    name: "BEACON 5s"
+    id: beacon_short
+    icon: "mdi:broadcast"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_beacon(0xCC110001, 0x92, 5);
+
+  # Different beacon types for experimentation
+  - platform: template
+    name: "BEACON 0x91"
+    id: beacon_91
+    icon: "mdi:radio-tower"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_beacon(0xCC110001, 0x91, 5);
+
+  - platform: template
+    name: "BEACON 0x93"
+    id: beacon_93
+    icon: "mdi:radio-tower"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_beacon(0xCC110001, 0x93, 5);

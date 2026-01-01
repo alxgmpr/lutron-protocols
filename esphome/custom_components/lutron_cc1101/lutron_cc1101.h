@@ -2,102 +2,30 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/spi/spi.h"
-#include "esphome/core/hal.h"
+#include "cc1101_radio.h"
+#include "lutron_protocol.h"
+#include "lutron_pairing.h"
 
 namespace esphome {
 namespace lutron_cc1101 {
 
-// CC1101 Strobe Commands
-static const uint8_t CC1101_SRES = 0x30;
-static const uint8_t CC1101_SFSTXON = 0x31;
-static const uint8_t CC1101_SXOFF = 0x32;
-static const uint8_t CC1101_SCAL = 0x33;
-static const uint8_t CC1101_SRX = 0x34;
-static const uint8_t CC1101_STX = 0x35;
-static const uint8_t CC1101_SIDLE = 0x36;
-static const uint8_t CC1101_SFTX = 0x3B;
-static const uint8_t CC1101_SFRX = 0x3A;
-static const uint8_t CC1101_SNOP = 0x3D;
-
-// CC1101 Registers
-static const uint8_t CC1101_IOCFG2 = 0x00;
-static const uint8_t CC1101_IOCFG1 = 0x01;
-static const uint8_t CC1101_IOCFG0 = 0x02;
-static const uint8_t CC1101_FIFOTHR = 0x03;
-static const uint8_t CC1101_SYNC1 = 0x04;
-static const uint8_t CC1101_SYNC0 = 0x05;
-static const uint8_t CC1101_PKTLEN = 0x06;
-static const uint8_t CC1101_PKTCTRL1 = 0x07;
-static const uint8_t CC1101_PKTCTRL0 = 0x08;
-static const uint8_t CC1101_ADDR = 0x09;
-static const uint8_t CC1101_CHANNR = 0x0A;
-static const uint8_t CC1101_FSCTRL1 = 0x0B;
-static const uint8_t CC1101_FSCTRL0 = 0x0C;
-static const uint8_t CC1101_FREQ2 = 0x0D;
-static const uint8_t CC1101_FREQ1 = 0x0E;
-static const uint8_t CC1101_FREQ0 = 0x0F;
-static const uint8_t CC1101_MDMCFG4 = 0x10;
-static const uint8_t CC1101_MDMCFG3 = 0x11;
-static const uint8_t CC1101_MDMCFG2 = 0x12;
-static const uint8_t CC1101_MDMCFG1 = 0x13;
-static const uint8_t CC1101_MDMCFG0 = 0x14;
-static const uint8_t CC1101_DEVIATN = 0x15;
-static const uint8_t CC1101_MCSM2 = 0x16;
-static const uint8_t CC1101_MCSM1 = 0x17;
-static const uint8_t CC1101_MCSM0 = 0x18;
-static const uint8_t CC1101_FOCCFG = 0x19;
-static const uint8_t CC1101_BSCFG = 0x1A;
-static const uint8_t CC1101_AGCCTRL2 = 0x1B;
-static const uint8_t CC1101_AGCCTRL1 = 0x1C;
-static const uint8_t CC1101_AGCCTRL0 = 0x1D;
-static const uint8_t CC1101_FREND1 = 0x21;
-static const uint8_t CC1101_FREND0 = 0x22;
-static const uint8_t CC1101_FSCAL3 = 0x23;
-static const uint8_t CC1101_FSCAL2 = 0x24;
-static const uint8_t CC1101_FSCAL1 = 0x25;
-static const uint8_t CC1101_FSCAL0 = 0x26;
-static const uint8_t CC1101_TEST2 = 0x2C;
-static const uint8_t CC1101_TEST1 = 0x2D;
-static const uint8_t CC1101_TEST0 = 0x2E;
-static const uint8_t CC1101_PATABLE = 0x3E;
-static const uint8_t CC1101_TXFIFO = 0x3F;
-static const uint8_t CC1101_RXFIFO = 0x3F;
-static const uint8_t CC1101_MARCSTATE = 0x35;
-
-// SPI access modes
-static const uint8_t CC1101_WRITE_SINGLE = 0x00;
-static const uint8_t CC1101_WRITE_BURST = 0x40;
-static const uint8_t CC1101_READ_SINGLE = 0x80;
-static const uint8_t CC1101_READ_BURST = 0xC0;
-
-// Lutron Button Codes
-static const uint8_t LUTRON_BUTTON_ON = 0x02;
-static const uint8_t LUTRON_BUTTON_FAVORITE = 0x03;
-static const uint8_t LUTRON_BUTTON_OFF = 0x04;
-static const uint8_t LUTRON_BUTTON_RAISE = 0x05;
-static const uint8_t LUTRON_BUTTON_LOWER = 0x06;
-
 /**
- * @brief Lutron Clear Connect Type A (CCA) RF Transmitter using CC1101
+ * @brief Lutron Clear Connect Type A (CCA) RF Controller
  *
- * This component enables ESP32 devices with a CC1101 radio module to transmit
- * Lutron Clear Connect Type A protocol commands at 433.6 MHz.
+ * ESPHome component for transmitting Lutron Clear Connect Type A protocol
+ * commands at 433.6 MHz using a CC1101 radio module.
  *
- * Supported operations:
+ * WORKING:
  * - Button press commands (ON, OFF, RAISE, LOWER, FAVORITE)
  * - Level commands (0-100% dimming)
  *
- * Note: Pairing functionality is not yet working. To control a device,
- * you must use the device ID of an already-paired Pico remote.
- *
- * RF Parameters:
- * - Frequency: 433.602844 MHz
- * - Data rate: 62.5 kBaud
- * - Modulation: 2-FSK
- * - Deviation: 41.2 kHz
+ * EXPERIMENTAL (not working):
+ * - Pairing
  */
-class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
-                                                              spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_1MHZ> {
+class LutronCC1101 : public Component,
+                     public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
+                                           spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_1MHZ>,
+                     public CC1101SPI {
  public:
   void setup() override;
   void loop() override {}
@@ -106,42 +34,55 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
 
   void set_gdo0_pin(GPIOPin *gdo0_pin) { this->gdo0_pin_ = gdo0_pin; }
 
+  // CC1101SPI interface implementation
+  void spi_enable() override { this->enable(); }
+  void spi_disable() override { this->disable(); }
+  uint8_t spi_transfer(uint8_t data) override { return this->transfer_byte(data); }
+
   /**
-   * @brief Send a button press command
-   * @param device_id The 32-bit device ID (e.g., 0x17118505 for a Pico)
-   * @param button Button code: ON=0x02, FAVORITE=0x03, OFF=0x04, RAISE=0x05, LOWER=0x06
+   * @brief Send a button press command (WORKING)
    */
   void send_button_press(uint32_t device_id, uint8_t button);
 
   /**
-   * @brief Send a level/dimming command
-   * @param device_id The 32-bit device ID
-   * @param level_percent Brightness level 0-100
+   * @brief Send a level/dimming command (WORKING)
    */
   void send_level(uint32_t device_id, uint8_t level_percent);
 
   /**
-   * @brief Send a pairing request (EXPERIMENTAL - not working)
-   * @param device_id The 32-bit device ID to register
-   * @param button Button to associate with pairing
+   * @brief Send pairing using 0xB9 format (EXPERIMENTAL)
    */
-  void send_pairing(uint32_t device_id, uint8_t button);
+  void send_pairing_b9(uint32_t device_id);
+
+  /**
+   * @brief Send a single test packet for RTL-SDR capture analysis
+   * Sends 5 copies of a 0xB9 pairing packet with 200ms gaps
+   */
+  void send_test_packet(uint32_t device_id);
+
+  /**
+   * @brief Send pairing beacon packets like a bridge
+   * This should make dimmers and picos flash as if bridge is in pairing mode
+   * @param device_id ESP32's device ID (used as bridge zone ID)
+   * @param beacon_type 0x91, 0x92, or 0x93 (0x92 = initial pairing mode)
+   * @param duration_seconds How long to send beacons (default 10s)
+   */
+  void send_beacon(uint32_t device_id, uint8_t beacon_type = 0x92, int duration_seconds = 10);
+
+  /**
+   * @brief Get pairing handler for advanced testing
+   */
+  LutronPairing *get_pairing() { return pairing_; }
 
  protected:
-  void reset_();
-  void configure_lutron_();
-  void write_register_(uint8_t reg, uint8_t value);
-  uint8_t read_register_(uint8_t reg);
-  uint8_t read_status_register_(uint8_t reg);
-  void strobe_(uint8_t cmd);
-  void write_burst_(uint8_t reg, const uint8_t *data, size_t len);
-  uint16_t calc_crc_(const uint8_t *data, size_t len);
-  void transmit_packet_(const uint8_t *packet, size_t len);
+  void transmit_packet(const uint8_t *packet, size_t len);
 
   GPIOPin *gdo0_pin_{nullptr};
-  uint16_t crc_table_[256];
-  uint8_t tx_sequence_{0};
-  bool type_alternate_{false};  // Alternates between 0x88/89 and 0x8A/8B per button press
+  CC1101Radio radio_;
+  LutronEncoder encoder_;
+  LutronPairing *pairing_{nullptr};
+
+  bool type_alternate_{false};
 };
 
 }  // namespace lutron_cc1101

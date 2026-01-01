@@ -1,0 +1,61 @@
+{
+  "17118505": {
+    "name": "5-Button Pico (Living Room)",
+    "type": "PJ2-3BRL-WH-L01",
+    "notes": "5-button dimmer Pico. Buttons: ON(0x02), FAV(0x03), OFF(0x04), RAISE(0x05), LOWER(0x06). Works with level commands. Directly paired to dimmer.",
+    "pairing": "direct",
+    "buttons": {
+      "0x02": "ON",
+      "0x03": "FAVORITE",
+      "0x04": "OFF",
+      "0x05": "RAISE",
+      "0x06": "LOWER"
+    }
+  },
+  "084b1ebb": {
+    "name": "Scene Pico (Hallway)",
+    "type": "PJ2-4B-GWH-P03",
+    "notes": "4-button scene Pico (Bright/Entertain/Relax/Off). Uses button codes 0x08-0x0B. Paired to Caseta Bridge which relays to hallway lights.",
+    "pairing": "bridge",
+    "buttons": {
+      "0x08": "BRIGHT",
+      "0x09": "ENTERTAIN",
+      "0x0A": "RELAX",
+      "0x0B": "OFF"
+    }
+  },
+  "04d0b591": {
+    "name": "Caseta Smart Bridge",
+    "type": "L-BDG2-WH",
+    "notes": "Main Caseta bridge. Receives Pico commands and relays to devices. Device ID confirmed from label.",
+    "pairing": "hub"
+  },
+  "002c90af": {
+    "name": "Dimmer (unknown location)",
+    "type": "DVRF-6L-WH",
+    "notes": "Diva RF dimmer. This was the device we successfully sent level commands to.",
+    "pairing": "direct"
+  },
+  "cc110001": {
+    "name": "ESP32 CC1101 Transmitter",
+    "type": "ESP32+CC1101",
+    "notes": "Our custom transmitter. Unique device ID for pairing attempts.",
+    "pairing": "none"
+  },
+  "8ceffe36": {
+    "name": "Hallway Dimmer (probable)",
+    "type": "DVRF-6L-WH?",
+    "notes": "Appeared in captures responding to Scene Pico 084b1ebb commands with 0x9B/0x9F packets. Likely one of the hallway dimmers. Raw bytes: 8C EF FE 36",
+    "pairing": "bridge"
+  },
+  "6f902c21": {
+    "name": "Dimmer (physical toggle test)",
+    "type": "DVRF-6L-WH?",
+    "notes": "Captured sending LEVEL_83 packets when physically toggled. Raw bytes: 6F 90 2C 21"
+  },
+  "06fdeff4": {
+    "name": "Test Dimmer (new)",
+    "type": "DVRF-6L-WH",
+    "last_seen": "2026-01-01T13:21:29.498812"
+  }
+}

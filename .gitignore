@@ -38,3 +38,6 @@ esphome/**/.piolibdeps/
 lutron_hacks/
 *.pcapng
 lutron_caseta-*.pem
+# RTL-SDR captures (large binary files)
+captures/*.cu8
+
