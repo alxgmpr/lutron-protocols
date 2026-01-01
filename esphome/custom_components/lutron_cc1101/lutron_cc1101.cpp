@@ -408,12 +408,17 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   // - RAISE (0x05), LOWER (0x06): Dimming format with byte 7 = 0x0C
   bool is_dimming = (button == 0x05 || button == 0x06);
 
+  // Reset sequence for this button press (real Pico starts each press at 0x00)
+  uint8_t seq = 0x00;
+
   // --- PHASE 1: SHORT FORMAT PACKETS ---
-  for (int rep = 0; rep < 5; rep++) {
+  // Real Pico sends 6 short packets with alternating +2/+4 increments:
+  // seq: 0x00, 0x02, 0x06, 0x08, 0x0C, 0x0E
+  for (int rep = 0; rep < 6; rep++) {
     memset(packet, 0xCC, sizeof(packet));
 
     packet[0] = type_base;       // 0x88 or 0x8A (short format)
-    packet[1] = this->tx_sequence_;
+    packet[1] = seq;
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
     packet[4] = (device_id >> 16) & 0xFF;
@@ -448,19 +453,25 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[23] = crc & 0xFF;
 
     ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X byte7=%02X btn=%02X CRC=%04X",
-             this->tx_sequence_, packet[0], packet[7], button, crc);
+             seq, packet[0], packet[7], button, crc);
 
     this->transmit_packet_(packet, 24);
-    this->tx_sequence_ += 2;
+
+    // Real Pico uses alternating +2/+4 increments: 0→2→6→8→C→E
+    seq += (rep % 2 == 0) ? 2 : 4;
     delay(70);
   }
 
   // --- PHASE 2: LONG FORMAT PACKETS ---
-  for (int rep = 0; rep < 5; rep++) {
+  // Long packets start around 0x0C and increment by +6
+  // Real Pico sends many long packets (10+) with +6 increments
+  seq = 0x0C;  // Start where short packets overlap
+
+  for (int rep = 0; rep < 10; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
     packet[0] = type_base | 0x01;  // 0x89 or 0x8B (long format)
-    packet[1] = this->tx_sequence_;
+    packet[1] = seq;
     packet[2] = (device_id >> 0) & 0xFF;
     packet[3] = (device_id >> 8) & 0xFF;
     packet[4] = (device_id >> 16) & 0xFF;
@@ -508,18 +519,18 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[23] = crc & 0xFF;
 
     ESP_LOGD(TAG, "TX LONG seq=%02X type=%02X btn=%02X ext=%02X%02X%02X%02X%02X CRC=%04X",
-             this->tx_sequence_, packet[0], button,
+             seq, packet[0], button,
              packet[17], packet[18], packet[19], packet[20], packet[21], crc);
 
     this->transmit_packet_(packet, 24);
-    this->tx_sequence_ += 6;
+    seq += 6;  // Long packets always +6
 
-    if (rep < 4) {
+    if (rep < 9) {
       delay(70);
     }
   }
 
-  ESP_LOGI(TAG, "Button press complete (sent 5 short + 5 long packets)");
+  ESP_LOGI(TAG, "Button press complete (sent 6 short + 10 long packets)");
 }
 
 void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {

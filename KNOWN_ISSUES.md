@@ -3,28 +3,43 @@
 ## Reliability Issues
 
 ### Commands only work every ~3rd press
-**Status:** Under investigation
+**Status:** FIX APPLIED - Testing needed
 
 **Symptom:** RF TX commands work approximately every 3rd button press. Never takes more than 3 presses to work, but rarely works on the first press.
 
-**Observed behavior:**
-- ON/OFF/RAISE/LOWER/FAVORITE all exhibit this pattern
-- Suggests a systematic issue rather than random RF problems
-- Level commands to bridge-paired devices work more reliably
+**Root Cause Analysis (2024-12-31):**
+Analyzed real Pico RF captures using `gfsk_decode.py` and `off_button.raw`:
 
-**Possible causes:**
-1. **Sequence number rejection** - The receiver may validate sequence numbers. Real Picos use sequence increments of +6 for long packets, +2 for short packets. We now use +6 for pairing but may need to adjust button commands.
+**Real Pico Sequence Pattern:**
+```
+Short packets (0x88/0x8A):
+  seq: 0x00, 0x02, 0x06, 0x08, 0x0C, 0x0E
+  deltas: +2, +4, +2, +4, +2 (ALTERNATING!)
 
-2. **Type alternation mismatch** - We alternate A/B types (0x88/89 vs 0x8A/8B) between button presses, but the receiver may expect a specific pattern.
+Long packets (0x89/0x8B):
+  seq: 0x0C, 0x12, 0x18, 0x1E, 0x24...
+  deltas: +6 (consistent)
+```
 
-3. **CRC validation** - Button commands include CRC (polynomial 0xCA0F). If our CRC calculation is slightly off for some packets, they'd be rejected.
+**Our Old Pattern (WRONG):**
+```
+Short packets: +2, +2, +2, +2, +2 (consistent +2)
+Long packets: +6 (correct)
+```
 
-4. **RF signal characteristics** - 2-FSK vs GFSK modulation differences. We use 2-FSK; real Picos use GFSK but switching to GFSK broke commands entirely.
+**Fix Applied:**
+- Short packets now use alternating +2/+4 increments
+- Sequence resets to 0x00 at start of each button press
+- Increased packet count: 6 short + 10 long (was 5 + 5)
+
+**Possible remaining causes if still unreliable:**
+1. **RF modulation** - 2-FSK vs GFSK differences
+2. **Timing** - 70ms inter-packet delay may need adjustment
+3. **Type alternation** - We still alternate 0x88↔0x8A between presses
 
 **Next steps:**
-- [ ] Capture our CC1101 transmission and compare to real Pico
-- [ ] Analyze why ~1 in 3 packets work - is there a pattern?
-- [ ] Test with different sequence increment values
+- [ ] Test reliability with new sequence pattern
+- [ ] Capture CC1101 output vs real Pico for bit-level comparison
 
 ---
 
