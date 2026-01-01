@@ -82,6 +82,9 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
 
   void send_button_press(uint32_t device_id, uint8_t button);
   void send_level(uint32_t device_id, uint8_t level_percent);
+  void send_pairing(uint32_t device_id, uint8_t button);
+  void send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t pkt_type, uint8_t dev_type, bool short_format);
+  void send_pairing_exact_05851117();  // Exact replay of real Pico 05851117
   void send_raw_packet(const uint8_t *packet, size_t len);
 
  protected:
@@ -94,6 +97,7 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
   void write_burst_(uint8_t reg, const uint8_t *data, size_t len);
   uint16_t calc_crc_(const uint8_t *data, size_t len);
   void transmit_packet_(const uint8_t *packet, size_t len);
+  void transmit_packet_2x_(const uint8_t *packet, size_t len);  // 2x slower for pairing
 
   GPIOPin *gdo0_pin_{nullptr};
   uint16_t crc_table_[256];

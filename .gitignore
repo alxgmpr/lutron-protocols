@@ -9,6 +9,7 @@ ENV/
 
 # Raw capture files (large binary)
 *.raw
+*.cu8
 
 # ESPHome build artifacts
 esphome/.esphome/
