@@ -296,104 +296,6 @@ void LutronCC1101::transmit_packet_(const uint8_t *packet, size_t len) {
   ESP_LOGD(TAG, "Transmitted %d bits (%d bytes)", bit_pos, total_bytes);
 }
 
-void LutronCC1101::transmit_packet_2x_(const uint8_t *packet, size_t len) {
-  // Pairing mode uses 2x slower baud rate (31.25 kbaud instead of 62.5 kbaud)
-  // We achieve this by sending each bit 2 times (2x bit stretching)
-  // This makes ~5ms packets become ~10ms packets, matching real Pico pairing
-
-  // Calculate total bits: each logical bit becomes 2 physical bits
-  size_t logical_bits = 32 + (1 + 2 + len) * 10 + 16;
-  size_t total_bits = logical_bits * 2;  // 2x stretching
-  size_t total_bytes = (total_bits + 7) / 8;
-
-  uint8_t tx_buffer[256];
-  if (total_bytes > sizeof(tx_buffer)) {
-    ESP_LOGE(TAG, "Packet too large for 2x TX: %d bytes", total_bytes);
-    return;
-  }
-  memset(tx_buffer, 0, sizeof(tx_buffer));
-
-  int bit_pos = 0;
-
-  // Helper to set a physical bit in the buffer
-  auto set_phys_bit = [&tx_buffer, &bit_pos](int val) {
-    if (val) {
-      tx_buffer[bit_pos / 8] |= (1 << (7 - (bit_pos % 8)));
-    }
-    bit_pos++;
-  };
-
-  // Helper to set a logical bit (2 physical bits for 2x stretching)
-  auto set_bit = [&set_phys_bit](int val) {
-    set_phys_bit(val);
-    set_phys_bit(val);
-  };
-
-  // Helper to encode a byte using async serial N81 format with 2x stretching
-  auto encode_byte = [&set_bit](uint8_t byte) {
-    set_bit(0);  // Start bit
-    for (int i = 0; i < 8; i++) {
-      set_bit((byte >> i) & 1);  // Data bits LSB first
-    }
-    set_bit(1);  // Stop bit
-  };
-
-  // Preamble: alternating bits (each repeated 2x)
-  for (int i = 0; i < 32; i++) {
-    set_bit((i + 1) % 2);  // Start with 1: 1,0,1,0,1,0...
-  }
-
-  // Sync byte 0xFF
-  encode_byte(0xFF);
-
-  // Prefix 0xFA 0xDE
-  encode_byte(0xFA);
-  encode_byte(0xDE);
-
-  // Data bytes
-  for (size_t i = 0; i < len; i++) {
-    encode_byte(packet[i]);
-  }
-
-  // Trailing zeros
-  for (int i = 0; i < 16; i++) {
-    set_bit(0);
-  }
-
-  total_bytes = (bit_pos + 7) / 8;
-
-  ESP_LOGD(TAG, "2x TX: %d logical bits -> %d physical bits (%d bytes)",
-           (int)logical_bits, bit_pos, (int)total_bytes);
-
-  // Set packet length and transmit
-  this->strobe_(CC1101_SIDLE);
-  delay(2);
-
-  this->strobe_(CC1101_SFTX);  // Flush TX FIFO
-  delay(1);
-
-  this->write_register_(CC1101_PKTLEN, total_bytes);
-
-  // Write data to TX FIFO
-  this->write_burst_(CC1101_TXFIFO, tx_buffer, total_bytes);
-
-  // Start transmission
-  this->strobe_(CC1101_STX);
-
-  // Wait for TX to complete (longer timeout for 2x data)
-  int timeout = 200;
-  while (timeout-- > 0) {
-    uint8_t state = this->read_status_register_(0x35);
-    if (state == 0x01) break;  // IDLE
-    delay(1);
-  }
-
-  this->strobe_(CC1101_SIDLE);
-  delay(2);
-
-  ESP_LOGD(TAG, "2x TX complete (%d bytes)", (int)total_bytes);
-}
-
 void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   ESP_LOGI(TAG, "Sending button 0x%02X press for device %08X", button, device_id);
 
@@ -550,14 +452,17 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
 
   uint8_t packet[24];
 
+  // Reset sequence for this command (like button presses do)
+  uint8_t seq = 0x00;
+
   // Bridge-style level command packet structure (based on capture analysis)
   // Send multiple packets like the bridge does
-  for (int rep = 0; rep < 5; rep++) {
+  for (int rep = 0; rep < 8; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    // Packet type increments: 0x81, 0x82, 0x83...
-    packet[0] = 0x81 + (this->tx_sequence_ / 32) % 3;
-    packet[1] = this->tx_sequence_;
+    // Packet type cycles: 0x81, 0x82, 0x83
+    packet[0] = 0x81 + (rep % 3);
+    packet[1] = seq;
 
     // Target device ID
     packet[2] = (device_id >> 0) & 0xFF;
@@ -595,19 +500,19 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
     packet[23] = crc & 0xFF;
 
     ESP_LOGD(TAG, "TX LEVEL seq=%02X type=%02X dev=%02X%02X%02X%02X level=%04X CRC=%04X",
-             this->tx_sequence_, packet[0],
+             seq, packet[0],
              packet[2], packet[3], packet[4], packet[5],
              level_value, crc);
 
     this->transmit_packet_(packet, 24);
-    this->tx_sequence_ += 6;
+    seq += 6;
 
-    if (rep < 4) {
+    if (rep < 7) {
       delay(70);
     }
   }
 
-  ESP_LOGI(TAG, "Level command complete");
+  ESP_LOGI(TAG, "Level command complete (sent 8 packets)");
 }
 
 void LutronCC1101::send_pairing(uint32_t device_id, uint8_t button) {
@@ -726,157 +631,6 @@ void LutronCC1101::send_pairing(uint32_t device_id, uint8_t button) {
   }
 
   ESP_LOGI(TAG, "Pairing sequence complete (sent 80 packets over ~6 seconds)");
-}
-
-void LutronCC1101::send_raw_packet(const uint8_t *packet, size_t len) {
-  this->transmit_packet_(packet, len);
-}
-
-void LutronCC1101::send_pairing_exact_05851117() {
-  // EXACT REPLAY of captured packets from real Pico 05851117
-  // Includes the CRC bytes exactly as captured
-
-  ESP_LOGI(TAG, "EXACT REPLAY: Pico 05851117 pairing (0x8A + 0xBB packets with CRCs)");
-
-  // 0x8A short packets (24 bytes each) - captured with exact CRCs
-  static const uint8_t pkts_8a[][24] = {
-    {0x8A, 0x00, 0x05, 0x85, 0x11, 0x17, 0x21, 0x04, 0x03, 0x00, 0x04, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xAE, 0x2B},
-    {0x8A, 0x02, 0x05, 0x85, 0x11, 0x17, 0x21, 0x04, 0x03, 0x00, 0x04, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xE1, 0xAC},
-    {0x8A, 0x06, 0x05, 0x85, 0x11, 0x17, 0x21, 0x04, 0x03, 0x00, 0x04, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x7E, 0xA2},
-    {0x8A, 0x0C, 0x05, 0x85, 0x11, 0x17, 0x21, 0x04, 0x03, 0x00, 0x04, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xC5, 0x36},
-    {0x8A, 0x0E, 0x05, 0x85, 0x11, 0x17, 0x21, 0x04, 0x03, 0x00, 0x04, 0x00, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x8A, 0xB1},
-  };
-
-  // 0xBB long packets (53 bytes each) - captured with exact CRCs
-  static const uint8_t pkts_bb[][53] = {
-    {0xBB, 0x00, 0x05, 0x85, 0x11, 0x17, 0x21, 0x25, 0x04, 0x00, 0x04, 0x03, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0D, 0x05, 0x05, 0x85, 0x11, 0x17, 0x05, 0x85, 0x11, 0x17, 0x00, 0x20, 0x03, 0x00, 0x08, 0x07, 0x03, 0x01, 0x07, 0x02, 0x06, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x3E, 0x95},
-    {0xBB, 0x02, 0x05, 0x85, 0x11, 0x17, 0x21, 0x25, 0x04, 0x00, 0x04, 0x03, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0D, 0x05, 0x05, 0x85, 0x11, 0x17, 0x05, 0x85, 0x11, 0x17, 0x00, 0x20, 0x03, 0x00, 0x08, 0x07, 0x03, 0x01, 0x07, 0x02, 0x06, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xD1, 0x7A},
-    {0xBB, 0x06, 0x05, 0x85, 0x11, 0x17, 0x21, 0x25, 0x04, 0x00, 0x04, 0x03, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0D, 0x05, 0x05, 0x85, 0x11, 0x17, 0x05, 0x85, 0x11, 0x17, 0x00, 0x20, 0x03, 0x00, 0x08, 0x07, 0x03, 0x01, 0x07, 0x02, 0x06, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xC4, 0xAB},
-    {0xBB, 0x0C, 0x05, 0x85, 0x11, 0x17, 0x21, 0x25, 0x04, 0x00, 0x04, 0x03, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0D, 0x05, 0x05, 0x85, 0x11, 0x17, 0x05, 0x85, 0x11, 0x17, 0x00, 0x20, 0x03, 0x00, 0x08, 0x07, 0x03, 0x01, 0x07, 0x02, 0x06, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x00, 0xE6},
-    {0xBB, 0x0E, 0x05, 0x85, 0x11, 0x17, 0x21, 0x25, 0x04, 0x00, 0x04, 0x03, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x0D, 0x05, 0x05, 0x85, 0x11, 0x17, 0x05, 0x85, 0x11, 0x17, 0x00, 0x20, 0x03, 0x00, 0x08, 0x07, 0x03, 0x01, 0x07, 0x02, 0x06, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xEF, 0x09},
-  };
-
-  // Phase 1: Send 0x8A packets (like real Pico does first)
-  ESP_LOGI(TAG, "Phase 1: Sending 0x8A packets");
-  for (int round = 0; round < 4; round++) {
-    for (int i = 0; i < 5; i++) {
-      ESP_LOGD(TAG, "TX 8A[%d] seq=0x%02X", i, pkts_8a[i][1]);
-      this->transmit_packet_(pkts_8a[i], 24);
-      delay(75);
-    }
-  }
-
-  // Phase 2: Send 0xBB packets (main pairing data)
-  ESP_LOGI(TAG, "Phase 2: Sending 0xBB packets");
-  for (int round = 0; round < 16; round++) {
-    for (int i = 0; i < 5; i++) {
-      ESP_LOGD(TAG, "TX BB[%d] seq=0x%02X", i, pkts_bb[i][1]);
-      this->transmit_packet_(pkts_bb[i], 53);
-      delay(75);
-    }
-  }
-
-  ESP_LOGI(TAG, "Exact replay complete (20 x 8A + 80 x BB packets)");
-}
-
-void LutronCC1101::send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t pkt_type, uint8_t dev_type, bool short_format) {
-  ESP_LOGI(TAG, "EXPERIMENTAL PAIRING: dev=%08X btn=%02X type=%02X devtype=%02X short=%d",
-           device_id, button, pkt_type, dev_type, short_format);
-
-  if (short_format) {
-    // Short 24-byte format (matching 0x8A captures)
-    uint8_t packet[24];
-
-    for (int rep = 0; rep < 80; rep++) {
-      memset(packet, 0xCC, sizeof(packet));
-
-      packet[0] = pkt_type;
-      packet[1] = this->tx_sequence_;
-      packet[2] = (device_id >> 0) & 0xFF;
-      packet[3] = (device_id >> 8) & 0xFF;
-      packet[4] = (device_id >> 16) & 0xFF;
-      packet[5] = (device_id >> 24) & 0xFF;
-      packet[6] = 0x21;
-      packet[7] = 0x04;
-      packet[8] = 0x03;
-      packet[9] = 0x00;
-      packet[10] = button;
-      packet[11] = 0x00;
-
-      uint16_t crc = this->calc_crc_(packet, 22);
-      packet[22] = (crc >> 8) & 0xFF;
-      packet[23] = crc & 0xFF;
-
-      ESP_LOGD(TAG, "TX SHORT seq=%02X type=%02X CRC=%04X", this->tx_sequence_, pkt_type, crc);
-      this->transmit_packet_(packet, 24);
-      this->tx_sequence_ += 6;
-      delay(75);
-    }
-  } else {
-    // Long 53-byte format (matching 0xBB captures)
-    uint8_t packet[53];
-
-    for (int rep = 0; rep < 80; rep++) {
-      memset(packet, 0xCC, sizeof(packet));
-
-      packet[0] = pkt_type;
-      packet[1] = this->tx_sequence_;
-      packet[2] = (device_id >> 0) & 0xFF;
-      packet[3] = (device_id >> 8) & 0xFF;
-      packet[4] = (device_id >> 16) & 0xFF;
-      packet[5] = (device_id >> 24) & 0xFF;
-      packet[6] = 0x21;
-      packet[7] = 0x25;
-      packet[8] = 0x04;
-      packet[9] = 0x00;
-      packet[10] = button;
-      packet[11] = 0x03;
-      packet[12] = 0x00;
-      packet[13] = 0xFF;
-      packet[14] = 0xFF;
-      packet[15] = 0xFF;
-      packet[16] = 0xFF;
-      packet[17] = 0xFF;
-      packet[18] = 0x0D;
-      packet[19] = 0x05;
-      packet[20] = (device_id >> 0) & 0xFF;
-      packet[21] = (device_id >> 8) & 0xFF;
-      packet[22] = (device_id >> 16) & 0xFF;
-      packet[23] = (device_id >> 24) & 0xFF;
-      packet[24] = (device_id >> 0) & 0xFF;
-      packet[25] = (device_id >> 8) & 0xFF;
-      packet[26] = (device_id >> 16) & 0xFF;
-      packet[27] = (device_id >> 24) & 0xFF;
-      packet[28] = 0x00;
-      packet[29] = 0x20;
-      packet[30] = button;
-      packet[31] = 0x00;
-      packet[32] = 0x08;
-      packet[33] = 0x07;
-      packet[34] = button;
-      packet[35] = 0x01;
-      packet[36] = 0x07;
-      packet[37] = 0x02;
-      packet[38] = dev_type;
-      packet[39] = 0x00;
-      packet[40] = 0x00;
-      packet[41] = 0xFF;
-      packet[42] = 0xFF;
-      packet[43] = 0xFF;
-      packet[44] = 0xFF;
-
-      uint16_t crc = this->calc_crc_(packet, 51);
-      packet[51] = (crc >> 8) & 0xFF;
-      packet[52] = crc & 0xFF;
-
-      ESP_LOGD(TAG, "TX LONG seq=%02X type=%02X CRC=%04X", this->tx_sequence_, pkt_type, crc);
-      this->transmit_packet_(packet, 53);
-      this->tx_sequence_ += 6;
-      delay(75);
-    }
-  }
-
-  ESP_LOGI(TAG, "Experimental pairing complete");
 }
 
 }  // namespace lutron_cc1101

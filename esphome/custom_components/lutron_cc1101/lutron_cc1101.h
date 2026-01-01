@@ -70,6 +70,32 @@ static const uint8_t CC1101_WRITE_BURST = 0x40;
 static const uint8_t CC1101_READ_SINGLE = 0x80;
 static const uint8_t CC1101_READ_BURST = 0xC0;
 
+// Lutron Button Codes
+static const uint8_t LUTRON_BUTTON_ON = 0x02;
+static const uint8_t LUTRON_BUTTON_FAVORITE = 0x03;
+static const uint8_t LUTRON_BUTTON_OFF = 0x04;
+static const uint8_t LUTRON_BUTTON_RAISE = 0x05;
+static const uint8_t LUTRON_BUTTON_LOWER = 0x06;
+
+/**
+ * @brief Lutron Clear Connect Type A (CCA) RF Transmitter using CC1101
+ *
+ * This component enables ESP32 devices with a CC1101 radio module to transmit
+ * Lutron Clear Connect Type A protocol commands at 433.6 MHz.
+ *
+ * Supported operations:
+ * - Button press commands (ON, OFF, RAISE, LOWER, FAVORITE)
+ * - Level commands (0-100% dimming)
+ *
+ * Note: Pairing functionality is not yet working. To control a device,
+ * you must use the device ID of an already-paired Pico remote.
+ *
+ * RF Parameters:
+ * - Frequency: 433.602844 MHz
+ * - Data rate: 62.5 kBaud
+ * - Modulation: 2-FSK
+ * - Deviation: 41.2 kHz
+ */
 class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
                                                               spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_1MHZ> {
  public:
@@ -80,12 +106,26 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
 
   void set_gdo0_pin(GPIOPin *gdo0_pin) { this->gdo0_pin_ = gdo0_pin; }
 
+  /**
+   * @brief Send a button press command
+   * @param device_id The 32-bit device ID (e.g., 0x17118505 for a Pico)
+   * @param button Button code: ON=0x02, FAVORITE=0x03, OFF=0x04, RAISE=0x05, LOWER=0x06
+   */
   void send_button_press(uint32_t device_id, uint8_t button);
+
+  /**
+   * @brief Send a level/dimming command
+   * @param device_id The 32-bit device ID
+   * @param level_percent Brightness level 0-100
+   */
   void send_level(uint32_t device_id, uint8_t level_percent);
+
+  /**
+   * @brief Send a pairing request (EXPERIMENTAL - not working)
+   * @param device_id The 32-bit device ID to register
+   * @param button Button to associate with pairing
+   */
   void send_pairing(uint32_t device_id, uint8_t button);
-  void send_pairing_exp(uint32_t device_id, uint8_t button, uint8_t pkt_type, uint8_t dev_type, bool short_format);
-  void send_pairing_exact_05851117();  // Exact replay of real Pico 05851117
-  void send_raw_packet(const uint8_t *packet, size_t len);
 
  protected:
   void reset_();
@@ -97,7 +137,6 @@ class LutronCC1101 : public Component, public spi::SPIDevice<spi::BIT_ORDER_MSB_
   void write_burst_(uint8_t reg, const uint8_t *data, size_t len);
   uint16_t calc_crc_(const uint8_t *data, size_t len);
   void transmit_packet_(const uint8_t *packet, size_t len);
-  void transmit_packet_2x_(const uint8_t *packet, size_t len);  // 2x slower for pairing
 
   GPIOPin *gdo0_pin_{nullptr};
   uint16_t crc_table_[256];
