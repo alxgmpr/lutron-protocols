@@ -54,8 +54,10 @@
     "notes": "Captured sending LEVEL_83 packets when physically toggled. Raw bytes: 6F 90 2C 21"
   },
   "06fdeff4": {
-    "name": "Test Dimmer (new)",
+    "name": "Test Dimmer (Hallway)",
     "type": "DVRF-6L-WH",
-    "last_seen": "2026-01-01T13:21:29.498812"
+    "notes": "Bridge-paired dimmer. WORKING: Controllable via bridge-style level commands using bridge zone ID AF902C00 + target ID in payload.",
+    "pairing": "bridge",
+    "esp32_control": "working"
   }
 }

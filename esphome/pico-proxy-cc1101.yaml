@@ -194,15 +194,15 @@ button:
   # =====================================================
 
   # Main beacon button - sends 0x92 beacons for 10 seconds
+  # Using REAL bridge zone ID: af902c00
   - platform: template
     name: "BEACON (Pairing Mode)"
     id: beacon_pairing
     icon: "mdi:broadcast"
     on_press:
       - lambda: |-
-          // Send 0x92 pairing beacons for 10 seconds
-          // This should make nearby devices flash!
-          id(lutron_radio)->send_beacon(0xCC110001, 0x92, 10);
+          // Send 0x92 pairing beacons using real bridge zone ID
+          id(lutron_radio)->send_beacon(0xAF902C00, 0x92, 10);
 
   # Quick 5-second beacon for testing
   - platform: template
@@ -211,7 +211,7 @@ button:
     icon: "mdi:broadcast"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_beacon(0xCC110001, 0x92, 5);
+          id(lutron_radio)->send_beacon(0xAF902C00, 0x92, 5);
 
   # Different beacon types for experimentation
   - platform: template
@@ -220,7 +220,7 @@ button:
     icon: "mdi:radio-tower"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_beacon(0xCC110001, 0x91, 5);
+          id(lutron_radio)->send_beacon(0xAF902C00, 0x91, 5);
 
   - platform: template
     name: "BEACON 0x93"
@@ -228,4 +228,35 @@ button:
     icon: "mdi:radio-tower"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_beacon(0xCC110001, 0x93, 5);
+          id(lutron_radio)->send_beacon(0xAF902C00, 0x93, 5);
+
+  # =====================================================
+  # BRIDGE-STYLE LEVEL COMMANDS
+  # Uses bridge zone ID + target dimmer ID in payload
+  # Target: dimmer 06fdeff4
+  # =====================================================
+
+  - platform: template
+    name: "Bridge Level 100% (06fdeff4)"
+    id: bridge_level_100
+    icon: "mdi:brightness-7"
+    on_press:
+      - lambda: |-
+          // Bridge zone ID: 0xAF902C00, Target: 0x06FDEFF4
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 100);
+
+  - platform: template
+    name: "Bridge Level 50% (06fdeff4)"
+    id: bridge_level_50
+    icon: "mdi:brightness-5"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 50);
+
+  - platform: template
+    name: "Bridge Level 0% (06fdeff4)"
+    id: bridge_level_0
+    icon: "mdi:brightness-1"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 0);

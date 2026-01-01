@@ -101,17 +101,39 @@ Byte 12-21: Additional data (long format) or 0xCC padding
 Byte 22-23: CRC-16
 ```
 
-### Level Report (0x81-0x83)
+### Level Report (0x81-0x83) - Dimmer Status
 ```
 Byte  0: Packet type (0x81-0x83)
 Byte  1: Sequence number
-Byte 2-5: Device ID
+Byte 2-5: Dimmer zone ID
 Byte  6: 0x21 or 0x00
 Byte  7: 0x08
 ...
 Byte 16-17: Level value (0x0000-0xFEFF = 0-100%)
 ...
 Byte 22-23: CRC-16
+```
+
+### Level Command (0x81-0x83) - Bridge to Dimmer
+**KEY DISCOVERY**: Bridge uses SAME packet type but with TARGET device ID embedded!
+```
+Byte  0: Packet type (0x81-0x83)
+Byte  1: Sequence number
+Byte 2-5: BRIDGE zone ID (e.g., AF 90 2C 00)
+Byte  6: 0x21
+Byte  7: 0x0E
+Byte  8: 0x00
+Byte 9-12: TARGET DIMMER ID (e.g., 06 FD EF F4)
+Byte 13-14: FE 40
+Byte 15: 0x02
+Byte 16-17: Level value (0x0000-0xFEFF = 0-100%)
+Byte 18-21: 00 01 00 00
+Byte 22-23: CRC-16
+```
+
+**Example** (Bridge sets dimmer 06fdeff4 to 100%):
+```
+83 02 af 90 2c 00 21 0e 00 06 fd ef f4 fe 40 02 fe ff 00 01 00 00 89 7f
 ```
 
 ### Pairing Beacon (0x91-0x93)
@@ -210,25 +232,30 @@ When a Pico button is pressed:
 - What triggers the 0xB0 handshake? The dimmer's pairing request (0xB9?) was not captured
 - Why does the beacon type change from 0x92 to 0x93 during pairing?
 
+## Working Features
+
+### Bridge-Style Level Commands (WORKING!)
+**Discovery:** The bridge sends LEVEL packets (0x81-0x83) with the TARGET device ID embedded in the payload!
+
+**Key insight:** Instead of using the dimmer's ID as the source, the bridge:
+- Uses its own zone ID (`AF902C00`) as source (bytes 2-5)
+- Puts the target dimmer's printed label ID in the payload (bytes 9-12)
+
+**Implementation:** `send_bridge_level(bridge_zone_id, target_device_id, level_percent)`
+
+**Tested working:** ESP32 can control bridge-paired dimmer 06fdeff4 using this format!
+
 ## Known Issues / Failed Experiments
 
 ### ESP32 Beacon Transmission (Not Working)
 **Attempted:** Sending 0x92 pairing beacon packets from ESP32 to make dimmers flash.
 
-**Implementation:**
-- Packet structure matches captured bridge beacons
-- Type 0x92, broadcast FF FF FF FF FF, marker 08 01
-- Timing ~65ms between packets (matching real bridge)
-- Device ID 0xCC110001 used as zone ID
-
-**Result:** No effect on dimmers or Picos.
+**Result:** No effect on dimmers or Picos, even when using real bridge zone ID.
 
 **Possible causes:**
-1. **Zone ID format incorrect** - Bridge uses `af902c00` format; we may need a specific zone ID structure
-2. **Device ID endianness** - May need to match bridge's exact byte ordering
-3. **Missing preceding packets** - Bridge may send setup packets before beacons
-4. **Timing/cadence** - Real bridge sends in specific burst patterns we may not match
-5. **Power/signal** - CC1101 output may differ from bridge transmitter
+1. **Missing authentication** - Beacons may require cryptographic element
+2. **Timing/cadence** - May need exact burst patterns
+3. **Missing setup packets** - Bridge may send something before beacons start
 
 ## Observations from Captures
 

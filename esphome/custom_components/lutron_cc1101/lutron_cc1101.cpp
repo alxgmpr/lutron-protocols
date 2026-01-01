@@ -198,6 +198,79 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "Level command complete");
 }
 
+void LutronCC1101::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent) {
+  ESP_LOGI(TAG, "=== BRIDGE-STYLE LEVEL COMMAND ===");
+  ESP_LOGI(TAG, "Bridge zone: %08X, Target: %08X, Level: %d%%",
+           bridge_zone_id, target_device_id, level_percent);
+
+  if (level_percent > 100) level_percent = 100;
+
+  uint16_t level_value;
+  if (level_percent == 100) {
+    level_value = 0xFEFF;
+  } else if (level_percent == 0) {
+    level_value = 0x0000;
+  } else {
+    level_value = (uint16_t)((uint32_t)level_percent * 65279 / 100);
+  }
+
+  uint8_t packet[24];
+  uint8_t seq = 0x01;
+
+  // Send ~20 packets like the real bridge does
+  for (int rep = 0; rep < 20; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    // Packet structure from captured bridge traffic:
+    // 83 02 af 90 2c 00 21 0e 00 06 fd ef f4 fe 40 02 fe ff 00 01 00 00
+
+    packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
+    packet[1] = seq;
+
+    // Bridge zone ID (big-endian as seen in captures)
+    packet[2] = (bridge_zone_id >> 24) & 0xFF;
+    packet[3] = (bridge_zone_id >> 16) & 0xFF;
+    packet[4] = (bridge_zone_id >> 8) & 0xFF;
+    packet[5] = bridge_zone_id & 0xFF;
+
+    packet[6] = 0x21;  // Protocol marker
+    packet[7] = 0x0E;  // Format
+    packet[8] = 0x00;
+
+    // TARGET DEVICE ID (the dimmer's printed label ID)
+    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
+
+    packet[13] = 0xFE;
+    packet[14] = 0x40;
+    packet[15] = 0x02;
+
+    // Level value (big-endian)
+    packet[16] = (level_value >> 8) & 0xFF;
+    packet[17] = level_value & 0xFF;
+
+    packet[18] = 0x00;
+    packet[19] = 0x01;
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+
+    // Sequence increments by 5-6 like bridge
+    seq = (seq + 5 + (rep % 2)) & 0xFF;
+
+    if (rep < 19) delay(60);
+  }
+
+  ESP_LOGI(TAG, "=== BRIDGE LEVEL COMPLETE ===");
+}
+
 void LutronCC1101::send_pairing_b9(uint32_t device_id) {
   if (this->pairing_ != nullptr) {
     this->pairing_->send_pairing_b9(device_id, 5);

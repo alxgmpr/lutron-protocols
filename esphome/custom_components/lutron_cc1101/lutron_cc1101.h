@@ -45,9 +45,18 @@ class LutronCC1101 : public Component,
   void send_button_press(uint32_t device_id, uint8_t button);
 
   /**
-   * @brief Send a level/dimming command (WORKING)
+   * @brief Send a level/dimming command (WORKING - direct paired devices)
    */
   void send_level(uint32_t device_id, uint8_t level_percent);
+
+  /**
+   * @brief Send bridge-style level command with target device ID
+   * Uses bridge zone ID as source, target dimmer ID in payload
+   * @param bridge_zone_id Bridge zone ID (e.g., 0xAF902C00)
+   * @param target_device_id Target dimmer's printed label ID (e.g., 0x06FDEFF4)
+   * @param level_percent Level 0-100
+   */
+  void send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent);
 
   /**
    * @brief Send pairing using 0xB9 format (EXPERIMENTAL)
