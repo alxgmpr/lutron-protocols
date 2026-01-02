@@ -93,6 +93,14 @@ class LutronCC1101 : public Component,
   void send_state_report(uint32_t device_id, uint8_t level_percent);
 
   /**
+   * @brief Send 0xB0 pairing assignment packet like a bridge
+   * This assigns a dimmer to our ESP32 as if we're a bridge
+   * @param load_id Our "bridge" load ID (e.g., 0xCC110100)
+   * @param target_factory_id Factory ID of dimmer to pair (e.g., 0x06FDEFF4)
+   */
+  void send_pairing_b0(uint32_t load_id, uint32_t target_factory_id);
+
+  /**
    * @brief Debug: Send raw alternating bytes (0xAA) to test CC1101
    * This bypasses the encoder to test if CC1101 is transmitting correctly
    */

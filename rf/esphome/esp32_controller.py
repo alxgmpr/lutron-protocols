@@ -77,6 +77,12 @@ BUTTONS = {
     "beacon-91": "beacon_0x91",
     "beacon-93": "beacon_0x93",
 
+    # ESP32 as Bridge (load ID AF902C01)
+    "esp32-beacon": "esp32_beacon__af902c01_",
+    "esp32-pair": "esp32_pair_06fdeff4",
+    "esp32-100": "esp32_level_100___06fdeff4_",
+    "esp32-0": "esp32_level_0___06fdeff4_",
+
     # Bridge level commands for dimmer 06fdeff4
     "bridge-100": "bridge_level_100___06fdeff4_",
     "bridge-50": "bridge_level_50___06fdeff4_",

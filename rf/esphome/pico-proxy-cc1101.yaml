@@ -271,6 +271,46 @@ button:
           id(lutron_radio)->send_beacon(0xAF902C00, 0x93, 5);
 
   # =====================================================
+  # ESP32 AS BRIDGE - Direct pairing to dimmers
+  # Use load ID: 0xAF902C01 (close to real bridge AF902C00)
+  # =====================================================
+
+  # Step 1: Send beacons using OUR load ID to put dimmer in pairing mode
+  - platform: template
+    name: "ESP32 Beacon (AF902C01)"
+    id: esp32_beacon
+    icon: "mdi:access-point"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_beacon(0xAF902C01, 0x92, 10);
+
+  # Step 2: Send 0xB0 assignment to claim dimmer 06fdeff4
+  - platform: template
+    name: "ESP32 Pair 06fdeff4"
+    id: esp32_pair_06fdeff4
+    icon: "mdi:link-plus"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_pairing_b0(0xAF902C01, 0x06FDEFF4);
+
+  # Level commands using ESP32 as bridge
+  - platform: template
+    name: "ESP32 Level 100% (06fdeff4)"
+    id: esp32_level_100
+    icon: "mdi:brightness-7"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C01, 0x06FDEFF4, 100);
+
+  - platform: template
+    name: "ESP32 Level 0% (06fdeff4)"
+    id: esp32_level_0
+    icon: "mdi:brightness-1"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C01, 0x06FDEFF4, 0);
+
+  # =====================================================
   # BRIDGE-STYLE LEVEL COMMANDS
   # Uses bridge zone ID + target dimmer ID in payload
   # Target: dimmer 06fdeff4

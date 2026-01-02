@@ -235,6 +235,24 @@ Verified against captured packets.
 
 **Bridge address (for reference):** `04 d0 b5 91` - no obvious relationship to `C3 C6 FE 40` found yet.
 
+### Beacon Packet (0x92) - Bridge Pairing Mode (24 bytes)
+```
+[0]  Type      0x92 (or 0x91, 0x93)
+[1]  Sequence
+[2-5] Load ID  (e.g., AF 90 2C 00)
+[6]  0x21      ← Protocol marker
+[7]  0x0C      ← Beacon format (NOT 0x08!)
+[8]  0x00
+[9-13] FF FF FF FF FF  ← Broadcast
+[14] 0x08
+[15] 0x02      ← (NOT 0x01!)
+[16-17] Middle bytes of Load ID (e.g., 90 2C)
+[18-19] 1A 04  ← Fixed values
+[20-21] CC CC  ← Padding
+[22-23] CRC
+```
+**Key insight:** When bridge sends beacons, all devices in range flash. This enables dimmer pairing mode where pressing "off" for 10 sec broadcasts the dimmer's ID for the bridge to receive.
+
 ### Pairing Packet (53 bytes)
 ```
 [0]  Type      0xBB
@@ -378,6 +396,9 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Second dimmer (07004e8c) test | ✅ Done | RF TX = Load_ID XOR 0x20000008 |
 | 2025-01-01 | Re-add 06fdeff4 to bridge | ✅ Done | Got new Load ID af902c11, RF TX 8f902c19 |
 | 2025-01-01 | Bridge commands after re-pair | ✅ Working | Factory ID in payload, direct RF (no bridge needed) |
+| 2025-01-01 | Beacon capture from real bridge | ✅ Done | Discovered correct format: 0x0C, 0x02, + load ID bytes |
+| 2025-01-01 | ESP32 beacon (AF902C00) | ✅ Working | Devices flash when ESP32 sends beacons! |
+| 2025-01-01 | ESP32 beacon (CC110100) | ❌ Failed | Custom load ID doesn't work - must be similar to real bridge |
 
 ---
 
