@@ -34,13 +34,48 @@ void LutronCC1101::dump_config() {
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
   uint8_t tx_buffer[128];
 
+  // For large packets, use shorter preamble to fit in FIFO (64 bytes)
+  // Standard: 32 bit preamble + 10 sync + 20 prefix + data + 16 trailing
+  // For 52-byte packet with 32-bit preamble: (32+10+20+520+16)/8 = 75 bytes (too big!)
+  // With 16-bit preamble: (16+10+20+520+16)/8 = 73 bytes (still too big)
+  // With 8-bit preamble: (8+10+20+520+16)/8 = 72 bytes (still too big)
+
+  // Calculate required encoded size with various preamble lengths
+  // N81: each data byte = 10 bits
+  // Overhead: preamble + sync(10) + prefix(20) + trailing(16)
+
+  int preamble_bits = 32;  // Default
+  int trailing_bits = 16;
+
+  // If packet would be too large for FIFO, reduce preamble
+  size_t estimated_bits = preamble_bits + 10 + 20 + (len * 10) + trailing_bits;
+  size_t estimated_bytes = (estimated_bits + 7) / 8;
+
+  if (estimated_bytes > 64) {
+    // Try minimal preamble (8 bits = 1 byte)
+    // Real Pico seems to use ~32 bits, but let's see if receiver tolerates less
+    preamble_bits = 8;
+    estimated_bits = preamble_bits + 10 + 20 + (len * 10) + trailing_bits;
+    estimated_bytes = (estimated_bits + 7) / 8;
+
+    // If still too large, we need streaming
+    if (estimated_bytes > 64) {
+      ESP_LOGW(TAG, "Packet too large even with min preamble (%d bytes encoded), will stream", estimated_bytes);
+      preamble_bits = 32;  // Use full preamble and rely on streaming
+    }
+  }
+
   size_t encoded_len = this->encoder_.encode_packet(
-      packet, len, tx_buffer, sizeof(tx_buffer), 32, 16);
+      packet, len, tx_buffer, sizeof(tx_buffer), preamble_bits, trailing_bits);
 
   if (encoded_len == 0) {
     ESP_LOGE(TAG, "Failed to encode packet");
     return;
   }
+
+  // Debug: Log packet and encoded sizes
+  ESP_LOGD(TAG, "TX: %d data -> %d encoded (preamble=%d, FIFO=%s)",
+           len, encoded_len, preamble_bits, encoded_len > 64 ? "STREAM" : "DIRECT");
 
   this->radio_.transmit_raw(tx_buffer, encoded_len);
 }
@@ -282,36 +317,46 @@ void LutronCC1101::send_pairing_b9(uint32_t device_id) {
 }
 
 void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
-  ESP_LOGI(TAG, "=== PICO-STYLE PAIRING (0xBB) ===");
+  ESP_LOGI(TAG, "=== PICO-STYLE PAIRING (0xBA + 0xBB) ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X, Duration: %ds", device_id, duration_seconds);
-  ESP_LOGI(TAG, "Emulating real Pico pairing sequence...");
+  ESP_LOGI(TAG, "Real Pico sends 0xBA packets first, then 0xBB packets");
 
-  uint8_t packet[47];
+  // Real Pico pairing sequence from research/CC1101_captures/pico_pairrequest.txt:
+  // 1. Send ~60 packets of 0xBA type (with capability info)
+  // 2. Send ~12 packets of 0xBB type (pair request)
+  // Each packet is 53 bytes (51 data + 2 CRC), ~75ms apart
+
+  uint8_t packet[53];
   uint8_t seq = 0;
-
-  unsigned long start_time = millis();
-  unsigned long end_time = start_time + (duration_seconds * 1000);
   int packet_count = 0;
 
-  while (millis() < end_time) {
+  unsigned long start_time = millis();
+  // Use 80% of duration for 0xBA, 20% for 0xBB
+  unsigned long ba_end_time = start_time + (duration_seconds * 800);
+  unsigned long bb_end_time = start_time + (duration_seconds * 1000);
+
+  // === PHASE 1: Send 0xBA packets (capability announcement) ===
+  ESP_LOGI(TAG, "Phase 1: Sending 0xBA packets...");
+
+  while (millis() < ba_end_time) {
     memset(packet, 0xCC, sizeof(packet));
 
-    // Type: 0xBB = Pico pairing (discovered from real capture)
-    packet[0] = 0xBB;
+    // Type: 0xBA = Pico pairing with capability info
+    packet[0] = 0xBA;
     packet[1] = seq;
 
-    // Device ID - 1st instance
+    // Device ID - 1st instance (big-endian)
     packet[2] = (device_id >> 24) & 0xFF;
     packet[3] = (device_id >> 16) & 0xFF;
     packet[4] = (device_id >> 8) & 0xFF;
     packet[5] = device_id & 0xFF;
 
-    // Protocol header
+    // Protocol header for 0xBA (from real capture)
     packet[6] = 0x21;
-    packet[7] = 0x25;  // Format for pairing
+    packet[7] = 0x25;  // Real Pico uses 0x25!
     packet[8] = 0x04;
     packet[9] = 0x00;
-    packet[10] = 0x04;
+    packet[10] = 0x0B;  // Real Pico uses 0x0B for BA
     packet[11] = 0x03;
     packet[12] = 0x00;
 
@@ -323,7 +368,7 @@ void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
     packet[17] = 0xFF;
 
     packet[18] = 0x0D;
-    packet[19] = 0x05;
+    packet[19] = 0x05;  // Real Pico uses 0x05!
 
     // Device ID - 2nd instance
     packet[20] = (device_id >> 24) & 0xFF;
@@ -337,10 +382,108 @@ void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
     packet[26] = (device_id >> 8) & 0xFF;
     packet[27] = device_id & 0xFF;
 
-    // Capability info from real Pico capture
+    // 0xBA capability info at bytes 28-40 (from real capture)
+    // 00 20 04 00 08 07 04 01 07 02 27 00 00
     packet[28] = 0x00;
     packet[29] = 0x20;
-    packet[30] = 0x03;  // Button 3 = FAVORITE (pairing button)
+    packet[30] = 0x04;  // Was 0x03
+    packet[31] = 0x00;
+    packet[32] = 0x08;
+    packet[33] = 0x07;
+    packet[34] = 0x04;  // Was 0x03
+    packet[35] = 0x01;  // Was 0x00
+    packet[36] = 0x07;
+    packet[37] = 0x02;  // Was 0xFF
+    packet[38] = 0x27;  // Was 0xFF
+    packet[39] = 0x00;  // Was 0xFF
+    packet[40] = 0x00;  // Was 0xFF
+    // Bytes 41-44 = 0xFF (not CC!)
+    packet[41] = 0xFF;
+    packet[42] = 0xFF;
+    packet[43] = 0xFF;
+    packet[44] = 0xFF;
+    // Bytes 45-50 = 0xCC padding (already set by memset)
+
+    // Calculate CRC over bytes 0-50 (51 bytes)
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
+    packet_count++;
+
+    // Sequence increments by 6
+    seq = (seq + 6) & 0xFF;
+
+    // ~75ms between packets
+    delay(75);
+
+    if ((packet_count % 20) == 0) {
+      ESP_LOGI(TAG, "0xBA: Sent %d packets", packet_count);
+    }
+
+    // Reset sequence every 12 packets (real Pico: 0x00 to 0x42 by 6)
+    if (seq > 0x42) {
+      seq = 0;
+    }
+  }
+
+  int ba_count = packet_count;
+  ESP_LOGI(TAG, "Phase 1 complete: %d x 0xBA packets", ba_count);
+
+  // === PHASE 2: Send 0xBB packets (pair request) ===
+  ESP_LOGI(TAG, "Phase 2: Sending 0xBB packets...");
+  seq = 0;  // Reset sequence for BB phase
+
+  while (millis() < bb_end_time) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    // Type: 0xBB = Pair request
+    packet[0] = 0xBB;
+    packet[1] = seq;
+
+    // Device ID - 1st instance (big-endian)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+
+    // Protocol header for 0xBB (from real capture - same as BA!)
+    packet[6] = 0x21;
+    packet[7] = 0x25;  // Real Pico uses 0x25 for BB too!
+    packet[8] = 0x04;
+    packet[9] = 0x00;
+    packet[10] = 0x04;  // Real Pico uses 0x04 for BB
+    packet[11] = 0x03;
+    packet[12] = 0x00;
+
+    // Broadcast (5 bytes)
+    packet[13] = 0xFF;
+    packet[14] = 0xFF;
+    packet[15] = 0xFF;
+    packet[16] = 0xFF;
+    packet[17] = 0xFF;
+
+    packet[18] = 0x0D;
+    packet[19] = 0x05;  // Real Pico uses 0x05!
+
+    // Device ID - 2nd instance
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = device_id & 0xFF;
+
+    // Device ID - 3rd instance
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = device_id & 0xFF;
+
+    // 0xBB payload at bytes 28-40 (from real capture)
+    // 00 20 03 00 08 07 03 01 07 02 06 00 00
+    packet[28] = 0x00;
+    packet[29] = 0x20;
+    packet[30] = 0x03;
     packet[31] = 0x00;
     packet[32] = 0x08;
     packet[33] = 0x07;
@@ -350,45 +493,35 @@ void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
     packet[37] = 0x02;
     packet[38] = 0x06;
     packet[39] = 0x00;
-
-    // Trailer
     packet[40] = 0x00;
+    // Bytes 41-44 = 0xFF (not CC!)
     packet[41] = 0xFF;
     packet[42] = 0xFF;
     packet[43] = 0xFF;
     packet[44] = 0xFF;
+    // Bytes 45-50 = 0xCC padding (already set by memset)
 
-    // Calculate CRC
-    uint16_t crc = this->encoder_.calc_crc(packet, 45);
-    packet[45] = (crc >> 8) & 0xFF;
-    packet[46] = crc & 0xFF;
+    // Calculate CRC over bytes 0-50 (51 bytes)
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
 
-    this->transmit_packet(packet, 47);
+    this->transmit_packet(packet, 53);
     packet_count++;
 
-    // Real Pico sends packets every ~12-13ms in bursts of 2-3
-    // with ~50ms gaps between bursts
-    seq = (seq + 1) & 0xFF;
+    // Sequence increments by 6
+    seq = (seq + 6) & 0xFF;
 
-    // Send second packet quickly
-    packet[1] = seq;
-    crc = this->encoder_.calc_crc(packet, 45);
-    packet[45] = (crc >> 8) & 0xFF;
-    packet[46] = crc & 0xFF;
-    this->transmit_packet(packet, 47);
-    packet_count++;
-    seq = (seq + 1) & 0xFF;
+    // ~75ms between packets
+    delay(75);
 
-    // Gap between bursts
-    delay(50);
-
-    if ((packet_count % 40) == 0) {
-      ESP_LOGI(TAG, "Sent %d packets, %lds remaining",
-               packet_count, (end_time - millis()) / 1000);
+    if (seq > 0x42) {
+      seq = 0;
     }
   }
 
-  ESP_LOGI(TAG, "=== PICO PAIRING COMPLETE: %d packets ===", packet_count);
+  int bb_count = packet_count - ba_count;
+  ESP_LOGI(TAG, "=== PICO PAIRING COMPLETE: %d x 0xBA + %d x 0xBB ===", ba_count, bb_count);
 }
 
 void LutronCC1101::send_test_packet(uint32_t device_id) {

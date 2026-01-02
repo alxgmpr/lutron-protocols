@@ -62,7 +62,9 @@ Some devices can pair directly without a bridge:
 | 0x9B, 0x9F | RESPONSE | Bridge/dimmer response to Pico commands |
 | 0xA1-0xA3 | PAIR_ACK | Pairing acknowledgment |
 | 0xB0 | PAIR_HANDSHAKE | Pairing handshake (contains target device ID) |
-| 0xB9 | PAIR_REQUEST | Pairing request from Pico/dimmer |
+| 0xB9 | PAIR_REQUEST | Pairing request from Pico/dimmer (old format) |
+| 0xBA | CAPABILITY | Pico capability announcement (direct pairing) |
+| 0xBB | PAIR_REQ | Pico pair request (direct pairing) |
 | 0xC1-0xE0 | BRIDGE_CMD | Bridge configuration/command packets |
 
 ## Button Codes
@@ -224,6 +226,83 @@ When a Pico button is pressed:
 5. **Dimmer** receives command and adjusts level
 6. **Dimmer** may send level report (0x81-0x83) back to bridge
 
+## Pico Direct Pairing (WORKING!)
+
+### Discovery (2026-01-02)
+Real Pico pairing captured and analyzed. ESP32 can now successfully pair with Lutron switches!
+
+### Pairing Packet Types
+| Type | Name | Description |
+|------|------|-------------|
+| 0xBA | CAPABILITY | Capability announcement (~60 packets) |
+| 0xBB | PAIR_REQ | Pair request (~12 packets) |
+
+### Packet Structure (53 bytes: 51 data + 2 CRC)
+
+#### 0xBA Capability Announcement
+```
+Byte  0:    0xBA (type)
+Byte  1:    Sequence (0x00, 0x06, 0x0C, 0x12... increments by 6)
+Byte  2-5:  Device ID (big-endian)
+Byte  6:    0x21 (protocol marker)
+Byte  7:    0x25 (pairing format - NOT 0x21!)
+Byte  8:    0x04
+Byte  9:    0x00
+Byte 10:    0x0B (BA capability marker)
+Byte 11:    0x03
+Byte 12:    0x00
+Byte 13-17: FF FF FF FF FF (broadcast)
+Byte 18:    0x0D
+Byte 19:    0x05 (pairing mode - NOT 0x00!)
+Byte 20-23: Device ID (2nd instance)
+Byte 24-27: Device ID (3rd instance)
+Byte 28-40: Capability info: 00 20 04 00 08 07 04 01 07 02 27 00 00
+Byte 41-44: FF FF FF FF (NOT CC!)
+Byte 45-50: CC CC CC CC CC CC (padding)
+Byte 51-52: CRC-16
+```
+
+#### 0xBB Pair Request
+```
+Byte  0:    0xBB (type)
+Byte  1:    Sequence (0x00, 0x06, 0x0C... increments by 6)
+Byte  2-5:  Device ID (big-endian)
+Byte  6:    0x21 (protocol marker)
+Byte  7:    0x25 (pairing format - same as BA!)
+Byte  8:    0x04
+Byte  9:    0x00
+Byte 10:    0x04 (BB pair request marker)
+Byte 11:    0x03
+Byte 12:    0x00
+Byte 13-17: FF FF FF FF FF (broadcast)
+Byte 18:    0x0D
+Byte 19:    0x05 (pairing mode - NOT 0x01!)
+Byte 20-23: Device ID (2nd instance)
+Byte 24-27: Device ID (3rd instance)
+Byte 28-40: Payload: 00 20 03 00 08 07 03 01 07 02 06 00 00
+Byte 41-44: FF FF FF FF (NOT CC!)
+Byte 45-50: CC CC CC CC CC CC (padding)
+Byte 51-52: CRC-16
+```
+
+### Critical Byte Values (Different from old research!)
+| Byte | Old Value | Correct Value | Notes |
+|------|-----------|---------------|-------|
+| [7]  | 0x21/0x17 | **0x25** | Pairing format marker |
+| [10] | 0x07 | **0x0B** (BA) / **0x04** (BB) | Packet subtype |
+| [19] | 0x00/0x01 | **0x05** | Pairing mode indicator |
+| [41-44] | 0xCC | **0xFF** | Must be FF, not padding |
+
+### Pairing Sequence (6 seconds typical)
+1. Send ~60 x 0xBA packets @ 75ms intervals (capability announcement)
+2. Send ~12 x 0xBB packets @ 75ms intervals (pair request)
+3. Sequence resets to 0x00 between phases
+4. Sequence increments by 6 and wraps at 0x42
+
+### CC1101 FIFO Streaming
+53-byte packets encode to ~77 bytes with N81+preamble+sync, exceeding CC1101's 64-byte FIFO.
+Solution: Use INFINITE packet mode (PKTCTRL0=0x02) with FIFO refill during transmission.
+
 ## Open Questions
 - What packet types does the bridge use to command dimmers? (0x9B/0x9F seen)
 - How does the bridge authenticate/validate Pico commands?
@@ -233,6 +312,13 @@ When a Pico button is pressed:
 - Why does the beacon type change from 0x92 to 0x93 during pairing?
 
 ## Working Features
+
+### Pico-Style Direct Pairing (WORKING!)
+**Discovery:** ESP32 can pair directly with Lutron switches using 0xBA/0xBB packets.
+
+**Implementation:** `send_pairing_pico(device_id, duration_seconds)`
+
+**Tested working:** ESP32 paired to Lutron switch - switch LED reacted to pairing signal!
 
 ### Bridge-Style Level Commands (WORKING!)
 **Discovery:** The bridge sends LEVEL packets (0x81-0x83) with the TARGET device ID embedded in the payload!

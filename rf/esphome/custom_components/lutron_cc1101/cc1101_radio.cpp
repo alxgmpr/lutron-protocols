@@ -185,40 +185,91 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     this->write_burst(CC1101_TXFIFO, data, len);
     this->strobe(CC1101_STX);
   } else {
-    ESP_LOGD(TAG, "Large packet (%d bytes), streaming", len);
+    // Large packet - use INFINITE mode and time-based completion
+    // This bypasses PKTLEN completely, which seems to not work correctly
+    ESP_LOGI(TAG, "Large packet (%d bytes), using INFINITE mode with timing", len);
 
-    this->write_register(CC1101_PKTLEN, len);
+    // Set INFINITE packet mode (radio transmits until we stop it)
+    this->write_register(CC1101_PKTCTRL0, 0x02);  // LENGTH_CONFIG = 10 (infinite)
 
-    size_t initial_fill = FIFO_SIZE - 4;
-    this->write_burst(CC1101_TXFIFO, data, initial_fill);
-    size_t bytes_written = initial_fill;
+    // Fill FIFO with first 64 bytes
+    this->write_burst(CC1101_TXFIFO, data, FIFO_SIZE);
+    size_t bytes_written = FIFO_SIZE;
+    size_t remaining = len - bytes_written;
 
+    ESP_LOGD(TAG, "Initial fill: %d bytes, remaining: %d", bytes_written, remaining);
+
+    // Start TX
     this->strobe(CC1101_STX);
 
-    while (bytes_written < len) {
-      uint8_t txbytes = this->get_tx_bytes();
+    uint32_t start_time = millis();
+    int refill_count = 0;
 
-      if (txbytes < 32) {
+    // Refill until all bytes are written
+    while (remaining > 0) {
+      uint8_t txbytes_raw = this->read_status_register(CC1101_TXBYTES);
+      bool underflow = (txbytes_raw & 0x80) != 0;
+      uint8_t txbytes = txbytes_raw & 0x7F;
+
+      if (underflow) {
+        ESP_LOGE(TAG, "TX FIFO underflow! Written %d/%d", bytes_written, len);
+        this->strobe(CC1101_SIDLE);
+        this->flush_tx();
+        this->write_register(CC1101_PKTCTRL0, 0x00);  // Reset to fixed mode
+        return false;
+      }
+
+      // Refill when FIFO has space
+      if (txbytes < 48) {
         size_t fifo_free = FIFO_SIZE - txbytes;
-        size_t remaining = len - bytes_written;
         size_t to_write = (remaining < fifo_free) ? remaining : fifo_free;
 
         if (to_write > 0) {
           this->write_burst(CC1101_TXFIFO, data + bytes_written, to_write);
           bytes_written += to_write;
+          remaining -= to_write;
+          refill_count++;
+          ESP_LOGD(TAG, "Refill #%d: +%d (total %d/%d, FIFO was %d)",
+                   refill_count, to_write, bytes_written, len, txbytes);
         }
       }
 
-      uint8_t state = this->get_state();
-      if (state == 0x01) break;
-      if (state == 0x16) {
-        ESP_LOGW(TAG, "TX underflow at %d/%d", bytes_written, len);
+      delayMicroseconds(10);
+
+      if (millis() - start_time > 100) {
+        ESP_LOGE(TAG, "Refill timeout! Written %d/%d", bytes_written, len);
+        this->strobe(CC1101_SIDLE);
         this->flush_tx();
+        this->write_register(CC1101_PKTCTRL0, 0x00);
         return false;
       }
-
-      delayMicroseconds(50);
     }
+
+    ESP_LOGD(TAG, "All %d bytes written, waiting for FIFO to drain...", bytes_written);
+
+    // Wait for FIFO to drain and last byte to finish transmitting
+    // In INFINITE mode, when TXBYTES=0, the last byte may still be in the shift register
+    // At 62.5 kbaud, one byte = 8 bits = 128us
+    int drain_timeout = 50;  // 50ms max
+    while (drain_timeout-- > 0) {
+      uint8_t txbytes = this->get_tx_bytes();
+      if (txbytes == 0) {
+        // FIFO is empty - wait for shift register to finish (1 byte + margin)
+        delayMicroseconds(200);
+        break;
+      }
+      delay(1);
+    }
+
+    // Stop transmission
+    this->strobe(CC1101_SIDLE);
+
+    // Reset to fixed mode for next transmission
+    this->write_register(CC1101_PKTCTRL0, 0x00);
+
+    uint32_t elapsed = millis() - start_time;
+    ESP_LOGI(TAG, "Transmitted %d bytes in %dms (%d refills, INFINITE mode)",
+             bytes_written, elapsed, refill_count);
   }
 
   int timeout = 200;
