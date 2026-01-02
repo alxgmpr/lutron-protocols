@@ -281,6 +281,116 @@ void LutronCC1101::send_pairing_b9(uint32_t device_id) {
   }
 }
 
+void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
+  ESP_LOGI(TAG, "=== PICO-STYLE PAIRING (0xBB) ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X, Duration: %ds", device_id, duration_seconds);
+  ESP_LOGI(TAG, "Emulating real Pico pairing sequence...");
+
+  uint8_t packet[47];
+  uint8_t seq = 0;
+
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (duration_seconds * 1000);
+  int packet_count = 0;
+
+  while (millis() < end_time) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    // Type: 0xBB = Pico pairing (discovered from real capture)
+    packet[0] = 0xBB;
+    packet[1] = seq;
+
+    // Device ID - 1st instance
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+
+    // Protocol header
+    packet[6] = 0x21;
+    packet[7] = 0x25;  // Format for pairing
+    packet[8] = 0x04;
+    packet[9] = 0x00;
+    packet[10] = 0x04;
+    packet[11] = 0x03;
+    packet[12] = 0x00;
+
+    // Broadcast (5 bytes)
+    packet[13] = 0xFF;
+    packet[14] = 0xFF;
+    packet[15] = 0xFF;
+    packet[16] = 0xFF;
+    packet[17] = 0xFF;
+
+    packet[18] = 0x0D;
+    packet[19] = 0x05;
+
+    // Device ID - 2nd instance
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = device_id & 0xFF;
+
+    // Device ID - 3rd instance
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = device_id & 0xFF;
+
+    // Capability info from real Pico capture
+    packet[28] = 0x00;
+    packet[29] = 0x20;
+    packet[30] = 0x03;  // Button 3 = FAVORITE (pairing button)
+    packet[31] = 0x00;
+    packet[32] = 0x08;
+    packet[33] = 0x07;
+    packet[34] = 0x03;
+    packet[35] = 0x01;
+    packet[36] = 0x07;
+    packet[37] = 0x02;
+    packet[38] = 0x06;
+    packet[39] = 0x00;
+
+    // Trailer
+    packet[40] = 0x00;
+    packet[41] = 0xFF;
+    packet[42] = 0xFF;
+    packet[43] = 0xFF;
+    packet[44] = 0xFF;
+
+    // Calculate CRC
+    uint16_t crc = this->encoder_.calc_crc(packet, 45);
+    packet[45] = (crc >> 8) & 0xFF;
+    packet[46] = crc & 0xFF;
+
+    this->transmit_packet(packet, 47);
+    packet_count++;
+
+    // Real Pico sends packets every ~12-13ms in bursts of 2-3
+    // with ~50ms gaps between bursts
+    seq = (seq + 1) & 0xFF;
+
+    // Send second packet quickly
+    packet[1] = seq;
+    crc = this->encoder_.calc_crc(packet, 45);
+    packet[45] = (crc >> 8) & 0xFF;
+    packet[46] = crc & 0xFF;
+    this->transmit_packet(packet, 47);
+    packet_count++;
+    seq = (seq + 1) & 0xFF;
+
+    // Gap between bursts
+    delay(50);
+
+    if ((packet_count % 40) == 0) {
+      ESP_LOGI(TAG, "Sent %d packets, %lds remaining",
+               packet_count, (end_time - millis()) / 1000);
+    }
+  }
+
+  ESP_LOGI(TAG, "=== PICO PAIRING COMPLETE: %d packets ===", packet_count);
+}
+
 void LutronCC1101::send_test_packet(uint32_t device_id) {
   ESP_LOGI(TAG, "=== TEST PACKET FOR RTL-SDR CAPTURE ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X", device_id);

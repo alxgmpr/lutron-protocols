@@ -220,9 +220,9 @@ button:
       - lambda: |-
           id(lutron_radio)->send_debug_pattern();
 
-  # PAIR with NEW unique device ID for ESP32
+  # PAIR with NEW unique device ID for ESP32 (old B9 method)
   - platform: template
-    name: "PAIR ESP32"
+    name: "PAIR ESP32 (B9)"
     id: pair_esp32
     icon: "mdi:link-variant-plus"
     on_press:
@@ -230,6 +230,17 @@ button:
           // Unique device ID for ESP32 (not the real Pico's ID)
           // Using 0xCC110001 = "CC1101" with suffix 01
           id(lutron_radio)->send_pairing_b9(0xCC110001);
+
+  # PICO-STYLE PAIRING (0xBB) - Discovered from real Pico capture!
+  # This sends 0xBB packets like a real Pico does when holding FAVORITE
+  - platform: template
+    name: "PAIR PICO-STYLE (BB)"
+    id: pair_pico_style
+    icon: "mdi:remote"
+    on_press:
+      - lambda: |-
+          // Use unique ESP32 device ID, send for 6 seconds like real Pico
+          id(lutron_radio)->send_pairing_pico(0xCC110001, 6);
 
   # Scene Pico 084b1ebb buttons (Bright/Entertain/Relax/Off)
   # Scene Picos use button codes 0x08-0x0B, NOT 0x02-0x06 like dimmer Picos

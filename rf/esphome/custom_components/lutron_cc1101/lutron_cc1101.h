@@ -64,6 +64,14 @@ class LutronCC1101 : public Component,
   void send_pairing_b9(uint32_t device_id);
 
   /**
+   * @brief Send Pico-style pairing (0xBB packets)
+   * Emulates a real Pico holding FAVORITE button for pairing
+   * @param device_id Our device ID (ESP32's fake Pico ID)
+   * @param duration_seconds How long to send (default 6s like real Pico)
+   */
+  void send_pairing_pico(uint32_t device_id, int duration_seconds = 6);
+
+  /**
    * @brief Send a single test packet for RTL-SDR capture analysis
    * Sends 5 copies of a 0xB9 pairing packet with 200ms gaps
    */
