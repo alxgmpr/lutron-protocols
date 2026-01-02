@@ -339,6 +339,7 @@ def cmd_serve(args):
         <div class="card pairing">
             <div class="card-header">
                 <h2>Pico Pairing</h2>
+                <span class="badge">PICO -> DEVICE/BRIDGE</span>
             </div>
             <div class="card-body">
                 <div class="form-row">
@@ -623,12 +624,14 @@ def cmd_serve(args):
             const msg = data.msg;
 
             // Extract hex bytes from TX/RX messages
-            const hexMatch = msg.match(/([A-F0-9]{2}(?:\s+[A-F0-9]{2}){5,})/i);
+            // Look for patterns like "TX 24 bytes: 02 00 05 85..." or just hex sequences
+            const hexMatch = msg.match(/([A-F0-9]{2}(?:\s+[A-F0-9]{2}){7,})/i);
             if (hexMatch) {
                 const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
-                if (msg.includes('TX:') || msg.includes('Sending') || msg.includes('encoded')) {
+                // TX patterns: "TX 24 bytes:", "TX 0xBA", "TX 0xBB"
+                if (msg.includes('TX ') && (msg.includes('bytes:') || msg.includes('0xB'))) {
                     addHexEntry('tx-packets', time, hexMatch[1]);
-                } else if (msg.includes('RX:') || msg.includes('Received')) {
+                } else if (msg.includes('RX') || msg.includes('Received')) {
                     addHexEntry('rx-packets', time, hexMatch[1]);
                 }
             }
