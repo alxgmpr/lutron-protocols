@@ -931,5 +931,13 @@ void LutronCC1101::send_debug_pattern() {
   ESP_LOGI(TAG, "=== DEBUG COMPLETE ===");
 }
 
+void LutronCC1101::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
+                                              int protocol_variant, int pico_type) {
+  if (this->pairing_) {
+    this->pairing_->send_pairing_experimental(device_id, ba_count, bb_count,
+                                               protocol_variant, pico_type);
+  }
+}
+
 }  // namespace lutron_cc1101
 }  // namespace esphome

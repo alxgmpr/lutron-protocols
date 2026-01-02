@@ -293,11 +293,27 @@ Byte 51-52: CRC-16
 | [19] | 0x00/0x01 | **0x05** | Pairing mode indicator |
 | [41-44] | 0xCC | **0xFF** | Must be FF, not padding |
 
-### Pairing Sequence (6 seconds typical)
-1. Send ~60 x 0xBA packets @ 75ms intervals (capability announcement)
-2. Send ~12 x 0xBB packets @ 75ms intervals (pair request)
+### Capability Bytes [28-40] - CRITICAL!
+**The capability bytes MUST match the button codes you intend to use!**
+
+| Pico Type | [30] | [34] | [38] | Button Codes |
+|-----------|------|------|------|--------------|
+| Scene (4-btn) | 0x04 | 0x04 | 0x27 | 0x08-0x0B |
+| 5-Button | 0x03 | 0x03 | 0x06 | 0x02-0x06 |
+
+If you pair with Scene capability but send 5-button codes, the device will
+interpret them incorrectly (e.g., OFF becomes 50% level).
+
+### Pairing Sequence (CONFIRMED: Minimal works!)
+**Minimal (1.5s):** 12 BA + 6 BB packets @ 75ms intervals
+**Full (6s):** 60 BA + 12 BB packets @ 75ms intervals
+
+Both work. Minimal is sufficient for standalone devices.
+
+1. Send BA packets (capability announcement)
+2. Send BB packets (pair request)
 3. Sequence resets to 0x00 between phases
-4. Sequence increments by 6 and wraps at 0x42
+4. Sequence increments by 6 and wraps at 0x48
 
 ### CC1101 FIFO Streaming
 53-byte packets encode to ~77 bytes with N81+preamble+sync, exceeding CC1101's 64-byte FIFO.

@@ -257,5 +257,176 @@ void LutronPairing::replay_raw(const uint8_t *raw_encoded, size_t len) {
   this->radio_->transmit_raw(raw_encoded, len);
 }
 
+void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
+                                               int protocol_variant, int pico_type) {
+  // Experimental pairing with configurable parameters
+  // protocol_variant: 0=new (0x25), 1=old (0x21/0x17)
+  // pico_type: 0=scene (4-btn), 1=5-button
+
+  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING ===");
+  ESP_LOGI(TAG, "Device: 0x%08X, BA:%d, BB:%d, Proto:%d, Type:%d",
+           device_id, ba_count, bb_count, protocol_variant, pico_type);
+
+  uint8_t packet[53];
+  this->sequence_ = 0x00;
+
+  // Protocol bytes based on variant
+  uint8_t ba_byte7 = (protocol_variant == 0) ? 0x25 : 0x21;
+  uint8_t bb_byte7 = (protocol_variant == 0) ? 0x25 : 0x17;
+  uint8_t ba_byte10 = (protocol_variant == 0) ? 0x0B : 0x07;
+  uint8_t bb_byte10 = (protocol_variant == 0) ? 0x04 : 0x07;
+  uint8_t byte19 = (protocol_variant == 0) ? 0x05 : 0x00;  // BA
+  uint8_t bb_byte19 = (protocol_variant == 0) ? 0x05 : 0x01;  // BB
+
+  // Capability bytes based on pico type
+  // Scene Pico (4-btn): 00 20 04 00 08 07 04 01 07 02 27 00 00
+  // 5-Button Pico:      00 20 03 00 08 07 03 01 07 02 06 00 00
+  uint8_t cap_byte30 = (pico_type == 0) ? 0x04 : 0x03;
+  uint8_t cap_byte34 = (pico_type == 0) ? 0x04 : 0x03;
+  uint8_t cap_byte35 = (pico_type == 0) ? 0x01 : 0x01;  // Same
+  uint8_t cap_byte38 = (pico_type == 0) ? 0x27 : 0x06;
+
+  ESP_LOGI(TAG, "Proto bytes: BA[7]=0x%02X BB[7]=0x%02X [19]=0x%02X/0x%02X",
+           ba_byte7, bb_byte7, byte19, bb_byte19);
+  ESP_LOGI(TAG, "Cap bytes: [30]=0x%02X [34]=0x%02X [38]=0x%02X",
+           cap_byte30, cap_byte34, cap_byte38);
+
+  // --- PHASE 1: 0xBA capability announcement ---
+  ESP_LOGI(TAG, "Phase 1: Sending %d x 0xBA...", ba_count);
+
+  for (int i = 0; i < ba_count; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = 0xBA;
+    packet[1] = this->next_seq();
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
+
+    packet[6] = 0x21;
+    packet[7] = ba_byte7;
+    packet[8] = 0x04;
+    packet[9] = 0x00;
+    packet[10] = ba_byte10;
+    packet[11] = 0x03;
+    packet[12] = 0x00;
+
+    // Broadcast
+    packet[13] = 0xFF; packet[14] = 0xFF; packet[15] = 0xFF;
+    packet[16] = 0xFF; packet[17] = 0xFF;
+
+    packet[18] = 0x0D;
+    packet[19] = byte19;
+
+    // Device ID x2
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = (device_id >> 0) & 0xFF;
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = (device_id >> 0) & 0xFF;
+
+    // Capability info
+    packet[28] = 0x00;
+    packet[29] = 0x20;
+    packet[30] = cap_byte30;
+    packet[31] = 0x00;
+    packet[32] = 0x08;
+    packet[33] = 0x07;
+    packet[34] = cap_byte34;
+    packet[35] = cap_byte35;
+    packet[36] = 0x07;
+    packet[37] = 0x02;
+    packet[38] = cap_byte38;
+    packet[39] = 0x00;
+    packet[40] = 0x00;
+
+    // Must be 0xFF for new protocol
+    packet[41] = 0xFF; packet[42] = 0xFF;
+    packet[43] = 0xFF; packet[44] = 0xFF;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_encoded(packet, 53);
+    delay(75);
+    yield();
+  }
+
+  ESP_LOGI(TAG, "Phase 1 complete");
+
+  // --- PHASE 2: 0xBB pair request ---
+  ESP_LOGI(TAG, "Phase 2: Sending %d x 0xBB...", bb_count);
+  this->sequence_ = 0x00;  // Reset sequence
+
+  for (int i = 0; i < bb_count; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = 0xBB;
+    packet[1] = this->next_seq();
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
+
+    packet[6] = 0x21;
+    packet[7] = bb_byte7;
+    packet[8] = 0x04;
+    packet[9] = 0x00;
+    packet[10] = bb_byte10;
+    packet[11] = 0x03;
+    packet[12] = 0x00;
+
+    // Broadcast
+    packet[13] = 0xFF; packet[14] = 0xFF; packet[15] = 0xFF;
+    packet[16] = 0xFF; packet[17] = 0xFF;
+
+    packet[18] = 0x0D;
+    packet[19] = bb_byte19;
+
+    // Device ID x2
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = (device_id >> 0) & 0xFF;
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = (device_id >> 0) & 0xFF;
+
+    // BB capability/payload (same structure, different values)
+    packet[28] = 0x00;
+    packet[29] = 0x20;
+    packet[30] = cap_byte30;
+    packet[31] = 0x00;
+    packet[32] = 0x08;
+    packet[33] = 0x07;
+    packet[34] = cap_byte34;
+    packet[35] = cap_byte35;
+    packet[36] = 0x07;
+    packet[37] = 0x02;
+    packet[38] = cap_byte38;
+    packet[39] = 0x00;
+    packet[40] = 0x00;
+
+    packet[41] = 0xFF; packet[42] = 0xFF;
+    packet[43] = 0xFF; packet[44] = 0xFF;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_encoded(packet, 53);
+    delay(75);
+    yield();
+  }
+
+  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING COMPLETE ===");
+}
+
 }  // namespace lutron_cc1101
 }  // namespace esphome

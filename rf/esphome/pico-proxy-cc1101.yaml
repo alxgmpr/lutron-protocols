@@ -77,6 +77,24 @@ api:
             ESP_LOGI("service", "send_state_report: device=0x%08X level=%d%%", dev_id, level_percent);
             id(lutron_radio)->send_state_report(dev_id, level_percent);
 
+    # Experimental pairing - configurable protocol parameters
+    # protocol_variant: 0=new (0x25), 1=old (0x21/0x17)
+    # pico_type: 0=scene (4-btn), 1=5-button
+    - service: pair_experiment
+      variables:
+        device_id: string
+        ba_count: int
+        bb_count: int
+        protocol_variant: int
+        pico_type: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "pair_experiment: device=0x%08X BA=%d BB=%d proto=%d type=%d",
+                     dev_id, ba_count, bb_count, protocol_variant, pico_type);
+            id(lutron_radio)->send_pairing_experimental(dev_id, ba_count, bb_count,
+                                                         protocol_variant, pico_type);
+
 ota:
   platform: esphome
   password: "test"

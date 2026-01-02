@@ -1,5 +1,41 @@
 # Pico Direct Pairing Protocol Analysis
 
+## CONFIRMED FINDINGS (2026-01-02)
+
+### 5-Button Capability Pairing WORKS!
+
+**Experiment:** Paired device `0xCC110003` with:
+- BA packets: 12
+- BB packets: 6
+- Protocol: new (0x25)
+- Pico type: **5-button** (capability bytes [30]=0x03, [34]=0x03, [38]=0x06)
+
+**Result:** All 5-button codes work correctly:
+- 0x02 = ON ✓
+- 0x03 = FAVORITE ✓
+- 0x04 = OFF ✓
+- 0x05 = RAISE ✓
+- 0x06 = LOWER ✓
+
+**Note:** Some quirky behavior with sequential RAISE/LOWER commands (occasional on/off instead of dim).
+
+### Key Discovery: Capability Bytes Matter!
+
+The original issue was using **Scene Pico capability bytes** while sending **5-button codes**.
+When capability bytes match button codes, everything works.
+
+| Pico Type | Capability Bytes | Button Codes |
+|-----------|------------------|--------------|
+| Scene (4-btn) | [30]=0x04, [34]=0x04, [38]=0x27 | 0x08-0x0B |
+| 5-Button | [30]=0x03, [34]=0x03, [38]=0x06 | 0x02-0x06 |
+
+### Minimal Packets Sufficient
+
+**12 BA + 6 BB** packets work fine. No need for 60 + 12.
+This reduces pairing time from ~6s to ~1.5s.
+
+---
+
 ## Summary of Findings
 
 We have TWO different pairing packet captures that BOTH work, but have different byte values.

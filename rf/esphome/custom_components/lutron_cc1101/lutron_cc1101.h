@@ -100,6 +100,17 @@ class LutronCC1101 : public Component,
   LutronPairing *get_pairing() { return pairing_; }
 
   /**
+   * @brief Experimental pairing with configurable parameters
+   * @param device_id 32-bit device ID
+   * @param ba_count Number of 0xBA packets
+   * @param bb_count Number of 0xBB packets
+   * @param protocol_variant 0=new, 1=old
+   * @param pico_type 0=scene, 1=5-button
+   */
+  void send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
+                                  int protocol_variant, int pico_type);
+
+  /**
    * @brief Send fake dimmer state report to bridge
    * Emulates what a dimmer sends when its level changes (via physical toggle)
    * This may trick the bridge into updating its state display

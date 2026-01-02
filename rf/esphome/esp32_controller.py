@@ -223,6 +223,19 @@ class ESP32Controller:
         await self.call_service('send_beacon', device_id=f"0x{device_id:08X}", beacon_type=beacon_type, duration_seconds=duration)
         print(f"Beacon 0x{beacon_type:02X} from 0x{device_id:08X} for {duration}s")
 
+    async def pair_experiment(self, device_id: int, ba_count: int, bb_count: int,
+                               protocol_variant: int, pico_type: int):
+        """Send experimental pairing with configurable parameters."""
+        await self.call_service('pair_experiment',
+                                device_id=f"0x{device_id:08X}",
+                                ba_count=ba_count,
+                                bb_count=bb_count,
+                                protocol_variant=protocol_variant,
+                                pico_type=pico_type)
+        proto_name = "new(0x25)" if protocol_variant == 0 else "old(0x21/0x17)"
+        type_name = "scene(4-btn)" if pico_type == 0 else "5-button"
+        print(f"Experiment: device=0x{device_id:08X} BA={ba_count} BB={bb_count} proto={proto_name} type={type_name}")
+
     async def press_button(self, button_id: str):
         """Press a button by ID."""
         # Get entities if not cached
@@ -472,7 +485,7 @@ def cmd_serve(args):
 
     <!-- PAIRING -->
     <div class="section pairing">
-        <h2>Pico Pairing <span class="badge">EXPERIMENTAL</span></h2>
+        <h2>Pico Pairing <span class="badge">STANDARD</span></h2>
         <div class="row">
             <label>Device ID:</label>
             <input type="text" id="pair-device" value="0xCC110001" placeholder="0xCC110001">
@@ -480,7 +493,43 @@ def cmd_serve(args):
             <input type="number" id="pair-duration" value="6" min="1" max="30">s
             <button class="btn-pair" onclick="sendPairing()">PAIR</button>
         </div>
-        <div class="hint">Sends BA/BB pairing sequence. Only works with devices NOT already paired to a bridge.</div>
+        <div class="hint">Standard pairing (60 BA + 12 BB, new protocol, scene type).</div>
+    </div>
+
+    <!-- PAIRING EXPERIMENTS -->
+    <div class="section" style="background: #1e1e2e; border-color: #4a4a6a;">
+        <h2>Pairing Experiments <span class="badge">RESEARCH</span></h2>
+        <div class="row">
+            <label>Device ID:</label>
+            <input type="text" id="exp-device" value="0xCC110002" placeholder="0xCC110002">
+            <label>BA pkts:</label>
+            <input type="number" id="exp-ba" value="12" min="1" max="60" style="width:50px;">
+            <label>BB pkts:</label>
+            <input type="number" id="exp-bb" value="6" min="1" max="20" style="width:50px;">
+        </div>
+        <div class="row">
+            <label>Protocol:</label>
+            <select id="exp-protocol">
+                <option value="0">New (0x25) - Scene Pico capture</option>
+                <option value="1">Old (0x21/0x17) - Original capture</option>
+            </select>
+            <label>Pico Type:</label>
+            <select id="exp-type">
+                <option value="0">Scene (4-btn, codes 0x08-0x0B)</option>
+                <option value="1">5-Button (codes 0x02-0x06)</option>
+            </select>
+        </div>
+        <div class="row">
+            <button class="btn-pair" onclick="runExperiment()">RUN EXPERIMENT</button>
+        </div>
+        <div class="quick-btns" style="margin-top:10px;">
+            <button onclick="preset(12,6,0,0)">Minimal Scene</button>
+            <button onclick="preset(12,6,0,1)">Minimal 5-btn</button>
+            <button onclick="preset(12,6,1,1)">Old Proto 5-btn</button>
+            <button onclick="preset(60,12,0,0)">Full Scene</button>
+            <button onclick="preset(60,12,0,1)">Full 5-btn</button>
+        </div>
+        <div class="hint">Test different protocol variants and packet counts. Use new device IDs to avoid conflicts.</div>
     </div>
 
     <div id="status">Ready - Enter parameters and click to send CCA commands</div>
@@ -548,6 +597,28 @@ def cmd_serve(args):
                 const data = await apiCall('/api/pair', {device, duration});
                 setStatus(data.status === 'ok' ? `Pairing ${data.device} (${data.duration}s)` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        async function runExperiment() {
+            const device = document.getElementById('exp-device').value.trim();
+            const ba = document.getElementById('exp-ba').value;
+            const bb = document.getElementById('exp-bb').value;
+            const protocol = document.getElementById('exp-protocol').value;
+            const type = document.getElementById('exp-type').value;
+            const protoName = protocol === '0' ? 'new(0x25)' : 'old(0x21/0x17)';
+            const typeName = type === '0' ? 'scene' : '5-btn';
+            setStatus(`Experiment: ${device} BA=${ba} BB=${bb} ${protoName} ${typeName}...`);
+            try {
+                const data = await apiCall('/api/experiment', {device, ba, bb, protocol, type});
+                setStatus(data.status === 'ok' ? `Sent: ${data.ba_count}xBA + ${data.bb_count}xBB ${data.protocol} ${data.pico_type}` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        function preset(ba, bb, proto, type) {
+            document.getElementById('exp-ba').value = ba;
+            document.getElementById('exp-bb').value = bb;
+            document.getElementById('exp-protocol').value = proto;
+            document.getElementById('exp-type').value = type;
         }
     </script>
 </body>
@@ -622,6 +693,17 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_state_report(device_id, level)
+        finally:
+            await controller.disconnect()
+
+    async def pair_experiment_async(device_id: int, ba_count: int, bb_count: int,
+                                     protocol_variant: int, pico_type: int):
+        """Send experimental pairing via ESPHome service."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.pair_experiment(device_id, ba_count, bb_count,
+                                              protocol_variant, pico_type)
         finally:
             await controller.disconnect()
 
@@ -709,6 +791,33 @@ def cmd_serve(args):
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
                 'level': level
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/experiment', methods=['POST'])
+    def api_experiment():
+        """Send experimental pairing with configurable parameters."""
+        try:
+            device = request.args.get('device', '')
+            ba_count = int(request.args.get('ba', '12'))
+            bb_count = int(request.args.get('bb', '6'))
+            protocol = int(request.args.get('protocol', '0'))
+            pico_type = int(request.args.get('type', '1'))
+
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
+
+            device_id = parse_hex_int(device)
+
+            asyncio.run(pair_experiment_async(device_id, ba_count, bb_count, protocol, pico_type))
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'ba_count': ba_count,
+                'bb_count': bb_count,
+                'protocol': 'new(0x25)' if protocol == 0 else 'old(0x21/0x17)',
+                'pico_type': 'scene' if pico_type == 0 else '5-button'
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
