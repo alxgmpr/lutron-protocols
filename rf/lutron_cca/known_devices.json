@@ -1,5 +1,5 @@
 {
-  "17118505": {
+  "05851117": {
     "name": "5-Button Pico (Living Room)",
     "type": "PJ2-3BRL-WH-L01",
     "notes": "5-button dimmer Pico. Buttons: ON(0x02), FAV(0x03), OFF(0x04), RAISE(0x05), LOWER(0x06). Works with level commands. Directly paired to dimmer.",
@@ -30,7 +30,7 @@
     "notes": "Main Caseta bridge. Receives Pico commands and relays to devices. Device ID confirmed from label.",
     "pairing": "hub"
   },
-  "002c90af": {
+  "af902c00": {
     "name": "Dimmer (unknown location)",
     "type": "DVRF-6L-WH",
     "notes": "Diva RF dimmer. This was the device we successfully sent level commands to.",
