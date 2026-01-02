@@ -189,6 +189,43 @@ Verified against captured packets.
 ```
 **Note:** The dimmer's RF transmit ID (e.g., `8F902C08`) differs from its paired/label ID (e.g., `06FDEFF4`). The "902c" portion appears common to bridge-paired dimmers in the same zone.
 
+### Dimmer Reset/Unpair Packet (24 bytes)
+```
+[0]  Type      0x81
+[1]  Sequence
+[2-5] Device ID (RF transmit ID, e.g., 8F902C08)
+[6]  0x21      ← Protocol marker
+[7]  0x0C      ← RESET format indicator
+[8]  0x00
+[9-13] FF FF FF FF FF  ← BROADCAST (tell all to forget)
+[14] 0x02
+[15] 0x08
+[16-19] Paired ID (e.g., 06 FD EF F4)  ← The ID being unregistered
+[20-21] 0xCC padding
+[22-23] CRC
+```
+
+### Bridge Pairing Assignment (0xB0 packet, 24 bytes)
+```
+[0]  Type      0xB0
+[1]  Sequence
+[2-5] Bridge zone ID + 0x7F suffix (e.g., AF 90 2C 7F)
+[6]  0x21
+[7]  0x17      ← Pairing format
+[8]  0x00
+[9-13] FF FF FF FF FF  ← Broadcast
+[14-15] 0x08 0x05
+[16-19] Assigned device ID (e.g., 06 FD EF F4)  ← Bridge assigns this!
+[20-23] 04 63 02 01  ← Unknown
+```
+
+### ID Relationship Discovery
+- **RF Transmit ID** (`8F902C08`): Hardware-intrinsic, survives reset and room changes
+- **Label/Factory ID** (`06FDEFF4`): Printed on device, factory-assigned
+- **Bridge Zone ID** (`AF902C00`): Assigned by bridge during room setup
+- Tested: Pairing to different room did NOT change RF transmit ID
+- The 0xB0 packet registers/confirms the device ID, not assigns it
+
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
 **Bridge address (for reference):** `04 d0 b5 91` - no obvious relationship to `C3 C6 FE 40` found yet.
@@ -329,6 +366,10 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Pico 08692d70 (PJ2-4B-GWH-L01) | ✅ Working | Both Caseta and RA3 bridges respond |
 | 2025-01-01 | Dimmer state report capture | ✅ Done | Discovered packet structure differs from commands |
 | 2025-01-01 | Fake state reports (8f902c08) | ✅ Working | Can spoof dimmer level to bridge |
+| 2025-01-01 | Dimmer reset capture | ✅ Done | Reset packet uses 0x0C format, broadcasts paired ID |
+| 2025-01-01 | Dimmer re-pairing capture | ✅ Done | RF transmit ID is deterministic (same after re-pair) |
+| 2025-01-01 | Bridge pairing (0xB0) | ✅ Analyzed | Bridge assigns paired ID via 0xB0 packets |
+| 2025-01-01 | Different room pairing test | ✅ Done | RF transmit ID unchanged - hardware-intrinsic |
 
 ---
 
