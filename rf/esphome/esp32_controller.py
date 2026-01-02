@@ -145,14 +145,14 @@ class ESP32Controller:
         await self.call_service('send_beacon', device_id=f"0x{device_id:08X}",
                                beacon_type=beacon_type, duration_seconds=duration)
 
-    async def pair_pico(self, device_id: int, ba_count: int = 12, bb_count: int = 6):
-        """Send 5-button Pico pairing (the only type that works for direct pairing)."""
+    async def pair_pico(self, device_id: int, pico_type: int = 1, ba_count: int = 12, bb_count: int = 6):
+        """Send Pico pairing. pico_type: 0=Scene (bridge only), 1=5-button (direct to dimmer)."""
         await self.call_service('pair_experiment',
                                device_id=f"0x{device_id:08X}",
                                ba_count=ba_count,
                                bb_count=bb_count,
                                protocol_variant=0,  # New protocol (0x25)
-                               pico_type=1)  # 5-button (MUST use this for direct pairing)
+                               pico_type=pico_type)  # 0=Scene, 1=5-button
 
     async def press_button(self, button_id: str):
         """Press a button by ID."""
@@ -339,7 +339,6 @@ def cmd_serve(args):
         <div class="card pairing">
             <div class="card-header">
                 <h2>Pico Pairing</h2>
-                <span class="badge">5-BUTTON ONLY</span>
             </div>
             <div class="card-body">
                 <div class="form-row">
@@ -347,8 +346,11 @@ def cmd_serve(args):
                         <label>Device ID</label>
                         <input type="text" id="pair-device" value="0xCC110001">
                     </div>
-                    <button class="btn-purple" onclick="pairPico()">PAIR PICO</button>
-                    <button class="btn-red" onclick="resetPico()">RESET PICO</button>
+                    <button class="btn-purple" onclick="pairPico('5button')">PAIR 5-BUTTON</button>
+                    <button class="btn-blue" onclick="pairPico('scene')">PAIR SCENE</button>
+                </div>
+                <div style="font-size:11px;color:#8b949e;margin-top:8px;">
+                    5-Button: pairs directly to dimmers | Scene: pairs to bridge only
                 </div>
             </div>
         </div>
@@ -357,7 +359,7 @@ def cmd_serve(args):
         <div class="card pico">
             <div class="card-header">
                 <h2>Pico Button Press</h2>
-                <span class="badge">PICO -> DEVICE</span>
+                <span class="badge">PICO -> DEVICE/BRIDGE</span>
             </div>
             <div class="card-body">
                 <div class="form-row">
@@ -423,7 +425,7 @@ def cmd_serve(args):
         <div class="card bridge">
             <div class="card-header">
                 <h2>Bridge Beacon Mode</h2>
-                <span class="badge">PAIRING</span>
+                <span class="badge">BRIDGE PAIRING</span>
             </div>
             <div class="card-body">
                 <div class="form-row">
@@ -517,22 +519,13 @@ def cmd_serve(args):
         }
 
         // Pico Pairing
-        async function pairPico() {
+        async function pairPico(type) {
             const device = document.getElementById('pair-device').value.trim();
-            setStatus(`Pairing ${device} as 5-button Pico...`);
+            const typeName = type === 'scene' ? 'Scene Pico' : '5-Button Pico';
+            setStatus(`Pairing ${device} as ${typeName}...`);
             try {
-                const data = await apiPost('/api/pair-pico', {device});
-                setStatus(data.status === 'ok' ? `Paired ${data.device}` : `Error: ${data.error}`,
-                         data.status === 'ok' ? 'success' : 'error');
-            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
-        }
-
-        async function resetPico() {
-            const device = document.getElementById('pair-device').value.trim();
-            setStatus(`Resetting ${device}...`);
-            try {
-                const data = await apiPost('/api/reset-pico', {device});
-                setStatus(data.status === 'ok' ? `Reset ${data.device}` : `Error: ${data.error}`,
+                const data = await apiPost('/api/pair-pico', {device, type});
+                setStatus(data.status === 'ok' ? `Paired ${data.device} as ${data.type}` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
@@ -744,11 +737,12 @@ def cmd_serve(args):
         finally:
             await controller.disconnect()
 
-    async def pair_pico_async(device_id: int):
+    async def pair_pico_async(device_id: int, pico_type: int = 1):
+        """pico_type: 0 = Scene, 1 = 5-button"""
         controller = ESP32Controller()
         try:
             await controller.connect()
-            await controller.pair_pico(device_id)
+            await controller.pair_pico(device_id, pico_type)
         finally:
             await controller.disconnect()
 
@@ -857,39 +851,23 @@ def cmd_serve(args):
 
     @app.route('/api/pair-pico', methods=['POST'])
     def api_pair_pico():
-        """Pair as 5-button Pico (the only type that works for direct pairing)."""
+        """Pair as Pico (5-button or Scene)."""
         try:
             device = request.args.get('device', '')
+            pico_type = request.args.get('type', '5button')  # '5button' or 'scene'
             if not device:
                 return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
-            asyncio.run(pair_pico_async(device_id))
+            # pico_type: 0 = Scene (4-button), 1 = 5-button
+            type_code = 0 if pico_type == 'scene' else 1
+            asyncio.run(pair_pico_async(device_id, type_code))
 
+            type_name = 'Scene Pico' if pico_type == 'scene' else '5-Button Pico'
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
-                'type': '5-button'
-            })
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    @app.route('/api/reset-pico', methods=['POST'])
-    def api_reset_pico():
-        """Send reset/unpair command for a Pico device."""
-        try:
-            device = request.args.get('device', '')
-            if not device:
-                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
-
-            device_id = parse_hex_int(device)
-            # Send button code 0x81 which is the unpair/reset command
-            asyncio.run(send_button_async(device_id, 0x81))
-
-            return jsonify({
-                'status': 'ok',
-                'device': f'0x{device_id:08X}',
-                'action': 'reset'
+                'type': type_name
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
