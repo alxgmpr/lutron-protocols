@@ -225,10 +225,11 @@ Verified against captured packets.
 - **RF Transmit ID**: Derived from Load ID using `RF_TX = Load_ID XOR 0x20000008`
   - 07004e8c paired first → Load ID af902c00 → RF TX 8f902c08
   - 06fdeff4 re-added later → Load ID af902c11 → RF TX 8f902c19
-- **Bridge level commands** use factory ID in payload, not load ID
-  - Commands to 06fdeff4 work regardless of which load slot it's in
-  - The bridge routes based on factory ID
-- When unpaired: Dimmer does NOT respond to bridge level commands
+- **Level commands** work via direct RF - NO bridge routing involved!
+  - Dimmer listens for its factory ID in the payload
+  - Commands work even with bridge unplugged
+  - Dimmer must be paired (has learned what load ID format to accept)
+- When unpaired: Dimmer does NOT respond to level commands
 
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
@@ -376,7 +377,7 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Different room pairing test | ✅ Done | RF transmit ID unchanged on same bridge |
 | 2025-01-01 | Second dimmer (07004e8c) test | ✅ Done | RF TX = Load_ID XOR 0x20000008 |
 | 2025-01-01 | Re-add 06fdeff4 to bridge | ✅ Done | Got new Load ID af902c11, RF TX 8f902c19 |
-| 2025-01-01 | Bridge commands after re-pair | ✅ Working | Factory ID in payload works regardless of load slot |
+| 2025-01-01 | Bridge commands after re-pair | ✅ Working | Factory ID in payload, direct RF (no bridge needed) |
 
 ---
 
