@@ -81,6 +81,9 @@ BUTTONS = {
     "bridge-100": "bridge_level_100___06fdeff4_",
     "bridge-50": "bridge_level_50___06fdeff4_",
     "bridge-0": "bridge_level_0___06fdeff4_",
+
+    # Debug
+    "debug-pattern": "debug_pattern",
 }
 
 

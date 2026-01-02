@@ -4,9 +4,32 @@
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Button commands (ON/OFF/RAISE/LOWER/FAVORITE) | ✅ Working | Using real Pico device ID |
+| Button commands (ON/OFF/RAISE/LOWER/FAVORITE) | ✅ Working | Direct-paired 5-button Pico |
+| Scene Pico buttons (BRIGHT/ENTERTAIN/RELAX/OFF) | ⚠️ Partially Working | Bridge-paired, ~70% reliability |
 | Level commands (0-100%) | ✅ Working | Bridge-paired devices |
+| Bridge-style level commands | ✅ Working | Controls bridge-paired dimmers |
 | Pairing new devices | ❌ Not working | Unknown blocker |
+
+---
+
+## Known Issues
+
+### Scene Pico Commands Intermittent (~70% reliability)
+
+**Symptom:** Scene Pico button emulation (BRIGHT, ENTERTAIN, RELAX, OFF) works but not every time. Some button presses are ignored by the bridge.
+
+**Possible causes:**
+1. **Timing differences** - Real Pico may have slightly different inter-packet timing
+2. **Packet type alternation** - Real Pico uses 0x89 consistently, we alternate 0x88/0x8A
+3. **Sequence number tracking** - Bridge may track expected sequence from paired device
+4. **Signal quality** - CC1101 transmission may have slight frequency/power differences
+
+**Workaround:** Press button multiple times; usually works within 2-3 attempts.
+
+**Investigation needed:**
+- Compare packet timing between real Pico and ESP32
+- Check if bridge tracks sequence numbers per device
+- Test if using fixed packet type (0x89) improves reliability
 
 ---
 
@@ -60,7 +83,7 @@ Verified against captured packets.
 ```
 [0]  Type      0x88/0x8A (alternates between presses)
 [1]  Sequence
-[2-5] Device ID (little-endian)
+[2-5] Device ID (BIG-ENDIAN - printed ID matches byte order)
 [6]  0x21      ← UNKNOWN: Always 0x21
 [7]  Format    0x04=standard, 0x0C=dimming, 0x0E=long
 [8]  0x03      ← UNKNOWN
@@ -243,6 +266,9 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2024-12-31 | GFSK modulation | ❌ Failed | Reverted to 2-FSK |
 | 2024-12-31 | lutron_hacks cross-ref | ✅ Done | Zone bytes differ per bridge |
 | 2024-12-31 | Command byte formula | ✅ Solved | ON/OFF/FAV = 0x1E + button |
+| 2025-01-01 | Device ID byte order fix | ✅ Fixed | Was little-endian, now big-endian |
+| 2025-01-01 | Scene Pico (084b1ebb) | ⚠️ Partial | Works ~70% of time, intermittent |
+| 2025-01-01 | Bridge-paired device control | ✅ Working | Via Scene Pico emulation |
 
 ---
 

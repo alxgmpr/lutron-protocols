@@ -83,6 +83,12 @@ class LutronCC1101 : public Component,
    */
   LutronPairing *get_pairing() { return pairing_; }
 
+  /**
+   * @brief Debug: Send raw alternating bytes (0xAA) to test CC1101
+   * This bypasses the encoder to test if CC1101 is transmitting correctly
+   */
+  void send_debug_pattern();
+
  protected:
   void transmit_packet(const uint8_t *packet, size_t len);
 

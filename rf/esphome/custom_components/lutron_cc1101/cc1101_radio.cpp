@@ -172,6 +172,14 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
 
   const size_t FIFO_SIZE = 64;
 
+  // Debug: Log first 16 bytes being sent
+  ESP_LOGD(TAG, "TX %d bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+           len,
+           len > 0 ? data[0] : 0, len > 1 ? data[1] : 0, len > 2 ? data[2] : 0, len > 3 ? data[3] : 0,
+           len > 4 ? data[4] : 0, len > 5 ? data[5] : 0, len > 6 ? data[6] : 0, len > 7 ? data[7] : 0,
+           len > 8 ? data[8] : 0, len > 9 ? data[9] : 0, len > 10 ? data[10] : 0, len > 11 ? data[11] : 0,
+           len > 12 ? data[12] : 0, len > 13 ? data[13] : 0, len > 14 ? data[14] : 0, len > 15 ? data[15] : 0);
+
   if (len <= FIFO_SIZE) {
     this->write_register(CC1101_PKTLEN, len);
     this->write_burst(CC1101_TXFIFO, data, len);

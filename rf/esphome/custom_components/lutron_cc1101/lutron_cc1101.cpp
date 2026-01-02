@@ -63,10 +63,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     packet[0] = type_base;
     packet[1] = seq;
-    packet[2] = (device_id >> 0) & 0xFF;
-    packet[3] = (device_id >> 8) & 0xFF;
-    packet[4] = (device_id >> 16) & 0xFF;
-    packet[5] = (device_id >> 24) & 0xFF;
+    // Device ID in big-endian (matches real Pico)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
     packet[6] = 0x21;
     packet[8] = 0x03;
     packet[9] = 0x00;
@@ -75,10 +76,10 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     if (is_dimming) {
       packet[7] = 0x0C;
-      packet[12] = (device_id >> 0) & 0xFF;
-      packet[13] = (device_id >> 8) & 0xFF;
-      packet[14] = (device_id >> 16) & 0xFF;
-      packet[15] = (device_id >> 24) & 0xFF;
+      packet[12] = (device_id >> 24) & 0xFF;
+      packet[13] = (device_id >> 16) & 0xFF;
+      packet[14] = (device_id >> 8) & 0xFF;
+      packet[15] = (device_id >> 0) & 0xFF;
       packet[16] = 0x00;
       packet[17] = 0x42;
       packet[18] = 0x00;
@@ -104,10 +105,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     packet[0] = type_base | 0x01;  // Long format
     packet[1] = seq;
-    packet[2] = (device_id >> 0) & 0xFF;
-    packet[3] = (device_id >> 8) & 0xFF;
-    packet[4] = (device_id >> 16) & 0xFF;
-    packet[5] = (device_id >> 24) & 0xFF;
+    // Device ID in big-endian (matches real Pico)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
     packet[6] = 0x21;
     packet[7] = 0x0E;
     packet[8] = 0x03;
@@ -115,10 +117,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[10] = button;
     packet[11] = 0x01;
 
-    packet[12] = (device_id >> 0) & 0xFF;
-    packet[13] = (device_id >> 8) & 0xFF;
-    packet[14] = (device_id >> 16) & 0xFF;
-    packet[15] = (device_id >> 24) & 0xFF;
+    // Second device ID instance also in big-endian
+    packet[12] = (device_id >> 24) & 0xFF;
+    packet[13] = (device_id >> 16) & 0xFF;
+    packet[14] = (device_id >> 8) & 0xFF;
+    packet[15] = (device_id >> 0) & 0xFF;
     packet[16] = 0x00;
 
     if (button == LUTRON_BUTTON_RAISE) {
@@ -165,10 +168,11 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
 
     packet[0] = 0x81 + (rep % 3);
     packet[1] = seq;
-    packet[2] = (device_id >> 0) & 0xFF;
-    packet[3] = (device_id >> 8) & 0xFF;
-    packet[4] = (device_id >> 16) & 0xFF;
-    packet[5] = (device_id >> 24) & 0xFF;
+    // Device ID in big-endian (matches real devices)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
     packet[6] = 0x21;
     packet[7] = 0x0E;
     packet[8] = 0x00;
@@ -289,11 +293,11 @@ void LutronCC1101::send_test_packet(uint32_t device_id) {
   packet[0] = 0xB9;  // Type
   packet[1] = 0x00;  // Sequence
 
-  // Device ID - 1st instance (little-endian)
-  packet[2] = (device_id >> 0) & 0xFF;
-  packet[3] = (device_id >> 8) & 0xFF;
-  packet[4] = (device_id >> 16) & 0xFF;
-  packet[5] = (device_id >> 24) & 0xFF;
+  // Device ID - 1st instance (big-endian, matches real devices)
+  packet[2] = (device_id >> 24) & 0xFF;
+  packet[3] = (device_id >> 16) & 0xFF;
+  packet[4] = (device_id >> 8) & 0xFF;
+  packet[5] = (device_id >> 0) & 0xFF;
 
   // Constants from real Pico capture
   packet[6] = 0x21;
@@ -314,17 +318,17 @@ void LutronCC1101::send_test_packet(uint32_t device_id) {
   packet[18] = 0x0D;
   packet[19] = 0x05;
 
-  // Device ID - 2nd instance
-  packet[20] = (device_id >> 0) & 0xFF;
-  packet[21] = (device_id >> 8) & 0xFF;
-  packet[22] = (device_id >> 16) & 0xFF;
-  packet[23] = (device_id >> 24) & 0xFF;
+  // Device ID - 2nd instance (big-endian)
+  packet[20] = (device_id >> 24) & 0xFF;
+  packet[21] = (device_id >> 16) & 0xFF;
+  packet[22] = (device_id >> 8) & 0xFF;
+  packet[23] = (device_id >> 0) & 0xFF;
 
-  // Device ID - 3rd instance
-  packet[24] = (device_id >> 0) & 0xFF;
-  packet[25] = (device_id >> 8) & 0xFF;
-  packet[26] = (device_id >> 16) & 0xFF;
-  packet[27] = (device_id >> 24) & 0xFF;
+  // Device ID - 3rd instance (big-endian)
+  packet[24] = (device_id >> 24) & 0xFF;
+  packet[25] = (device_id >> 16) & 0xFF;
+  packet[26] = (device_id >> 8) & 0xFF;
+  packet[27] = (device_id >> 0) & 0xFF;
 
   // More constants from capture
   packet[28] = 0x00;
@@ -459,6 +463,50 @@ void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int dura
   }
 
   ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
+}
+
+void LutronCC1101::send_debug_pattern() {
+  ESP_LOGI(TAG, "=== DEBUG: Sending raw 0xAA pattern ===");
+
+  // Send 32 bytes of 0xAA (alternating bits) directly to CC1101
+  // This bypasses the encoder to test raw CC1101 transmission
+  uint8_t raw_data[32];
+  for (int i = 0; i < 32; i++) {
+    raw_data[i] = 0xAA;  // 10101010
+  }
+
+  ESP_LOGI(TAG, "Sending 32 bytes of 0xAA raw to CC1101...");
+  this->radio_.transmit_raw(raw_data, 32);
+  delay(200);
+
+  // Also test with 0x55 (inverted alternating)
+  for (int i = 0; i < 32; i++) {
+    raw_data[i] = 0x55;  // 01010101
+  }
+  ESP_LOGI(TAG, "Sending 32 bytes of 0x55 raw to CC1101...");
+  this->radio_.transmit_raw(raw_data, 32);
+  delay(200);
+
+  // Test with encoded packet (what we normally send)
+  ESP_LOGI(TAG, "Sending encoded preamble pattern...");
+  uint8_t test_packet[8] = {0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t tx_buffer[64];
+  size_t encoded_len = this->encoder_.encode_packet(test_packet, 8, tx_buffer, sizeof(tx_buffer), 64, 16);
+
+  ESP_LOGI(TAG, "Encoded length: %d bytes", encoded_len);
+  ESP_LOGI(TAG, "Bytes  0-7:  %02X %02X %02X %02X %02X %02X %02X %02X",
+           tx_buffer[0], tx_buffer[1], tx_buffer[2], tx_buffer[3],
+           tx_buffer[4], tx_buffer[5], tx_buffer[6], tx_buffer[7]);
+  ESP_LOGI(TAG, "Bytes  8-15: %02X %02X %02X %02X %02X %02X %02X %02X",
+           tx_buffer[8], tx_buffer[9], tx_buffer[10], tx_buffer[11],
+           tx_buffer[12], tx_buffer[13], tx_buffer[14], tx_buffer[15]);
+  ESP_LOGI(TAG, "Bytes 16-23: %02X %02X %02X %02X %02X %02X %02X %02X",
+           tx_buffer[16], tx_buffer[17], tx_buffer[18], tx_buffer[19],
+           tx_buffer[20], tx_buffer[21], tx_buffer[22], tx_buffer[23]);
+
+  this->radio_.transmit_raw(tx_buffer, encoded_len);
+
+  ESP_LOGI(TAG, "=== DEBUG COMPLETE ===");
 }
 
 }  // namespace lutron_cc1101

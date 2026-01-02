@@ -139,6 +139,15 @@ button:
       - lambda: |-
           id(lutron_radio)->send_test_packet(0x17118505);
 
+  # DEBUG - Send raw 0xAA pattern to test CC1101
+  - platform: template
+    name: "DEBUG PATTERN"
+    id: debug_pattern
+    icon: "mdi:bug"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_debug_pattern();
+
   # PAIR with NEW unique device ID for ESP32
   - platform: template
     name: "PAIR ESP32"

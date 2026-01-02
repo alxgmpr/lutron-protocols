@@ -89,7 +89,7 @@ Zero padding for clean transmission end
 |--------|--------|-------|-------------|
 | 0 | 1 | Type | 0x88 for button press |
 | 1 | 1 | Sequence | Increments by 6 each transmission |
-| 2-5 | 4 | Device ID | Little-endian, e.g., 0x8DE69505 for Pico 0595e68d |
+| 2-5 | 4 | Device ID | Big-endian (matches printed label), e.g., `08 4B 1E BB` for Pico 084b1ebb |
 | 6 | 1 | Unknown | 0x21 |
 | 7 | 1 | Unknown | 0x04 |
 | 8 | 1 | Unknown | 0x03 |
@@ -113,10 +113,12 @@ Note: Button codes may vary by Pico model and pairing configuration.
 
 ### Device ID Format
 
-The Device ID printed on the Pico (e.g., `0595e68d`) is transmitted in little-endian byte order:
-- Printed: `0595e68d`
-- In packet: `8D E6 95 05`
-- As uint32_t: `0x8DE69505`
+The Device ID printed on the Pico is transmitted in **big-endian** byte order (matching the printed label):
+- Printed: `084b1ebb`
+- In packet: `08 4B 1E BB`
+- As uint32_t: `0x084B1EBB`
+
+**Note:** Earlier documentation incorrectly stated little-endian. Analysis of real Pico captures confirmed big-endian encoding.
 
 ## CRC-16 Calculation
 

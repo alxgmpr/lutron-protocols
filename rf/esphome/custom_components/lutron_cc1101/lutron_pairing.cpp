@@ -60,10 +60,11 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
 
       btn_packet[0] = 0x88;  // Short format, variant A (ONLY this type)
       btn_packet[1] = seq;
-      btn_packet[2] = (device_id >> 0) & 0xFF;
-      btn_packet[3] = (device_id >> 8) & 0xFF;
-      btn_packet[4] = (device_id >> 16) & 0xFF;
-      btn_packet[5] = (device_id >> 24) & 0xFF;
+      // Device ID in big-endian (matches real devices)
+      btn_packet[2] = (device_id >> 24) & 0xFF;
+      btn_packet[3] = (device_id >> 16) & 0xFF;
+      btn_packet[4] = (device_id >> 8) & 0xFF;
+      btn_packet[5] = (device_id >> 0) & 0xFF;
       btn_packet[6] = 0x21;
       btn_packet[7] = 0x04;  // Short format marker
       btn_packet[8] = 0x03;
@@ -155,11 +156,11 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[0] = PKT_TYPE_PAIRING;  // 0xB9
     packet[1] = this->next_seq();
 
-    // Device ID - 1st instance (little-endian)
-    packet[2] = (device_id >> 0) & 0xFF;
-    packet[3] = (device_id >> 8) & 0xFF;
-    packet[4] = (device_id >> 16) & 0xFF;
-    packet[5] = (device_id >> 24) & 0xFF;
+    // Device ID - 1st instance (big-endian, matches real devices)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
 
     // Constants from capture
     packet[6] = 0x21;
@@ -180,17 +181,17 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[18] = 0x0D;
     packet[19] = 0x05;
 
-    // Device ID - 2nd instance
-    packet[20] = (device_id >> 0) & 0xFF;
-    packet[21] = (device_id >> 8) & 0xFF;
-    packet[22] = (device_id >> 16) & 0xFF;
-    packet[23] = (device_id >> 24) & 0xFF;
+    // Device ID - 2nd instance (big-endian)
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = (device_id >> 0) & 0xFF;
 
-    // Device ID - 3rd instance
-    packet[24] = (device_id >> 0) & 0xFF;
-    packet[25] = (device_id >> 8) & 0xFF;
-    packet[26] = (device_id >> 16) & 0xFF;
-    packet[27] = (device_id >> 24) & 0xFF;
+    // Device ID - 3rd instance (big-endian)
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = (device_id >> 0) & 0xFF;
 
     // More constants from capture
     packet[28] = 0x00;
