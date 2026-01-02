@@ -219,14 +219,14 @@ def cmd_serve(args):
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: #0d1117; color: #c9d1d9;
-            display: flex; flex-direction: column; height: 100vh;
+            min-height: 100vh;
         }
 
         /* Header */
         header {
             padding: 12px 20px; background: #161b22;
             display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 1px solid #30363d; flex-shrink: 0;
+            border-bottom: 1px solid #30363d;
         }
         header h1 { font-size: 18px; color: #58a6ff; font-weight: 600; }
         header h1 small { color: #8b949e; font-weight: 400; font-size: 12px; margin-left: 8px; }
@@ -234,14 +234,8 @@ def cmd_serve(args):
         .status-dot.offline { background: #f85149; }
         #esp-status { font-size: 12px; color: #8b949e; }
 
-        /* Main layout */
-        .container { display: flex; flex: 1; overflow: hidden; }
-
-        /* Controls panel */
-        .controls { width: 500px; padding: 16px; overflow-y: auto; border-right: 1px solid #30363d; flex-shrink: 0; }
-
-        /* Logs panel */
-        .logs-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        /* Main container - single column */
+        main { max-width: 800px; margin: 0 auto; padding: 16px; }
 
         /* Section cards */
         .card {
@@ -264,10 +258,12 @@ def cmd_serve(args):
         .card.bridge .card-header { border-left: 3px solid #58a6ff; }
         .card.pairing .card-header { border-left: 3px solid #a371f7; }
         .card.device .card-header { border-left: 3px solid #d29922; }
-        .card.rx .card-header { border-left: 3px solid #f85149; }
+        .card.tx .card-header { border-left: 3px solid #238636; }
+        .card.rx .card-header { border-left: 3px solid #1f6feb; }
+        .card.logs .card-header { border-left: 3px solid #8b949e; }
 
         /* Form elements */
-        .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+        .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
         .form-group { display: flex; flex-direction: column; gap: 4px; }
         .form-group label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
         input, select {
@@ -276,7 +272,7 @@ def cmd_serve(args):
             font-family: 'SF Mono', Monaco, monospace;
         }
         input:focus, select:focus { outline: none; border-color: #58a6ff; }
-        input[type="text"] { width: 120px; }
+        input[type="text"] { width: 130px; }
         input[type="number"] { width: 70px; }
 
         /* Buttons */
@@ -292,30 +288,23 @@ def cmd_serve(args):
         .btn-orange { background: #d29922; color: #000; }
         .btn-red { background: #da3633; color: #fff; }
         .btn-sm { padding: 5px 10px; font-size: 11px; }
-        .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+        .btn-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 
-        /* RX Monitor */
-        .rx-card { margin: 16px; margin-bottom: 0; flex-shrink: 0; }
-        .rx-card .card-body { padding: 0; }
-        #rx-packets {
-            max-height: 150px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
-            font-size: 11px; background: #010409;
+        /* Hex display boxes */
+        .hex-box {
+            height: 120px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px; background: #010409; padding: 10px; border-radius: 4px;
         }
-        .rx-entry { padding: 6px 10px; border-bottom: 1px solid #21262d; white-space: nowrap; }
-        .rx-entry:hover { background: #161b22; }
-        .rx-time { color: #484f58; margin-right: 8px; }
-        .rx-tag { display: inline-block; padding: 1px 5px; border-radius: 3px; margin-right: 6px; font-size: 10px; }
-        .rx-tag.tx { background: #238636; color: #fff; }
-        .rx-tag.rx { background: #1f6feb; color: #fff; }
-        .rx-msg { color: #c9d1d9; }
-        .rx-empty { color: #484f58; text-align: center; padding: 20px; }
+        .hex-entry { padding: 4px 0; border-bottom: 1px solid #21262d; word-break: break-all; }
+        .hex-entry:last-child { border-bottom: none; }
+        .hex-time { color: #484f58; margin-right: 8px; }
+        .hex-data { color: #58a6ff; font-weight: 500; }
+        .hex-empty { color: #484f58; text-align: center; padding: 40px 0; }
 
         /* Logs */
-        .logs-card { margin: 16px; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .logs-card .card-body { flex: 1; padding: 0; overflow: hidden; }
         #logs {
-            height: 100%; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
-            font-size: 11px; line-height: 1.4; padding: 10px; background: #010409;
+            height: 200px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px; line-height: 1.4; padding: 10px; background: #010409; border-radius: 4px;
         }
         .log-entry { padding: 1px 0; white-space: pre-wrap; word-break: break-all; }
         .log-time { color: #484f58; }
@@ -328,18 +317,15 @@ def cmd_serve(args):
 
         /* Status bar */
         #status-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
             padding: 8px 16px; background: #161b22; border-top: 1px solid #30363d;
-            font-size: 12px; color: #8b949e; flex-shrink: 0;
+            font-size: 12px; color: #8b949e;
         }
         #status-bar.success { color: #3fb950; }
         #status-bar.error { color: #f85149; }
 
-        /* Hint text */
-        .hint { font-size: 11px; color: #484f58; margin-top: 8px; }
-
-        /* Quick presets */
-        .presets { margin-top: 8px; padding-top: 8px; border-top: 1px solid #30363d; }
-        .presets-label { font-size: 10px; color: #484f58; margin-bottom: 6px; text-transform: uppercase; }
+        /* Bottom padding for status bar */
+        main { padding-bottom: 50px; }
     </style>
 </head>
 <body>
@@ -348,168 +334,170 @@ def cmd_serve(args):
         <div id="esp-status"><span class="status-dot"></span>ESP32 @ 10.1.4.59</div>
     </header>
 
-    <div class="container">
-        <div class="controls">
-            <!-- PICO PAIRING -->
-            <div class="card pairing">
-                <div class="card-header">
-                    <h2>Pico Pairing</h2>
-                    <span class="badge">5-BUTTON ONLY</span>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Device ID</label>
-                            <input type="text" id="pair-device" value="0xCC110001">
-                        </div>
-                        <button class="btn-purple" onclick="pairPico()">PAIR PICO</button>
-                    </div>
-                    <div class="presets">
-                        <div class="presets-label">Quick IDs</div>
-                        <div class="btn-group">
-                            <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110001')">CC110001</button>
-                            <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110002')">CC110002</button>
-                            <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110003')">CC110003</button>
-                        </div>
-                    </div>
-                </div>
+    <main>
+        <!-- PICO PAIRING -->
+        <div class="card pairing">
+            <div class="card-header">
+                <h2>Pico Pairing</h2>
+                <span class="badge">5-BUTTON ONLY</span>
             </div>
-
-            <!-- PICO COMMANDS -->
-            <div class="card pico">
-                <div class="card-header">
-                    <h2>Pico Button Press</h2>
-                    <span class="badge">PICO → DEVICE</span>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Pico ID</label>
-                            <input type="text" id="pico-id" value="0x05851117">
-                        </div>
-                        <div class="form-group">
-                            <label>Button</label>
-                            <select id="pico-button">
-                                <option value="0x02">ON (0x02)</option>
-                                <option value="0x03">FAVORITE (0x03)</option>
-                                <option value="0x04">OFF (0x04)</option>
-                                <option value="0x05">RAISE (0x05)</option>
-                                <option value="0x06">LOWER (0x06)</option>
-                            </select>
-                        </div>
-                        <button class="btn-primary" onclick="sendPico()">SEND</button>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Device ID</label>
+                        <input type="text" id="pair-device" value="0xCC110001">
                     </div>
-                    <div class="btn-group">
-                        <button class="btn-sm btn-primary" onclick="quickPico(0x02)">ON</button>
-                        <button class="btn-sm btn-primary" onclick="quickPico(0x03)">FAV</button>
-                        <button class="btn-sm btn-red" onclick="quickPico(0x04)">OFF</button>
-                        <button class="btn-sm btn-blue" onclick="quickPico(0x05)">▲</button>
-                        <button class="btn-sm btn-blue" onclick="quickPico(0x06)">▼</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- BRIDGE CONTROLS -->
-            <div class="card bridge">
-                <div class="card-header">
-                    <h2>Bridge Level Control</h2>
-                    <span class="badge">BRIDGE → DEVICE</span>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Bridge ID</label>
-                            <input type="text" id="bridge-id" value="0xAF902C00">
-                        </div>
-                        <div class="form-group">
-                            <label>Target ID</label>
-                            <input type="text" id="bridge-target" value="0x06FDEFF4">
-                        </div>
-                        <div class="form-group">
-                            <label>Level</label>
-                            <input type="number" id="bridge-level" value="50" min="0" max="100">
-                        </div>
-                        <button class="btn-blue" onclick="sendLevel()">SET</button>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn-sm btn-red" onclick="quickLevel(0)">0%</button>
-                        <button class="btn-sm btn-blue" onclick="quickLevel(25)">25%</button>
-                        <button class="btn-sm btn-blue" onclick="quickLevel(50)">50%</button>
-                        <button class="btn-sm btn-blue" onclick="quickLevel(75)">75%</button>
-                        <button class="btn-sm btn-primary" onclick="quickLevel(100)">100%</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- BRIDGE BEACON -->
-            <div class="card bridge">
-                <div class="card-header">
-                    <h2>Bridge Beacon Mode</h2>
-                    <span class="badge">PAIRING</span>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Bridge ID</label>
-                            <input type="text" id="beacon-bridge" value="0xAF902C01">
-                        </div>
-                        <div class="form-group">
-                            <label>Duration</label>
-                            <input type="number" id="beacon-duration" value="30" min="5" max="120">
-                        </div>
-                        <button class="btn-blue" onclick="sendBeacon()">START BEACON</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- DEVICE STATE REPORT -->
-            <div class="card device">
-                <div class="card-header">
-                    <h2>Device State Report</h2>
-                    <span class="badge">DEVICE → BRIDGE</span>
-                </div>
-                <div class="card-body">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Device ID</label>
-                            <input type="text" id="state-device" value="0x8F902C08">
-                        </div>
-                        <div class="form-group">
-                            <label>Level</label>
-                            <input type="number" id="state-level" value="50" min="0" max="100">
-                        </div>
-                        <button class="btn-orange" onclick="sendState()">REPORT</button>
-                    </div>
+                    <button class="btn-purple" onclick="pairPico()">PAIR PICO</button>
+                    <button class="btn-red" onclick="resetPico()">RESET PICO</button>
                 </div>
             </div>
         </div>
 
-        <div class="logs-container">
-            <!-- RX MONITOR -->
-            <div class="card rx rx-card">
-                <div class="card-header">
-                    <h2>RF Activity</h2>
-                    <button class="btn-sm" onclick="clearRx()">Clear</button>
-                </div>
-                <div class="card-body">
-                    <div id="rx-packets">
-                        <div class="rx-empty">Waiting for RF activity...</div>
-                    </div>
-                </div>
+        <!-- PICO COMMANDS -->
+        <div class="card pico">
+            <div class="card-header">
+                <h2>Pico Button Press</h2>
+                <span class="badge">PICO -> DEVICE</span>
             </div>
-
-            <!-- LOGS -->
-            <div class="card logs-card">
-                <div class="card-header">
-                    <h2>ESP32 Logs</h2>
-                    <button class="btn-sm" onclick="clearLogs()">Clear</button>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pico ID</label>
+                        <input type="text" id="pico-id" value="0x05851117">
+                    </div>
+                    <div class="form-group">
+                        <label>Button</label>
+                        <select id="pico-button">
+                            <option value="0x02">ON (0x02)</option>
+                            <option value="0x03">FAVORITE (0x03)</option>
+                            <option value="0x04">OFF (0x04)</option>
+                            <option value="0x05">RAISE (0x05)</option>
+                            <option value="0x06">LOWER (0x06)</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="sendPico()">SEND</button>
                 </div>
-                <div class="card-body">
-                    <div id="logs"></div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-primary" onclick="quickPico(0x02)">ON</button>
+                    <button class="btn-sm btn-primary" onclick="quickPico(0x03)">FAV</button>
+                    <button class="btn-sm btn-red" onclick="quickPico(0x04)">OFF</button>
+                    <button class="btn-sm btn-blue" onclick="quickPico(0x05)">RAISE</button>
+                    <button class="btn-sm btn-blue" onclick="quickPico(0x06)">LOWER</button>
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- BRIDGE CONTROLS -->
+        <div class="card bridge">
+            <div class="card-header">
+                <h2>Bridge Level Control</h2>
+                <span class="badge">BRIDGE -> DEVICE</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Bridge ID</label>
+                        <input type="text" id="bridge-id" value="0xAF902C00">
+                    </div>
+                    <div class="form-group">
+                        <label>Target ID</label>
+                        <input type="text" id="bridge-target" value="0x06FDEFF4">
+                    </div>
+                    <div class="form-group">
+                        <label>Level</label>
+                        <input type="number" id="bridge-level" value="50" min="0" max="100">
+                    </div>
+                    <button class="btn-blue" onclick="sendLevel()">SET</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-red" onclick="quickLevel(0)">0%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(25)">25%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(50)">50%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(75)">75%</button>
+                    <button class="btn-sm btn-primary" onclick="quickLevel(100)">100%</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BRIDGE BEACON -->
+        <div class="card bridge">
+            <div class="card-header">
+                <h2>Bridge Beacon Mode</h2>
+                <span class="badge">PAIRING</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Bridge ID</label>
+                        <input type="text" id="beacon-bridge" value="0xAF902C01">
+                    </div>
+                    <div class="form-group">
+                        <label>Duration</label>
+                        <input type="number" id="beacon-duration" value="30" min="5" max="120">
+                    </div>
+                    <button class="btn-blue" onclick="sendBeacon()">START BEACON</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DEVICE STATE REPORT -->
+        <div class="card device">
+            <div class="card-header">
+                <h2>Device State Report</h2>
+                <span class="badge">DEVICE -> BRIDGE</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Device ID</label>
+                        <input type="text" id="state-device" value="0x8F902C08">
+                    </div>
+                    <div class="form-group">
+                        <label>Level</label>
+                        <input type="number" id="state-level" value="50" min="0" max="100">
+                    </div>
+                    <button class="btn-orange" onclick="sendState()">REPORT</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TX PACKETS -->
+        <div class="card tx">
+            <div class="card-header">
+                <h2>TX Packets</h2>
+                <button class="btn-sm" onclick="clearTx()">Clear</button>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <div id="tx-packets" class="hex-box">
+                    <div class="hex-empty">No TX packets yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RX PACKETS -->
+        <div class="card rx">
+            <div class="card-header">
+                <h2>RX Packets</h2>
+                <button class="btn-sm" onclick="clearRx()">Clear</button>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <div id="rx-packets" class="hex-box">
+                    <div class="hex-empty">No RX packets yet</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ESP32 LOGS -->
+        <div class="card logs">
+            <div class="card-header">
+                <h2>ESP32 Logs</h2>
+                <button class="btn-sm" onclick="clearLogs()">Clear</button>
+            </div>
+            <div class="card-body" style="padding:0;">
+                <div id="logs"></div>
+            </div>
+        </div>
+    </main>
 
     <div id="status-bar">Ready</div>
 
@@ -529,16 +517,22 @@ def cmd_serve(args):
         }
 
         // Pico Pairing
-        function setPairDevice(id) {
-            document.getElementById('pair-device').value = id;
-        }
-
         async function pairPico() {
             const device = document.getElementById('pair-device').value.trim();
             setStatus(`Pairing ${device} as 5-button Pico...`);
             try {
                 const data = await apiPost('/api/pair-pico', {device});
                 setStatus(data.status === 'ok' ? `Paired ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        async function resetPico() {
+            const device = document.getElementById('pair-device').value.trim();
+            setStatus(`Resetting ${device}...`);
+            try {
+                const data = await apiPost('/api/reset-pico', {device});
+                setStatus(data.status === 'ok' ? `Reset ${data.device}` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
@@ -602,10 +596,9 @@ def cmd_serve(args):
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
-        // Logs streaming (always on)
+        // Logs streaming
         function startLogStream() {
             if (logsEventSource) return;
-
             logsEventSource = new EventSource('/api/logs/stream');
 
             logsEventSource.onmessage = function(event) {
@@ -615,7 +608,7 @@ def cmd_serve(args):
             };
 
             logsEventSource.onerror = function() {
-                addLogEntry({time: new Date().toISOString(), level: 'E', msg: 'Log stream disconnected, reconnecting...'});
+                addLogEntry({time: new Date().toISOString(), level: 'E', msg: 'Reconnecting...'});
                 logsEventSource.close();
                 logsEventSource = null;
                 setTimeout(startLogStream, 2000);
@@ -629,56 +622,42 @@ def cmd_serve(args):
         }
 
         function stripAnsi(text) {
-            // Remove ANSI escape codes (colors, formatting)
             return text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[0?;?[0-9]*m/g, '');
         }
 
         function processLogEntry(data) {
-            // Strip ANSI codes from message
             data.msg = stripAnsi(data.msg || '');
+            const msg = data.msg;
 
-            // Check if this is an RF-related log (lutron_cc1101)
-            if (data.msg.includes('lutron_cc1101') || data.msg.includes('TX:') || data.msg.includes('RX:')) {
-                addRxEntry(data);
+            // Extract hex bytes from TX/RX messages
+            const hexMatch = msg.match(/([A-F0-9]{2}(?:\s+[A-F0-9]{2}){5,})/i);
+            if (hexMatch) {
+                const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
+                if (msg.includes('TX:') || msg.includes('Sending') || msg.includes('encoded')) {
+                    addHexEntry('tx-packets', time, hexMatch[1]);
+                } else if (msg.includes('RX:') || msg.includes('Received')) {
+                    addHexEntry('rx-packets', time, hexMatch[1]);
+                }
             }
 
-            // Always add to main logs
+            // Always add to logs
             addLogEntry(data);
         }
 
-        function addRxEntry(data) {
-            const rxDiv = document.getElementById('rx-packets');
-
-            // Remove empty message if present
-            const empty = rxDiv.querySelector('.rx-empty');
+        function addHexEntry(containerId, time, hexData) {
+            const container = document.getElementById(containerId);
+            const empty = container.querySelector('.hex-empty');
             if (empty) empty.remove();
 
             const entry = document.createElement('div');
-            entry.className = 'rx-entry';
+            entry.className = 'hex-entry';
+            entry.innerHTML = `<span class="hex-time">${escapeHtml(time)}</span><span class="hex-data">${escapeHtml(hexData)}</span>`;
+            container.appendChild(entry);
 
-            const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
-            const msg = data.msg || '';
-
-            // Determine if TX or RX
-            const isTx = msg.includes('TX:');
-            const tagClass = isTx ? 'tx' : 'rx';
-            const tagText = isTx ? 'TX' : 'RX';
-
-            // Extract the useful part of the message
-            let displayMsg = msg;
-            const colonIdx = msg.indexOf(']: ');
-            if (colonIdx > 0) {
-                displayMsg = msg.substring(colonIdx + 3);
+            while (container.children.length > 30) {
+                container.removeChild(container.firstChild);
             }
-
-            entry.innerHTML = `<span class="rx-time">${escapeHtml(time)}</span><span class="rx-tag ${tagClass}">${tagText}</span><span class="rx-msg">${escapeHtml(displayMsg)}</span>`;
-            rxDiv.appendChild(entry);
-
-            // Limit entries and auto-scroll
-            while (rxDiv.children.length > 50) {
-                rxDiv.removeChild(rxDiv.firstChild);
-            }
-            rxDiv.scrollTop = rxDiv.scrollHeight;
+            container.scrollTop = container.scrollHeight;
         }
 
         function addLogEntry(data) {
@@ -693,38 +672,27 @@ def cmd_serve(args):
             entry.innerHTML = `<span class="log-time">${escapeHtml(time)}</span> <span class="log-level-${level}">[${level}]</span> <span class="log-msg">${escapeHtml(msg)}</span>`;
             logsDiv.appendChild(entry);
 
-            // Limit entries and auto-scroll
-            while (logsDiv.children.length > 500) {
+            while (logsDiv.children.length > 200) {
                 logsDiv.removeChild(logsDiv.firstChild);
             }
             logsDiv.scrollTop = logsDiv.scrollHeight;
         }
 
-        function clearLogs() {
-            document.getElementById('logs').innerHTML = '';
-        }
+        function clearLogs() { document.getElementById('logs').innerHTML = ''; }
+        function clearTx() { document.getElementById('tx-packets').innerHTML = '<div class="hex-empty">No TX packets yet</div>'; }
+        function clearRx() { document.getElementById('rx-packets').innerHTML = '<div class="hex-empty">No RX packets yet</div>'; }
 
-        function clearRx() {
-            document.getElementById('rx-packets').innerHTML = '<div class="rx-empty">Waiting for RF activity...</div>';
-        }
-
-        // Check ESP32 connection on load
+        // Check connection
         async function checkConnection() {
             try {
                 const resp = await fetch('/api/status');
                 const data = await resp.json();
-                const dot = document.querySelector('.status-dot');
-                if (data.connected) {
-                    dot.classList.remove('offline');
-                } else {
-                    dot.classList.add('offline');
-                }
+                document.querySelector('.status-dot').classList.toggle('offline', !data.connected);
             } catch (e) {
                 document.querySelector('.status-dot').classList.add('offline');
             }
         }
 
-        // Initialize
         checkConnection();
         setInterval(checkConnection, 30000);
         startLogStream();
@@ -902,6 +870,26 @@ def cmd_serve(args):
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
                 'type': '5-button'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/reset-pico', methods=['POST'])
+    def api_reset_pico():
+        """Send reset/unpair command for a Pico device."""
+        try:
+            device = request.args.get('device', '')
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
+
+            device_id = parse_hex_int(device)
+            # Send button code 0x81 which is the unpair/reset command
+            asyncio.run(send_button_async(device_id, 0x81))
+
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'action': 'reset'
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
