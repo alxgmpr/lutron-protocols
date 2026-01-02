@@ -78,5 +78,13 @@
     "type": "unknown",
     "notes": "Seen responding to Pico 08692d70 commands with 0x80-0x83 packets. Likely RA3 bridge or paired dimmer.",
     "pairing": "bridge"
+  },
+  "8f902c08": {
+    "name": "Dimmer RF Transmit ID (902c zone)",
+    "type": "DVRF-6L-WH",
+    "notes": "Dimmer's RF transmit ID when reporting state changes. The '902c' portion is shared with bridge zone ID af902c00. Fake state reports using this ID successfully update bridge state display.",
+    "pairing": "bridge",
+    "esp32_control": "working",
+    "capabilities": ["state_report_spoof"]
   }
 }

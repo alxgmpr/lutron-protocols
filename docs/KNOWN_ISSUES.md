@@ -8,6 +8,7 @@
 | Scene Pico buttons (BRIGHT/ENTERTAIN/RELAX/OFF) | ⚠️ Partially Working | Bridge-paired, ~70% reliability |
 | Level commands (0-100%) | ✅ Working | Bridge-paired devices |
 | Bridge-style level commands | ✅ Working | Controls bridge-paired dimmers |
+| Fake state reports | ✅ Working | Spoof dimmer level to bridge |
 | Pairing new devices | ❌ Not working | Unknown blocker |
 
 ---
@@ -151,7 +152,7 @@ Verified against captured packets.
 [22-23] CRC
 ```
 
-### Level Command (24 bytes)
+### Level Command (24 bytes) - Sent TO dimmer
 ```
 [0]  Type      0x81/0x82/0x83 (cycles)
 [1]  Sequence
@@ -167,6 +168,26 @@ Verified against captured packets.
 [18-21] 00 01 00 00  ← UNKNOWN trailer
 [22-23] CRC
 ```
+
+### Dimmer State Report (24 bytes) - Sent FROM dimmer ✅ WORKING
+```
+[0]  Type      0x81/0x82/0x83 (cycles)
+[1]  Sequence
+[2-5] Device ID (dimmer's RF transmit ID, e.g., 8F902C08)
+[6]  0x00
+[7]  0x08
+[8]  0x00
+[9]  0x1B
+[10] 0x01
+[11] LEVEL     (0x00-0xFE = 0-100%)
+[12] 0x00
+[13] 0x1B
+[14] 0x92
+[15] LEVEL     (duplicated)
+[16-21] 0xCC padding
+[22-23] CRC
+```
+**Note:** The dimmer's RF transmit ID (e.g., `8F902C08`) differs from its paired/label ID (e.g., `06FDEFF4`). The "902c" portion appears common to bridge-paired dimmers in the same zone.
 
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
@@ -306,6 +327,8 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Bridge-paired device control | ✅ Working | Via Scene Pico emulation |
 | 2025-01-01 | 4-button Pico button codes | ✅ Fixed | Uses 0x08-0x0B, not 0x02-0x06 |
 | 2025-01-01 | Pico 08692d70 (PJ2-4B-GWH-L01) | ✅ Working | Both Caseta and RA3 bridges respond |
+| 2025-01-01 | Dimmer state report capture | ✅ Done | Discovered packet structure differs from commands |
+| 2025-01-01 | Fake state reports (8f902c08) | ✅ Working | Can spoof dimmer level to bridge |
 
 ---
 

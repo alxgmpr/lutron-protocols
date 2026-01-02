@@ -300,3 +300,33 @@ button:
     on_press:
       - lambda: |-
           id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 0);
+
+  # =====================================================
+  # FAKE STATE REPORTS
+  # Emulate dimmer reporting its level to the bridge
+  # Uses captured dimmer RF ID: 8f902c08 (the "902c" dimmer)
+  # =====================================================
+
+  - platform: template
+    name: "Fake State 0% (8f902c08)"
+    id: fake_state_0
+    icon: "mdi:flash-off"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_state_report(0x8F902C08, 0);
+
+  - platform: template
+    name: "Fake State 50% (8f902c08)"
+    id: fake_state_50
+    icon: "mdi:flash"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_state_report(0x8F902C08, 50);
+
+  - platform: template
+    name: "Fake State 100% (8f902c08)"
+    id: fake_state_100
+    icon: "mdi:flash-alert"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_state_report(0x8F902C08, 100);

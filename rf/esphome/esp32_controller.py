@@ -90,6 +90,11 @@ BUTTONS = {
 
     # Debug
     "debug-pattern": "debug_pattern",
+
+    # Fake state reports
+    "fake-0": "fake_state_0___8f902c08_",
+    "fake-50": "fake_state_50___8f902c08_",
+    "fake-100": "fake_state_100___8f902c08_",
 }
 
 
@@ -277,6 +282,13 @@ def cmd_serve(args):
         <button onclick="press('pico2-off')" class="off">OFF</button>
         <button onclick="press('pico2-raise')" class="dim">RAISE</button>
         <button onclick="press('pico2-lower')" class="dim">LOWER</button>
+    </div>
+
+    <div class="section">
+        <h2>Fake State Reports (8f902c08)</h2>
+        <button onclick="press('fake-0')" class="off">Report 0%</button>
+        <button onclick="press('fake-50')" class="dim">Report 50%</button>
+        <button onclick="press('fake-100')">Report 100%</button>
     </div>
 
     <div id="status">Ready</div>

@@ -84,6 +84,15 @@ class LutronCC1101 : public Component,
   LutronPairing *get_pairing() { return pairing_; }
 
   /**
+   * @brief Send fake dimmer state report to bridge
+   * Emulates what a dimmer sends when its level changes (via physical toggle)
+   * This may trick the bridge into updating its state display
+   * @param device_id Dimmer's RF transmit ID (e.g., 0x8F902C08 from captures)
+   * @param level_percent Level 0-100
+   */
+  void send_state_report(uint32_t device_id, uint8_t level_percent);
+
+  /**
    * @brief Debug: Send raw alternating bytes (0xAA) to test CC1101
    * This bypasses the encoder to test if CC1101 is transmitting correctly
    */

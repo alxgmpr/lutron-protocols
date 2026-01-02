@@ -465,6 +465,72 @@ void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int dura
   ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
 }
 
+void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) {
+  ESP_LOGI(TAG, "=== FAKE STATE REPORT ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X, Level: %d%%", device_id, level_percent);
+
+  if (level_percent > 100) level_percent = 100;
+
+  // Convert percent to 0x00-0xFE range (0xFE = 100%)
+  uint8_t level_byte = (uint8_t)((uint32_t)level_percent * 254 / 100);
+  if (level_percent == 100) level_byte = 0xFE;
+
+  uint8_t packet[24];
+  uint8_t seq = 0x00;
+
+  // Send ~20 packets like real dimmer does when physically adjusted
+  for (int rep = 0; rep < 20; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    // Packet structure from captured dimmer state reports:
+    // 83 01 8F 90 2C 08 00 08 00 1B 01 XX 00 1B 92 XX CC CC CC CC CC CC [CRC]
+    // Where XX = level byte (appears twice at [11] and [15])
+
+    packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
+    packet[1] = seq;
+
+    // Device ID (big-endian)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+
+    // Constants from captured packets
+    packet[6] = 0x00;
+    packet[7] = 0x08;
+    packet[8] = 0x00;
+    packet[9] = 0x1B;
+    packet[10] = 0x01;
+
+    // LEVEL (first instance)
+    packet[11] = level_byte;
+
+    packet[12] = 0x00;
+    packet[13] = 0x1B;
+    packet[14] = 0x92;
+
+    // LEVEL (second instance - duplicated)
+    packet[15] = level_byte;
+
+    // Padding (already 0xCC from memset)
+    // packet[16-21] = 0xCC
+
+    // Calculate CRC
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+
+    // Sequence increments by 5 like real dimmer
+    seq = (seq + 5) & 0xFF;
+
+    if (rep < 19) delay(50);
+  }
+
+  ESP_LOGI(TAG, "=== STATE REPORT COMPLETE ===");
+}
+
 void LutronCC1101::send_debug_pattern() {
   ESP_LOGI(TAG, "=== DEBUG: Sending raw 0xAA pattern ===");
 
