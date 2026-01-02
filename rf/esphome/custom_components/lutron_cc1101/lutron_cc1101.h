@@ -79,6 +79,14 @@ class LutronCC1101 : public Component,
   void send_beacon(uint32_t device_id, uint8_t beacon_type = 0x92, int duration_seconds = 10);
 
   /**
+   * @brief Send a single beacon packet (for use with ESPHome interval)
+   * @param device_id Load ID to use (e.g., 0xAF902C01)
+   * @param seq Sequence number
+   * @return Next sequence number to use
+   */
+  uint8_t send_beacon_single(uint32_t device_id, uint8_t seq);
+
+  /**
    * @brief Get pairing handler for advanced testing
    */
   LutronPairing *get_pairing() { return pairing_; }

@@ -470,8 +470,53 @@ void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int dura
   ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
 }
 
+uint8_t LutronCC1101::send_beacon_single(uint32_t device_id, uint8_t seq) {
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  packet[0] = 0x92;  // Beacon type
+  packet[1] = seq;
+
+  // Device ID (zone ID) - big-endian
+  packet[2] = (device_id >> 24) & 0xFF;
+  packet[3] = (device_id >> 16) & 0xFF;
+  packet[4] = (device_id >> 8) & 0xFF;
+  packet[5] = device_id & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x0C;  // Format
+  packet[8] = 0x00;
+
+  // Broadcast address
+  packet[9] = 0xFF;
+  packet[10] = 0xFF;
+  packet[11] = 0xFF;
+  packet[12] = 0xFF;
+  packet[13] = 0xFF;
+
+  packet[14] = 0x08;
+  packet[15] = 0x02;
+
+  // Middle bytes of load ID + fixed trailer
+  packet[16] = (device_id >> 16) & 0xFF;
+  packet[17] = (device_id >> 8) & 0xFF;
+  packet[18] = 0x1A;
+  packet[19] = 0x04;
+
+  // Calculate CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  // Transmit
+  this->transmit_packet(packet, 24);
+
+  // Return next sequence
+  return (seq + 5) & 0xFF;
+}
+
 void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id) {
-  ESP_LOGI(TAG, "=== SENDING 0xB0 PAIRING ASSIGNMENT ===");
+  ESP_LOGI(TAG, "=== SENDING 0xB1 PAIRING ASSIGNMENT ===");
   ESP_LOGI(TAG, "Load ID: 0x%08X, Target: 0x%08X", load_id, target_factory_id);
 
   uint8_t packet[24];
@@ -481,10 +526,10 @@ void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id)
   for (int rep = 0; rep < 30; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    // 0xB0 packet structure from capture:
-    // B0 02 AF 90 2C 7F 21 17 00 FF FF FF FF FF 08 05 07 00 4E 8C 04 63 02 01
+    // 0xB1 packet structure from real bridge capture:
+    // B1 07 AF 90 2C 7F 21 17 00 FF FF FF FF FF 08 05 06 FD EF F4 04 63 02 01
 
-    packet[0] = 0xB0;  // Pairing assignment type
+    packet[0] = 0xB1;  // Pairing assignment type (B1, not B0!)
     packet[1] = seq;
 
     // Load ID with 0x7F suffix (like af902c7f)

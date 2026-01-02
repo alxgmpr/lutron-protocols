@@ -58,40 +58,9 @@ interval:
     then:
       - lambda: |-
           if (id(beacon_active)) {
-            // Build and send beacon packet inline
+            // Send beacon using proper function (includes CRC calculation)
             // Using AF902C01 as our load ID
-            uint8_t packet[24];
-            memset(packet, 0xCC, sizeof(packet));
-
-            packet[0] = 0x92;  // Beacon type
-            packet[1] = id(beacon_seq);
-
-            // Load ID: AF902C01
-            packet[2] = 0xAF;
-            packet[3] = 0x90;
-            packet[4] = 0x2C;
-            packet[5] = 0x01;
-
-            packet[6] = 0x21;
-            packet[7] = 0x0C;
-            packet[8] = 0x00;
-
-            // Broadcast
-            packet[9] = 0xFF;
-            packet[10] = 0xFF;
-            packet[11] = 0xFF;
-            packet[12] = 0xFF;
-            packet[13] = 0xFF;
-
-            packet[14] = 0x08;
-            packet[15] = 0x02;
-            packet[16] = 0x90;  // Middle bytes of load ID
-            packet[17] = 0x2C;
-            packet[18] = 0x1A;
-            packet[19] = 0x04;
-
-            id(lutron_radio)->transmit_packet(packet, 24);
-            id(beacon_seq) = (id(beacon_seq) + 5) & 0xFF;
+            id(beacon_seq) = id(lutron_radio)->send_beacon_single(0xAF902C01, id(beacon_seq));
           }
 
 # Beacon toggle switch
