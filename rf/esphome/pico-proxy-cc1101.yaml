@@ -66,6 +66,17 @@ api:
             ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
             id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
 
+    # Fake state report - emulate a device reporting its level
+    - service: send_state_report
+      variables:
+        device_id: string
+        level_percent: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_state_report: device=0x%08X level=%d%%", dev_id, level_percent);
+            id(lutron_radio)->send_state_report(dev_id, level_percent);
+
 ota:
   platform: esphome
   password: "test"

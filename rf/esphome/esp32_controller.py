@@ -213,6 +213,16 @@ class ESP32Controller:
         await self.call_service('send_level', source_id=f"0x{source_id:08X}", target_id=f"0x{target_id:08X}", level_percent=level)
         print(f"Set level {level}% on target 0x{target_id:08X}")
 
+    async def send_state_report(self, device_id: int, level: int):
+        """Send fake state report (device reporting its level)."""
+        await self.call_service('send_state_report', device_id=f"0x{device_id:08X}", level_percent=level)
+        print(f"State report: device 0x{device_id:08X} at {level}%")
+
+    async def send_beacon(self, device_id: int, beacon_type: int, duration: int):
+        """Send pairing beacon."""
+        await self.call_service('send_beacon', device_id=f"0x{device_id:08X}", beacon_type=beacon_type, duration_seconds=duration)
+        print(f"Beacon 0x{beacon_type:02X} from 0x{device_id:08X} for {duration}s")
+
     async def press_button(self, button_id: str):
         """Press a button by ID."""
         # Get entities if not cached
@@ -347,193 +357,197 @@ def cmd_serve(args):
 
     @app.route('/')
     def index():
-        """Simple web UI."""
+        """CCA Playground - Dynamic RF command interface."""
         html = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Lutron RF Controller</title>
+    <title>CCA Playground - Lutron Clear Connect</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; }
-        h1 { color: #333; }
-        .section { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px; }
-        .section h2 { margin-top: 0; font-size: 16px; color: #666; }
-        button { padding: 10px 20px; margin: 5px; font-size: 14px; cursor: pointer; border: none; border-radius: 4px; background: #007bff; color: white; }
-        button:hover { background: #0056b3; }
-        button.off { background: #dc3545; }
-        button.off:hover { background: #c82333; }
-        button.dim { background: #6c757d; }
-        button.dim:hover { background: #545b62; }
-        button.pair { background: #28a745; }
-        button.pair:hover { background: #1e7e34; }
-        #status { margin-top: 20px; padding: 10px; background: #e9ecef; border-radius: 4px; }
-        .custom-section { background: #fff3cd; }
-        .custom-section input { padding: 8px; margin: 5px; width: 120px; font-family: monospace; }
-        .custom-section select { padding: 8px; margin: 5px; }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #eee; }
+        h1 { color: #00d4ff; margin-bottom: 5px; }
+        h1 small { color: #888; font-weight: normal; font-size: 14px; }
+        .section { margin: 15px 0; padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .section h2 { margin: 0 0 10px 0; font-size: 14px; color: #00d4ff; display: flex; align-items: center; gap: 8px; }
+        .section h2 .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: #333; color: #888; }
+        .pico { background: #1e3a1e; border-color: #2d5a2d; }
+        .bridge { background: #1e2a3a; border-color: #2d4a6d; }
+        .device { background: #3a2a1e; border-color: #5a4a2d; }
+        .pairing { background: #2a1e3a; border-color: #4a2d6d; }
+        .row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+        label { color: #aaa; font-size: 12px; min-width: 80px; }
+        input, select { padding: 8px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
+        input:focus, select:focus { outline: none; border-color: #00d4ff; }
+        input[type="text"] { width: 130px; }
+        input[type="number"] { width: 70px; }
+        select { min-width: 180px; }
+        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+        button:hover { transform: translateY(-1px); }
+        .btn-send { background: #00d4ff; color: #000; }
+        .btn-send:hover { background: #00e5ff; }
+        .btn-level { background: #4a90d9; color: #fff; }
+        .btn-level:hover { background: #5aa0e9; }
+        .btn-off { background: #d94a4a; color: #fff; }
+        .btn-off:hover { background: #e95a5a; }
+        .btn-pair { background: #9b59b6; color: #fff; }
+        .btn-pair:hover { background: #ab69c6; }
+        .quick-btns { display: flex; gap: 5px; flex-wrap: wrap; }
+        .quick-btns button { padding: 6px 12px; font-size: 12px; }
+        #status { margin-top: 15px; padding: 12px; background: #2a2a3e; border-radius: 4px; font-family: monospace; font-size: 13px; border-left: 3px solid #00d4ff; }
+        #status.error { border-color: #d94a4a; color: #ff6b6b; }
+        #status.success { border-color: #2ecc71; color: #2ecc71; }
+        .hint { font-size: 11px; color: #666; margin-top: 5px; }
+        .divider { border-top: 1px solid #333; margin: 10px 0; }
     </style>
 </head>
 <body>
-    <h1>Lutron RF Controller</h1>
+    <h1>CCA Playground <small>Lutron Clear Connect Type A</small></h1>
 
-    <!-- FAKE PICO - Our ESP32's virtual Scene Pico -->
-    <div class="section" style="background: #d4edda;">
-        <h2>ESP32 Virtual Pico (CC110001) - PAIR FIRST!</h2>
-        <button onclick="press('pair-pico')" class="pair">PAIR (6s)</button>
-        <span style="margin: 0 10px;">|</span>
-        <button onclick="press('fake-on')">ON (0x08)</button>
-        <button onclick="press('fake-off')" class="off">OFF (0x0B)</button>
-        <button onclick="press('fake-btn2')" class="dim">BTN2 (0x09)</button>
-        <button onclick="press('fake-btn3')" class="dim">BTN3 (0x0A)</button>
-    </div>
-
-    <!-- Dynamic Commands - Works with ANY device ID -->
-    <div class="section custom-section">
-        <h2>Dynamic Commands (any device ID)</h2>
-        <div style="margin-bottom: 10px;">
-            <label>Device ID:</label>
-            <input type="text" id="custom-device" placeholder="0xCC110001" value="0xCC110001" style="width: 140px;">
-        </div>
-        <div style="margin-bottom: 10px;">
+    <!-- PICO COMMANDS -->
+    <div class="section pico">
+        <h2>Pico Button Press <span class="badge">PICO &rarr; DEVICE</span></h2>
+        <div class="row">
+            <label>Pico ID:</label>
+            <input type="text" id="pico-id" value="0x05851117" placeholder="0x05851117">
             <label>Button:</label>
-            <select id="custom-button">
-                <option value="0x02">ON (0x02) - 5btn</option>
-                <option value="0x03">FAV (0x03) - 5btn</option>
-                <option value="0x04">OFF (0x04) - 5btn</option>
-                <option value="0x05">RAISE (0x05) - 5btn</option>
-                <option value="0x06">LOWER (0x06) - 5btn</option>
-                <option value="0x08">BTN1 (0x08) - Scene/4btn</option>
-                <option value="0x09">BTN2 (0x09) - Scene/4btn</option>
-                <option value="0x0A">BTN3 (0x0A) - Scene/4btn</option>
-                <option value="0x0B">BTN4 (0x0B) - Scene/4btn</option>
+            <select id="pico-button">
+                <option value="0x02">ON (0x02)</option>
+                <option value="0x03">FAVORITE (0x03)</option>
+                <option value="0x04">OFF (0x04)</option>
+                <option value="0x05">RAISE (0x05)</option>
+                <option value="0x06">LOWER (0x06)</option>
+                <option value="0x08">BTN1/BRIGHT (0x08)</option>
+                <option value="0x09">BTN2/ENTERTAIN (0x09)</option>
+                <option value="0x0A">BTN3/RELAX (0x0A)</option>
+                <option value="0x0B">BTN4/OFF (0x0B)</option>
             </select>
-            <input type="text" id="custom-button-raw" placeholder="or hex: 0x02" style="width: 100px;">
-            <button onclick="sendCustomButton()">SEND BUTTON</button>
+            <input type="text" id="pico-button-raw" placeholder="or: 0x02" style="width: 80px;">
+            <button class="btn-send" onclick="sendPico()">SEND</button>
         </div>
-        <div style="margin-bottom: 10px;">
-            <label>Pairing:</label>
-            <input type="number" id="pair-duration" value="6" min="1" max="30" style="width: 50px;"> seconds
-            <button onclick="sendCustomPair()" class="pair">PAIR DEVICE</button>
-        </div>
+        <div class="hint">Emulates a Pico remote sending a button press. 5-btn Picos use 0x02-0x06, Scene/4-btn use 0x08-0x0B.</div>
     </div>
 
-    <!-- Bridge-style Level Commands -->
-    <div class="section" style="background: #e7f3ff;">
-        <h2>Bridge-Style Level (direct dimmer control)</h2>
-        <div style="margin-bottom: 10px;">
-            <label>Source ID:</label>
-            <input type="text" id="level-source" placeholder="0xAF902C00" value="0xAF902C00" style="width: 140px;">
+    <!-- BRIDGE COMMANDS -->
+    <div class="section bridge">
+        <h2>Bridge Level Command <span class="badge">BRIDGE &rarr; DEVICE</span></h2>
+        <div class="row">
+            <label>Bridge ID:</label>
+            <input type="text" id="bridge-id" value="0xAF902C00" placeholder="0xAF902C00">
             <label>Target ID:</label>
-            <input type="text" id="level-target" placeholder="0x06FDEFF4" value="0x06FDEFF4" style="width: 140px;">
+            <input type="text" id="bridge-target" value="0x06FDEFF4" placeholder="0x06FDEFF4">
+            <label>Level:</label>
+            <input type="number" id="bridge-level" value="50" min="0" max="100">%
+            <button class="btn-send" onclick="sendBridgeLevel()">SET LEVEL</button>
         </div>
-        <div>
-            <button onclick="sendLevel(0)" class="off">0%</button>
-            <button onclick="sendLevel(25)" class="dim">25%</button>
-            <button onclick="sendLevel(50)" class="dim">50%</button>
-            <button onclick="sendLevel(75)">75%</button>
-            <button onclick="sendLevel(100)">100%</button>
-            <input type="number" id="level-custom" value="50" min="0" max="100" style="width: 50px;">
-            <button onclick="sendLevel(document.getElementById('level-custom').value)">SET</button>
+        <div class="quick-btns">
+            <button class="btn-off" onclick="setBridgeLevel(0)">0%</button>
+            <button class="btn-level" onclick="setBridgeLevel(25)">25%</button>
+            <button class="btn-level" onclick="setBridgeLevel(50)">50%</button>
+            <button class="btn-level" onclick="setBridgeLevel(75)">75%</button>
+            <button class="btn-level" onclick="setBridgeLevel(100)">100%</button>
         </div>
+        <div class="hint">Emulates a bridge sending a level command directly to a dimmer.</div>
     </div>
 
-    <div class="section">
-        <h2>Real Pico Buttons (05851117)</h2>
-        <button onclick="press('rf-on')">ON</button>
-        <button onclick="press('rf-off')" class="off">OFF</button>
-        <button onclick="press('rf-raise')" class="dim">RAISE</button>
-        <button onclick="press('rf-lower')" class="dim">LOWER</button>
-        <button onclick="press('rf-favorite')">FAVORITE</button>
+    <!-- DEVICE STATE REPORTS -->
+    <div class="section device">
+        <h2>Device State Report <span class="badge">DEVICE &rarr; BRIDGE</span></h2>
+        <div class="row">
+            <label>Device ID:</label>
+            <input type="text" id="state-device" value="0x8F902C08" placeholder="0x8F902C08">
+            <label>Level:</label>
+            <input type="number" id="state-level" value="50" min="0" max="100">%
+            <button class="btn-send" onclick="sendStateReport()">REPORT</button>
+        </div>
+        <div class="quick-btns">
+            <button class="btn-off" onclick="setStateLevel(0)">0%</button>
+            <button class="btn-level" onclick="setStateLevel(25)">25%</button>
+            <button class="btn-level" onclick="setStateLevel(50)">50%</button>
+            <button class="btn-level" onclick="setStateLevel(75)">75%</button>
+            <button class="btn-level" onclick="setStateLevel(100)">100%</button>
+        </div>
+        <div class="hint">Emulates a device (dimmer/switch) reporting its current level to the bridge.</div>
     </div>
 
-    <div class="section">
-        <h2>Level Commands (AF902C00)</h2>
-        <button onclick="press('level-0')" class="off">0%</button>
-        <button onclick="press('level-25')" class="dim">25%</button>
-        <button onclick="press('level-50')" class="dim">50%</button>
-        <button onclick="press('level-75')">75%</button>
-        <button onclick="press('level-100')">100%</button>
+    <!-- PAIRING -->
+    <div class="section pairing">
+        <h2>Pico Pairing <span class="badge">EXPERIMENTAL</span></h2>
+        <div class="row">
+            <label>Device ID:</label>
+            <input type="text" id="pair-device" value="0xCC110001" placeholder="0xCC110001">
+            <label>Duration:</label>
+            <input type="number" id="pair-duration" value="6" min="1" max="30">s
+            <button class="btn-pair" onclick="sendPairing()">PAIR</button>
+        </div>
+        <div class="hint">Sends BA/BB pairing sequence. Only works with devices NOT already paired to a bridge.</div>
     </div>
 
-    <div class="section">
-        <h2>Bridge Level (06fdeff4)</h2>
-        <button onclick="press('bridge-0')" class="off">0%</button>
-        <button onclick="press('bridge-50')" class="dim">50%</button>
-        <button onclick="press('bridge-100')">100%</button>
-    </div>
-
-    <div class="section">
-        <h2>Scene Pico (084b1ebb)</h2>
-        <button onclick="press('bright')">BRIGHT</button>
-        <button onclick="press('entertain')">ENTERTAIN</button>
-        <button onclick="press('relax')">RELAX</button>
-        <button onclick="press('off-084b1ebb')" class="off">OFF</button>
-    </div>
-
-    <div class="section">
-        <h2>4-Button Pico (08692d70)</h2>
-        <button onclick="press('pico2-on')">ON</button>
-        <button onclick="press('pico2-off')" class="off">OFF</button>
-        <button onclick="press('pico2-raise')" class="dim">RAISE</button>
-        <button onclick="press('pico2-lower')" class="dim">LOWER</button>
-    </div>
-
-    <div id="status">Ready</div>
+    <div id="status">Ready - Enter parameters and click to send CCA commands</div>
 
     <script>
-        async function press(button) {
-            const status = document.getElementById('status');
-            status.textContent = `Pressing ${button}...`;
-            try {
-                const resp = await fetch(`/button/${button}/press`, {method: 'POST'});
-                const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Pressed: ${button}` : `Error: ${data.error}`;
-            } catch (e) {
-                status.textContent = `Error: ${e.message}`;
-            }
+        function setStatus(msg, type = '') {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = type;
         }
 
-        async function sendCustomButton() {
-            const deviceId = document.getElementById('custom-device').value.trim();
-            // Use raw input if provided, otherwise use dropdown
-            const rawBtn = document.getElementById('custom-button-raw').value.trim();
-            const button = rawBtn || document.getElementById('custom-button').value;
-            const status = document.getElementById('status');
-            status.textContent = `Sending button ${button} to ${deviceId}...`;
-            try {
-                const resp = await fetch(`/api/send?device=${encodeURIComponent(deviceId)}&button=${encodeURIComponent(button)}`, {method: 'POST'});
-                const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Sent: ${data.button} to ${data.device}` : `Error: ${data.error}`;
-            } catch (e) {
-                status.textContent = `Error: ${e.message}`;
-            }
+        async function apiCall(endpoint, params) {
+            const url = endpoint + '?' + new URLSearchParams(params).toString();
+            const resp = await fetch(url, {method: 'POST'});
+            return await resp.json();
         }
 
-        async function sendCustomPair() {
-            const deviceId = document.getElementById('custom-device').value.trim();
-            const duration = document.getElementById('pair-duration').value || '6';
-            const status = document.getElementById('status');
-            status.textContent = `Pairing ${deviceId} for ${duration}s...`;
+        async function sendPico() {
+            const device = document.getElementById('pico-id').value.trim();
+            const rawBtn = document.getElementById('pico-button-raw').value.trim();
+            const button = rawBtn || document.getElementById('pico-button').value;
+            setStatus(`Sending button ${button} from Pico ${device}...`);
             try {
-                const resp = await fetch(`/api/pair?device=${encodeURIComponent(deviceId)}&duration=${duration}`, {method: 'POST'});
-                const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Pairing ${data.device} (${data.duration}s)` : `Error: ${data.error}`;
-            } catch (e) {
-                status.textContent = `Error: ${e.message}`;
-            }
+                const data = await apiCall('/api/send', {device, button});
+                setStatus(data.status === 'ok' ? `Sent: ${data.button} from ${data.device}` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
-        async function sendLevel(level) {
-            const source = document.getElementById('level-source').value.trim();
-            const target = document.getElementById('level-target').value.trim();
-            const status = document.getElementById('status');
-            status.textContent = `Setting ${target} to ${level}%...`;
+        async function sendBridgeLevel() {
+            const source = document.getElementById('bridge-id').value.trim();
+            const target = document.getElementById('bridge-target').value.trim();
+            const level = document.getElementById('bridge-level').value;
+            setStatus(`Bridge ${source} setting ${target} to ${level}%...`);
             try {
-                const resp = await fetch(`/api/level?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&level=${level}`, {method: 'POST'});
-                const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Set ${data.target} to ${data.level}%` : `Error: ${data.error}`;
-            } catch (e) {
-                status.textContent = `Error: ${e.message}`;
-            }
+                const data = await apiCall('/api/level', {source, target, level});
+                setStatus(data.status === 'ok' ? `Set ${data.target} to ${data.level}%` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        function setBridgeLevel(level) {
+            document.getElementById('bridge-level').value = level;
+            sendBridgeLevel();
+        }
+
+        async function sendStateReport() {
+            const device = document.getElementById('state-device').value.trim();
+            const level = document.getElementById('state-level').value;
+            setStatus(`Device ${device} reporting level ${level}%...`);
+            try {
+                const data = await apiCall('/api/state', {device, level});
+                setStatus(data.status === 'ok' ? `Reported: ${data.device} at ${data.level}%` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        function setStateLevel(level) {
+            document.getElementById('state-level').value = level;
+            sendStateReport();
+        }
+
+        async function sendPairing() {
+            const device = document.getElementById('pair-device').value.trim();
+            const duration = document.getElementById('pair-duration').value;
+            setStatus(`Pairing ${device} for ${duration}s...`);
+            try {
+                const data = await apiCall('/api/pair', {device, duration});
+                setStatus(data.status === 'ok' ? `Pairing ${data.device} (${data.duration}s)` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
     </script>
 </body>
@@ -602,6 +616,15 @@ def cmd_serve(args):
         finally:
             await controller.disconnect()
 
+    async def send_state_async(device_id: int, level: int):
+        """Send state report via ESPHome service."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_state_report(device_id, level)
+        finally:
+            await controller.disconnect()
+
     @app.route('/api/send', methods=['POST'])
     def api_send():
         """Send dynamic button command to any device ID."""
@@ -664,6 +687,27 @@ def cmd_serve(args):
                 'status': 'ok',
                 'source': f'0x{source_id:08X}',
                 'target': f'0x{target_id:08X}',
+                'level': level
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/state', methods=['POST'])
+    def api_state():
+        """Send state report (device reporting its level to bridge)."""
+        try:
+            device = request.args.get('device', '')
+            level = int(request.args.get('level', '0'))
+
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
+
+            device_id = parse_hex_int(device)
+
+            asyncio.run(send_state_async(device_id, level))
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
                 'level': level
             })
         except Exception as e:
