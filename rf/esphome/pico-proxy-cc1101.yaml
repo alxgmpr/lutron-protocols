@@ -301,6 +301,31 @@ button:
       - lambda: |-
           id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 0);
 
+  # Bridge level commands for dimmer 07004e8c
+  - platform: template
+    name: "Bridge2 Level 100% (07004e8c)"
+    id: bridge2_level_100
+    icon: "mdi:brightness-7"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 100);
+
+  - platform: template
+    name: "Bridge2 Level 50% (07004e8c)"
+    id: bridge2_level_50
+    icon: "mdi:brightness-5"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 50);
+
+  - platform: template
+    name: "Bridge2 Level 0% (07004e8c)"
+    id: bridge2_level_0
+    icon: "mdi:brightness-1"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 0);
+
   # =====================================================
   # FAKE STATE REPORTS
   # Emulate dimmer reporting its level to the bridge

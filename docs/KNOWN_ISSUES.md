@@ -221,13 +221,14 @@ Verified against captured packets.
 
 ### ID Relationship Discovery
 - **Label/Factory ID** (`06FDEFF4`, `07004E8C`): Printed on device, factory-assigned
-- **Bridge Zone ID** (`AF902C00`): Assigned by bridge during room setup
-- **RF Transmit ID** (`8F902C08`): **ZONE-BASED, not device-based!**
-  - Formula: `RF_TX = Bridge_Zone XOR 0x20000008`
-  - All devices in the same zone share the same RF transmit ID
-  - Tested: Two different dimmers (06fdeff4, 07004e8c) paired to same zone both use 8f902c08
+- **Load ID** (`AF902C00`, `AF902C11`): Assigned by bridge per-device during pairing
+- **RF Transmit ID**: Derived from Load ID using `RF_TX = Load_ID XOR 0x20000008`
+  - 07004e8c paired first → Load ID af902c00 → RF TX 8f902c08
+  - 06fdeff4 re-added later → Load ID af902c11 → RF TX 8f902c19
+- **Bridge level commands** use factory ID in payload, not load ID
+  - Commands to 06fdeff4 work regardless of which load slot it's in
+  - The bridge routes based on factory ID
 - When unpaired: Dimmer does NOT respond to bridge level commands
-- The 0xB0 packet registers/confirms the factory ID during pairing
 
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
@@ -373,7 +374,9 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Dimmer re-pairing capture | ✅ Done | RF transmit ID is deterministic (same after re-pair) |
 | 2025-01-01 | Bridge pairing (0xB0) | ✅ Analyzed | Bridge assigns paired ID via 0xB0 packets |
 | 2025-01-01 | Different room pairing test | ✅ Done | RF transmit ID unchanged on same bridge |
-| 2025-01-01 | Second dimmer (07004e8c) test | ✅ Done | MAJOR: RF TX ID is ZONE-based, not device-based! |
+| 2025-01-01 | Second dimmer (07004e8c) test | ✅ Done | RF TX = Load_ID XOR 0x20000008 |
+| 2025-01-01 | Re-add 06fdeff4 to bridge | ✅ Done | Got new Load ID af902c11, RF TX 8f902c19 |
+| 2025-01-01 | Bridge commands after re-pair | ✅ Working | Factory ID in payload works regardless of load slot |
 
 ---
 

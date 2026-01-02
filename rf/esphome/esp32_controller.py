@@ -82,6 +82,11 @@ BUTTONS = {
     "bridge-50": "bridge_level_50___06fdeff4_",
     "bridge-0": "bridge_level_0___06fdeff4_",
 
+    # Bridge level commands for dimmer 07004e8c
+    "bridge2-100": "bridge2_level_100___07004e8c_",
+    "bridge2-50": "bridge2_level_50___07004e8c_",
+    "bridge2-0": "bridge2_level_0___07004e8c_",
+
     # 4-button Pico 08692d70 (ON/OFF/RAISE/LOWER)
     "pico2-on": "pico2_on__08692d70_",
     "pico2-off": "pico2_off__08692d70_",

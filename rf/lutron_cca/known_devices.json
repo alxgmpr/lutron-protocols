@@ -56,9 +56,10 @@
   "06fdeff4": {
     "name": "Test Dimmer",
     "type": "DVRF-6L-WH",
-    "notes": "Bridge-paired dimmer. Factory ID printed on label. Controllable via bridge-style level commands using bridge zone ID AF902C00 + target ID in payload. Control works across reset, re-pairing, room changes, and name changes.",
+    "notes": "Bridge-paired dimmer. Factory ID printed on label. After re-pairing: Load ID af902c11, RF TX 8f902c19. Bridge level commands still work using factory ID.",
     "pairing": "bridge",
-    "esp32_control": "working"
+    "esp32_control": "working",
+    "load_id": "af902c11"
   },
   "08692d70": {
     "name": "4-Button Pico (Raise/Lower)",
@@ -80,17 +81,25 @@
     "pairing": "bridge"
   },
   "8f902c08": {
-    "name": "Zone RF Transmit ID (902c zone)",
-    "type": "zone",
-    "notes": "ZONE-BASED RF transmit ID, not device-specific! Formula: 8f902c08 = af902c00 XOR 20000008. All devices in zone AF902C00 share this ID for state reports. Tested with two different dimmers (06fdeff4, 07004e8c) - both use this same TX ID.",
+    "name": "Load RF TX ID (for 07004e8c)",
+    "type": "load_tx",
+    "notes": "RF transmit ID for dimmer 07004e8c. Formula: 8f902c08 = af902c00 XOR 20000008. Load ID af902c00 was assigned when 07004e8c was paired first.",
     "pairing": "bridge",
     "esp32_control": "working",
     "capabilities": ["state_report_spoof"]
   },
+  "8f902c19": {
+    "name": "Load RF TX ID (for 06fdeff4)",
+    "type": "load_tx",
+    "notes": "RF transmit ID for dimmer 06fdeff4 after re-pairing. Formula: 8f902c19 = af902c11 XOR 20000008. Load ID af902c11 was assigned when 06fdeff4 was re-added to bridge.",
+    "pairing": "bridge"
+  },
   "07004e8c": {
     "name": "Test Dimmer 2",
     "type": "DVRF-6L-WH",
-    "notes": "Second test dimmer. Factory ID printed on label. Uses zone RF transmit ID 8f902c08 when paired to zone AF902C00.",
-    "pairing": "bridge"
+    "notes": "Second test dimmer. Factory ID printed on label. Load ID af902c00, RF TX 8f902c08.",
+    "pairing": "bridge",
+    "esp32_control": "working",
+    "load_id": "af902c00"
   }
 }
