@@ -2,7 +2,7 @@
 
 ## CONFIRMED FINDINGS (2026-01-02)
 
-### 5-Button Capability Pairing WORKS!
+### 5-Button Capability Pairing WORKS - INCLUDING BRIDGE-PAIRED DEVICES!
 
 **Experiment:** Paired device `0xCC110003` with:
 - BA packets: 12
@@ -17,17 +17,31 @@
 - 0x05 = RAISE ✓
 - 0x06 = LOWER ✓
 
+**CRITICAL:** This works with **BRIDGE-PAIRED devices** too! The earlier failures were NOT
+due to bridge interference - they were purely due to capability byte mismatch.
+
 **Note:** Some quirky behavior with sequential RAISE/LOWER commands (occasional on/off instead of dim).
 
-### Key Discovery: Capability Bytes Matter!
+### Key Discovery: Capability Bytes Are Everything!
 
 The original issue was using **Scene Pico capability bytes** while sending **5-button codes**.
-When capability bytes match button codes, everything works.
+When capability bytes match button codes, everything works - even on bridge-paired devices.
 
-| Pico Type | Capability Bytes | Button Codes |
-|-----------|------------------|--------------|
-| Scene (4-btn) | [30]=0x04, [34]=0x04, [38]=0x27 | 0x08-0x0B |
-| 5-Button | [30]=0x03, [34]=0x03, [38]=0x06 | 0x02-0x06 |
+| Pico Type | Capability Bytes | Button Codes | Works? |
+|-----------|------------------|--------------|--------|
+| Scene (4-btn) | [30]=0x04, [34]=0x04, [38]=0x27 | 0x08-0x0B | Untested |
+| **5-Button** | **[30]=0x03, [34]=0x03, [38]=0x06** | **0x02-0x06** | **YES** |
+
+### Bridge-Paired Devices: NOT a Blocker!
+
+Earlier hypothesis was wrong. Bridge-paired devices DO accept direct Pico pairing.
+The issue was purely the capability bytes not matching the button codes we sent.
+
+### 4-Button Scene Picos: Unknown
+
+Scene Picos (Bright/Entertain/Relax/Off) may use different pairing. Untested with
+correct Scene capability bytes. The Scene Pico protocol might involve additional
+steps for programming scene levels.
 
 ### Minimal Packets Sufficient
 
