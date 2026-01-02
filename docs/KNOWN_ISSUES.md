@@ -220,13 +220,14 @@ Verified against captured packets.
 ```
 
 ### ID Relationship Discovery
-- **Label/Factory ID** (`06FDEFF4`): Printed on device, factory-assigned
+- **Label/Factory ID** (`06FDEFF4`, `07004E8C`): Printed on device, factory-assigned
 - **Bridge Zone ID** (`AF902C00`): Assigned by bridge during room setup
-- **RF Transmit ID** (`8F902C08`): Derived from bridge zone - `RF_TX = Bridge_Zone XOR 0x20000008`
-- Tested: RF transmit ID survives reset/re-pair/room changes (same bridge)
+- **RF Transmit ID** (`8F902C08`): **ZONE-BASED, not device-based!**
+  - Formula: `RF_TX = Bridge_Zone XOR 0x20000008`
+  - All devices in the same zone share the same RF transmit ID
+  - Tested: Two different dimmers (06fdeff4, 07004e8c) paired to same zone both use 8f902c08
 - When unpaired: Dimmer does NOT respond to bridge level commands
-- The 0xB0 packet registers/confirms the device ID, not assigns it
-- Open question: What determines the `0x20000008` offset? Per-device or per-pairing?
+- The 0xB0 packet registers/confirms the factory ID during pairing
 
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
@@ -371,7 +372,8 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Dimmer reset capture | ✅ Done | Reset packet uses 0x0C format, broadcasts paired ID |
 | 2025-01-01 | Dimmer re-pairing capture | ✅ Done | RF transmit ID is deterministic (same after re-pair) |
 | 2025-01-01 | Bridge pairing (0xB0) | ✅ Analyzed | Bridge assigns paired ID via 0xB0 packets |
-| 2025-01-01 | Different room pairing test | ✅ Done | RF transmit ID unchanged - hardware-intrinsic |
+| 2025-01-01 | Different room pairing test | ✅ Done | RF transmit ID unchanged on same bridge |
+| 2025-01-01 | Second dimmer (07004e8c) test | ✅ Done | MAJOR: RF TX ID is ZONE-based, not device-based! |
 
 ---
 

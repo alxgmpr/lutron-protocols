@@ -80,11 +80,17 @@
     "pairing": "bridge"
   },
   "8f902c08": {
-    "name": "Dimmer RF Transmit ID (902c zone)",
-    "type": "DVRF-6L-WH",
-    "notes": "Dimmer's RF transmit ID when reporting state changes. Derived from bridge zone: 8f902c08 = af902c00 XOR 20000008. Survives reset/re-pair/room changes on same bridge. Fake state reports using this ID successfully update bridge state display.",
+    "name": "Zone RF Transmit ID (902c zone)",
+    "type": "zone",
+    "notes": "ZONE-BASED RF transmit ID, not device-specific! Formula: 8f902c08 = af902c00 XOR 20000008. All devices in zone AF902C00 share this ID for state reports. Tested with two different dimmers (06fdeff4, 07004e8c) - both use this same TX ID.",
     "pairing": "bridge",
     "esp32_control": "working",
     "capabilities": ["state_report_spoof"]
+  },
+  "07004e8c": {
+    "name": "Test Dimmer 2",
+    "type": "DVRF-6L-WH",
+    "notes": "Second test dimmer. Factory ID printed on label. Uses zone RF transmit ID 8f902c08 when paired to zone AF902C00.",
+    "pairing": "bridge"
   }
 }
