@@ -7,14 +7,20 @@ __pycache__/
 venv/
 ENV/
 
-# Raw capture files (large binary)
-*.raw
-*.cu8
+# Data directory (captures, projects, certs)
+data/
 
 # ESPHome build artifacts
-esphome/.esphome/
-esphome/**/.pioenvs/
-esphome/**/.piolibdeps/
+rf/esphome/.esphome/
+rf/esphome/**/.pioenvs/
+rf/esphome/**/.piolibdeps/
+
+# External tools (not part of this repo)
+rtl_433/
+
+# Proxy dependencies
+proxy/node_modules/
+proxy/out.txt
 
 # macOS
 .DS_Store
@@ -26,18 +32,18 @@ esphome/**/.piolibdeps/
 *.swp
 *.swo
 
-# Lutron project files (contain database)
+# Raw capture files (in case any escape data/)
+*.raw
+*.cu8
+*.pcapng
+
+# Lutron project files (in case any escape data/)
 *.ra3
 *.hw
 *.lut
 *.mdf
 *.ldf
+*.pem
 
 # Metadata
 .lutron-metadata.json
-lutron_hacks/
-*.pcapng
-lutron_caseta-*.pem
-# RTL-SDR captures (large binary files)
-captures/*.cu8
-
