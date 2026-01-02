@@ -94,19 +94,20 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[26] = (device_id >> 8) & 0xFF;
     packet[27] = (device_id >> 0) & 0xFF;
 
-    // 0xBA capability info at bytes 28-40 (from real capture)
-    // 00 20 04 00 08 07 04 01 07 02 27 00 00
+    // 0xBA capability info at bytes 28-40 (5-button Pico)
+    // MUST MATCH BB capability bytes for consistent pairing!
+    // 00 20 03 00 08 07 03 01 07 02 06 00 00
     packet[28] = 0x00;
     packet[29] = 0x20;
-    packet[30] = 0x04;
+    packet[30] = 0x03;  // 5-button Pico
     packet[31] = 0x00;
     packet[32] = 0x08;
     packet[33] = 0x07;
-    packet[34] = 0x04;
+    packet[34] = 0x03;  // 5-button Pico
     packet[35] = 0x01;
     packet[36] = 0x07;
     packet[37] = 0x02;
-    packet[38] = 0x27;
+    packet[38] = 0x06;  // 5-button OFF code
     packet[39] = 0x00;
     packet[40] = 0x00;
     // Bytes 41-44 = 0xFF (not CC!)
@@ -189,19 +190,20 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[26] = (device_id >> 8) & 0xFF;
     packet[27] = (device_id >> 0) & 0xFF;
 
-    // 0xBB payload at bytes 28-40 (from real capture)
+    // 0xBB payload at bytes 28-40 (5-button Pico capture)
     // 00 20 03 00 08 07 03 01 07 02 06 00 00
+    // NOTE: This is 5-button capability - for Scene Pico use experimental pairing
     packet[28] = 0x00;
     packet[29] = 0x20;
-    packet[30] = 0x03;
+    packet[30] = 0x03;  // 5-button Pico
     packet[31] = 0x00;
     packet[32] = 0x08;
     packet[33] = 0x07;
-    packet[34] = 0x03;
+    packet[34] = 0x03;  // 5-button Pico
     packet[35] = 0x01;
     packet[36] = 0x07;
     packet[37] = 0x02;
-    packet[38] = 0x06;
+    packet[38] = 0x06;  // 5-button OFF code
     packet[39] = 0x00;
     packet[40] = 0x00;
     // Bytes 41-44 = 0xFF (not CC!)

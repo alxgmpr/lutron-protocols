@@ -503,9 +503,9 @@ def cmd_serve(args):
             <label>Device ID:</label>
             <input type="text" id="exp-device" value="0xCC110002" placeholder="0xCC110002">
             <label>BA pkts:</label>
-            <input type="number" id="exp-ba" value="12" min="1" max="60" style="width:50px;">
+            <input type="number" id="exp-ba" value="12" min="1" max="200" style="width:50px;">
             <label>BB pkts:</label>
-            <input type="number" id="exp-bb" value="6" min="1" max="20" style="width:50px;">
+            <input type="number" id="exp-bb" value="6" min="0" max="20" style="width:50px;">
         </div>
         <div class="row">
             <label>Protocol:</label>
@@ -523,13 +523,14 @@ def cmd_serve(args):
             <button class="btn-pair" onclick="runExperiment()">RUN EXPERIMENT</button>
         </div>
         <div class="quick-btns" style="margin-top:10px;">
+            <button onclick="preset(135,0,0,0)" style="background:#855;">Scene BA-Only (Real)</button>
             <button onclick="preset(12,6,0,0)">Minimal Scene</button>
             <button onclick="preset(12,6,0,1)">Minimal 5-btn</button>
             <button onclick="preset(12,6,1,1)">Old Proto 5-btn</button>
             <button onclick="preset(60,12,0,0)">Full Scene</button>
             <button onclick="preset(60,12,0,1)">Full 5-btn</button>
         </div>
-        <div class="hint">Test different protocol variants and packet counts. Use new device IDs to avoid conflicts.</div>
+        <div class="hint">Test different protocol variants and packet counts. Scene BA-Only matches real Scene Pico (BA packets only, no BB). Use new device IDs to avoid conflicts.</div>
     </div>
 
     <div id="status">Ready - Enter parameters and click to send CCA commands</div>

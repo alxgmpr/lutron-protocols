@@ -46,8 +46,15 @@
 
 ### Direct Pairing (No Bridge)
 Some devices can pair directly without a bridge:
-- Pico directly to dimmer (dimmer in pairing mode, Pico long-press)
+- **5-Button Picos** (ON/FAV/OFF/RAISE/LOWER) can pair directly to dimmers
+- Put dimmer in pairing mode, then long-press Pico OFF button
 - This creates a direct RF link, no bridge involved
+
+**IMPORTANT: Scene Picos CANNOT pair directly!**
+- Scene Picos (Bright/Entertain/Relax/Off) require a bridge
+- Scene buttons represent programmed brightness levels
+- Without a bridge, dimmer doesn't know what level each scene means
+- Even real Scene Picos fail to pair directly to dimmers
 
 ## Packet Types
 
@@ -296,13 +303,17 @@ Byte 51-52: CRC-16
 ### Capability Bytes [28-40] - CRITICAL!
 **The capability bytes MUST match the button codes you intend to use!**
 
-| Pico Type | [30] | [34] | [38] | Button Codes |
-|-----------|------|------|------|--------------|
-| Scene (4-btn) | 0x04 | 0x04 | 0x27 | 0x08-0x0B |
-| 5-Button | 0x03 | 0x03 | 0x06 | 0x02-0x06 |
+| Pico Type | [30] | [34] | [38] | Button Codes | Direct Pairing |
+|-----------|------|------|------|--------------|----------------|
+| 5-Button | 0x03 | 0x03 | 0x06 | 0x02-0x06 | ✅ Works |
+| Scene (4-btn) | 0x04 | 0x04 | 0x27 | 0x08-0x0B | ❌ Requires bridge |
 
-If you pair with Scene capability but send 5-button codes, the device will
-interpret them incorrectly (e.g., OFF becomes 50% level).
+**IMPORTANT:** Scene Picos cannot pair directly to dimmers - even real Scene Picos
+fail! Scene buttons require bridge-programmed brightness levels. For direct pairing
+without a bridge, **always use 5-button capability** (0x03/0x03/0x06).
+
+If capability bytes don't match button codes, the device will interpret commands
+incorrectly (e.g., OFF becomes 50% level).
 
 ### Pairing Sequence (CONFIRMED: Minimal works!)
 **Minimal (1.5s):** 12 BA + 6 BB packets @ 75ms intervals

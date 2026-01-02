@@ -37,11 +37,31 @@ When capability bytes match button codes, everything works - even on bridge-pair
 Earlier hypothesis was wrong. Bridge-paired devices DO accept direct Pico pairing.
 The issue was purely the capability bytes not matching the button codes we sent.
 
-### 4-Button Scene Picos: Unknown
+### Scene Picos: CANNOT Pair Directly!
 
-Scene Picos (Bright/Entertain/Relax/Off) may use different pairing. Untested with
-correct Scene capability bytes. The Scene Pico protocol might involve additional
-steps for programming scene levels.
+**MAJOR FINDING (2026-01-02):** Scene Picos fundamentally cannot pair directly to dimmers.
+
+**Discovery:** Even the REAL Scene Pico (084B1EBB) fails to pair directly to a dimmer!
+This is not a bug in our implementation - it's a protocol limitation.
+
+**Why Scene Picos Require a Bridge:**
+- Scene buttons (Bright/Entertain/Relax/Off) represent specific brightness levels
+- These levels must be programmed via the bridge
+- Without a bridge, the dimmer has no idea what brightness "Entertain" means
+- The bridge tells the dimmer: "Scene 1 from this Pico = 100%, Scene 2 = 75%", etc.
+
+**Scene Pico RF Behavior (for reference):**
+- Button hold: ~0.8s of 0x89 packets (btn=0x0B)
+- BA packets: ~135 packets over 4.4 seconds
+- BB packets: None
+- But even with perfect packets, direct pairing is rejected
+
+| Pico Type | Direct Pairing | Bridge Required |
+|-----------|---------------|-----------------|
+| 5-Button (ON/FAV/OFF/RAISE/LOWER) | ✅ Works | Optional |
+| Scene (Bright/Entertain/Relax/Off) | ❌ Not possible | **Required** |
+
+**Conclusion:** For direct Pico emulation without a bridge, use 5-button capability only.
 
 ### Minimal Packets Sufficient
 
@@ -193,8 +213,18 @@ Capture B uses newer protocol (byte[7]=0x25)
 
 ## Implementation Checklist
 
-- [ ] Add option to use Capture A protocol variant
-- [ ] Add configurable packet counts (BA/BB)
-- [ ] Add capability byte options (Scene vs 5-button)
+- [x] Add option to use Capture A protocol variant (old=0x21/0x17)
+- [x] Add configurable packet counts (BA/BB) - supports BA-only (BB=0)
+- [x] Add capability byte options (Scene vs 5-button)
+- [x] Fix BA/BB capability mismatch in standard pairing (now consistent 5-button)
+- [x] Verify Scene Picos cannot pair directly (confirmed - requires bridge)
 - [ ] Add logging of pairing acknowledgments
 - [ ] Create test mode to send single packets for RTL-SDR capture
+
+## Working Configuration
+
+For direct Pico pairing without a bridge:
+- **Capability:** 5-button (0x03/0x03/0x06)
+- **Packets:** 12 BA + 6 BB minimum
+- **Protocol:** New (0x25)
+- **Button codes:** 0x02-0x06 (ON/FAV/OFF/RAISE/LOWER)
