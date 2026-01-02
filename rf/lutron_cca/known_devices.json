@@ -54,9 +54,9 @@
     "notes": "Captured sending LEVEL_83 packets when physically toggled. Raw bytes: 6F 90 2C 21"
   },
   "06fdeff4": {
-    "name": "Test Dimmer (Hallway)",
+    "name": "Test Dimmer",
     "type": "DVRF-6L-WH",
-    "notes": "Bridge-paired dimmer. WORKING: Controllable via bridge-style level commands using bridge zone ID AF902C00 + target ID in payload.",
+    "notes": "Bridge-paired dimmer. Factory ID printed on label. Controllable via bridge-style level commands using bridge zone ID AF902C00 + target ID in payload. Control works across reset, re-pairing, room changes, and name changes.",
     "pairing": "bridge",
     "esp32_control": "working"
   },
@@ -82,7 +82,7 @@
   "8f902c08": {
     "name": "Dimmer RF Transmit ID (902c zone)",
     "type": "DVRF-6L-WH",
-    "notes": "Dimmer's RF transmit ID when reporting state changes. The '902c' portion is shared with bridge zone ID af902c00. Fake state reports using this ID successfully update bridge state display.",
+    "notes": "Dimmer's RF transmit ID when reporting state changes. HARDWARE-INTRINSIC: survives reset, re-pairing, room changes, and name changes. Fake state reports using this ID successfully update bridge state display.",
     "pairing": "bridge",
     "esp32_control": "working",
     "capabilities": ["state_report_spoof"]
