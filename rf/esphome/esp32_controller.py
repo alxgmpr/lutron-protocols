@@ -154,6 +154,20 @@ class ESP32Controller:
                                protocol_variant=0,  # New protocol (0x25)
                                pico_type=pico_type)  # 0=Scene, 1=5-button
 
+    async def send_reset(self, source_id: int, paired_id: int):
+        """Send Reset/Unpair packet to remove a Pico from a device."""
+        await self.call_service('send_reset',
+                               source_id=f"0x{source_id:08X}",
+                               paired_id=f"0x{paired_id:08X}")
+
+    async def start_rx(self):
+        """Start RX mode."""
+        await self.call_service('start_rx')
+
+    async def stop_rx(self):
+        """Stop RX mode."""
+        await self.call_service('stop_rx')
+
     async def press_button(self, button_id: str):
         """Press a button by ID."""
         if not self._entities:
@@ -371,14 +385,27 @@ def cmd_serve(args):
                     <div class="form-group">
                         <label>Button</label>
                         <select id="pico-button">
-                            <option value="0x02">ON (0x02)</option>
-                            <option value="0x03">FAVORITE (0x03)</option>
-                            <option value="0x04">OFF (0x04)</option>
-                            <option value="0x05">RAISE (0x05)</option>
-                            <option value="0x06">LOWER (0x06)</option>
+                            <optgroup label="5-Button Pico">
+                                <option value="0x02">ON (0x02)</option>
+                                <option value="0x03">FAVORITE (0x03)</option>
+                                <option value="0x04">OFF (0x04)</option>
+                                <option value="0x05">RAISE (0x05)</option>
+                                <option value="0x06">LOWER (0x06)</option>
+                            </optgroup>
+                            <optgroup label="Scene Pico">
+                                <option value="0x08">BRIGHT (0x08)</option>
+                                <option value="0x09">ENTERTAIN (0x09)</option>
+                                <option value="0x0A">RELAX (0x0A)</option>
+                                <option value="0x0B">SCENE OFF (0x0B)</option>
+                            </optgroup>
                         </select>
                     </div>
+                    <div class="form-group">
+                        <label>Custom</label>
+                        <input type="text" id="pico-custom" placeholder="0x00">
+                    </div>
                     <button class="btn-primary" onclick="sendPico()">SEND</button>
+                    <button class="btn-orange" onclick="sendPicoCustom()">SEND CUSTOM</button>
                 </div>
                 <div class="btn-group">
                     <button class="btn-sm btn-primary" onclick="quickPico(0x02)">ON</button>
@@ -386,6 +413,12 @@ def cmd_serve(args):
                     <button class="btn-sm btn-red" onclick="quickPico(0x04)">OFF</button>
                     <button class="btn-sm btn-blue" onclick="quickPico(0x05)">RAISE</button>
                     <button class="btn-sm btn-blue" onclick="quickPico(0x06)">LOWER</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-orange" onclick="quickPico(0x08)">BRIGHT</button>
+                    <button class="btn-sm btn-orange" onclick="quickPico(0x09)">ENTERTAIN</button>
+                    <button class="btn-sm btn-orange" onclick="quickPico(0x0A)">RELAX</button>
+                    <button class="btn-sm btn-red" onclick="quickPico(0x0B)">SCENE OFF</button>
                 </div>
             </div>
         </div>
@@ -548,6 +581,23 @@ def cmd_serve(args):
             sendPico();
         }
 
+        async function sendPicoCustom() {
+            const device = document.getElementById('pico-id').value.trim();
+            const customValue = document.getElementById('pico-custom').value.trim();
+            if (!customValue) {
+                setStatus('Enter a custom button code', 'error');
+                return;
+            }
+
+            const displayValue = customValue.toUpperCase();
+            setStatus(`Sending ${displayValue} from ${device}...`);
+            try {
+                const data = await apiPost('/api/send', {device, button: customValue});
+                setStatus(data.status === 'ok' ? `Sent ${data.button} from ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
         // Bridge Level
         async function sendLevel() {
             const source = document.getElementById('bridge-id').value.trim();
@@ -624,16 +674,17 @@ def cmd_serve(args):
             const msg = data.msg;
 
             // Extract hex bytes from TX/RX messages
-            // Look for patterns like "TX 24 bytes: 02 00 05 85..." or just hex sequences
-            const hexMatch = msg.match(/([A-F0-9]{2}(?:\s+[A-F0-9]{2}){7,})/i);
-            if (hexMatch) {
-                const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
-                // TX patterns: "TX 24 bytes:", "TX 0xBA", "TX 0xBB"
-                if (msg.includes('TX ') && (msg.includes('bytes:') || msg.includes('0xB'))) {
-                    addHexEntry('tx-packets', time, hexMatch[1]);
-                } else if (msg.includes('RX') || msg.includes('Received')) {
-                    addHexEntry('rx-packets', time, hexMatch[1]);
-                }
+            // Pattern: "TX 40 bytes: AA AA AA AA..." or "RX 32 bytes: AA AA AA..."
+            // The hex data comes after "bytes:" followed by space
+            const txMatch = msg.match(/TX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
+            const rxMatch = msg.match(/RX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
+
+            const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
+
+            if (txMatch) {
+                addHexEntry('tx-packets', time, txMatch[1]);
+            } else if (rxMatch) {
+                addHexEntry('rx-packets', time, rxMatch[1]);
             }
 
             // Always add to logs
@@ -746,6 +797,33 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.pair_pico(device_id, pico_type)
+        finally:
+            await controller.disconnect()
+
+    async def send_reset_async(source_id: int, paired_id: int):
+        """Send reset/unpair packet."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_reset(source_id, paired_id)
+        finally:
+            await controller.disconnect()
+
+    async def start_rx_async():
+        """Start RX mode."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.start_rx()
+        finally:
+            await controller.disconnect()
+
+    async def stop_rx_async():
+        """Stop RX mode."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.stop_rx()
         finally:
             await controller.disconnect()
 

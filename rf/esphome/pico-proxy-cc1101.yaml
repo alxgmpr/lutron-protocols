@@ -95,6 +95,31 @@ api:
             id(lutron_radio)->send_pairing_experimental(dev_id, ba_count, bb_count,
                                                          protocol_variant, pico_type);
 
+    # Reset/Unpair - Remove a Pico from a device
+    # source_id: The Pico ID that's paired (our ESP32 fake Pico)
+    # paired_id: The Pico ID to unregister
+    - service: send_reset
+      variables:
+        source_id: string
+        paired_id: string
+      then:
+        - lambda: |-
+            uint32_t src_id = strtoul(source_id.c_str(), nullptr, 0);
+            uint32_t pair_id = strtoul(paired_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_reset: source=0x%08X paired=0x%08X", src_id, pair_id);
+            id(lutron_radio)->send_reset(src_id, pair_id);
+
+    # RX mode control
+    - service: start_rx
+      then:
+        - lambda: |-
+            id(lutron_radio)->start_rx();
+
+    - service: stop_rx
+      then:
+        - lambda: |-
+            id(lutron_radio)->stop_rx();
+
 ota:
   platform: esphome
   password: "test"
@@ -157,6 +182,19 @@ switch:
           id: beacon_active
           value: 'false'
       - logger.log: "Beacon mode OFF"
+
+  # RX mode switch - receive and log all packets
+  - platform: template
+    name: "ESP32 RX Mode"
+    id: rx_mode_switch
+    icon: "mdi:antenna"
+    optimistic: true
+    turn_on_action:
+      - lambda: |-
+          id(lutron_radio)->start_rx();
+    turn_off_action:
+      - lambda: |-
+          id(lutron_radio)->stop_rx();
 
 # RF transmit buttons
 button:

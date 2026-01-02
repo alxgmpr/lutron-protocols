@@ -28,11 +28,27 @@ class LutronCC1101 : public Component,
                      public CC1101SPI {
  public:
   void setup() override;
-  void loop() override {}
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_gdo0_pin(GPIOPin *gdo0_pin) { this->gdo0_pin_ = gdo0_pin; }
+
+  /**
+   * @brief Start RX mode to receive packets
+   * Logs all received data as hex
+   */
+  void start_rx();
+
+  /**
+   * @brief Stop RX mode
+   */
+  void stop_rx();
+
+  /**
+   * @brief Check if RX mode is active
+   */
+  bool is_rx_active() const { return radio_.is_rx_active(); }
 
   // CC1101SPI interface implementation
   void spi_enable() override { this->enable(); }
@@ -132,6 +148,14 @@ class LutronCC1101 : public Component,
    * This bypasses the encoder to test if CC1101 is transmitting correctly
    */
   void send_debug_pattern();
+
+  /**
+   * @brief Send Reset/Unpair packet to remove a Pico from a device
+   * Uses 0x81 packet type with byte[7]=0x0C format indicator
+   * @param source_id Source/RF transmit ID (e.g., ESP32's fake Pico ID)
+   * @param paired_id The paired device ID to unregister (the Pico being removed)
+   */
+  void send_reset(uint32_t source_id, uint32_t paired_id);
 
   /**
    * @brief Transmit a raw packet (public for YAML lambda access)

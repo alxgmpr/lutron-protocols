@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "esphome/core/component.h"
 #include "esphome/components/spi/spi.h"
 #include "esphome/core/hal.h"
@@ -75,10 +76,13 @@ static const uint8_t CC1101_READ_BURST = 0xC0;
 // Forward declare the SPI interface
 class CC1101SPI;
 
+// RX callback type - called when a packet is received
+using RxCallback = std::function<void(const uint8_t *data, size_t len, int8_t rssi)>;
+
 /**
  * @brief Low-level CC1101 radio driver
  *
- * Handles register access and raw packet transmission.
+ * Handles register access and raw packet transmission/reception.
  * Uses a CC1101SPI interface for actual SPI communication.
  */
 class CC1101Radio {
@@ -92,13 +96,16 @@ class CC1101Radio {
   uint8_t read_register(uint8_t reg);
   uint8_t read_status_register(uint8_t reg);
   void write_burst(uint8_t reg, const uint8_t *data, size_t len);
+  void read_burst(uint8_t reg, uint8_t *data, size_t len);
 
   // Radio control
   void reset();
   void set_idle();
   void flush_tx();
+  void flush_rx();
   uint8_t get_state();
   uint8_t get_tx_bytes();
+  uint8_t get_rx_bytes();
 
   /**
    * @brief Transmit raw bytes
@@ -106,10 +113,39 @@ class CC1101Radio {
    */
   bool transmit_raw(const uint8_t *data, size_t len);
 
+  /**
+   * @brief Start RX mode (continuous reception)
+   * Call check_rx() periodically or set up GDO0 interrupt
+   */
+  void start_rx();
+
+  /**
+   * @brief Stop RX mode and return to IDLE
+   */
+  void stop_rx();
+
+  /**
+   * @brief Check for received packet and call callback if available
+   * @return true if a packet was received
+   */
+  bool check_rx();
+
+  /**
+   * @brief Set callback for received packets
+   */
+  void set_rx_callback(RxCallback callback) { rx_callback_ = callback; }
+
+  /**
+   * @brief Check if currently in RX mode
+   */
+  bool is_rx_active() const { return rx_active_; }
+
  protected:
   CC1101SPI *spi_{nullptr};
   GPIOPin *gdo0_pin_{nullptr};
   bool initialized_{false};
+  bool rx_active_{false};
+  RxCallback rx_callback_{nullptr};
 };
 
 /**

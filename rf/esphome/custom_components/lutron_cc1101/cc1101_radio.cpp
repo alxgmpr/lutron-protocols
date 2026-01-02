@@ -151,12 +151,132 @@ void CC1101Radio::flush_tx() {
   this->strobe(CC1101_SFTX);
 }
 
+void CC1101Radio::flush_rx() {
+  this->strobe(CC1101_SFRX);
+}
+
 uint8_t CC1101Radio::get_state() {
   return this->read_status_register(CC1101_MARCSTATE) & 0x1F;
 }
 
 uint8_t CC1101Radio::get_tx_bytes() {
   return this->read_status_register(CC1101_TXBYTES) & 0x7F;
+}
+
+uint8_t CC1101Radio::get_rx_bytes() {
+  return this->read_status_register(CC1101_RXBYTES) & 0x7F;
+}
+
+void CC1101Radio::read_burst(uint8_t reg, uint8_t *data, size_t len) {
+  this->spi_->spi_enable();
+  this->spi_->spi_transfer(reg | CC1101_READ_BURST);
+  for (size_t i = 0; i < len; i++) {
+    data[i] = this->spi_->spi_transfer(0);
+  }
+  this->spi_->spi_disable();
+}
+
+void CC1101Radio::start_rx() {
+  if (!this->initialized_) {
+    ESP_LOGE(TAG, "Cannot start RX - radio not initialized");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Starting RX mode...");
+
+  // Go to IDLE first
+  this->set_idle();
+  delay(1);
+
+  // Flush any stale RX data
+  this->flush_rx();
+  delay(1);
+
+  // Configure for infinite packet mode (no sync word = sample everything)
+  // PKTCTRL0 = 0x02 (INFINITE mode)
+  this->write_register(CC1101_PKTCTRL0, 0x02);
+
+  // Configure GDO0 to assert when data is available
+  // GDO0_CFG = 0x01 (assert when RX FIFO threshold reached or EOP)
+  this->write_register(CC1101_IOCFG0, 0x01);
+
+  // Set FIFO threshold (half full = 32 bytes)
+  this->write_register(CC1101_FIFOTHR, 0x07);
+
+  // Enter RX mode
+  this->strobe(CC1101_SRX);
+
+  this->rx_active_ = true;
+  ESP_LOGI(TAG, "RX mode active");
+}
+
+void CC1101Radio::stop_rx() {
+  ESP_LOGI(TAG, "Stopping RX mode...");
+
+  this->set_idle();
+  delay(1);
+  this->flush_rx();
+
+  // Reset to fixed packet mode
+  this->write_register(CC1101_PKTCTRL0, 0x00);
+
+  // Reset GDO0 to default (TX mode signal)
+  this->write_register(CC1101_IOCFG0, 0x06);
+
+  this->rx_active_ = false;
+  ESP_LOGI(TAG, "RX mode stopped");
+}
+
+bool CC1101Radio::check_rx() {
+  if (!this->rx_active_) {
+    return false;
+  }
+
+  // Check if GDO0 is asserted (data available)
+  if (this->gdo0_pin_ != nullptr && !this->gdo0_pin_->digital_read()) {
+    return false;
+  }
+
+  // Check how many bytes in FIFO
+  uint8_t rx_bytes_raw = this->read_status_register(CC1101_RXBYTES);
+  bool overflow = (rx_bytes_raw & 0x80) != 0;
+  uint8_t rx_bytes = rx_bytes_raw & 0x7F;
+
+  if (overflow) {
+    ESP_LOGW(TAG, "RX FIFO overflow, flushing");
+    this->flush_rx();
+    // Re-enter RX mode
+    this->strobe(CC1101_SRX);
+    return false;
+  }
+
+  if (rx_bytes == 0) {
+    return false;
+  }
+
+  // Read available data
+  uint8_t buffer[64];
+  size_t to_read = (rx_bytes < sizeof(buffer)) ? rx_bytes : sizeof(buffer);
+
+  this->read_burst(CC1101_RXFIFO, buffer, to_read);
+
+  // Read RSSI (status byte appended to data in some modes)
+  int8_t rssi = 0;  // We don't have RSSI appended in infinite mode
+
+  // Log received data
+  char hex[200];
+  int pos = 0;
+  for (size_t i = 0; i < to_read && pos < 190; i++) {
+    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", buffer[i]);
+  }
+  ESP_LOGI(TAG, "RX %d bytes: %s", to_read, hex);
+
+  // Call callback if set
+  if (this->rx_callback_ != nullptr) {
+    this->rx_callback_(buffer, to_read, rssi);
+  }
+
+  return true;
 }
 
 bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
