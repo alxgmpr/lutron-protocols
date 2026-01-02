@@ -501,7 +501,7 @@ def cmd_serve(args):
         <div class="card tx">
             <div class="card-header">
                 <h2>TX Packets</h2>
-                <button class="btn-sm" onclick="clearTx()">Clear</button>
+                <span><button class="btn-sm" onclick="copyTx()">Copy</button> <button class="btn-sm" onclick="clearTx()">Clear</button></span>
             </div>
             <div class="card-body" style="padding:0;">
                 <div id="tx-packets" class="hex-box">
@@ -514,7 +514,7 @@ def cmd_serve(args):
         <div class="card rx">
             <div class="card-header">
                 <h2>RX Packets</h2>
-                <button class="btn-sm" onclick="clearRx()">Clear</button>
+                <span><button class="btn-sm" onclick="copyRx()">Copy</button> <button class="btn-sm" onclick="clearRx()">Clear</button></span>
             </div>
             <div class="card-body" style="padding:0;">
                 <div id="rx-packets" class="hex-box">
@@ -527,7 +527,7 @@ def cmd_serve(args):
         <div class="card logs">
             <div class="card-header">
                 <h2>ESP32 Logs</h2>
-                <button class="btn-sm" onclick="clearLogs()">Clear</button>
+                <span><button class="btn-sm" onclick="copyLogs()">Copy</button> <button class="btn-sm" onclick="clearLogs()">Clear</button></span>
             </div>
             <div class="card-body" style="padding:0;">
                 <div id="logs"></div>
@@ -728,6 +728,22 @@ def cmd_serve(args):
         function clearLogs() { document.getElementById('logs').innerHTML = ''; }
         function clearTx() { document.getElementById('tx-packets').innerHTML = '<div class="hex-empty">No TX packets yet</div>'; }
         function clearRx() { document.getElementById('rx-packets').innerHTML = '<div class="hex-empty">No RX packets yet</div>'; }
+
+        function copyLogs() {
+            var text = [];
+            document.querySelectorAll('#logs .log-entry').forEach(function(el) { text.push(el.textContent); });
+            navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied logs', 'success'); });
+        }
+        function copyTx() {
+            var text = [];
+            document.querySelectorAll('#tx-packets .hex-entry').forEach(function(el) { text.push(el.textContent); });
+            navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied TX', 'success'); });
+        }
+        function copyRx() {
+            var text = [];
+            document.querySelectorAll('#rx-packets .hex-entry').forEach(function(el) { text.push(el.textContent); });
+            navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied RX', 'success'); });
+        }
 
         // Check connection
         async function checkConnection() {
