@@ -931,11 +931,15 @@ def cmd_serve(args):
                     except queue.Full:
                         pass
 
-                await client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
+                # subscribe_logs returns an unsubscribe callback, not a coroutine
+                unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
 
                 # Keep connection alive
-                while True:
-                    await asyncio.sleep(1)
+                try:
+                    while True:
+                        await asyncio.sleep(1)
+                finally:
+                    unsub()
 
             except Exception as e:
                 log_queue.put_nowait({
