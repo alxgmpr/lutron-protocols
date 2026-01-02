@@ -242,6 +242,60 @@ button:
           // Use unique ESP32 device ID, send for 6 seconds like real Pico
           id(lutron_radio)->send_pairing_pico(0xCC110001, 6);
 
+  # TEST: Clone real Pico ID for pairing test
+  - platform: template
+    name: "PAIR CLONE PICO"
+    id: pair_clone_pico
+    icon: "mdi:content-copy"
+    on_press:
+      - lambda: |-
+          // Clone real Pico 05851117 ID to test if ID format matters
+          id(lutron_radio)->send_pairing_pico(0x05851117, 6);
+
+  # =====================================================
+  # FAKE PICO (0xCC110001) - Our ESP32's virtual Pico
+  # Use PAIR PICO-STYLE (BB) first, then these buttons
+  # =====================================================
+  - platform: template
+    name: "Fake Pico ON (CC110001)"
+    id: fake_pico_on
+    icon: "mdi:lightbulb-on"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0xCC110001, 0x02);
+
+  - platform: template
+    name: "Fake Pico OFF (CC110001)"
+    id: fake_pico_off
+    icon: "mdi:lightbulb-off"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0xCC110001, 0x04);
+
+  - platform: template
+    name: "Fake Pico RAISE (CC110001)"
+    id: fake_pico_raise
+    icon: "mdi:arrow-up-bold"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0xCC110001, 0x05);
+
+  - platform: template
+    name: "Fake Pico LOWER (CC110001)"
+    id: fake_pico_lower
+    icon: "mdi:arrow-down-bold"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0xCC110001, 0x06);
+
+  - platform: template
+    name: "Fake Pico FAV (CC110001)"
+    id: fake_pico_fav
+    icon: "mdi:star"
+    on_press:
+      - lambda: |-
+          id(lutron_radio)->send_button_press(0xCC110001, 0x03);
+
   # Scene Pico 084b1ebb buttons (Bright/Entertain/Relax/Off)
   # Scene Picos use button codes 0x08-0x0B, NOT 0x02-0x06 like dimmer Picos
   - platform: template

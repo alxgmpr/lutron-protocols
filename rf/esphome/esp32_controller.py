@@ -53,6 +53,13 @@ BUTTONS = {
     "rf-lower": "rf_lower__pico_",
     "rf-favorite": "rf_favorite__pico_",
 
+    # FAKE PICO (CC110001) - our ESP32's virtual Pico
+    "fake-on": "fake_pico_on__cc110001_",
+    "fake-off": "fake_pico_off__cc110001_",
+    "fake-raise": "fake_pico_raise__cc110001_",
+    "fake-lower": "fake_pico_lower__cc110001_",
+    "fake-fav": "fake_pico_fav__cc110001_",
+
     # Bridge-style level commands for device AF902C00
     "level-0": "level_0___af902c00_",
     "level-25": "level_25___af902c00_",
@@ -62,7 +69,8 @@ BUTTONS = {
 
     # Pairing
     "pair-b9": "pair__0xb9_",
-    "pair-esp32": "pair_esp32",
+    "pair-esp32": "pair_esp32__b9_",
+    "pair-pico": "pair_pico-style__bb_",  # Pico-style BA/BB pairing
     "test-pkt": "test_pkt",
 
     # Scene Pico 084b1ebb
@@ -310,7 +318,7 @@ def cmd_serve(args):
 <head>
     <title>Lutron RF Controller</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 900px; margin: 40px auto; padding: 20px; }
         h1 { color: #333; }
         .section { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px; }
         .section h2 { margin-top: 0; font-size: 16px; color: #666; }
@@ -320,14 +328,50 @@ def cmd_serve(args):
         button.off:hover { background: #c82333; }
         button.dim { background: #6c757d; }
         button.dim:hover { background: #545b62; }
+        button.pair { background: #28a745; }
+        button.pair:hover { background: #1e7e34; }
         #status { margin-top: 20px; padding: 10px; background: #e9ecef; border-radius: 4px; }
+        .custom-section { background: #fff3cd; }
+        .custom-section input { padding: 8px; margin: 5px; width: 120px; font-family: monospace; }
+        .custom-section select { padding: 8px; margin: 5px; }
     </style>
 </head>
 <body>
     <h1>Lutron RF Controller</h1>
 
+    <!-- FAKE PICO - Our ESP32's virtual Pico -->
+    <div class="section" style="background: #d4edda;">
+        <h2>ESP32 Virtual Pico (CC110001) - PAIR FIRST!</h2>
+        <button onclick="press('pair-pico')" class="pair">PAIR (6s)</button>
+        <span style="margin: 0 10px;">|</span>
+        <button onclick="press('fake-on')">ON</button>
+        <button onclick="press('fake-off')" class="off">OFF</button>
+        <button onclick="press('fake-raise')" class="dim">RAISE</button>
+        <button onclick="press('fake-lower')" class="dim">LOWER</button>
+        <button onclick="press('fake-fav')">FAV</button>
+    </div>
+
+    <!-- Dynamic Custom Commands -->
+    <div class="section custom-section">
+        <h2>Custom Command (any device ID)</h2>
+        <input type="text" id="custom-device" placeholder="Device ID" value="CC110001">
+        <select id="custom-button">
+            <option value="0x02">ON (0x02)</option>
+            <option value="0x04">OFF (0x04)</option>
+            <option value="0x05">RAISE (0x05)</option>
+            <option value="0x06">LOWER (0x06)</option>
+            <option value="0x03">FAV (0x03)</option>
+            <option value="0x08">BTN1/BRIGHT (0x08)</option>
+            <option value="0x09">BTN2 (0x09)</option>
+            <option value="0x0A">BTN3 (0x0A)</option>
+            <option value="0x0B">BTN4/OFF (0x0B)</option>
+        </select>
+        <button onclick="sendCustomButton()">SEND</button>
+        <button onclick="sendCustomPair()" class="pair">PAIR</button>
+    </div>
+
     <div class="section">
-        <h2>Pico Buttons (05851117)</h2>
+        <h2>Real Pico Buttons (05851117)</h2>
         <button onclick="press('rf-on')">ON</button>
         <button onclick="press('rf-off')" class="off">OFF</button>
         <button onclick="press('rf-raise')" class="dim">RAISE</button>
@@ -367,13 +411,6 @@ def cmd_serve(args):
         <button onclick="press('pico2-lower')" class="dim">LOWER</button>
     </div>
 
-    <div class="section">
-        <h2>Fake State Reports (8f902c08)</h2>
-        <button onclick="press('fake-0')" class="off">Report 0%</button>
-        <button onclick="press('fake-50')" class="dim">Report 50%</button>
-        <button onclick="press('fake-100')">Report 100%</button>
-    </div>
-
     <div id="status">Ready</div>
 
     <script>
@@ -384,6 +421,33 @@ def cmd_serve(args):
                 const resp = await fetch(`/button/${button}/press`, {method: 'POST'});
                 const data = await resp.json();
                 status.textContent = data.status === 'ok' ? `Pressed: ${button}` : `Error: ${data.error}`;
+            } catch (e) {
+                status.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        async function sendCustomButton() {
+            const deviceId = document.getElementById('custom-device').value.trim();
+            const button = document.getElementById('custom-button').value;
+            const status = document.getElementById('status');
+            status.textContent = `Sending button ${button} to ${deviceId}...`;
+            try {
+                const resp = await fetch(`/api/button?device=${deviceId}&button=${button}`, {method: 'POST'});
+                const data = await resp.json();
+                status.textContent = data.status === 'ok' ? `Sent: ${button} to ${deviceId}` : `Error: ${data.error}`;
+            } catch (e) {
+                status.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        async function sendCustomPair() {
+            const deviceId = document.getElementById('custom-device').value.trim();
+            const status = document.getElementById('status');
+            status.textContent = `Pairing ${deviceId}...`;
+            try {
+                const resp = await fetch(`/api/pair?device=${deviceId}`, {method: 'POST'});
+                const data = await resp.json();
+                status.textContent = data.status === 'ok' ? `Pairing ${deviceId} (6s)` : `Error: ${data.error}`;
             } catch (e) {
                 status.textContent = `Error: ${e.message}`;
             }
@@ -420,6 +484,59 @@ def cmd_serve(args):
     def list_buttons():
         """List available buttons."""
         return jsonify(BUTTONS)
+
+    @app.route('/api/button', methods=['POST'])
+    def api_button():
+        """Send button command with custom device ID.
+
+        NOTE: This requires ESPHome services with parameters.
+        For now, use the hardcoded fake-on/fake-off buttons which use CC110001.
+        """
+        device = request.args.get('device', '')
+        button = request.args.get('button', '')
+
+        # For now, map to hardcoded buttons if device matches CC110001
+        if device.upper() in ('CC110001', '0XCC110001'):
+            button_map = {
+                '0x02': 'fake-on',
+                '0x04': 'fake-off',
+                '0x05': 'fake-raise',
+                '0x06': 'fake-lower',
+                '0x03': 'fake-fav',
+            }
+            if button.lower() in button_map:
+                try:
+                    asyncio.run(press_async(button_map[button.lower()]))
+                    return jsonify({'status': 'ok', 'device': device, 'button': button})
+                except Exception as e:
+                    return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        return jsonify({
+            'status': 'error',
+            'error': f'Dynamic device IDs not yet supported. Use hardcoded buttons or device CC110001.'
+        }), 400
+
+    @app.route('/api/pair', methods=['POST'])
+    def api_pair():
+        """Send pairing sequence with custom device ID.
+
+        NOTE: This requires ESPHome services with parameters.
+        For now, use pair-pico button which uses CC110001.
+        """
+        device = request.args.get('device', '')
+
+        # For now, only support CC110001
+        if device.upper() in ('CC110001', '0XCC110001'):
+            try:
+                asyncio.run(press_async('pair-pico'))
+                return jsonify({'status': 'ok', 'device': device, 'action': 'pairing'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'error': str(e)}), 500
+
+        return jsonify({
+            'status': 'error',
+            'error': f'Dynamic device IDs not yet supported. Use CC110001 or add ESPHome services.'
+        }), 400
 
     print(f"Starting web server on http://localhost:{args.port}")
     print(f"Proxying to ESP32 at {ESP32_IP}")
