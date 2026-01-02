@@ -22,11 +22,8 @@ ota:
   platform: esphome
   password: "test"
 
-web_server:
-  port: 80
-  auth:
-    username: admin
-    password: claude
+# web_server removed to save memory - use local Python server with aioesphomeapi instead
+# See: esphome/esp32_controller.py
 
 # External component for Lutron CC1101
 external_components:
