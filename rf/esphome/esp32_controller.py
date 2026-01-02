@@ -53,12 +53,12 @@ BUTTONS = {
     "rf-lower": "rf_lower__pico_",
     "rf-favorite": "rf_favorite__pico_",
 
-    # FAKE PICO (CC110001) - our ESP32's virtual Pico
+    # FAKE PICO (CC110001) - our ESP32's virtual Scene Pico
+    # Uses Scene Pico button codes: 0x08=ON, 0x09=BTN2, 0x0A=BTN3, 0x0B=OFF
     "fake-on": "fake_pico_on__cc110001_",
     "fake-off": "fake_pico_off__cc110001_",
-    "fake-raise": "fake_pico_raise__cc110001_",
-    "fake-lower": "fake_pico_lower__cc110001_",
-    "fake-fav": "fake_pico_fav__cc110001_",
+    "fake-btn2": "fake_pico_btn2__cc110001_",
+    "fake-btn3": "fake_pico_btn3__cc110001_",
 
     # Bridge-style level commands for device AF902C00
     "level-0": "level_0___af902c00_",
@@ -130,6 +130,7 @@ class ESP32Controller:
         self.port = port
         self.client: Optional[APIClient] = None
         self._entities = {}
+        self._services = {}
 
     async def connect(self):
         """Connect to ESP32."""
@@ -152,8 +153,8 @@ class ESP32Controller:
             await self.client.disconnect()
 
     async def list_entities(self):
-        """List all button and switch entities."""
-        entities, _ = await self.client.list_entities_services()
+        """List all button, switch entities and services."""
+        entities, services = await self.client.list_entities_services()
 
         buttons = []
         switches = []
@@ -175,7 +176,42 @@ class ESP32Controller:
                     })
                     self._entities[entity.object_id] = ('switch', entity.key)
 
+        # Store services for dynamic calling
+        for svc in services:
+            self._services[svc.name] = svc
+
         return buttons, switches
+
+    async def call_service(self, service_name: str, **kwargs):
+        """Call an ESPHome user-defined service with parameters."""
+        # Get services if not cached
+        if not self._services:
+            await self.list_entities()
+
+        if service_name not in self._services:
+            raise ValueError(f"Service not found: {service_name}. Available: {list(self._services.keys())}")
+
+        svc = self._services[service_name]
+        print(f"Calling service: {service_name} with {kwargs}")
+
+        # Execute the service (async method)
+        await self.client.execute_service(svc, kwargs)
+
+    async def send_button(self, device_id: int, button_code: int):
+        """Send a button press via dynamic service."""
+        # Pass device_id as hex string to support full 32-bit unsigned range
+        await self.call_service('send_button', device_id=f"0x{device_id:08X}", button_code=button_code)
+        print(f"Sent button 0x{button_code:02X} to device 0x{device_id:08X}")
+
+    async def send_pairing(self, device_id: int, duration: int = 6):
+        """Send pairing sequence via dynamic service."""
+        await self.call_service('send_pairing', device_id=f"0x{device_id:08X}", duration_seconds=duration)
+        print(f"Pairing device 0x{device_id:08X} for {duration}s")
+
+    async def send_level(self, source_id: int, target_id: int, level: int):
+        """Send level command via dynamic service."""
+        await self.call_service('send_level', source_id=f"0x{source_id:08X}", target_id=f"0x{target_id:08X}", level_percent=level)
+        print(f"Set level {level}% on target 0x{target_id:08X}")
 
     async def press_button(self, button_id: str):
         """Press a button by ID."""
@@ -339,35 +375,65 @@ def cmd_serve(args):
 <body>
     <h1>Lutron RF Controller</h1>
 
-    <!-- FAKE PICO - Our ESP32's virtual Pico -->
+    <!-- FAKE PICO - Our ESP32's virtual Scene Pico -->
     <div class="section" style="background: #d4edda;">
         <h2>ESP32 Virtual Pico (CC110001) - PAIR FIRST!</h2>
         <button onclick="press('pair-pico')" class="pair">PAIR (6s)</button>
         <span style="margin: 0 10px;">|</span>
-        <button onclick="press('fake-on')">ON</button>
-        <button onclick="press('fake-off')" class="off">OFF</button>
-        <button onclick="press('fake-raise')" class="dim">RAISE</button>
-        <button onclick="press('fake-lower')" class="dim">LOWER</button>
-        <button onclick="press('fake-fav')">FAV</button>
+        <button onclick="press('fake-on')">ON (0x08)</button>
+        <button onclick="press('fake-off')" class="off">OFF (0x0B)</button>
+        <button onclick="press('fake-btn2')" class="dim">BTN2 (0x09)</button>
+        <button onclick="press('fake-btn3')" class="dim">BTN3 (0x0A)</button>
     </div>
 
-    <!-- Dynamic Custom Commands -->
+    <!-- Dynamic Commands - Works with ANY device ID -->
     <div class="section custom-section">
-        <h2>Custom Command (any device ID)</h2>
-        <input type="text" id="custom-device" placeholder="Device ID" value="CC110001">
-        <select id="custom-button">
-            <option value="0x02">ON (0x02)</option>
-            <option value="0x04">OFF (0x04)</option>
-            <option value="0x05">RAISE (0x05)</option>
-            <option value="0x06">LOWER (0x06)</option>
-            <option value="0x03">FAV (0x03)</option>
-            <option value="0x08">BTN1/BRIGHT (0x08)</option>
-            <option value="0x09">BTN2 (0x09)</option>
-            <option value="0x0A">BTN3 (0x0A)</option>
-            <option value="0x0B">BTN4/OFF (0x0B)</option>
-        </select>
-        <button onclick="sendCustomButton()">SEND</button>
-        <button onclick="sendCustomPair()" class="pair">PAIR</button>
+        <h2>Dynamic Commands (any device ID)</h2>
+        <div style="margin-bottom: 10px;">
+            <label>Device ID:</label>
+            <input type="text" id="custom-device" placeholder="0xCC110001" value="0xCC110001" style="width: 140px;">
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label>Button:</label>
+            <select id="custom-button">
+                <option value="0x02">ON (0x02) - 5btn</option>
+                <option value="0x03">FAV (0x03) - 5btn</option>
+                <option value="0x04">OFF (0x04) - 5btn</option>
+                <option value="0x05">RAISE (0x05) - 5btn</option>
+                <option value="0x06">LOWER (0x06) - 5btn</option>
+                <option value="0x08">BTN1 (0x08) - Scene/4btn</option>
+                <option value="0x09">BTN2 (0x09) - Scene/4btn</option>
+                <option value="0x0A">BTN3 (0x0A) - Scene/4btn</option>
+                <option value="0x0B">BTN4 (0x0B) - Scene/4btn</option>
+            </select>
+            <input type="text" id="custom-button-raw" placeholder="or hex: 0x02" style="width: 100px;">
+            <button onclick="sendCustomButton()">SEND BUTTON</button>
+        </div>
+        <div style="margin-bottom: 10px;">
+            <label>Pairing:</label>
+            <input type="number" id="pair-duration" value="6" min="1" max="30" style="width: 50px;"> seconds
+            <button onclick="sendCustomPair()" class="pair">PAIR DEVICE</button>
+        </div>
+    </div>
+
+    <!-- Bridge-style Level Commands -->
+    <div class="section" style="background: #e7f3ff;">
+        <h2>Bridge-Style Level (direct dimmer control)</h2>
+        <div style="margin-bottom: 10px;">
+            <label>Source ID:</label>
+            <input type="text" id="level-source" placeholder="0xAF902C00" value="0xAF902C00" style="width: 140px;">
+            <label>Target ID:</label>
+            <input type="text" id="level-target" placeholder="0x06FDEFF4" value="0x06FDEFF4" style="width: 140px;">
+        </div>
+        <div>
+            <button onclick="sendLevel(0)" class="off">0%</button>
+            <button onclick="sendLevel(25)" class="dim">25%</button>
+            <button onclick="sendLevel(50)" class="dim">50%</button>
+            <button onclick="sendLevel(75)">75%</button>
+            <button onclick="sendLevel(100)">100%</button>
+            <input type="number" id="level-custom" value="50" min="0" max="100" style="width: 50px;">
+            <button onclick="sendLevel(document.getElementById('level-custom').value)">SET</button>
+        </div>
     </div>
 
     <div class="section">
@@ -428,13 +494,15 @@ def cmd_serve(args):
 
         async function sendCustomButton() {
             const deviceId = document.getElementById('custom-device').value.trim();
-            const button = document.getElementById('custom-button').value;
+            // Use raw input if provided, otherwise use dropdown
+            const rawBtn = document.getElementById('custom-button-raw').value.trim();
+            const button = rawBtn || document.getElementById('custom-button').value;
             const status = document.getElementById('status');
             status.textContent = `Sending button ${button} to ${deviceId}...`;
             try {
-                const resp = await fetch(`/api/button?device=${deviceId}&button=${button}`, {method: 'POST'});
+                const resp = await fetch(`/api/send?device=${encodeURIComponent(deviceId)}&button=${encodeURIComponent(button)}`, {method: 'POST'});
                 const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Sent: ${button} to ${deviceId}` : `Error: ${data.error}`;
+                status.textContent = data.status === 'ok' ? `Sent: ${data.button} to ${data.device}` : `Error: ${data.error}`;
             } catch (e) {
                 status.textContent = `Error: ${e.message}`;
             }
@@ -442,12 +510,27 @@ def cmd_serve(args):
 
         async function sendCustomPair() {
             const deviceId = document.getElementById('custom-device').value.trim();
+            const duration = document.getElementById('pair-duration').value || '6';
             const status = document.getElementById('status');
-            status.textContent = `Pairing ${deviceId}...`;
+            status.textContent = `Pairing ${deviceId} for ${duration}s...`;
             try {
-                const resp = await fetch(`/api/pair?device=${deviceId}`, {method: 'POST'});
+                const resp = await fetch(`/api/pair?device=${encodeURIComponent(deviceId)}&duration=${duration}`, {method: 'POST'});
                 const data = await resp.json();
-                status.textContent = data.status === 'ok' ? `Pairing ${deviceId} (6s)` : `Error: ${data.error}`;
+                status.textContent = data.status === 'ok' ? `Pairing ${data.device} (${data.duration}s)` : `Error: ${data.error}`;
+            } catch (e) {
+                status.textContent = `Error: ${e.message}`;
+            }
+        }
+
+        async function sendLevel(level) {
+            const source = document.getElementById('level-source').value.trim();
+            const target = document.getElementById('level-target').value.trim();
+            const status = document.getElementById('status');
+            status.textContent = `Setting ${target} to ${level}%...`;
+            try {
+                const resp = await fetch(`/api/level?source=${encodeURIComponent(source)}&target=${encodeURIComponent(target)}&level=${level}`, {method: 'POST'});
+                const data = await resp.json();
+                status.textContent = data.status === 'ok' ? `Set ${data.target} to ${data.level}%` : `Error: ${data.error}`;
             } catch (e) {
                 status.textContent = `Error: ${e.message}`;
             }
@@ -485,58 +568,106 @@ def cmd_serve(args):
         """List available buttons."""
         return jsonify(BUTTONS)
 
-    @app.route('/api/button', methods=['POST'])
-    def api_button():
-        """Send button command with custom device ID.
+    def parse_hex_int(value: str) -> int:
+        """Parse hex (0x...) or decimal string to int."""
+        value = value.strip()
+        if value.lower().startswith('0x'):
+            return int(value, 16)
+        return int(value)
 
-        NOTE: This requires ESPHome services with parameters.
-        For now, use the hardcoded fake-on/fake-off buttons which use CC110001.
-        """
-        device = request.args.get('device', '')
-        button = request.args.get('button', '')
+    async def send_button_async(device_id: int, button_code: int):
+        """Send button via ESPHome service."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_button(device_id, button_code)
+        finally:
+            await controller.disconnect()
 
-        # For now, map to hardcoded buttons if device matches CC110001
-        if device.upper() in ('CC110001', '0XCC110001'):
-            button_map = {
-                '0x02': 'fake-on',
-                '0x04': 'fake-off',
-                '0x05': 'fake-raise',
-                '0x06': 'fake-lower',
-                '0x03': 'fake-fav',
-            }
-            if button.lower() in button_map:
-                try:
-                    asyncio.run(press_async(button_map[button.lower()]))
-                    return jsonify({'status': 'ok', 'device': device, 'button': button})
-                except Exception as e:
-                    return jsonify({'status': 'error', 'error': str(e)}), 500
+    async def send_pairing_async(device_id: int, duration: int):
+        """Send pairing via ESPHome service."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_pairing(device_id, duration)
+        finally:
+            await controller.disconnect()
 
-        return jsonify({
-            'status': 'error',
-            'error': f'Dynamic device IDs not yet supported. Use hardcoded buttons or device CC110001.'
-        }), 400
+    async def send_level_async(source_id: int, target_id: int, level: int):
+        """Send level via ESPHome service."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_level(source_id, target_id, level)
+        finally:
+            await controller.disconnect()
+
+    @app.route('/api/send', methods=['POST'])
+    def api_send():
+        """Send dynamic button command to any device ID."""
+        try:
+            device = request.args.get('device', '')
+            button = request.args.get('button', '')
+
+            if not device or not button:
+                return jsonify({'status': 'error', 'error': 'Missing device or button parameter'}), 400
+
+            device_id = parse_hex_int(device)
+            button_code = parse_hex_int(button)
+
+            asyncio.run(send_button_async(device_id, button_code))
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'button': f'0x{button_code:02X}'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
 
     @app.route('/api/pair', methods=['POST'])
     def api_pair():
-        """Send pairing sequence with custom device ID.
+        """Send pairing sequence to any device ID."""
+        try:
+            device = request.args.get('device', '')
+            duration = int(request.args.get('duration', '6'))
 
-        NOTE: This requires ESPHome services with parameters.
-        For now, use pair-pico button which uses CC110001.
-        """
-        device = request.args.get('device', '')
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
 
-        # For now, only support CC110001
-        if device.upper() in ('CC110001', '0XCC110001'):
-            try:
-                asyncio.run(press_async('pair-pico'))
-                return jsonify({'status': 'ok', 'device': device, 'action': 'pairing'})
-            except Exception as e:
-                return jsonify({'status': 'error', 'error': str(e)}), 500
+            device_id = parse_hex_int(device)
 
-        return jsonify({
-            'status': 'error',
-            'error': f'Dynamic device IDs not yet supported. Use CC110001 or add ESPHome services.'
-        }), 400
+            asyncio.run(send_pairing_async(device_id, duration))
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'duration': duration
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/level', methods=['POST'])
+    def api_level():
+        """Send level command to any device."""
+        try:
+            source = request.args.get('source', '')
+            target = request.args.get('target', '')
+            level = int(request.args.get('level', '0'))
+
+            if not source or not target:
+                return jsonify({'status': 'error', 'error': 'Missing source or target parameter'}), 400
+
+            source_id = parse_hex_int(source)
+            target_id = parse_hex_int(target)
+
+            asyncio.run(send_level_async(source_id, target_id, level))
+            return jsonify({
+                'status': 'ok',
+                'source': f'0x{source_id:08X}',
+                'target': f'0x{target_id:08X}',
+                'level': level
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
 
     print(f"Starting web server on http://localhost:{args.port}")
     print(f"Proxying to ESP32 at {ESP32_IP}")
@@ -545,18 +676,68 @@ def cmd_serve(args):
     app.run(host='0.0.0.0', port=args.port, debug=False)
 
 
+def parse_hex_or_int(value: str) -> int:
+    """Parse a value as hex (0x prefix) or decimal."""
+    value = value.strip()
+    if value.lower().startswith('0x'):
+        return int(value, 16)
+    return int(value)
+
+
+async def cmd_send(args):
+    """Send dynamic button command."""
+    device_id = parse_hex_or_int(args.device)
+    button_code = parse_hex_or_int(args.button)
+
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        await controller.send_button(device_id, button_code)
+    finally:
+        await controller.disconnect()
+
+
+async def cmd_pair(args):
+    """Send dynamic pairing command."""
+    device_id = parse_hex_or_int(args.device)
+    duration = args.duration
+
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        await controller.send_pairing(device_id, duration)
+    finally:
+        await controller.disconnect()
+
+
+async def cmd_level(args):
+    """Send dynamic level command."""
+    source_id = parse_hex_or_int(args.source)
+    target_id = parse_hex_or_int(args.target)
+    level = args.level
+
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        await controller.send_level(source_id, target_id, level)
+    finally:
+        await controller.disconnect()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Control ESP32 Lutron RF transmitter via native API',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s list                     # List available buttons/switches
-    %(prog)s press rf-on              # Press RF On button
-    %(prog)s press level-100          # Set level to 100%%
-    %(prog)s switch beacon on         # Turn beacon mode ON
-    %(prog)s switch beacon off        # Turn beacon mode OFF
-    %(prog)s serve --port 8080        # Start web server on port 8080
+    %(prog)s list                           # List available buttons/switches
+    %(prog)s press rf-on                    # Press RF On button
+    %(prog)s send 0xCC110001 0x02           # Send button 0x02 to device CC110001
+    %(prog)s send CC110001 2                # Same (decimal)
+    %(prog)s pair 0xCC110001                # Pair device CC110001 (6s default)
+    %(prog)s pair 0xCC110001 -d 10          # Pair for 10 seconds
+    %(prog)s level 0xAF902C00 0x06FDEFF4 50 # Set dimmer to 50%%
+    %(prog)s serve --port 8080              # Start web server on port 8080
 """
     )
 
@@ -565,9 +746,25 @@ Examples:
     # List command
     list_cmd = subparsers.add_parser('list', aliases=['ls'], help='List available buttons/switches')
 
-    # Press command
-    press_cmd = subparsers.add_parser('press', aliases=['p'], help='Press a button')
+    # Press command (legacy - uses predefined buttons)
+    press_cmd = subparsers.add_parser('press', aliases=['p'], help='Press a predefined button')
     press_cmd.add_argument('button', help='Button ID or alias')
+
+    # Send command (NEW - dynamic device/button)
+    send_cmd = subparsers.add_parser('send', help='Send button to any device (dynamic)')
+    send_cmd.add_argument('device', help='Device ID (hex 0x... or decimal)')
+    send_cmd.add_argument('button', help='Button code (hex 0x... or decimal)')
+
+    # Pair command (NEW - dynamic pairing)
+    pair_cmd = subparsers.add_parser('pair', help='Send pairing sequence to any device')
+    pair_cmd.add_argument('device', help='Device ID (hex 0x... or decimal)')
+    pair_cmd.add_argument('-d', '--duration', type=int, default=6, help='Duration in seconds (default: 6)')
+
+    # Level command (NEW - dynamic level)
+    level_cmd = subparsers.add_parser('level', help='Send level command (bridge-style)')
+    level_cmd.add_argument('source', help='Source/bridge ID (hex or decimal)')
+    level_cmd.add_argument('target', help='Target dimmer ID (hex or decimal)')
+    level_cmd.add_argument('level', type=int, help='Level 0-100')
 
     # Switch command
     switch_cmd = subparsers.add_parser('switch', aliases=['sw'], help='Turn a switch on or off')
@@ -588,6 +785,12 @@ Examples:
         asyncio.run(cmd_list(args))
     elif args.command in ['press', 'p']:
         asyncio.run(cmd_press(args))
+    elif args.command == 'send':
+        asyncio.run(cmd_send(args))
+    elif args.command == 'pair':
+        asyncio.run(cmd_pair(args))
+    elif args.command == 'level':
+        asyncio.run(cmd_level(args))
     elif args.command in ['switch', 'sw']:
         asyncio.run(cmd_switch(args))
     elif args.command in ['serve', 's']:

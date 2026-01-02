@@ -17,6 +17,54 @@ logger:
 api:
   encryption:
     key: "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
+  services:
+    # Dynamic button press - any device ID, any button code
+    # Using string for device_id to support full 32-bit unsigned range
+    - service: send_button
+      variables:
+        device_id: string
+        button_code: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_button: device=0x%08X button=0x%02X", dev_id, button_code);
+            id(lutron_radio)->send_button_press(dev_id, button_code);
+
+    # Dynamic pairing - any device ID
+    - service: send_pairing
+      variables:
+        device_id: string
+        duration_seconds: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_pairing: device=0x%08X duration=%ds", dev_id, duration_seconds);
+            id(lutron_radio)->send_pairing_pico(dev_id, duration_seconds);
+
+    # Dynamic level command (bridge-style)
+    - service: send_level
+      variables:
+        source_id: string
+        target_id: string
+        level_percent: int
+      then:
+        - lambda: |-
+            uint32_t src_id = strtoul(source_id.c_str(), nullptr, 0);
+            uint32_t tgt_id = strtoul(target_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_level: source=0x%08X target=0x%08X level=%d%%", src_id, tgt_id, level_percent);
+            id(lutron_radio)->send_bridge_level(src_id, tgt_id, level_percent);
+
+    # Raw beacon for pairing mode
+    - service: send_beacon
+      variables:
+        device_id: string
+        beacon_type: int
+        duration_seconds: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
+            id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
 
 ota:
   platform: esphome
@@ -255,46 +303,72 @@ button:
   # =====================================================
   # FAKE PICO (0xCC110001) - Our ESP32's virtual Pico
   # Use PAIR PICO-STYLE (BB) first, then these buttons
+  # Testing all button codes to find which work
   # =====================================================
+  # 5-button Pico codes (0x02-0x06)
   - platform: template
-    name: "Fake Pico ON (CC110001)"
-    id: fake_pico_on
+    name: "Fake ON 0x02"
+    id: fake_on_02
     icon: "mdi:lightbulb-on"
     on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0xCC110001, 0x02);
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x02);
 
   - platform: template
-    name: "Fake Pico OFF (CC110001)"
-    id: fake_pico_off
-    icon: "mdi:lightbulb-off"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0xCC110001, 0x04);
-
-  - platform: template
-    name: "Fake Pico RAISE (CC110001)"
-    id: fake_pico_raise
-    icon: "mdi:arrow-up-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0xCC110001, 0x05);
-
-  - platform: template
-    name: "Fake Pico LOWER (CC110001)"
-    id: fake_pico_lower
-    icon: "mdi:arrow-down-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0xCC110001, 0x06);
-
-  - platform: template
-    name: "Fake Pico FAV (CC110001)"
-    id: fake_pico_fav
+    name: "Fake FAV 0x03"
+    id: fake_fav_03
     icon: "mdi:star"
     on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0xCC110001, 0x03);
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x03);
+
+  - platform: template
+    name: "Fake OFF 0x04"
+    id: fake_off_04
+    icon: "mdi:lightbulb-off"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x04);
+
+  - platform: template
+    name: "Fake RAISE 0x05"
+    id: fake_raise_05
+    icon: "mdi:arrow-up"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x05);
+
+  - platform: template
+    name: "Fake LOWER 0x06"
+    id: fake_lower_06
+    icon: "mdi:arrow-down"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x06);
+
+  # Scene Pico codes (0x08-0x0B)
+  - platform: template
+    name: "Fake BTN1 0x08"
+    id: fake_btn1_08
+    icon: "mdi:numeric-1"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x08);
+
+  - platform: template
+    name: "Fake BTN2 0x09"
+    id: fake_btn2_09
+    icon: "mdi:numeric-2"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x09);
+
+  - platform: template
+    name: "Fake BTN3 0x0A"
+    id: fake_btn3_0a
+    icon: "mdi:numeric-3"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x0A);
+
+  - platform: template
+    name: "Fake BTN4 0x0B"
+    id: fake_btn4_0b
+    icon: "mdi:numeric-4"
+    on_press:
+      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x0B);
 
   # Scene Pico 084b1ebb buttons (Bright/Entertain/Relax/Off)
   # Scene Picos use button codes 0x08-0x0B, NOT 0x02-0x06 like dimmer Picos
