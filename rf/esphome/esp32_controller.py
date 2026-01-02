@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
 """
-ESP32 Lutron RF Controller
+ESP32 Lutron RF Controller - CCA Playground
 
 Controls the ESP32 CC1101 RF transmitter via ESPHome native API.
-Replaces the web_server component to save ESP32 memory.
+Provides a web dashboard for Lutron Clear Connect Type A protocol experimentation.
 
 Usage:
-    # List available buttons
-    python esp32_controller.py list
-
-    # Press a button
-    python esp32_controller.py press rf-on
-    python esp32_controller.py press level-100-af902c00
-
-    # Start local web server (optional)
-    python esp32_controller.py serve --port 8080
+    python esp32_controller.py serve --port 8080   # Start web dashboard
+    python esp32_controller.py list                # List available buttons
+    python esp32_controller.py press rf-on         # Press a button
 
 Requirements:
-    pip install aioesphomeapi
+    pip install aioesphomeapi flask
 
 Connection:
     IP: 10.1.4.59
@@ -27,7 +21,12 @@ Connection:
 import asyncio
 import argparse
 import sys
-from typing import Optional
+import json
+import time
+import threading
+import queue
+from typing import Optional, List, Dict
+from datetime import datetime
 
 try:
     import aioesphomeapi
@@ -40,86 +39,23 @@ except ImportError:
 # ESP32 connection settings
 ESP32_IP = "10.1.4.59"
 ESP32_PORT = 6053
-ESP32_PASSWORD = ""  # No password, just encryption key
+ESP32_PASSWORD = ""
 ESP32_ENCRYPTION_KEY = "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
 
-# Button ID mappings (ESPHome converts names to IDs)
-# Format: user-friendly alias -> ESPHome object_id (from list command)
+# Button ID mappings
 BUTTONS = {
-    # Pico-style buttons for device 05851117
     "rf-on": "rf_on__pico_",
     "rf-off": "rf_off__pico_",
     "rf-raise": "rf_raise__pico_",
     "rf-lower": "rf_lower__pico_",
     "rf-favorite": "rf_favorite__pico_",
-
-    # FAKE PICO (CC110001) - our ESP32's virtual Scene Pico
-    # Uses Scene Pico button codes: 0x08=ON, 0x09=BTN2, 0x0A=BTN3, 0x0B=OFF
-    "fake-on": "fake_pico_on__cc110001_",
-    "fake-off": "fake_pico_off__cc110001_",
-    "fake-btn2": "fake_pico_btn2__cc110001_",
-    "fake-btn3": "fake_pico_btn3__cc110001_",
-
-    # Bridge-style level commands for device AF902C00
-    "level-0": "level_0___af902c00_",
-    "level-25": "level_25___af902c00_",
-    "level-50": "level_50___af902c00_",
-    "level-75": "level_75___af902c00_",
-    "level-100": "level_100___af902c00_",
-
-    # Pairing
-    "pair-b9": "pair__0xb9_",
-    "pair-esp32": "pair_esp32__b9_",
-    "pair-pico": "pair_pico-style__bb_",  # Pico-style BA/BB pairing
-    "test-pkt": "test_pkt",
-
-    # Scene Pico 084b1ebb
-    "bright": "bright__084b1ebb_",
-    "entertain": "entertain__084b1ebb_",
-    "relax": "relax__084b1ebb_",
-    "off-084b1ebb": "off__084b1ebb_",
-
-    # Beacon
+    "pair-pico": "pair_pico-style__bb_",
     "beacon": "beacon__pairing_mode_",
-    "beacon-5s": "beacon_5s",
-    "beacon-91": "beacon_0x91",
-    "beacon-93": "beacon_0x93",
-
-    # ESP32 as Bridge (load ID AF902C01)
-    "esp32-beacon": "esp32_beacon__af902c01_",
-    "esp32-pair": "esp32_pair_06fdeff4",
-    "esp32-100": "esp32_level_100___06fdeff4_",
-    "esp32-0": "esp32_level_0___06fdeff4_",
-
-    # Bridge level commands for dimmer 06fdeff4
-    "bridge-100": "bridge_level_100___06fdeff4_",
-    "bridge-50": "bridge_level_50___06fdeff4_",
-    "bridge-0": "bridge_level_0___06fdeff4_",
-
-    # Bridge level commands for dimmer 07004e8c
-    "bridge2-100": "bridge2_level_100___07004e8c_",
-    "bridge2-50": "bridge2_level_50___07004e8c_",
-    "bridge2-0": "bridge2_level_0___07004e8c_",
-
-    # 4-button Pico 08692d70 (ON/OFF/RAISE/LOWER)
-    "pico2-on": "pico2_on__08692d70_",
-    "pico2-off": "pico2_off__08692d70_",
-    "pico2-raise": "pico2_raise__08692d70_",
-    "pico2-lower": "pico2_lower__08692d70_",
-
-    # Debug
-    "debug-pattern": "debug_pattern",
-
-    # Fake state reports
-    "fake-0": "fake_state_0___8f902c08_",
-    "fake-50": "fake_state_50___8f902c08_",
-    "fake-100": "fake_state_100___8f902c08_",
 }
 
-# Switch aliases
-SWITCHES = {
-    "beacon": "esp32_beacon_mode",
-}
+# Global log queue for SSE streaming
+log_queue = queue.Queue(maxsize=1000)
+rx_queue = queue.Queue(maxsize=500)
 
 
 class ESP32Controller:
@@ -141,11 +77,6 @@ class ESP32Controller:
             noise_psk=ESP32_ENCRYPTION_KEY,
         )
         await self.client.connect(login=True)
-        print(f"Connected to ESP32 at {self.host}")
-
-        # Get device info
-        device_info = await self.client.device_info()
-        print(f"Device: {device_info.friendly_name} ({device_info.name})")
 
     async def disconnect(self):
         """Disconnect from ESP32."""
@@ -153,7 +84,7 @@ class ESP32Controller:
             await self.client.disconnect()
 
     async def list_entities(self):
-        """List all button, switch entities and services."""
+        """List all entities and services."""
         entities, services = await self.client.list_entities_services()
 
         buttons = []
@@ -176,78 +107,60 @@ class ESP32Controller:
                     })
                     self._entities[entity.object_id] = ('switch', entity.key)
 
-        # Store services for dynamic calling
         for svc in services:
             self._services[svc.name] = svc
 
         return buttons, switches
 
     async def call_service(self, service_name: str, **kwargs):
-        """Call an ESPHome user-defined service with parameters."""
-        # Get services if not cached
+        """Call an ESPHome user-defined service."""
         if not self._services:
             await self.list_entities()
 
         if service_name not in self._services:
-            raise ValueError(f"Service not found: {service_name}. Available: {list(self._services.keys())}")
+            raise ValueError(f"Service not found: {service_name}")
 
         svc = self._services[service_name]
-        print(f"Calling service: {service_name} with {kwargs}")
-
-        # Execute the service (async method)
         await self.client.execute_service(svc, kwargs)
 
     async def send_button(self, device_id: int, button_code: int):
-        """Send a button press via dynamic service."""
-        # Pass device_id as hex string to support full 32-bit unsigned range
+        """Send a button press."""
         await self.call_service('send_button', device_id=f"0x{device_id:08X}", button_code=button_code)
-        print(f"Sent button 0x{button_code:02X} to device 0x{device_id:08X}")
 
     async def send_pairing(self, device_id: int, duration: int = 6):
-        """Send pairing sequence via dynamic service."""
+        """Send pairing sequence."""
         await self.call_service('send_pairing', device_id=f"0x{device_id:08X}", duration_seconds=duration)
-        print(f"Pairing device 0x{device_id:08X} for {duration}s")
 
     async def send_level(self, source_id: int, target_id: int, level: int):
-        """Send level command via dynamic service."""
-        await self.call_service('send_level', source_id=f"0x{source_id:08X}", target_id=f"0x{target_id:08X}", level_percent=level)
-        print(f"Set level {level}% on target 0x{target_id:08X}")
+        """Send level command."""
+        await self.call_service('send_level', source_id=f"0x{source_id:08X}",
+                               target_id=f"0x{target_id:08X}", level_percent=level)
 
     async def send_state_report(self, device_id: int, level: int):
-        """Send fake state report (device reporting its level)."""
+        """Send state report."""
         await self.call_service('send_state_report', device_id=f"0x{device_id:08X}", level_percent=level)
-        print(f"State report: device 0x{device_id:08X} at {level}%")
 
     async def send_beacon(self, device_id: int, beacon_type: int, duration: int):
         """Send pairing beacon."""
-        await self.call_service('send_beacon', device_id=f"0x{device_id:08X}", beacon_type=beacon_type, duration_seconds=duration)
-        print(f"Beacon 0x{beacon_type:02X} from 0x{device_id:08X} for {duration}s")
+        await self.call_service('send_beacon', device_id=f"0x{device_id:08X}",
+                               beacon_type=beacon_type, duration_seconds=duration)
 
-    async def pair_experiment(self, device_id: int, ba_count: int, bb_count: int,
-                               protocol_variant: int, pico_type: int):
-        """Send experimental pairing with configurable parameters."""
+    async def pair_pico(self, device_id: int, ba_count: int = 12, bb_count: int = 6):
+        """Send 5-button Pico pairing (the only type that works for direct pairing)."""
         await self.call_service('pair_experiment',
-                                device_id=f"0x{device_id:08X}",
-                                ba_count=ba_count,
-                                bb_count=bb_count,
-                                protocol_variant=protocol_variant,
-                                pico_type=pico_type)
-        proto_name = "new(0x25)" if protocol_variant == 0 else "old(0x21/0x17)"
-        type_name = "scene(4-btn)" if pico_type == 0 else "5-button"
-        print(f"Experiment: device=0x{device_id:08X} BA={ba_count} BB={bb_count} proto={proto_name} type={type_name}")
+                               device_id=f"0x{device_id:08X}",
+                               ba_count=ba_count,
+                               bb_count=bb_count,
+                               protocol_variant=0,  # New protocol (0x25)
+                               pico_type=1)  # 5-button (MUST use this for direct pairing)
 
     async def press_button(self, button_id: str):
         """Press a button by ID."""
-        # Get entities if not cached
         if not self._entities:
             await self.list_entities()
 
-        # Look up the entity key
-        entity_info = None
-        if button_id in self._entities:
-            entity_info = self._entities[button_id]
-        else:
-            # Try to find by partial match
+        entity_info = self._entities.get(button_id)
+        if not entity_info:
             for obj_id, info in self._entities.items():
                 if button_id.lower() in obj_id.lower():
                     entity_info = info
@@ -260,22 +173,15 @@ class ESP32Controller:
         if entity_type != 'button':
             raise ValueError(f"{button_id} is a {entity_type}, not a button")
 
-        # Press the button
         self.client.button_command(key)
-        print(f"Pressed: {button_id}")
 
     async def set_switch(self, switch_id: str, state: bool):
         """Set a switch on or off."""
-        # Get entities if not cached
         if not self._entities:
             await self.list_entities()
 
-        # Look up the entity key
-        entity_info = None
-        if switch_id in self._entities:
-            entity_info = self._entities[switch_id]
-        else:
-            # Try to find by partial match
+        entity_info = self._entities.get(switch_id)
+        if not entity_info:
             for obj_id, info in self._entities.items():
                 if switch_id.lower() in obj_id.lower():
                     entity_info = info
@@ -285,374 +191,527 @@ class ESP32Controller:
             raise ValueError(f"Switch not found: {switch_id}")
 
         entity_type, key = entity_info
-        if entity_type != 'switch':
-            raise ValueError(f"{switch_id} is a {entity_type}, not a switch")
-
-        # Set the switch
         self.client.switch_command(key, state)
-        print(f"Switch {switch_id}: {'ON' if state else 'OFF'}")
-
-
-async def cmd_list(args):
-    """List available buttons and switches."""
-    controller = ESP32Controller()
-    try:
-        await controller.connect()
-        buttons, switches = await controller.list_entities()
-
-        print("\nAvailable buttons:")
-        print("-" * 60)
-        for btn in sorted(buttons, key=lambda x: x['name']):
-            print(f"  {btn['object_id']:40s} - {btn['name']}")
-
-        print("\nAvailable switches:")
-        print("-" * 60)
-        for sw in sorted(switches, key=lambda x: x['name']):
-            print(f"  {sw['object_id']:40s} - {sw['name']}")
-
-        print("\nButton aliases:")
-        print("-" * 60)
-        for alias, entity_id in sorted(BUTTONS.items()):
-            print(f"  {alias:20s} -> {entity_id}")
-
-        print("\nSwitch aliases:")
-        print("-" * 60)
-        for alias, entity_id in sorted(SWITCHES.items()):
-            print(f"  {alias:20s} -> {entity_id}")
-
-    finally:
-        await controller.disconnect()
-
-
-async def cmd_press(args):
-    """Press a button."""
-    button = args.button
-
-    # Check if it's an alias
-    if button in BUTTONS:
-        button = BUTTONS[button].replace("button.", "")
-
-    controller = ESP32Controller()
-    try:
-        await controller.connect()
-        await controller.press_button(button)
-    finally:
-        await controller.disconnect()
-
-
-async def cmd_switch(args):
-    """Turn a switch on or off."""
-    switch = args.switch
-    state = args.state.lower() in ('on', '1', 'true', 'yes')
-
-    # Check if it's an alias
-    if switch in SWITCHES:
-        switch = SWITCHES[switch]
-
-    controller = ESP32Controller()
-    try:
-        await controller.connect()
-        await controller.set_switch(switch, state)
-    finally:
-        await controller.disconnect()
 
 
 def cmd_serve(args):
-    """Start local web server."""
+    """Start local web server with CCA Playground dashboard."""
     try:
-        from flask import Flask, jsonify, request
+        from flask import Flask, jsonify, request, Response
     except ImportError:
-        print("Error: Flask not installed")
-        print("Run: pip install flask")
+        print("Error: Flask not installed. Run: pip install flask")
         sys.exit(1)
 
     app = Flask(__name__)
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # HTML DASHBOARD
+    # ═══════════════════════════════════════════════════════════════════════════
+
     @app.route('/')
     def index():
-        """CCA Playground - Dynamic RF command interface."""
-        html = """
-<!DOCTYPE html>
+        return '''<!DOCTYPE html>
 <html>
 <head>
     <title>CCA Playground - Lutron Clear Connect</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #eee; }
-        h1 { color: #00d4ff; margin-bottom: 5px; }
-        h1 small { color: #888; font-weight: normal; font-size: 14px; }
-        .section { margin: 15px 0; padding: 15px; border-radius: 8px; border: 1px solid #333; }
-        .section h2 { margin: 0 0 10px 0; font-size: 14px; color: #00d4ff; display: flex; align-items: center; gap: 8px; }
-        .section h2 .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: #333; color: #888; }
-        .pico { background: #1e3a1e; border-color: #2d5a2d; }
-        .bridge { background: #1e2a3a; border-color: #2d4a6d; }
-        .device { background: #3a2a1e; border-color: #5a4a2d; }
-        .pairing { background: #2a1e3a; border-color: #4a2d6d; }
-        .row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
-        label { color: #aaa; font-size: 12px; min-width: 80px; }
-        input, select { padding: 8px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a3e; color: #fff; font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
-        input:focus, select:focus { outline: none; border-color: #00d4ff; }
-        input[type="text"] { width: 130px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0d1117; color: #c9d1d9;
+            display: grid; grid-template-columns: 1fr 400px; grid-template-rows: auto 1fr;
+            height: 100vh; gap: 1px; background: #30363d;
+        }
+
+        /* Header */
+        header {
+            grid-column: 1 / -1; padding: 12px 20px; background: #161b22;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #30363d;
+        }
+        header h1 { font-size: 18px; color: #58a6ff; font-weight: 600; }
+        header h1 small { color: #8b949e; font-weight: 400; font-size: 12px; margin-left: 8px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #238636; display: inline-block; margin-right: 6px; }
+        .status-dot.offline { background: #f85149; }
+        #esp-status { font-size: 12px; color: #8b949e; }
+
+        /* Main panels */
+        main { padding: 16px; overflow-y: auto; background: #0d1117; }
+        aside { display: flex; flex-direction: column; background: #0d1117; }
+
+        /* Section cards */
+        .card {
+            background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+            margin-bottom: 12px; overflow: hidden;
+        }
+        .card-header {
+            padding: 10px 14px; background: #21262d; border-bottom: 1px solid #30363d;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .card-header h2 { font-size: 13px; font-weight: 600; color: #c9d1d9; }
+        .card-header .badge {
+            font-size: 10px; padding: 2px 6px; border-radius: 10px;
+            background: #30363d; color: #8b949e;
+        }
+        .card-body { padding: 14px; }
+
+        /* Color themes for cards */
+        .card.pico .card-header { border-left: 3px solid #238636; }
+        .card.bridge .card-header { border-left: 3px solid #58a6ff; }
+        .card.pairing .card-header { border-left: 3px solid #a371f7; }
+        .card.device .card-header { border-left: 3px solid #d29922; }
+
+        /* Form elements */
+        .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .form-group label { font-size: 11px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+        input, select {
+            padding: 8px 10px; border: 1px solid #30363d; border-radius: 4px;
+            background: #0d1117; color: #c9d1d9; font-size: 13px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        input:focus, select:focus { outline: none; border-color: #58a6ff; }
+        input[type="text"] { width: 120px; }
         input[type="number"] { width: 70px; }
-        select { min-width: 180px; }
-        button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
-        button:hover { transform: translateY(-1px); }
-        .btn-send { background: #00d4ff; color: #000; }
-        .btn-send:hover { background: #00e5ff; }
-        .btn-level { background: #4a90d9; color: #fff; }
-        .btn-level:hover { background: #5aa0e9; }
-        .btn-off { background: #d94a4a; color: #fff; }
-        .btn-off:hover { background: #e95a5a; }
-        .btn-pair { background: #9b59b6; color: #fff; }
-        .btn-pair:hover { background: #ab69c6; }
-        .quick-btns { display: flex; gap: 5px; flex-wrap: wrap; }
-        .quick-btns button { padding: 6px 12px; font-size: 12px; }
-        #status { margin-top: 15px; padding: 12px; background: #2a2a3e; border-radius: 4px; font-family: monospace; font-size: 13px; border-left: 3px solid #00d4ff; }
-        #status.error { border-color: #d94a4a; color: #ff6b6b; }
-        #status.success { border-color: #2ecc71; color: #2ecc71; }
-        .hint { font-size: 11px; color: #666; margin-top: 5px; }
-        .divider { border-top: 1px solid #333; margin: 10px 0; }
+
+        /* Buttons */
+        button {
+            padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 12px; font-weight: 500; transition: all 0.15s;
+        }
+        button:hover { filter: brightness(1.1); }
+        button:active { transform: scale(0.98); }
+        .btn-primary { background: #238636; color: #fff; }
+        .btn-blue { background: #1f6feb; color: #fff; }
+        .btn-purple { background: #8957e5; color: #fff; }
+        .btn-orange { background: #d29922; color: #000; }
+        .btn-red { background: #da3633; color: #fff; }
+        .btn-sm { padding: 5px 10px; font-size: 11px; }
+        .btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+
+        /* Toggle switch */
+        .toggle { position: relative; width: 44px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle .slider {
+            position: absolute; inset: 0; background: #30363d; border-radius: 12px;
+            cursor: pointer; transition: 0.3s;
+        }
+        .toggle .slider:before {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            left: 3px; bottom: 3px; background: #c9d1d9; border-radius: 50%; transition: 0.3s;
+        }
+        .toggle input:checked + .slider { background: #238636; }
+        .toggle input:checked + .slider:before { transform: translateX(20px); }
+
+        /* Logs panel */
+        .logs-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+        .logs-panel .card { flex: 1; display: flex; flex-direction: column; margin: 0; }
+        .logs-panel .card-body { flex: 1; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+        #logs {
+            flex: 1; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px; line-height: 1.5; padding: 10px; background: #010409;
+        }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid #21262d; }
+        .log-time { color: #484f58; }
+        .log-level-I { color: #58a6ff; }
+        .log-level-W { color: #d29922; }
+        .log-level-E { color: #f85149; }
+        .log-level-D { color: #8b949e; }
+        .log-msg { color: #c9d1d9; }
+
+        /* RX Monitor */
+        #rx-packets {
+            max-height: 200px; overflow-y: auto; font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px; background: #010409; border-radius: 4px;
+        }
+        .rx-entry {
+            padding: 6px 10px; border-bottom: 1px solid #21262d;
+            display: grid; grid-template-columns: 80px 90px 70px 1fr; gap: 10px;
+        }
+        .rx-entry:hover { background: #161b22; }
+        .rx-time { color: #484f58; }
+        .rx-device { color: #58a6ff; }
+        .rx-type { color: #a371f7; }
+        .rx-data { color: #8b949e; }
+
+        /* Status bar */
+        #status-bar {
+            padding: 10px 14px; background: #161b22; border-top: 1px solid #30363d;
+            font-size: 12px; color: #8b949e;
+        }
+        #status-bar.success { color: #3fb950; }
+        #status-bar.error { color: #f85149; }
+
+        /* Hint text */
+        .hint { font-size: 11px; color: #484f58; margin-top: 8px; }
+
+        /* Quick presets */
+        .presets { margin-top: 8px; padding-top: 8px; border-top: 1px solid #30363d; }
+        .presets-label { font-size: 10px; color: #484f58; margin-bottom: 6px; text-transform: uppercase; }
     </style>
 </head>
 <body>
-    <h1>CCA Playground <small>Lutron Clear Connect Type A</small></h1>
+    <header>
+        <h1>CCA Playground <small>Lutron Clear Connect Type A</small></h1>
+        <div id="esp-status"><span class="status-dot"></span>ESP32 @ 10.1.4.59</div>
+    </header>
 
-    <!-- PICO COMMANDS -->
-    <div class="section pico">
-        <h2>Pico Button Press <span class="badge">PICO &rarr; DEVICE</span></h2>
-        <div class="row">
-            <label>Pico ID:</label>
-            <input type="text" id="pico-id" value="0x05851117" placeholder="0x05851117">
-            <label>Button:</label>
-            <select id="pico-button">
-                <option value="0x02">ON (0x02)</option>
-                <option value="0x03">FAVORITE (0x03)</option>
-                <option value="0x04">OFF (0x04)</option>
-                <option value="0x05">RAISE (0x05)</option>
-                <option value="0x06">LOWER (0x06)</option>
-                <option value="0x08">BTN1/BRIGHT (0x08)</option>
-                <option value="0x09">BTN2/ENTERTAIN (0x09)</option>
-                <option value="0x0A">BTN3/RELAX (0x0A)</option>
-                <option value="0x0B">BTN4/OFF (0x0B)</option>
-            </select>
-            <input type="text" id="pico-button-raw" placeholder="or: 0x02" style="width: 80px;">
-            <button class="btn-send" onclick="sendPico()">SEND</button>
+    <main>
+        <!-- PICO PAIRING -->
+        <div class="card pairing">
+            <div class="card-header">
+                <h2>Pico Pairing</h2>
+                <span class="badge">5-BUTTON ONLY</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Device ID</label>
+                        <input type="text" id="pair-device" value="0xCC110001" placeholder="0xCC110001">
+                    </div>
+                    <button class="btn-purple" onclick="pairPico()">PAIR PICO</button>
+                </div>
+                <div class="presets">
+                    <div class="presets-label">Quick IDs</div>
+                    <div class="btn-group">
+                        <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110001')">CC110001</button>
+                        <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110002')">CC110002</button>
+                        <button class="btn-sm btn-purple" onclick="setPairDevice('0xCC110003')">CC110003</button>
+                    </div>
+                </div>
+                <div class="hint">Pairs ESP32 as a 5-button Pico (ON/FAV/OFF/RAISE/LOWER). Scene Picos require a bridge.</div>
+            </div>
         </div>
-        <div class="hint">Emulates a Pico remote sending a button press. 5-btn Picos use 0x02-0x06, Scene/4-btn use 0x08-0x0B.</div>
-    </div>
 
-    <!-- BRIDGE COMMANDS -->
-    <div class="section bridge">
-        <h2>Bridge Level Command <span class="badge">BRIDGE &rarr; DEVICE</span></h2>
-        <div class="row">
-            <label>Bridge ID:</label>
-            <input type="text" id="bridge-id" value="0xAF902C00" placeholder="0xAF902C00">
-            <label>Target ID:</label>
-            <input type="text" id="bridge-target" value="0x06FDEFF4" placeholder="0x06FDEFF4">
-            <label>Level:</label>
-            <input type="number" id="bridge-level" value="50" min="0" max="100">%
-            <button class="btn-send" onclick="sendBridgeLevel()">SET LEVEL</button>
+        <!-- PICO COMMANDS -->
+        <div class="card pico">
+            <div class="card-header">
+                <h2>Pico Button Press</h2>
+                <span class="badge">PICO → DEVICE</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pico ID</label>
+                        <input type="text" id="pico-id" value="0x05851117">
+                    </div>
+                    <div class="form-group">
+                        <label>Button</label>
+                        <select id="pico-button">
+                            <option value="0x02">ON (0x02)</option>
+                            <option value="0x03">FAVORITE (0x03)</option>
+                            <option value="0x04">OFF (0x04)</option>
+                            <option value="0x05">RAISE (0x05)</option>
+                            <option value="0x06">LOWER (0x06)</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="sendPico()">SEND</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-primary" onclick="quickPico(0x02)">ON</button>
+                    <button class="btn-sm btn-primary" onclick="quickPico(0x03)">FAV</button>
+                    <button class="btn-sm btn-red" onclick="quickPico(0x04)">OFF</button>
+                    <button class="btn-sm btn-blue" onclick="quickPico(0x05)">▲</button>
+                    <button class="btn-sm btn-blue" onclick="quickPico(0x06)">▼</button>
+                </div>
+            </div>
         </div>
-        <div class="quick-btns">
-            <button class="btn-off" onclick="setBridgeLevel(0)">0%</button>
-            <button class="btn-level" onclick="setBridgeLevel(25)">25%</button>
-            <button class="btn-level" onclick="setBridgeLevel(50)">50%</button>
-            <button class="btn-level" onclick="setBridgeLevel(75)">75%</button>
-            <button class="btn-level" onclick="setBridgeLevel(100)">100%</button>
-        </div>
-        <div class="hint">Emulates a bridge sending a level command directly to a dimmer.</div>
-    </div>
 
-    <!-- DEVICE STATE REPORTS -->
-    <div class="section device">
-        <h2>Device State Report <span class="badge">DEVICE &rarr; BRIDGE</span></h2>
-        <div class="row">
-            <label>Device ID:</label>
-            <input type="text" id="state-device" value="0x8F902C08" placeholder="0x8F902C08">
-            <label>Level:</label>
-            <input type="number" id="state-level" value="50" min="0" max="100">%
-            <button class="btn-send" onclick="sendStateReport()">REPORT</button>
+        <!-- BRIDGE CONTROLS -->
+        <div class="card bridge">
+            <div class="card-header">
+                <h2>Bridge Level Control</h2>
+                <span class="badge">BRIDGE → DEVICE</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Bridge ID</label>
+                        <input type="text" id="bridge-id" value="0xAF902C00">
+                    </div>
+                    <div class="form-group">
+                        <label>Target ID</label>
+                        <input type="text" id="bridge-target" value="0x06FDEFF4">
+                    </div>
+                    <div class="form-group">
+                        <label>Level</label>
+                        <input type="number" id="bridge-level" value="50" min="0" max="100">
+                    </div>
+                    <button class="btn-blue" onclick="sendLevel()">SET</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-red" onclick="quickLevel(0)">0%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(25)">25%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(50)">50%</button>
+                    <button class="btn-sm btn-blue" onclick="quickLevel(75)">75%</button>
+                    <button class="btn-sm btn-primary" onclick="quickLevel(100)">100%</button>
+                </div>
+            </div>
         </div>
-        <div class="quick-btns">
-            <button class="btn-off" onclick="setStateLevel(0)">0%</button>
-            <button class="btn-level" onclick="setStateLevel(25)">25%</button>
-            <button class="btn-level" onclick="setStateLevel(50)">50%</button>
-            <button class="btn-level" onclick="setStateLevel(75)">75%</button>
-            <button class="btn-level" onclick="setStateLevel(100)">100%</button>
-        </div>
-        <div class="hint">Emulates a device (dimmer/switch) reporting its current level to the bridge.</div>
-    </div>
 
-    <!-- PAIRING -->
-    <div class="section pairing">
-        <h2>Pico Pairing <span class="badge">STANDARD</span></h2>
-        <div class="row">
-            <label>Device ID:</label>
-            <input type="text" id="pair-device" value="0xCC110001" placeholder="0xCC110001">
-            <label>Duration:</label>
-            <input type="number" id="pair-duration" value="6" min="1" max="30">s
-            <button class="btn-pair" onclick="sendPairing()">PAIR</button>
+        <!-- BRIDGE BEACON -->
+        <div class="card bridge">
+            <div class="card-header">
+                <h2>Bridge Beacon Mode</h2>
+                <span class="badge">PAIRING</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Bridge ID</label>
+                        <input type="text" id="beacon-bridge" value="0xAF902C01">
+                    </div>
+                    <div class="form-group">
+                        <label>Duration</label>
+                        <input type="number" id="beacon-duration" value="30" min="5" max="120">
+                    </div>
+                    <button class="btn-blue" onclick="sendBeacon()">START BEACON</button>
+                </div>
+                <div class="hint">Broadcasts pairing beacon to make devices flash their LEDs.</div>
+            </div>
         </div>
-        <div class="hint">Standard pairing (60 BA + 12 BB, new protocol, scene type).</div>
-    </div>
 
-    <!-- PAIRING EXPERIMENTS -->
-    <div class="section" style="background: #1e1e2e; border-color: #4a4a6a;">
-        <h2>Pairing Experiments <span class="badge">RESEARCH</span></h2>
-        <div class="row">
-            <label>Device ID:</label>
-            <input type="text" id="exp-device" value="0xCC110002" placeholder="0xCC110002">
-            <label>BA pkts:</label>
-            <input type="number" id="exp-ba" value="12" min="1" max="200" style="width:50px;">
-            <label>BB pkts:</label>
-            <input type="number" id="exp-bb" value="6" min="0" max="20" style="width:50px;">
+        <!-- DEVICE STATE REPORT -->
+        <div class="card device">
+            <div class="card-header">
+                <h2>Device State Report</h2>
+                <span class="badge">DEVICE → BRIDGE</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Device ID</label>
+                        <input type="text" id="state-device" value="0x8F902C08">
+                    </div>
+                    <div class="form-group">
+                        <label>Level</label>
+                        <input type="number" id="state-level" value="50" min="0" max="100">
+                    </div>
+                    <button class="btn-orange" onclick="sendState()">REPORT</button>
+                </div>
+            </div>
         </div>
-        <div class="row">
-            <label>Protocol:</label>
-            <select id="exp-protocol">
-                <option value="0">New (0x25) - Scene Pico capture</option>
-                <option value="1">Old (0x21/0x17) - Original capture</option>
-            </select>
-            <label>Pico Type:</label>
-            <select id="exp-type">
-                <option value="0">Scene (4-btn, codes 0x08-0x0B)</option>
-                <option value="1">5-Button (codes 0x02-0x06)</option>
-            </select>
-        </div>
-        <div class="row">
-            <button class="btn-pair" onclick="runExperiment()">RUN EXPERIMENT</button>
-        </div>
-        <div class="quick-btns" style="margin-top:10px;">
-            <button onclick="preset(135,0,0,0)" style="background:#855;">Scene BA-Only (Real)</button>
-            <button onclick="preset(12,6,0,0)">Minimal Scene</button>
-            <button onclick="preset(12,6,0,1)">Minimal 5-btn</button>
-            <button onclick="preset(12,6,1,1)">Old Proto 5-btn</button>
-            <button onclick="preset(60,12,0,0)">Full Scene</button>
-            <button onclick="preset(60,12,0,1)">Full 5-btn</button>
-        </div>
-        <div class="hint">Test different protocol variants and packet counts. Scene BA-Only matches real Scene Pico (BA packets only, no BB). Use new device IDs to avoid conflicts.</div>
-    </div>
 
-    <div id="status">Ready - Enter parameters and click to send CCA commands</div>
+        <!-- RX MONITOR -->
+        <div class="card">
+            <div class="card-header">
+                <h2>RX Monitor</h2>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="badge">COMING SOON</span>
+                    <label class="toggle">
+                        <input type="checkbox" id="rx-enable" disabled>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="rx-packets">
+                    <div class="rx-entry" style="color:#484f58;text-align:center;padding:20px;">
+                        RX mode requires CC1101 receive implementation
+                    </div>
+                </div>
+                <div class="hint">Enable to listen for CCA packets from nearby devices.</div>
+            </div>
+        </div>
+    </main>
+
+    <aside>
+        <!-- LOGS PANEL -->
+        <div class="logs-panel" style="padding:16px;padding-bottom:0;">
+            <div class="card" style="flex:1;display:flex;flex-direction:column;">
+                <div class="card-header">
+                    <h2>ESP32 Logs</h2>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <label class="toggle">
+                            <input type="checkbox" id="logs-enable" onchange="toggleLogs(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="btn-sm" onclick="clearLogs()">Clear</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="logs">
+                        <div class="log-entry" style="color:#484f58;">Click toggle to connect to ESP32 logs...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="status-bar">Ready</div>
+    </aside>
 
     <script>
+        let logsEventSource = null;
+
         function setStatus(msg, type = '') {
-            const el = document.getElementById('status');
+            const el = document.getElementById('status-bar');
             el.textContent = msg;
             el.className = type;
         }
 
-        async function apiCall(endpoint, params) {
+        async function apiPost(endpoint, params) {
             const url = endpoint + '?' + new URLSearchParams(params).toString();
             const resp = await fetch(url, {method: 'POST'});
             return await resp.json();
         }
 
-        async function sendPico() {
-            const device = document.getElementById('pico-id').value.trim();
-            const rawBtn = document.getElementById('pico-button-raw').value.trim();
-            const button = rawBtn || document.getElementById('pico-button').value;
-            setStatus(`Sending button ${button} from Pico ${device}...`);
+        // Pico Pairing
+        function setPairDevice(id) {
+            document.getElementById('pair-device').value = id;
+        }
+
+        async function pairPico() {
+            const device = document.getElementById('pair-device').value.trim();
+            setStatus(`Pairing ${device} as 5-button Pico...`);
             try {
-                const data = await apiCall('/api/send', {device, button});
-                setStatus(data.status === 'ok' ? `Sent: ${data.button} from ${data.device}` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+                const data = await apiPost('/api/pair-pico', {device});
+                setStatus(data.status === 'ok' ? `Paired ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
-        async function sendBridgeLevel() {
+        // Pico Commands
+        async function sendPico() {
+            const device = document.getElementById('pico-id').value.trim();
+            const button = document.getElementById('pico-button').value;
+            setStatus(`Sending ${button} from ${device}...`);
+            try {
+                const data = await apiPost('/api/send', {device, button});
+                setStatus(data.status === 'ok' ? `Sent ${data.button} from ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        function quickPico(btn) {
+            document.getElementById('pico-button').value = '0x' + btn.toString(16).padStart(2, '0');
+            sendPico();
+        }
+
+        // Bridge Level
+        async function sendLevel() {
             const source = document.getElementById('bridge-id').value.trim();
             const target = document.getElementById('bridge-target').value.trim();
             const level = document.getElementById('bridge-level').value;
-            setStatus(`Bridge ${source} setting ${target} to ${level}%...`);
+            setStatus(`Setting ${target} to ${level}%...`);
             try {
-                const data = await apiCall('/api/level', {source, target, level});
-                setStatus(data.status === 'ok' ? `Set ${data.target} to ${data.level}%` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+                const data = await apiPost('/api/level', {source, target, level});
+                setStatus(data.status === 'ok' ? `Set ${data.target} to ${data.level}%` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
-        function setBridgeLevel(level) {
+        function quickLevel(level) {
             document.getElementById('bridge-level').value = level;
-            sendBridgeLevel();
+            sendLevel();
         }
 
-        async function sendStateReport() {
+        // Beacon
+        async function sendBeacon() {
+            const device = document.getElementById('beacon-bridge').value.trim();
+            const duration = document.getElementById('beacon-duration').value;
+            setStatus(`Starting beacon from ${device} for ${duration}s...`);
+            try {
+                const data = await apiPost('/api/beacon', {device, duration, type: '0x92'});
+                setStatus(data.status === 'ok' ? `Beacon started: ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        // State Report
+        async function sendState() {
             const device = document.getElementById('state-device').value.trim();
             const level = document.getElementById('state-level').value;
-            setStatus(`Device ${device} reporting level ${level}%...`);
+            setStatus(`Reporting ${device} at ${level}%...`);
             try {
-                const data = await apiCall('/api/state', {device, level});
-                setStatus(data.status === 'ok' ? `Reported: ${data.device} at ${data.level}%` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
+                const data = await apiPost('/api/state', {device, level});
+                setStatus(data.status === 'ok' ? `Reported ${data.device} at ${data.level}%` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
-        function setStateLevel(level) {
-            document.getElementById('state-level').value = level;
-            sendStateReport();
+        // Logs streaming
+        function toggleLogs(enabled) {
+            if (enabled) {
+                startLogStream();
+            } else {
+                stopLogStream();
+            }
         }
 
-        async function sendPairing() {
-            const device = document.getElementById('pair-device').value.trim();
-            const duration = document.getElementById('pair-duration').value;
-            setStatus(`Pairing ${device} for ${duration}s...`);
+        function startLogStream() {
+            if (logsEventSource) return;
+
+            const logsDiv = document.getElementById('logs');
+            logsDiv.innerHTML = '<div class="log-entry" style="color:#3fb950;">Connecting to ESP32 logs...</div>';
+
+            logsEventSource = new EventSource('/api/logs/stream');
+
+            logsEventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                addLogEntry(data);
+            };
+
+            logsEventSource.onerror = function() {
+                addLogEntry({time: new Date().toISOString(), level: 'E', msg: 'Log stream disconnected'});
+                stopLogStream();
+                document.getElementById('logs-enable').checked = false;
+            };
+        }
+
+        function stopLogStream() {
+            if (logsEventSource) {
+                logsEventSource.close();
+                logsEventSource = null;
+            }
+        }
+
+        function addLogEntry(data) {
+            const logsDiv = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+
+            const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
+            const levelClass = 'log-level-' + (data.level || 'I');
+
+            entry.innerHTML = `<span class="log-time">${time}</span> <span class="${levelClass}">[${data.level || 'I'}]</span> <span class="log-msg">${data.msg || data}</span>`;
+            logsDiv.appendChild(entry);
+
+            // Auto-scroll and limit entries
+            while (logsDiv.children.length > 500) {
+                logsDiv.removeChild(logsDiv.firstChild);
+            }
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // Check ESP32 connection on load
+        async function checkConnection() {
             try {
-                const data = await apiCall('/api/pair', {device, duration});
-                setStatus(data.status === 'ok' ? `Pairing ${data.device} (${data.duration}s)` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
-            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+                const resp = await fetch('/api/status');
+                const data = await resp.json();
+                const dot = document.querySelector('.status-dot');
+                if (data.connected) {
+                    dot.classList.remove('offline');
+                } else {
+                    dot.classList.add('offline');
+                }
+            } catch (e) {
+                document.querySelector('.status-dot').classList.add('offline');
+            }
         }
 
-        async function runExperiment() {
-            const device = document.getElementById('exp-device').value.trim();
-            const ba = document.getElementById('exp-ba').value;
-            const bb = document.getElementById('exp-bb').value;
-            const protocol = document.getElementById('exp-protocol').value;
-            const type = document.getElementById('exp-type').value;
-            const protoName = protocol === '0' ? 'new(0x25)' : 'old(0x21/0x17)';
-            const typeName = type === '0' ? 'scene' : '5-btn';
-            setStatus(`Experiment: ${device} BA=${ba} BB=${bb} ${protoName} ${typeName}...`);
-            try {
-                const data = await apiCall('/api/experiment', {device, ba, bb, protocol, type});
-                setStatus(data.status === 'ok' ? `Sent: ${data.ba_count}xBA + ${data.bb_count}xBB ${data.protocol} ${data.pico_type}` : `Error: ${data.error}`, data.status === 'ok' ? 'success' : 'error');
-            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
-        }
-
-        function preset(ba, bb, proto, type) {
-            document.getElementById('exp-ba').value = ba;
-            document.getElementById('exp-bb').value = bb;
-            document.getElementById('exp-protocol').value = proto;
-            document.getElementById('exp-type').value = type;
-        }
+        checkConnection();
+        setInterval(checkConnection, 30000);
     </script>
 </body>
-</html>
-"""
-        return html
+</html>'''
 
-    @app.route('/button/<button_id>/press', methods=['POST'])
-    def press_button(button_id):
-        """Press a button via API."""
-        try:
-            # Run async press in sync context
-            asyncio.run(press_async(button_id))
-            return jsonify({'status': 'ok', 'button': button_id})
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    async def press_async(button_id):
-        # Check if it's an alias
-        if button_id in BUTTONS:
-            button_id = BUTTONS[button_id].replace("button.", "")
-
-        controller = ESP32Controller()
-        try:
-            await controller.connect()
-            await controller.press_button(button_id)
-        finally:
-            await controller.disconnect()
-
-    @app.route('/buttons', methods=['GET'])
-    def list_buttons():
-        """List available buttons."""
-        return jsonify(BUTTONS)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # API ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
 
     def parse_hex_int(value: str) -> int:
         """Parse hex (0x...) or decimal string to int."""
@@ -661,8 +720,8 @@ def cmd_serve(args):
             return int(value, 16)
         return int(value)
 
+    # Async helpers
     async def send_button_async(device_id: int, button_code: int):
-        """Send button via ESPHome service."""
         controller = ESP32Controller()
         try:
             await controller.connect()
@@ -670,17 +729,7 @@ def cmd_serve(args):
         finally:
             await controller.disconnect()
 
-    async def send_pairing_async(device_id: int, duration: int):
-        """Send pairing via ESPHome service."""
-        controller = ESP32Controller()
-        try:
-            await controller.connect()
-            await controller.send_pairing(device_id, duration)
-        finally:
-            await controller.disconnect()
-
     async def send_level_async(source_id: int, target_id: int, level: int):
-        """Send level via ESPHome service."""
         controller = ESP32Controller()
         try:
             await controller.connect()
@@ -689,7 +738,6 @@ def cmd_serve(args):
             await controller.disconnect()
 
     async def send_state_async(device_id: int, level: int):
-        """Send state report via ESPHome service."""
         controller = ESP32Controller()
         try:
             await controller.connect()
@@ -697,31 +745,53 @@ def cmd_serve(args):
         finally:
             await controller.disconnect()
 
-    async def pair_experiment_async(device_id: int, ba_count: int, bb_count: int,
-                                     protocol_variant: int, pico_type: int):
-        """Send experimental pairing via ESPHome service."""
+    async def send_beacon_async(device_id: int, beacon_type: int, duration: int):
         controller = ESP32Controller()
         try:
             await controller.connect()
-            await controller.pair_experiment(device_id, ba_count, bb_count,
-                                              protocol_variant, pico_type)
+            await controller.send_beacon(device_id, beacon_type, duration)
         finally:
             await controller.disconnect()
 
+    async def pair_pico_async(device_id: int):
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.pair_pico(device_id)
+        finally:
+            await controller.disconnect()
+
+    async def check_connection_async():
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.disconnect()
+            return True
+        except:
+            return False
+
+    @app.route('/api/status')
+    def api_status():
+        """Check ESP32 connection status."""
+        try:
+            connected = asyncio.run(check_connection_async())
+            return jsonify({'connected': connected, 'ip': ESP32_IP})
+        except:
+            return jsonify({'connected': False, 'ip': ESP32_IP})
+
     @app.route('/api/send', methods=['POST'])
     def api_send():
-        """Send dynamic button command to any device ID."""
+        """Send button command."""
         try:
             device = request.args.get('device', '')
             button = request.args.get('button', '')
-
             if not device or not button:
-                return jsonify({'status': 'error', 'error': 'Missing device or button parameter'}), 400
+                return jsonify({'status': 'error', 'error': 'Missing device or button'}), 400
 
             device_id = parse_hex_int(device)
             button_code = parse_hex_int(button)
-
             asyncio.run(send_button_async(device_id, button_code))
+
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
@@ -730,42 +800,20 @@ def cmd_serve(args):
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 
-    @app.route('/api/pair', methods=['POST'])
-    def api_pair():
-        """Send pairing sequence to any device ID."""
-        try:
-            device = request.args.get('device', '')
-            duration = int(request.args.get('duration', '6'))
-
-            if not device:
-                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
-
-            device_id = parse_hex_int(device)
-
-            asyncio.run(send_pairing_async(device_id, duration))
-            return jsonify({
-                'status': 'ok',
-                'device': f'0x{device_id:08X}',
-                'duration': duration
-            })
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
     @app.route('/api/level', methods=['POST'])
     def api_level():
-        """Send level command to any device."""
+        """Send level command."""
         try:
             source = request.args.get('source', '')
             target = request.args.get('target', '')
             level = int(request.args.get('level', '0'))
-
             if not source or not target:
-                return jsonify({'status': 'error', 'error': 'Missing source or target parameter'}), 400
+                return jsonify({'status': 'error', 'error': 'Missing source or target'}), 400
 
             source_id = parse_hex_int(source)
             target_id = parse_hex_int(target)
-
             asyncio.run(send_level_async(source_id, target_id, level))
+
             return jsonify({
                 'status': 'ok',
                 'source': f'0x{source_id:08X}',
@@ -777,17 +825,16 @@ def cmd_serve(args):
 
     @app.route('/api/state', methods=['POST'])
     def api_state():
-        """Send state report (device reporting its level to bridge)."""
+        """Send state report."""
         try:
             device = request.args.get('device', '')
             level = int(request.args.get('level', '0'))
-
             if not device:
-                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
+                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
-
             asyncio.run(send_state_async(device_id, level))
+
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
@@ -796,42 +843,159 @@ def cmd_serve(args):
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 
-    @app.route('/api/experiment', methods=['POST'])
-    def api_experiment():
-        """Send experimental pairing with configurable parameters."""
+    @app.route('/api/beacon', methods=['POST'])
+    def api_beacon():
+        """Send pairing beacon."""
         try:
             device = request.args.get('device', '')
-            ba_count = int(request.args.get('ba', '12'))
-            bb_count = int(request.args.get('bb', '6'))
-            protocol = int(request.args.get('protocol', '0'))
-            pico_type = int(request.args.get('type', '1'))
-
+            duration = int(request.args.get('duration', '30'))
+            beacon_type = parse_hex_int(request.args.get('type', '0x92'))
             if not device:
-                return jsonify({'status': 'error', 'error': 'Missing device parameter'}), 400
+                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
+            asyncio.run(send_beacon_async(device_id, beacon_type, duration))
 
-            asyncio.run(pair_experiment_async(device_id, ba_count, bb_count, protocol, pico_type))
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
-                'ba_count': ba_count,
-                'bb_count': bb_count,
-                'protocol': 'new(0x25)' if protocol == 0 else 'old(0x21/0x17)',
-                'pico_type': 'scene' if pico_type == 0 else '5-button'
+                'duration': duration
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 
-    print(f"Starting web server on http://localhost:{args.port}")
-    print(f"Proxying to ESP32 at {ESP32_IP}")
-    print("Press Ctrl+C to stop\n")
+    @app.route('/api/pair-pico', methods=['POST'])
+    def api_pair_pico():
+        """Pair as 5-button Pico (the only type that works for direct pairing)."""
+        try:
+            device = request.args.get('device', '')
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
-    app.run(host='0.0.0.0', port=args.port, debug=False)
+            device_id = parse_hex_int(device)
+            asyncio.run(pair_pico_async(device_id))
+
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'type': '5-button'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/logs/stream')
+    def api_logs_stream():
+        """Stream ESP32 logs via Server-Sent Events."""
+        def generate():
+            # Send initial connection message
+            yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Connected to log stream'})}\n\n"
+
+            # Start log subscription in background
+            log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
+            log_thread.start()
+
+            # Stream logs from queue
+            while True:
+                try:
+                    log_entry = log_queue.get(timeout=30)
+                    yield f"data: {json.dumps(log_entry)}\n\n"
+                except queue.Empty:
+                    # Send heartbeat
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+
+        return Response(generate(), mimetype='text/event-stream',
+                       headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+    def subscribe_to_logs():
+        """Subscribe to ESP32 logs and push to queue."""
+        async def _subscribe():
+            client = APIClient(
+                address=ESP32_IP,
+                port=ESP32_PORT,
+                password=ESP32_PASSWORD,
+                noise_psk=ESP32_ENCRYPTION_KEY,
+            )
+            try:
+                await client.connect(login=True)
+
+                def on_log(msg):
+                    try:
+                        # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
+                        level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
+                        level_int = msg.level if isinstance(msg.level, int) else 3
+                        log_queue.put_nowait({
+                            'time': datetime.now().isoformat(),
+                            'level': level_map.get(level_int, 'I'),
+                            'msg': msg.message if hasattr(msg, 'message') else str(msg)
+                        })
+                    except queue.Full:
+                        pass
+
+                await client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
+
+                # Keep connection alive
+                while True:
+                    await asyncio.sleep(1)
+
+            except Exception as e:
+                log_queue.put_nowait({
+                    'time': datetime.now().isoformat(),
+                    'level': 'E',
+                    'msg': f'Log subscription error: {e}'
+                })
+            finally:
+                await client.disconnect()
+
+        asyncio.run(_subscribe())
+
+    print(f"\n{'='*60}")
+    print(f"  CCA Playground - Lutron Clear Connect Dashboard")
+    print(f"{'='*60}")
+    print(f"  Web UI:  http://localhost:{args.port}")
+    print(f"  ESP32:   {ESP32_IP}")
+    print(f"{'='*60}\n")
+
+    app.run(host='0.0.0.0', port=args.port, debug=False, threaded=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CLI COMMANDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def cmd_list(args):
+    """List available buttons and switches."""
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        buttons, switches = await controller.list_entities()
+
+        print("\nAvailable buttons:")
+        for btn in sorted(buttons, key=lambda x: x['name']):
+            print(f"  {btn['object_id']:40s} - {btn['name']}")
+
+        print("\nAvailable switches:")
+        for sw in sorted(switches, key=lambda x: x['name']):
+            print(f"  {sw['object_id']:40s} - {sw['name']}")
+    finally:
+        await controller.disconnect()
+
+
+async def cmd_press(args):
+    """Press a button."""
+    button = args.button
+    if button in BUTTONS:
+        button = BUTTONS[button]
+
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        await controller.press_button(button)
+    finally:
+        await controller.disconnect()
 
 
 def parse_hex_or_int(value: str) -> int:
-    """Parse a value as hex (0x prefix) or decimal."""
+    """Parse hex (0x...) or decimal string to int."""
     value = value.strip()
     if value.lower().startswith('0x'):
         return int(value, 16)
@@ -839,7 +1003,7 @@ def parse_hex_or_int(value: str) -> int:
 
 
 async def cmd_send(args):
-    """Send dynamic button command."""
+    """Send button to any device."""
     device_id = parse_hex_or_int(args.device)
     button_code = parse_hex_or_int(args.button)
 
@@ -847,87 +1011,79 @@ async def cmd_send(args):
     try:
         await controller.connect()
         await controller.send_button(device_id, button_code)
+        print(f"Sent 0x{button_code:02X} to 0x{device_id:08X}")
     finally:
         await controller.disconnect()
 
 
 async def cmd_pair(args):
-    """Send dynamic pairing command."""
+    """Pair as 5-button Pico."""
     device_id = parse_hex_or_int(args.device)
-    duration = args.duration
 
     controller = ESP32Controller()
     try:
         await controller.connect()
-        await controller.send_pairing(device_id, duration)
+        await controller.pair_pico(device_id)
+        print(f"Paired 0x{device_id:08X} as 5-button Pico")
     finally:
         await controller.disconnect()
 
 
 async def cmd_level(args):
-    """Send dynamic level command."""
+    """Send level command."""
     source_id = parse_hex_or_int(args.source)
     target_id = parse_hex_or_int(args.target)
-    level = args.level
 
     controller = ESP32Controller()
     try:
         await controller.connect()
-        await controller.send_level(source_id, target_id, level)
+        await controller.send_level(source_id, target_id, args.level)
+        print(f"Set 0x{target_id:08X} to {args.level}%")
     finally:
         await controller.disconnect()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Control ESP32 Lutron RF transmitter via native API',
+        description='CCA Playground - Lutron Clear Connect Controller',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s list                           # List available buttons/switches
-    %(prog)s press rf-on                    # Press RF On button
-    %(prog)s send 0xCC110001 0x02           # Send button 0x02 to device CC110001
-    %(prog)s send CC110001 2                # Same (decimal)
-    %(prog)s pair 0xCC110001                # Pair device CC110001 (6s default)
-    %(prog)s pair 0xCC110001 -d 10          # Pair for 10 seconds
-    %(prog)s level 0xAF902C00 0x06FDEFF4 50 # Set dimmer to 50%%
-    %(prog)s serve --port 8080              # Start web server on port 8080
+    %(prog)s serve                         # Start web dashboard
+    %(prog)s list                          # List available buttons
+    %(prog)s send 0xCC110001 0x02          # Send ON to device
+    %(prog)s pair 0xCC110001               # Pair as 5-button Pico
+    %(prog)s level 0xAF902C00 0x06FDEFF4 50  # Set level to 50%%
 """
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
-    # List command
-    list_cmd = subparsers.add_parser('list', aliases=['ls'], help='List available buttons/switches')
+    # Serve command
+    serve_cmd = subparsers.add_parser('serve', aliases=['s'], help='Start web dashboard')
+    serve_cmd.add_argument('--port', '-p', type=int, default=8080, help='Port (default: 8080)')
 
-    # Press command (legacy - uses predefined buttons)
+    # List command
+    subparsers.add_parser('list', aliases=['ls'], help='List available buttons')
+
+    # Press command
     press_cmd = subparsers.add_parser('press', aliases=['p'], help='Press a predefined button')
     press_cmd.add_argument('button', help='Button ID or alias')
 
-    # Send command (NEW - dynamic device/button)
-    send_cmd = subparsers.add_parser('send', help='Send button to any device (dynamic)')
-    send_cmd.add_argument('device', help='Device ID (hex 0x... or decimal)')
-    send_cmd.add_argument('button', help='Button code (hex 0x... or decimal)')
+    # Send command
+    send_cmd = subparsers.add_parser('send', help='Send button to any device')
+    send_cmd.add_argument('device', help='Device ID (hex or decimal)')
+    send_cmd.add_argument('button', help='Button code (hex or decimal)')
 
-    # Pair command (NEW - dynamic pairing)
-    pair_cmd = subparsers.add_parser('pair', help='Send pairing sequence to any device')
-    pair_cmd.add_argument('device', help='Device ID (hex 0x... or decimal)')
-    pair_cmd.add_argument('-d', '--duration', type=int, default=6, help='Duration in seconds (default: 6)')
+    # Pair command
+    pair_cmd = subparsers.add_parser('pair', help='Pair as 5-button Pico')
+    pair_cmd.add_argument('device', help='Device ID (hex or decimal)')
 
-    # Level command (NEW - dynamic level)
-    level_cmd = subparsers.add_parser('level', help='Send level command (bridge-style)')
-    level_cmd.add_argument('source', help='Source/bridge ID (hex or decimal)')
-    level_cmd.add_argument('target', help='Target dimmer ID (hex or decimal)')
+    # Level command
+    level_cmd = subparsers.add_parser('level', help='Send bridge level command')
+    level_cmd.add_argument('source', help='Source/bridge ID')
+    level_cmd.add_argument('target', help='Target device ID')
     level_cmd.add_argument('level', type=int, help='Level 0-100')
-
-    # Switch command
-    switch_cmd = subparsers.add_parser('switch', aliases=['sw'], help='Turn a switch on or off')
-    switch_cmd.add_argument('switch', help='Switch ID or alias')
-    switch_cmd.add_argument('state', help='on or off')
-
-    # Serve command
-    serve_cmd = subparsers.add_parser('serve', aliases=['s'], help='Start local web server')
-    serve_cmd.add_argument('--port', '-p', type=int, default=8080, help='Port (default: 8080)')
 
     args = parser.parse_args()
 
@@ -935,7 +1091,9 @@ Examples:
         parser.print_help()
         return 1
 
-    if args.command in ['list', 'ls']:
+    if args.command in ['serve', 's']:
+        cmd_serve(args)
+    elif args.command in ['list', 'ls']:
         asyncio.run(cmd_list(args))
     elif args.command in ['press', 'p']:
         asyncio.run(cmd_press(args))
@@ -945,10 +1103,6 @@ Examples:
         asyncio.run(cmd_pair(args))
     elif args.command == 'level':
         asyncio.run(cmd_level(args))
-    elif args.command in ['switch', 'sw']:
-        asyncio.run(cmd_switch(args))
-    elif args.command in ['serve', 's']:
-        cmd_serve(args)
 
     return 0
 
