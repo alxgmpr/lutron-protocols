@@ -31,21 +31,12 @@ void LutronCC1101::dump_config() {
   ESP_LOGCONFIG(TAG, "  Status: %s", this->radio_.is_initialized() ? "OK" : "FAILED");
 }
 
-void LutronCC1101::loop() {
-  // Check for received data if RX mode is active
-  if (this->radio_.is_rx_active()) {
-    this->radio_.check_rx();
-  }
-}
-
 void LutronCC1101::start_rx() {
-  ESP_LOGI(TAG, "=== STARTING RX MODE ===");
-  this->radio_.start_rx();
+  ESP_LOGI(TAG, "RX mode not implemented - disabled due to crashes");
 }
 
 void LutronCC1101::stop_rx() {
-  ESP_LOGI(TAG, "=== STOPPING RX MODE ===");
-  this->radio_.stop_rx();
+  ESP_LOGI(TAG, "RX mode not implemented");
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
@@ -957,76 +948,55 @@ void LutronCC1101::send_pairing_experimental(uint32_t device_id, int ba_count, i
 }
 
 void LutronCC1101::send_reset(uint32_t source_id, uint32_t paired_id) {
-  ESP_LOGI(TAG, "=== RESET/UNPAIR PACKET ===");
-  ESP_LOGI(TAG, "Source ID: 0x%08X, Paired ID to remove: 0x%08X", source_id, paired_id);
+  // For Pico reset, we only use source_id (the Pico saying "forget about me")
+  // paired_id is ignored - kept for API compatibility
+  (void)paired_id;
 
-  // Reset/Unpair packet format from docs/KNOWN_ISSUES.md:
-  // [0]  Type      0x81
-  // [1]  Sequence
-  // [2-5] Device ID (source/RF transmit ID)
-  // [6]  0x21      ← Protocol marker
-  // [7]  0x0C      ← RESET format indicator
-  // [8]  0x00
-  // [9-13] FF FF FF FF FF  ← BROADCAST (tell all to forget)
-  // [14] 0x02
-  // [15] 0x08
-  // [16-19] Paired ID (the Pico being unregistered)
-  // [20-21] 0xCC padding
-  // [22-23] CRC
+  ESP_LOGI(TAG, "=== PICO RESET PACKET ===");
+  ESP_LOGI(TAG, "Pico ID: 0x%08X broadcasting 'forget me'", source_id);
+
+  // Pico reset format from captured pico_reset.cu8:
+  // 89 00 05 85 11 17 21 0c 00 ff ff ff ff ff 02 08 05 85 11 17 cc cc [CRC]
+  // Type 0x89, seq +6, Pico ID appears twice (source AND payload)
 
   uint8_t packet[24];
   uint8_t seq = 0x00;
 
-  // Send 20 packets like other commands
-  for (int rep = 0; rep < 20; rep++) {
+  for (int rep = 0; rep < 12; rep++) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
+    packet[0] = 0x89;  // Pico reset type
     packet[1] = seq;
-
-    // Source device ID (big-endian)
     packet[2] = (source_id >> 24) & 0xFF;
     packet[3] = (source_id >> 16) & 0xFF;
     packet[4] = (source_id >> 8) & 0xFF;
     packet[5] = source_id & 0xFF;
-
-    packet[6] = 0x21;  // Protocol marker
-    packet[7] = 0x0C;  // RESET format indicator (NOT 0x0E!)
+    packet[6] = 0x21;
+    packet[7] = 0x0C;
     packet[8] = 0x00;
-
-    // Broadcast address (5 bytes)
     packet[9] = 0xFF;
     packet[10] = 0xFF;
     packet[11] = 0xFF;
     packet[12] = 0xFF;
     packet[13] = 0xFF;
-
     packet[14] = 0x02;
     packet[15] = 0x08;
+    // Same Pico ID again in payload
+    packet[16] = (source_id >> 24) & 0xFF;
+    packet[17] = (source_id >> 16) & 0xFF;
+    packet[18] = (source_id >> 8) & 0xFF;
+    packet[19] = source_id & 0xFF;
 
-    // Paired ID to unregister (big-endian)
-    packet[16] = (paired_id >> 24) & 0xFF;
-    packet[17] = (paired_id >> 16) & 0xFF;
-    packet[18] = (paired_id >> 8) & 0xFF;
-    packet[19] = paired_id & 0xFF;
-
-    // Padding (already 0xCC from memset)
-    // packet[20-21] = 0xCC
-
-    // Calculate CRC
     uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
     this->transmit_packet(packet, 24);
-
-    // Sequence increments by 5-6 like other commands
-    seq = (seq + 5 + (rep % 2)) & 0xFF;
-
-    if (rep < 19) delay(60);
+    seq = (seq + 6) & 0xFF;  // +6 like captured
+    if (rep < 11) delay(75);  // ~75ms between packets
   }
 
-  ESP_LOGI(TAG, "=== RESET/UNPAIR COMPLETE ===");
+  ESP_LOGI(TAG, "=== RESET COMPLETE (12 packets) ===");
 }
 
 }  // namespace lutron_cc1101

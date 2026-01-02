@@ -497,6 +497,24 @@ def cmd_serve(args):
             </div>
         </div>
 
+        <!-- RESET/UNPAIR -->
+        <div class="card device">
+            <div class="card-header">
+                <h2>Reset Pico</h2>
+                <span class="badge">FORGET ME</span>
+            </div>
+            <div class="card-body">
+                <div class="form-row">
+                    <div class="form-group" style="flex:2">
+                        <label>Pico ID</label>
+                        <input type="text" id="reset-pico" value="0x05851117" placeholder="Pico ID to reset">
+                    </div>
+                    <button class="btn-red" onclick="sendReset()">RESET</button>
+                </div>
+                <small style="color:#888">Broadcasts "forget about me" to all paired devices</small>
+            </div>
+        </div>
+
         <!-- TX PACKETS -->
         <div class="card tx">
             <div class="card-header">
@@ -636,6 +654,17 @@ def cmd_serve(args):
             try {
                 const data = await apiPost('/api/state', {device, level});
                 setStatus(data.status === 'ok' ? `Reported ${data.device} at ${data.level}%` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        // Reset Pico
+        async function sendReset() {
+            const pico = document.getElementById('reset-pico').value.trim();
+            setStatus(`Sending reset for ${pico}...`);
+            try {
+                const data = await apiPost('/api/reset', {pico});
+                setStatus(data.status === 'ok' ? `Reset broadcast: ${data.pico} "forget me"` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
@@ -921,6 +950,25 @@ def cmd_serve(args):
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
                 'level': level
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/reset', methods=['POST'])
+    def api_reset():
+        """Send Pico reset packet (broadcasts 'forget me')."""
+        try:
+            pico = request.args.get('pico', '')
+            if not pico:
+                return jsonify({'status': 'error', 'error': 'Missing pico ID'}), 400
+
+            pico_id = parse_hex_int(pico)
+            # Pass same ID twice (paired_id is ignored in new implementation)
+            asyncio.run(send_reset_async(pico_id, pico_id))
+
+            return jsonify({
+                'status': 'ok',
+                'pico': f'0x{pico_id:08X}'
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

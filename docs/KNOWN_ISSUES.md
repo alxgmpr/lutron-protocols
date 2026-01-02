@@ -10,6 +10,7 @@
 | Bridge-style level commands | ✅ Working | Controls bridge-paired dimmers |
 | Fake state reports | ✅ Working | Spoof dimmer level to bridge |
 | Beacon mode (pairing trigger) | ✅ Working | Devices flash, use AF902C01 as load ID |
+| Pico reset (unpair) | ✅ Working | Broadcasts "forget me" to all paired devices |
 | Pairing new devices | ❌ Not working | Beacon works, handshake unknown |
 
 ---
@@ -190,21 +191,41 @@ Verified against captured packets.
 ```
 **Note:** The dimmer's RF transmit ID (e.g., `8F902C08`) differs from its paired/label ID (e.g., `06FDEFF4`). The "902c" portion appears common to bridge-paired dimmers in the same zone.
 
-### Dimmer Reset/Unpair Packet (24 bytes)
+### Pico Reset Packet (24 bytes) - "Forget Me" Broadcast ✅ WORKING
 ```
-[0]  Type      0x81
-[1]  Sequence
-[2-5] Device ID (RF transmit ID, e.g., 8F902C08)
+[0]  Type      0x89
+[1]  Sequence  (+6 per packet)
+[2-5] Pico ID  (e.g., 05 85 11 17)
 [6]  0x21      ← Protocol marker
 [7]  0x0C      ← RESET format indicator
 [8]  0x00
-[9-13] FF FF FF FF FF  ← BROADCAST (tell all to forget)
+[9-13] FF FF FF FF FF  ← BROADCAST
 [14] 0x02
 [15] 0x08
-[16-19] Paired ID (e.g., 06 FD EF F4)  ← The ID being unregistered
+[16-19] Pico ID (SAME as bytes 2-5)  ← Pico says "forget ME"
 [20-21] 0xCC padding
 [22-23] CRC
 ```
+**Example:** `89 00 05 85 11 17 21 0c 00 ff ff ff ff ff 02 08 05 85 11 17 cc cc [CRC]`
+
+**Key insight:** Pico only needs its OWN ID - it broadcasts "forget about me" to all listening devices. The ID appears twice (source and payload) because that's what real Picos do.
+
+### Dimmer Reset/Unpair Packet (24 bytes) - Dimmer Removing a Pico
+```
+[0]  Type      0x81
+[1]  Sequence  (+5 per packet)
+[2-5] Dimmer RF TX ID (e.g., 8F902C08)
+[6]  0x21      ← Protocol marker
+[7]  0x0C      ← RESET format indicator
+[8]  0x00
+[9-13] FF FF FF FF FF  ← BROADCAST
+[14] 0x02
+[15] 0x08
+[16-19] Pico ID to remove (e.g., 06 FD EF F4)
+[20-21] 0xCC padding
+[22-23] CRC
+```
+**Note:** This is sent BY a dimmer to tell others to forget a specific Pico. Different from Pico reset above.
 
 ### Bridge Pairing Assignment (0xB0 packet, 24 bytes)
 ```
@@ -402,6 +423,8 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | ESP32 beacon (CC110100) | ❌ Failed | Custom load ID doesn't work - must be similar to real bridge |
 | 2025-01-01 | ESP32 beacon (AF902C01) | ✅ Working | Adjacent load ID works, devices flash |
 | 2025-01-01 | Beacon toggle switch | ✅ Working | Continuous beacon mode via switch (not button) |
+| 2026-01-02 | Pico reset capture | ✅ Done | Type 0x89, seq +6, Pico ID in both positions |
+| 2026-01-02 | Pico reset (unpair) | ✅ Working | Broadcasts "forget me", devices stop responding |
 
 ---
 

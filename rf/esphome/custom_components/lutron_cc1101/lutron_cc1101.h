@@ -28,7 +28,6 @@ class LutronCC1101 : public Component,
                      public CC1101SPI {
  public:
   void setup() override;
-  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
