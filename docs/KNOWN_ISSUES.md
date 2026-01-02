@@ -220,11 +220,13 @@ Verified against captured packets.
 ```
 
 ### ID Relationship Discovery
-- **RF Transmit ID** (`8F902C08`): Hardware-intrinsic, survives reset and room changes
 - **Label/Factory ID** (`06FDEFF4`): Printed on device, factory-assigned
 - **Bridge Zone ID** (`AF902C00`): Assigned by bridge during room setup
-- Tested: Pairing to different room did NOT change RF transmit ID
+- **RF Transmit ID** (`8F902C08`): Derived from bridge zone - `RF_TX = Bridge_Zone XOR 0x20000008`
+- Tested: RF transmit ID survives reset/re-pair/room changes (same bridge)
+- When unpaired: Dimmer does NOT respond to bridge level commands
 - The 0xB0 packet registers/confirms the device ID, not assigns it
+- Open question: What determines the `0x20000008` offset? Per-device or per-pairing?
 
 **Critical unknown in level command:** Bytes 11-14 (`C3 C6 FE 40`) are **zone/bridge-specific identifiers** assigned during pairing. Cross-referencing with lutron_hacks captures shows their system uses different bytes (`2c 0f 7c fe 06 40`) - confirming these vary per bridge/installation. This explains why level commands only work for bridge-paired devices.
 
