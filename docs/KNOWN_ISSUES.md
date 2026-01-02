@@ -9,7 +9,8 @@
 | Level commands (0-100%) | ✅ Working | Bridge-paired devices |
 | Bridge-style level commands | ✅ Working | Controls bridge-paired dimmers |
 | Fake state reports | ✅ Working | Spoof dimmer level to bridge |
-| Pairing new devices | ❌ Not working | Unknown blocker |
+| Beacon mode (pairing trigger) | ✅ Working | Devices flash, use AF902C01 as load ID |
+| Pairing new devices | ❌ Not working | Beacon works, handshake unknown |
 
 ---
 
@@ -399,6 +400,8 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Beacon capture from real bridge | ✅ Done | Discovered correct format: 0x0C, 0x02, + load ID bytes |
 | 2025-01-01 | ESP32 beacon (AF902C00) | ✅ Working | Devices flash when ESP32 sends beacons! |
 | 2025-01-01 | ESP32 beacon (CC110100) | ❌ Failed | Custom load ID doesn't work - must be similar to real bridge |
+| 2025-01-01 | ESP32 beacon (AF902C01) | ✅ Working | Adjacent load ID works, devices flash |
+| 2025-01-01 | Beacon toggle switch | ✅ Working | Continuous beacon mode via switch (not button) |
 
 ---
 

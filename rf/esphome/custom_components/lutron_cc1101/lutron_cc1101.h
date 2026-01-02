@@ -106,8 +106,12 @@ class LutronCC1101 : public Component,
    */
   void send_debug_pattern();
 
- protected:
+  /**
+   * @brief Transmit a raw packet (public for YAML lambda access)
+   */
   void transmit_packet(const uint8_t *packet, size_t len);
+
+ protected:
 
   GPIOPin *gdo0_pin_{nullptr};
   CC1101Radio radio_;

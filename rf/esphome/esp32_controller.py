@@ -108,6 +108,11 @@ BUTTONS = {
     "fake-100": "fake_state_100___8f902c08_",
 }
 
+# Switch aliases
+SWITCHES = {
+    "beacon": "esp32_beacon_mode",
+}
+
 
 class ESP32Controller:
     """Controller for ESP32 Lutron RF transmitter via native API."""
@@ -139,10 +144,11 @@ class ESP32Controller:
             await self.client.disconnect()
 
     async def list_entities(self):
-        """List all button entities."""
+        """List all button and switch entities."""
         entities, _ = await self.client.list_entities_services()
 
         buttons = []
+        switches = []
         for entity in entities:
             if hasattr(entity, 'object_id'):
                 entity_type = type(entity).__name__
@@ -152,9 +158,16 @@ class ESP32Controller:
                         'name': entity.name,
                         'object_id': entity.object_id,
                     })
-                    self._entities[entity.object_id] = entity.key
+                    self._entities[entity.object_id] = ('button', entity.key)
+                elif 'Switch' in entity_type:
+                    switches.append({
+                        'key': entity.key,
+                        'name': entity.name,
+                        'object_id': entity.object_id,
+                    })
+                    self._entities[entity.object_id] = ('switch', entity.key)
 
-        return buttons
+        return buttons, switches
 
     async def press_button(self, button_id: str):
         """Press a button by ID."""
@@ -163,39 +176,81 @@ class ESP32Controller:
             await self.list_entities()
 
         # Look up the entity key
-        key = None
+        entity_info = None
         if button_id in self._entities:
-            key = self._entities[button_id]
+            entity_info = self._entities[button_id]
         else:
             # Try to find by partial match
-            for obj_id, entity_key in self._entities.items():
+            for obj_id, info in self._entities.items():
                 if button_id.lower() in obj_id.lower():
-                    key = entity_key
+                    entity_info = info
                     break
 
-        if key is None:
+        if entity_info is None:
             raise ValueError(f"Button not found: {button_id}")
+
+        entity_type, key = entity_info
+        if entity_type != 'button':
+            raise ValueError(f"{button_id} is a {entity_type}, not a button")
 
         # Press the button
         self.client.button_command(key)
         print(f"Pressed: {button_id}")
 
+    async def set_switch(self, switch_id: str, state: bool):
+        """Set a switch on or off."""
+        # Get entities if not cached
+        if not self._entities:
+            await self.list_entities()
+
+        # Look up the entity key
+        entity_info = None
+        if switch_id in self._entities:
+            entity_info = self._entities[switch_id]
+        else:
+            # Try to find by partial match
+            for obj_id, info in self._entities.items():
+                if switch_id.lower() in obj_id.lower():
+                    entity_info = info
+                    break
+
+        if entity_info is None:
+            raise ValueError(f"Switch not found: {switch_id}")
+
+        entity_type, key = entity_info
+        if entity_type != 'switch':
+            raise ValueError(f"{switch_id} is a {entity_type}, not a switch")
+
+        # Set the switch
+        self.client.switch_command(key, state)
+        print(f"Switch {switch_id}: {'ON' if state else 'OFF'}")
+
 
 async def cmd_list(args):
-    """List available buttons."""
+    """List available buttons and switches."""
     controller = ESP32Controller()
     try:
         await controller.connect()
-        buttons = await controller.list_entities()
+        buttons, switches = await controller.list_entities()
 
         print("\nAvailable buttons:")
         print("-" * 60)
         for btn in sorted(buttons, key=lambda x: x['name']):
             print(f"  {btn['object_id']:40s} - {btn['name']}")
 
-        print("\nShortcut aliases:")
+        print("\nAvailable switches:")
+        print("-" * 60)
+        for sw in sorted(switches, key=lambda x: x['name']):
+            print(f"  {sw['object_id']:40s} - {sw['name']}")
+
+        print("\nButton aliases:")
         print("-" * 60)
         for alias, entity_id in sorted(BUTTONS.items()):
+            print(f"  {alias:20s} -> {entity_id}")
+
+        print("\nSwitch aliases:")
+        print("-" * 60)
+        for alias, entity_id in sorted(SWITCHES.items()):
             print(f"  {alias:20s} -> {entity_id}")
 
     finally:
@@ -214,6 +269,23 @@ async def cmd_press(args):
     try:
         await controller.connect()
         await controller.press_button(button)
+    finally:
+        await controller.disconnect()
+
+
+async def cmd_switch(args):
+    """Turn a switch on or off."""
+    switch = args.switch
+    state = args.state.lower() in ('on', '1', 'true', 'yes')
+
+    # Check if it's an alias
+    if switch in SWITCHES:
+        switch = SWITCHES[switch]
+
+    controller = ESP32Controller()
+    try:
+        await controller.connect()
+        await controller.set_switch(switch, state)
     finally:
         await controller.disconnect()
 
@@ -362,10 +434,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s list                     # List available buttons
+    %(prog)s list                     # List available buttons/switches
     %(prog)s press rf-on              # Press RF On button
     %(prog)s press level-100          # Set level to 100%%
-    %(prog)s press bridge-50          # Bridge level 50%%
+    %(prog)s switch beacon on         # Turn beacon mode ON
+    %(prog)s switch beacon off        # Turn beacon mode OFF
     %(prog)s serve --port 8080        # Start web server on port 8080
 """
     )
@@ -373,11 +446,16 @@ Examples:
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
     # List command
-    list_cmd = subparsers.add_parser('list', aliases=['ls'], help='List available buttons')
+    list_cmd = subparsers.add_parser('list', aliases=['ls'], help='List available buttons/switches')
 
     # Press command
     press_cmd = subparsers.add_parser('press', aliases=['p'], help='Press a button')
     press_cmd.add_argument('button', help='Button ID or alias')
+
+    # Switch command
+    switch_cmd = subparsers.add_parser('switch', aliases=['sw'], help='Turn a switch on or off')
+    switch_cmd.add_argument('switch', help='Switch ID or alias')
+    switch_cmd.add_argument('state', help='on or off')
 
     # Serve command
     serve_cmd = subparsers.add_parser('serve', aliases=['s'], help='Start local web server')
@@ -393,6 +471,8 @@ Examples:
         asyncio.run(cmd_list(args))
     elif args.command in ['press', 'p']:
         asyncio.run(cmd_press(args))
+    elif args.command in ['switch', 'sw']:
+        asyncio.run(cmd_switch(args))
     elif args.command in ['serve', 's']:
         cmd_serve(args)
 
