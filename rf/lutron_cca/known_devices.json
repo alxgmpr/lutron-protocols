@@ -59,5 +59,24 @@
     "notes": "Bridge-paired dimmer. WORKING: Controllable via bridge-style level commands using bridge zone ID AF902C00 + target ID in payload.",
     "pairing": "bridge",
     "esp32_control": "working"
+  },
+  "08692d70": {
+    "name": "4-Button Pico (Raise/Lower)",
+    "type": "PJ2-4B-GWH-L01",
+    "notes": "4-button raise/lower Pico (ON/OFF/RAISE/LOWER). Uses button codes 0x08-0x0B (different from 5-button Pico!). Paired to BOTH Caseta and RA3 bridges via CCA.",
+    "pairing": "bridge",
+    "buttons": {
+      "0x08": "ON",
+      "0x0B": "OFF",
+      "0x09": "RAISE",
+      "0x0A": "LOWER"
+    },
+    "esp32_control": "partial"
+  },
+  "a182d78b": {
+    "name": "RA3 Bridge or Dimmer (responding)",
+    "type": "unknown",
+    "notes": "Seen responding to Pico 08692d70 commands with 0x80-0x83 packets. Likely RA3 bridge or paired dimmer.",
+    "pairing": "bridge"
   }
 }

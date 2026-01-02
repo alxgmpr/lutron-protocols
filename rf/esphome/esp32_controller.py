@@ -82,6 +82,12 @@ BUTTONS = {
     "bridge-50": "bridge_level_50___06fdeff4_",
     "bridge-0": "bridge_level_0___06fdeff4_",
 
+    # 4-button Pico 08692d70 (ON/OFF/RAISE/LOWER)
+    "pico2-on": "pico2_on__08692d70_",
+    "pico2-off": "pico2_off__08692d70_",
+    "pico2-raise": "pico2_raise__08692d70_",
+    "pico2-lower": "pico2_lower__08692d70_",
+
     # Debug
     "debug-pattern": "debug_pattern",
 }
@@ -263,6 +269,14 @@ def cmd_serve(args):
         <button onclick="press('entertain')">ENTERTAIN</button>
         <button onclick="press('relax')">RELAX</button>
         <button onclick="press('off-084b1ebb')" class="off">OFF</button>
+    </div>
+
+    <div class="section">
+        <h2>4-Button Pico (08692d70)</h2>
+        <button onclick="press('pico2-on')">ON</button>
+        <button onclick="press('pico2-off')" class="off">OFF</button>
+        <button onclick="press('pico2-raise')" class="dim">RAISE</button>
+        <button onclick="press('pico2-lower')" class="dim">LOWER</button>
     </div>
 
     <div id="status">Ready</div>

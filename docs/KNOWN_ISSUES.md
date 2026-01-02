@@ -24,12 +24,47 @@
 3. **Sequence number tracking** - Bridge may track expected sequence from paired device
 4. **Signal quality** - CC1101 transmission may have slight frequency/power differences
 
-**Workaround:** Press button multiple times; usually works within 2-3 attempts.
+**Workaround:** Press button multiple times; usually works within 1-2 attempts.
+
+**Note:** The 4-button Raise/Lower Pico (PJ2-4B-GWH-L01) works flawlessly, suggesting the issue may be specific to bridge pairing configuration rather than our RF transmission.
 
 **Investigation needed:**
 - Compare packet timing between real Pico and ESP32
 - Check if bridge tracks sequence numbers per device
 - Test if using fixed packet type (0x89) improves reliability
+
+---
+
+## Pico Button Code Reference
+
+Different Pico models use different button code ranges:
+
+### 5-Button Pico (PJ2-3BRL-WH-L01)
+| Button | Code |
+|--------|------|
+| ON | 0x02 |
+| FAVORITE | 0x03 |
+| OFF | 0x04 |
+| RAISE | 0x05 |
+| LOWER | 0x06 |
+
+### 4-Button Scene Pico (PJ2-4B-GWH-P03)
+| Button | Code |
+|--------|------|
+| BRIGHT | 0x08 |
+| ENTERTAIN | 0x09 |
+| RELAX | 0x0A |
+| OFF | 0x0B |
+
+### 4-Button Raise/Lower Pico (PJ2-4B-GWH-L01)
+| Button | Code |
+|--------|------|
+| ON | 0x08 |
+| OFF | 0x0B |
+| RAISE | 0x09 |
+| LOWER | 0x0A |
+
+**Important:** Always capture real button presses to verify codes for new Pico models!
 
 ---
 
@@ -269,6 +304,8 @@ a3 01 a1 85 5f 00 21 1a 00 01 2c 0f 7c fe 06 40 02 a2 4c 77 00 20 ...
 | 2025-01-01 | Device ID byte order fix | ✅ Fixed | Was little-endian, now big-endian |
 | 2025-01-01 | Scene Pico (084b1ebb) | ⚠️ Partial | Works ~70% of time, intermittent |
 | 2025-01-01 | Bridge-paired device control | ✅ Working | Via Scene Pico emulation |
+| 2025-01-01 | 4-button Pico button codes | ✅ Fixed | Uses 0x08-0x0B, not 0x02-0x06 |
+| 2025-01-01 | Pico 08692d70 (PJ2-4B-GWH-L01) | ✅ Working | Both Caseta and RA3 bridges respond |
 
 ---
 
