@@ -14,7 +14,7 @@ wifi:
 logger:
   level: DEBUG
 
-# Debug sensors for monitoring ESP32 health
+# Debug info for monitoring ESP32 health
 debug:
   update_interval: 5s
 
@@ -29,16 +29,10 @@ sensor:
   - platform: debug
     free:
       name: "Heap Free"
-    fragmentation:
-      name: "Heap Fragmentation"
     block:
       name: "Heap Max Block"
     loop_time:
       name: "Loop Time"
-    psram:
-      name: "Free PSRAM"
-    cpu_frequency:
-      name: "CPU Frequency"
 
 api:
   encryption:

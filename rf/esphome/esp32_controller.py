@@ -779,7 +779,7 @@ def cmd_serve(args):
         }
 
         function stripAnsi(text) {
-            return text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[0?;?[0-9]*m/g, '');
+            return text.replace(/\\x1b\\[[0-9;]*m/g, '').replace(/\\[0?;?[0-9]*m/g, '');
         }
 
         function processLogEntry(data) {
@@ -787,10 +787,10 @@ def cmd_serve(args):
             const msg = data.msg;
 
             // Extract TX hex bytes: "TX 40 bytes: AA AA AA AA..."
-            const txMatch = msg.match(/TX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
+            const txMatch = msg.match(/TX\\s+\\d+\\s+bytes:\\s*([A-F0-9]{2}(?:\\s+[A-F0-9]{2})+)/i);
 
             // Extract decoded RX packets: "RX: TYPE | DEVICE | ..." (after ESPHome prefix)
-            const rxMatch = msg.match(/RX:\s+(\S+\s+\|.+)/);
+            const rxMatch = msg.match(/RX:\\s+(\\S+\\s+\\|.+)/);
 
             const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
 
@@ -1075,6 +1075,25 @@ def cmd_serve(args):
             return `<select onchange="setDeviceType('${id}', this.value)" style="padding:3px;background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:3px;font-size:10px;width:100px;">${options}</select>`;
         }
 
+        function buildGroupTypeDropdown(ids, currentType) {
+            let options = Object.entries(DEVICE_TYPES).map(([key, val]) =>
+                `<option value="${key}" ${currentType === key ? 'selected' : ''}>${val.name}</option>`
+            ).join('');
+            const idsJson = JSON.stringify(ids).replace(/"/g, '&quot;');
+            return `<select onchange="setGroupType(${idsJson}, this.value)" style="padding:3px;background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:3px;font-size:10px;width:100px;">${options}</select>`;
+        }
+
+        function setGroupType(ids, type) {
+            // Set the same type for all devices in the group
+            Promise.all(ids.map(id =>
+                fetch('/api/devices/' + id + '/type', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({type: type})
+                })
+            )).then(() => loadDevices());
+        }
+
         // Device management
         function loadDevices() {
             fetch('/api/devices')
@@ -1107,18 +1126,23 @@ def cmd_serve(args):
                     Object.entries(groups).forEach(([label, groupDevices]) => {
                         const totalCount = groupDevices.reduce((sum, d) => sum + (d.count || 0), 0);
                         const model = groupDevices.find(d => d.model)?.model || '';
+                        // Get device type from first device (shared for group)
+                        const groupType = groupDevices.find(d => d.device_type)?.device_type || 'auto';
+                        const groupIds = groupDevices.map(d => d.id);
+                        const typeDropdown = buildGroupTypeDropdown(groupIds, groupType);
 
                         html += `<div style="background:#1c2128;border:1px solid #30363d;border-radius:6px;margin-bottom:8px;overflow:hidden;">`;
                         html += `<div style="padding:8px 12px;background:#21262d;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:10px;">`;
                         html += `<span style="color:#3fb950;font-weight:600;">${label}</span>`;
                         if (model) html += `<span style="color:#8b949e;font-size:11px;">${model}</span>`;
+                        html += typeDropdown;
                         html += `<span style="color:#555;font-size:10px;">x${totalCount}</span>`;
                         html += `<span style="flex:1;"></span>`;
                         html += `<span style="color:#666;font-size:10px;">${groupDevices.length} ID${groupDevices.length > 1 ? 's' : ''}</span>`;
                         html += `</div>`;
 
                         groupDevices.forEach(d => {
-                            html += renderDeviceRow(d.id, d, true);
+                            html += renderDeviceRow(d.id, d, true, groupType);
                         });
                         html += `</div>`;
                     });
@@ -1133,14 +1157,15 @@ def cmd_serve(args):
                 .catch(() => {});
         }
 
-        function renderDeviceRow(id, d, isGrouped) {
+        function renderDeviceRow(id, d, isGrouped, groupType) {
             const info = d.info || {};
             const category = info.category || 'unknown';
             const level = info.level || '';
             const count = d.count || 0;
 
             // Determine device type - user-set or auto-detected
-            const userType = d.device_type || 'auto';
+            // For grouped devices, use the group type passed in
+            const userType = isGrouped ? (groupType || 'auto') : (d.device_type || 'auto');
             let effectiveType = userType;
 
             // If auto, determine from category
@@ -1172,8 +1197,8 @@ def cmd_serve(args):
             const model = d.model || '';
             const modelDisplay = isGrouped ? '' : `<div style="min-width:60px;cursor:pointer;" onclick="setDeviceModel('${id}')" title="Click to set model #">${model ? `<span style="color:#8b949e;font-size:10px;">${model}</span>` : `<span style="color:#484f58;font-size:10px;font-style:italic;">model?</span>`}</div>`;
 
-            // Type dropdown
-            const typeDropdown = buildTypeDropdown(id, userType);
+            // Type dropdown - only show for ungrouped devices (grouped ones have it in header)
+            const typeDropdown = isGrouped ? '' : buildTypeDropdown(id, userType);
 
             const bgStyle = isGrouped ? 'background:#161b22;' : 'border-bottom:1px solid #333;';
 
@@ -1307,6 +1332,14 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_button(device_id, button_code)
+        finally:
+            await controller.disconnect()
+
+    async def press_button_async(button_id: str):
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.press_button(button_id)
         finally:
             await controller.disconnect()
 
@@ -1612,6 +1645,15 @@ def cmd_serve(args):
         with devices_lock:
             save_devices({})
         return jsonify({'status': 'ok'})
+
+    @app.route('/api/button/<button_id>/press', methods=['POST', 'GET'])
+    def api_button_press(button_id):
+        """Press a button by ID."""
+        try:
+            asyncio.run(press_button_async(button_id))
+            return jsonify({'status': 'ok', 'button': button_id})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
 
     @app.route('/api/logs/stream')
     def api_logs_stream():
