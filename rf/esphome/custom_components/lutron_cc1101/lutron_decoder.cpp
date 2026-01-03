@@ -80,12 +80,17 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
   // We need to find where the N81 data starts in the captured bitstream.
   // Search for the 0xFA 0xDE prefix pattern, or directly for packet type bytes.
 
-  size_t best_offset = 0;
   size_t best_decoded = 0;
   uint8_t best_bytes[56];  // Expanded for pairing packets (up to 53 bytes)
 
-  // Strategy 1: Search every bit position for valid N81 sequence starting with known packet types
-  for (size_t bit_pos = 0; bit_pos + 270 < total_bits; bit_pos++) {
+  // OPTIMIZED: Since CC1101 syncs on 0xAAAA preamble, the N81 data starts
+  // within the first ~20 bits. Only check bit offsets 0-15 instead of 0-242.
+  // This reduces search from O(n) to O(1) effectively.
+
+  // Also use fast path: look for 0xFF sync byte pattern first (0x7F in raw bytes)
+  // 0xFF in N81 = 0111111111 binary, which appears as 0x7F 0xFx in byte stream
+
+  for (size_t bit_pos = 0; bit_pos < 20 && bit_pos + 270 < total_bits; bit_pos++) {
     uint8_t byte1, byte2, byte3;
 
     // Try to decode 3 consecutive bytes
@@ -156,6 +161,43 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     }
   }
 
+  // If quick search failed, do extended search (for edge cases)
+  if (best_decoded < 10) {
+    for (size_t bit_pos = 20; bit_pos + 270 < total_bits; bit_pos++) {
+      uint8_t byte1;
+      if (!decode_n81_byte(fifo_data, bit_pos, byte1)) continue;
+
+      // Quick filter: only continue if first byte looks like packet type
+      if (byte1 < 0x80 || byte1 > 0xBF) continue;
+
+      uint8_t byte2;
+      if (!decode_n81_byte(fifo_data, bit_pos + 10, byte2)) continue;
+      if (byte2 >= 0x60) continue;  // Sequence must be < 0x60
+
+      // Found potential packet start, decode rest
+      uint8_t decoded_bytes[56];
+      decoded_bytes[0] = byte1;
+      decoded_bytes[1] = byte2;
+      size_t decoded_count = 2;
+
+      for (size_t byte_idx = 2; byte_idx < 53; byte_idx++) {
+        size_t bp = bit_pos + byte_idx * 10;
+        if (bp + 10 > total_bits) break;
+        uint8_t bv;
+        if (!decode_n81_byte(fifo_data, bp, bv)) break;
+        decoded_bytes[decoded_count++] = bv;
+      }
+
+      if (decoded_count >= 24) {
+        best_decoded = decoded_count;
+        for (size_t i = 0; i < decoded_count; i++) {
+          best_bytes[i] = decoded_bytes[i];
+        }
+        break;
+      }
+    }
+  }
+
   if (best_decoded < 10) {  // Need at least some bytes to be useful
     // Log decode failure with first few raw bytes for debugging
     char hex[32];
@@ -206,9 +248,14 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     if (best_bytes[6] == 0x21 && best_bytes[7] == 0x0E) {
       // Bridge level command - reclassify as LEVEL type
       packet.type = PKT_LEVEL;
-      // Level is 16-bit big-endian at bytes 16-17 (0x0000-0xFEFF)
+      // Level is 16-bit big-endian at bytes 16-17
+      // Lutron uses 0x0000-0xFEFF (0-65279) for 0-100%
+      // Each 1% = 652.79 raw units
       uint16_t raw_level = (best_bytes[16] << 8) | best_bytes[17];
-      packet.level = (uint8_t)((uint32_t)raw_level * 100 / 65279);
+      // Scale to 0-100 with proper rounding (add half of 65279)
+      uint32_t calc = (uint32_t)raw_level * 100 + 32639;
+      uint8_t level = (uint8_t)(calc / 65279);
+      packet.level = (level > 100) ? 100 : level;
       // Target device ID at bytes 9-12 (big-endian in bridge commands)
       packet.target_id = (best_bytes[9] << 24) |
                          (best_bytes[10] << 16) |
@@ -216,8 +263,9 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                          best_bytes[12];
     } else {
       // True state report - level at byte 11 (0x00-0xFE = 0-100%)
+      // Add 127 (half of 254) before dividing for proper rounding
       uint8_t raw_level = best_bytes[PKT_OFFSET_LEVEL];
-      packet.level = (raw_level * 100) / 254;
+      packet.level = (uint8_t)(((uint32_t)raw_level * 100 + 127) / 254);
     }
   } else if (packet.type == PKT_LEVEL) {
     // Level commands use LITTLE-endian device IDs

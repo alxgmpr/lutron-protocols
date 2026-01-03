@@ -210,9 +210,9 @@ void CC1101Radio::start_rx() {
   // PKTCTRL1: No address check, no append status
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
-  // Capture 64 bytes (max FIFO) for full pairing packets
-  // Button packets: 24 bytes * 10/8 = 30 bytes encoded
-  // Pairing packets: 53 bytes * 10/8 = 66 bytes - we get ~51 with 64 byte FIFO
+  // Set packet length for RX - use 64 bytes (full FIFO)
+  // Button packets: ~30 bytes encoded, Pairing packets: ~66 bytes
+  // We poll RXBYTES and read when enough data is available
   this->write_register(CC1101_PKTLEN, 64);
 
   // GDO0: Assert when sync word detected, deassert on end of packet
@@ -278,19 +278,18 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Fixed length mode: expect 64 bytes (max FIFO size)
-  // Needed for pairing packets which are 53 bytes (530 bits N81 encoded)
-  const uint8_t PACKET_LEN = 64;
+  // Wait for enough data to decode
+  // Button packets: ~30 bytes, Pairing: ~66 bytes (gets truncated to 64)
+  // Use 48 as threshold - enough for button packets, not too long to wait
+  const uint8_t MIN_PACKET_LEN = 48;
 
-  // Check if we have enough bytes
-  if (rx_bytes < PACKET_LEN) {
-    // Not enough data yet, wait for more
+  if (rx_bytes < MIN_PACKET_LEN) {
     return false;
   }
 
-  // Read the payload
+  // Read all available data (up to 64)
   uint8_t buffer[64];
-  uint8_t payload_length = PACKET_LEN;
+  uint8_t payload_length = (rx_bytes > 64) ? 64 : rx_bytes;
   this->read_burst(CC1101_RXFIFO, buffer, payload_length);
 
   // Read RSSI and LQI from registers
