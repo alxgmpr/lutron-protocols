@@ -958,27 +958,21 @@ def cmd_serve(args):
             navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied RX', 'success'); });
         }
 
-        // Lutron device types with model numbers and button configurations
+        // Device types - controls what buttons are shown
         const DEVICE_TYPES = {
-            'auto': { name: 'Auto-detect', buttons: null },
+            'auto': { name: 'Auto', buttons: null },
             // Pico remotes
-            'pico-5btn': { name: 'Pico 5-Button (PJ2-3BRL)', buttons: 'pico' },
-            'pico-scene': { name: 'Pico Scene (PJ2-4B-xxx)', buttons: 'scene_pico' },
-            'pico-2btn': { name: 'Pico 2-Button (PJ2-2B)', buttons: 'pico_2btn' },
-            // Dimmers
-            'dimmer': { name: 'Dimmer (DVCL/DVRF-6L)', buttons: 'dimmer' },
-            'dimmer-elv': { name: 'ELV Dimmer (DVRF-5NE)', buttons: 'dimmer' },
-            // Switches
-            'switch': { name: 'On/Off Switch (DVRF-5NS)', buttons: 'switch' },
-            'switch-outdoor': { name: 'Outdoor Switch (PD-5ANS)', buttons: 'switch' },
-            // Fan controls
-            'fan': { name: 'Fan Control (DVRF-5FBL)', buttons: 'fan' },
+            'pico-5btn': { name: 'Pico 5-Button', buttons: 'pico' },
+            'pico-scene': { name: 'Pico Scene', buttons: 'scene_pico' },
+            'pico-2btn': { name: 'Pico 2-Button', buttons: 'pico_2btn' },
+            // Controllable devices
+            'dimmer': { name: 'Dimmer', buttons: 'dimmer' },
+            'switch': { name: 'Switch', buttons: 'switch' },
+            'fan': { name: 'Fan', buttons: 'fan' },
             // Passive (state reports only)
-            'passive-dimmer': { name: 'Passive Dimmer (state report)', buttons: 'passive_dimmer' },
-            'passive-switch': { name: 'Passive Switch (state report)', buttons: 'passive_switch' },
-            'passive-fan': { name: 'Passive Fan (state report)', buttons: 'passive_fan' },
-            // Custom
-            'custom': { name: 'Custom...', buttons: null }
+            'passive-dimmer': { name: 'Passive Dimmer', buttons: 'passive_dimmer' },
+            'passive-switch': { name: 'Passive Switch', buttons: 'passive_switch' },
+            'passive-fan': { name: 'Passive Fan', buttons: 'passive_fan' }
         };
 
         function getButtonsForType(deviceType, id, info) {
@@ -1053,11 +1047,6 @@ def cmd_serve(args):
         }
 
         function setDeviceType(deviceId, typeKey) {
-            if (typeKey === 'custom') {
-                const custom = prompt('Enter custom model number:');
-                if (!custom) return;
-                typeKey = custom;
-            }
             fetch('/api/devices/' + deviceId + '/type', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1067,11 +1056,23 @@ def cmd_serve(args):
             });
         }
 
+        function setDeviceModel(deviceId) {
+            const model = prompt('Enter Lutron model # (e.g., DVRF-6L, PJ2-3BRL):');
+            if (model === null) return;
+            fetch('/api/devices/' + deviceId + '/model', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({model: model})
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'ok') loadDevices();
+            });
+        }
+
         function buildTypeDropdown(id, currentType) {
             let options = Object.entries(DEVICE_TYPES).map(([key, val]) =>
                 `<option value="${key}" ${currentType === key ? 'selected' : ''}>${val.name}</option>`
             ).join('');
-            return `<select onchange="setDeviceType('${id}', this.value)" style="padding:3px;background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:3px;font-size:10px;max-width:120px;">${options}</select>`;
+            return `<select onchange="setDeviceType('${id}', this.value)" style="padding:3px;background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:3px;font-size:10px;width:100px;">${options}</select>`;
         }
 
         // Device management
@@ -1117,23 +1118,31 @@ def cmd_serve(args):
                         const label = d.label || '';
                         const labelDisplay = label ?
                             `<span style="color:#3fb950;font-weight:500;">${label}</span>` :
-                            `<span style="color:#484f58;font-style:italic;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to add label">unnamed</span>`;
+                            `<span style="color:#484f58;font-style:italic;">unnamed</span>`;
+
+                        // Model number (informational)
+                        const model = d.model || '';
+                        const modelDisplay = model ?
+                            `<span style="color:#8b949e;font-size:10px;">${model}</span>` :
+                            `<span style="color:#484f58;font-size:10px;font-style:italic;">model?</span>`;
 
                         // Type dropdown
                         const typeDropdown = buildTypeDropdown(id, userType);
 
                         return `
                             <div class="device-entry" style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;">
-                                <div style="min-width:100px;">
+                                <div style="min-width:90px;">
                                     <div style="font-family:monospace;color:#0af;font-size:11px;">${id}</div>
                                     ${subtitle ? `<div style="font-size:9px;color:#666;">${subtitle}</div>` : ''}
                                 </div>
-                                <div style="min-width:100px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
+                                <div style="min-width:90px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
                                     ${labelDisplay}
+                                </div>
+                                <div style="min-width:70px;cursor:pointer;" onclick="setDeviceModel('${id}')" title="Click to set model #">
+                                    ${modelDisplay}
                                 </div>
                                 ${typeDropdown}
                                 <span style="color:#666;min-width:40px;font-size:11px;">${level || ''}</span>
-                                <span style="color:#555;font-size:10px;">x${d.count}</span>
                                 <span style="flex:1;"></span>
                                 ${buttons}
                                 <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
@@ -1531,7 +1540,7 @@ def cmd_serve(args):
 
     @app.route('/api/devices/<device_id>/type', methods=['POST'])
     def api_set_device_type(device_id):
-        """Set the device type (model) for a device."""
+        """Set the device type for a device (controls buttons shown)."""
         data = request.json or {}
         device_type = data.get('device_type', 'auto').strip()
         with devices_lock:
@@ -1540,6 +1549,19 @@ def cmd_serve(args):
                 devices[device_id]['device_type'] = device_type
                 save_devices(devices)
                 return jsonify({'status': 'ok', 'device_id': device_id, 'device_type': device_type})
+            return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/<device_id>/model', methods=['POST'])
+    def api_set_device_model(device_id):
+        """Set the Lutron model number for a device (informational only)."""
+        data = request.json or {}
+        model = data.get('model', '').strip()
+        with devices_lock:
+            devices = load_devices()
+            if device_id in devices:
+                devices[device_id]['model'] = model
+                save_devices(devices)
+                return jsonify({'status': 'ok', 'device_id': device_id, 'model': model})
             return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/clear', methods=['POST'])
