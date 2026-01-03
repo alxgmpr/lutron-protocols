@@ -985,6 +985,166 @@ void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id)
   ESP_LOGI(TAG, "=== 0xB0 PAIRING COMPLETE ===");
 }
 
+void LutronCC1101::send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target_factory_id,
+                                              int beacon_seconds) {
+  ESP_LOGI(TAG, "=== BRIDGE PAIRING SEQUENCE ===");
+  ESP_LOGI(TAG, "Bridge ID: 0x%08X, Target: 0x%08X, Duration: %ds",
+           bridge_id, target_factory_id, beacon_seconds);
+  ESP_LOGI(TAG, ">>> HOLD OFF ON DIMMER FOR 10 SECONDS NOW <<<");
+
+  uint8_t packet[53];
+  uint8_t seq = 1;
+  uint8_t beacon_type = 0xB1;  // Rotates B1 -> B2 -> B3 -> B1
+
+  // Extract bridge ID bytes (big-endian)
+  uint8_t b0 = (bridge_id >> 24) & 0xFF;
+  uint8_t b1 = (bridge_id >> 16) & 0xFF;
+  uint8_t b2 = (bridge_id >> 8) & 0xFF;
+  uint8_t b3 = bridge_id & 0xFF;
+
+  // Phase 1: Send 0xB1/B2/B3 beacon packets
+  // Real bridge format: b3 XX a1 85 5f 00 21 10 00 ff ff ff ff ff 08 02 85 5f 1a 02 ff...
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (beacon_seconds * 1000);
+  int packet_count = 0;
+
+  ESP_LOGI(TAG, "Phase 1: Sending 0xB1/B2/B3 beacons...");
+
+  while (millis() < end_time) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = beacon_type;
+    packet[1] = seq;
+
+    // Zone ID (bridge ID with last byte as 00)
+    packet[2] = b0;
+    packet[3] = b1;
+    packet[4] = b2;
+    packet[5] = 0x00;  // Real capture shows 00 here
+
+    packet[6] = 0x21;  // Protocol marker
+    packet[7] = 0x10;  // Format byte - CRITICAL: 0x10 for beacon, not 0x0C!
+    packet[8] = 0x00;
+
+    // Broadcast address
+    packet[9] = 0xFF;
+    packet[10] = 0xFF;
+    packet[11] = 0xFF;
+    packet[12] = 0xFF;
+    packet[13] = 0xFF;
+
+    packet[14] = 0x08;
+    packet[15] = 0x02;
+
+    // Zone info bytes (from capture: 85 5f 1a 02)
+    packet[16] = b1;  // Middle bytes of bridge ID
+    packet[17] = b2;
+    packet[18] = 0x1A;
+    packet[19] = 0x02;  // Version/type indicator
+
+    // Rest is FF then CC padding
+    packet[20] = 0xFF;
+    packet[21] = 0xFF;
+    packet[22] = 0xFF;
+    packet[23] = 0xFF;
+    // bytes 24-50 are already 0xCC from memset
+
+    // Calculate CRC for 51 bytes
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
+    packet_count++;
+
+    // Increment sequence by 6 like real bridge
+    seq = (seq + 6) & 0xFF;
+
+    // Rotate beacon type: B1 -> B2 -> B3 -> B1
+    if (beacon_type == 0xB1) beacon_type = 0xB2;
+    else if (beacon_type == 0xB2) beacon_type = 0xB3;
+    else beacon_type = 0xB1;
+
+    // ~75ms between packets like real bridge
+    delay(75);
+
+    // Log progress every ~5 seconds
+    if ((packet_count % 66) == 0) {
+      ESP_LOGI(TAG, "Beacon: %d packets, %lds remaining",
+               packet_count, (end_time - millis()) / 1000);
+    }
+  }
+
+  ESP_LOGI(TAG, "Phase 1 complete: %d beacon packets", packet_count);
+
+  // Phase 2: Send 0xA1/A2/A3 assignment packets
+  // Real format: a1 01 a1 85 5f 00 21 0f 00 01 2c 0f 7c fe 06 70 00 06 7c b0 7c 00 00
+  ESP_LOGI(TAG, "Phase 2: Sending assignment packets for 0x%08X...", target_factory_id);
+
+  uint8_t assign_type = 0xA1;
+  seq = 1;
+
+  // Send 60 assignment packets (like real bridge does multiple passes)
+  for (int i = 0; i < 60; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = assign_type;
+    packet[1] = seq;
+
+    // Zone ID
+    packet[2] = b0;
+    packet[3] = b1;
+    packet[4] = b2;
+    packet[5] = 0x00;
+
+    packet[6] = 0x21;
+    packet[7] = 0x0F;  // Format for assignment packets
+    packet[8] = 0x00;
+
+    // Bridge internal ID (using our bridge_id bytes rearranged)
+    // From capture: 01 2c 0f 7c fe
+    packet[9] = b3;   // Last byte of bridge ID
+    packet[10] = b2;
+    packet[11] = b1;
+    packet[12] = b0;
+    packet[13] = 0xFE;
+
+    // Command bytes
+    packet[14] = 0x06;
+    packet[15] = 0x70;  // Assignment command
+    packet[16] = 0x00;
+
+    // Target factory ID (big-endian)
+    packet[17] = (target_factory_id >> 24) & 0xFF;
+    packet[18] = (target_factory_id >> 16) & 0xFF;
+    packet[19] = (target_factory_id >> 8) & 0xFF;
+    packet[20] = target_factory_id & 0xFF;
+
+    packet[21] = 0x00;
+    packet[22] = 0x00;
+    // Rest is 0xCC padding
+
+    // CRC
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
+
+    seq = (seq + 5) & 0xFF;
+
+    // Rotate: A1 -> A2 -> A3 -> A1
+    if (assign_type == 0xA1) assign_type = 0xA2;
+    else if (assign_type == 0xA2) assign_type = 0xA3;
+    else assign_type = 0xA1;
+
+    delay(75);
+  }
+
+  ESP_LOGI(TAG, "=== BRIDGE PAIRING SEQUENCE COMPLETE ===");
+  ESP_LOGI(TAG, "Try sending level commands to 0x%08X now!", target_factory_id);
+}
+
 void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "=== FAKE STATE REPORT ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X, Level: %d%%", device_id, level_percent);

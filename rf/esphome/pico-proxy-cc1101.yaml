@@ -86,6 +86,20 @@ api:
             ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
             id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
 
+    # Complete bridge pairing sequence - matches REAL bridge RF captures
+    # Sends proper 0xB1/B2/B3 beacons then 0xA1/A2/A3 assignment packets
+    - service: bridge_pair
+      variables:
+        bridge_id: string
+        target_id: string
+        beacon_seconds: int
+      then:
+        - lambda: |-
+            uint32_t brg_id = strtoul(bridge_id.c_str(), nullptr, 0);
+            uint32_t tgt_id = strtoul(target_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "bridge_pair: bridge=0x%08X target=0x%08X duration=%ds", brg_id, tgt_id, beacon_seconds);
+            id(lutron_radio)->send_bridge_pair_sequence(brg_id, tgt_id, beacon_seconds);
+
     # Fake state report - emulate a device reporting its level
     - service: send_state_report
       variables:
@@ -573,20 +587,32 @@ button:
   # Use load ID: 0xAF902C01 (close to real bridge AF902C00)
   # =====================================================
 
-  # Step 1: Send beacons using OUR load ID to put dimmer in pairing mode
+  # COMPLETE BRIDGE PAIRING - Single button to pair dimmer 06FDEFF4
+  # Sends proper 0xB1/B2/B3 beacons for 20 seconds, then 0xA1/A2/A3 assignment
+  # USAGE: Press this button, then HOLD OFF on dimmer for 10 seconds
   - platform: template
-    name: "ESP32 Beacon (AF902C01)"
+    name: "PAIR 06FDEFF4 (Full Sequence)"
+    id: pair_06fdeff4_full
+    icon: "mdi:link-plus"
+    on_press:
+      - lambda: |-
+          // Full bridge pairing sequence - 20 seconds of beacons + assignment
+          id(lutron_radio)->send_bridge_pair_sequence(0xAF902C01, 0x06FDEFF4, 20);
+
+  # Legacy beacon-only (for testing)
+  - platform: template
+    name: "ESP32 Beacon Only"
     id: esp32_beacon
     icon: "mdi:access-point"
     on_press:
       - lambda: |-
           id(lutron_radio)->send_beacon(0xAF902C01, 0x92, 10);
 
-  # Step 2: Send 0xB0 assignment to claim dimmer 06fdeff4
+  # Legacy B0 assignment only (for testing)
   - platform: template
-    name: "ESP32 Pair 06fdeff4"
+    name: "ESP32 B0 Assign Only"
     id: esp32_pair_06fdeff4
-    icon: "mdi:link-plus"
+    icon: "mdi:link-variant"
     on_press:
       - lambda: |-
           id(lutron_radio)->send_pairing_b0(0xAF902C01, 0x06FDEFF4);

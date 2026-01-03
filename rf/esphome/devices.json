@@ -439,13 +439,13 @@
     "id": "0596B3DA",
     "type": "BTN_LONG_A",
     "first_seen": "2026-01-03T01:37:44.751067",
-    "last_seen": "2026-01-03T01:47:59.584299",
+    "last_seen": "2026-01-03T03:46:53.537905",
     "info": {
       "type": "BTN_SHORT_A",
       "factory_id": "0596B3DA",
       "controllable": true
     },
-    "count": 26
+    "count": 60
   },
   "CC110010": {
     "id": "CC110010",

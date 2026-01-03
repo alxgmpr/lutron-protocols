@@ -180,6 +180,21 @@ class LutronCC1101 : public Component,
   void send_pairing_b0(uint32_t load_id, uint32_t target_factory_id);
 
   /**
+   * @brief Complete bridge pairing sequence - beacons + assignment
+   * Matches REAL bridge behavior from RF captures:
+   * 1. Sends 0xB1/B2/B3 beacons (byte[7]=0x10) for duration
+   * 2. After beacon phase, sends 0xA1/A2/A3 assignment packets
+   *
+   * Usage: Start this, then hold OFF on dimmer for 10 seconds
+   *
+   * @param bridge_id Our fake bridge zone ID (e.g., 0xAF902C01)
+   * @param target_factory_id Dimmer's factory ID from label (e.g., 0x06FDEFF4)
+   * @param beacon_seconds How long to send beacons (default 20s)
+   */
+  void send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target_factory_id,
+                                  int beacon_seconds = 20);
+
+  /**
    * @brief Debug: Send raw alternating bytes (0xAA) to test CC1101
    * This bypasses the encoder to test if CC1101 is transmitting correctly
    */
