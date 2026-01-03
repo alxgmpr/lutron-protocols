@@ -15,6 +15,7 @@ static const uint8_t PKT_LEVEL = 0xA2;
 static const uint8_t PKT_STATE_REPORT_81 = 0x81;
 static const uint8_t PKT_STATE_REPORT_82 = 0x82;
 static const uint8_t PKT_STATE_REPORT_83 = 0x83;
+static const uint8_t PKT_PAIRING_B8 = 0xB8;
 static const uint8_t PKT_PAIRING_B9 = 0xB9;
 static const uint8_t PKT_PAIRING_BA = 0xBA;
 static const uint8_t PKT_PAIRING_BB = 0xBB;

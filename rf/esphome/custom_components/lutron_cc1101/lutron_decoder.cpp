@@ -224,8 +224,9 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                          (best_bytes[12] << 16) |
                          (best_bytes[13] << 24);
     }
-  } else if (packet.type == PKT_PAIRING_B9 || packet.type == PKT_PAIRING_BA ||
-             packet.type == PKT_PAIRING_BB || packet.type == PKT_PAIRING_B0) {
+  } else if (packet.type == PKT_PAIRING_B8 || packet.type == PKT_PAIRING_B9 ||
+             packet.type == PKT_PAIRING_BA || packet.type == PKT_PAIRING_BB ||
+             packet.type == PKT_PAIRING_B0) {
     // Pairing packets use BIG-endian (like Pico button packets)
     packet.device_id = (best_bytes[PKT_OFFSET_DEVICE_ID] << 24) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 16) |
@@ -265,6 +266,7 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_STATE_REPORT_81: return "STATE_RPT";
     case PKT_STATE_REPORT_82: return "STATE_RPT";
     case PKT_STATE_REPORT_83: return "STATE_RPT";
+    case PKT_PAIRING_B8: return "PAIR_B8";
     case PKT_PAIRING_B9: return "PAIR_B9";
     case PKT_PAIRING_BA: return "PAIR_BA";
     case PKT_PAIRING_BB: return "PAIR_BB";

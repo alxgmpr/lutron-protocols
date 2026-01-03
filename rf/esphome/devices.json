@@ -69,7 +69,7 @@
     "id": "06F4587E",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:41:13.945255",
-    "last_seen": "2026-01-02T22:17:25.370968",
+    "last_seen": "2026-01-02T23:59:41.275649",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -79,7 +79,7 @@
       "level": "0%",
       "bridge_id": "002C90AF"
     },
-    "count": 55,
+    "count": 64,
     "label": "Foyer Downlights"
   },
   "062C908C": {
@@ -205,65 +205,62 @@
   "08692D70": {
     "id": "08692D70",
     "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-02T23:39:23.147198",
-    "last_seen": "2026-01-02T23:55:34.704046",
+    "first_seen": "2026-01-02T23:56:54.025105",
+    "last_seen": "2026-01-02T23:58:58.147638",
     "info": {
-      "type": "BTN_LONG_B",
+      "type": "PAIR_BB",
       "factory_id": "08692D70",
       "controllable": true
     },
-    "count": 57,
-    "device_type": "pico-4btn-rl"
+    "count": 239
+  },
+  "084B1EBB": {
+    "id": "084B1EBB",
+    "type": "BTN_LONG_B",
+    "first_seen": "2026-01-02T23:57:11.128119",
+    "last_seen": "2026-01-02T23:57:11.944389",
+    "info": {
+      "type": "BTN_LONG_B",
+      "factory_id": "084B1EBB",
+      "controllable": true
+    },
+    "count": 20
+  },
+  "BB1E4B08": {
+    "id": "BB1E4B08",
+    "type": "UNKNOWN",
+    "first_seen": "2026-01-02T23:57:17.106950",
+    "last_seen": "2026-01-02T23:57:21.527773",
+    "info": {
+      "type": "UNKNOWN"
+    },
+    "count": 97
+  },
+  "0708B5B5": {
+    "id": "0708B5B5",
+    "type": "LEVEL",
+    "first_seen": "2026-01-02T23:59:45.630534",
+    "last_seen": "2026-01-02T23:59:46.546419",
+    "info": {
+      "type": "LEVEL",
+      "bridge_id": "002C90AF",
+      "factory_id": "0708B5B5",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
+    },
+    "count": 11
   },
   "0869E74C": {
     "id": "0869E74C",
     "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-02T23:43:17.026914",
-    "last_seen": "2026-01-02T23:54:08.483681",
+    "first_seen": "2026-01-03T00:00:46.915122",
+    "last_seen": "2026-01-03T00:01:17.426056",
     "info": {
-      "type": "PAIR_B9",
+      "type": "BTN_LONG_A",
       "factory_id": "0869E74C",
       "controllable": true
     },
-    "count": 370,
-    "device_type": "pico-2btn"
-  },
-  "4CE76908": {
-    "id": "4CE76908",
-    "type": "PAIR_B9",
-    "first_seen": "2026-01-02T23:51:35.930347",
-    "last_seen": "2026-01-02T23:51:40.332314",
-    "info": {
-      "type": "PAIR_B9"
-    },
-    "count": 56
-  },
-  "002C90AD": {
-    "id": "002C90AD",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-02T23:55:34.838934",
-    "last_seen": "2026-01-02T23:55:34.838941",
-    "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "002C90AD",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "17%"
-    },
-    "count": 1
-  },
-  "002C90AF": {
-    "id": "002C90AF",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-02T23:55:34.976716",
-    "last_seen": "2026-01-02T23:55:35.669514",
-    "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "002C90AF",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "17%"
-    },
-    "count": 8
+    "count": 24
   }
 }
