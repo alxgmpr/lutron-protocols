@@ -109,17 +109,6 @@ api:
             ESP_LOGI("service", "send_reset: source=0x%08X paired=0x%08X", src_id, pair_id);
             id(lutron_radio)->send_reset(src_id, pair_id);
 
-    # RX mode control
-    - service: start_rx
-      then:
-        - lambda: |-
-            id(lutron_radio)->start_rx();
-
-    - service: stop_rx
-      then:
-        - lambda: |-
-            id(lutron_radio)->stop_rx();
-
 ota:
   platform: esphome
   password: "test"
@@ -143,9 +132,9 @@ spi:
 lutron_cc1101:
   id: lutron_radio
   cs_pin: GPIO21
-  gdo0_pin: GPIO2
+  gdo0_pin: GPIO4
 
-# Global for beacon toggle state
+# Globals
 globals:
   - id: beacon_active
     type: bool
@@ -165,7 +154,7 @@ interval:
             id(beacon_seq) = id(lutron_radio)->send_beacon_single(0xAF902C01, id(beacon_seq));
           }
 
-# Beacon toggle switch
+# Beacon toggle switch only (RX uses buttons to avoid boot loops)
 switch:
   - platform: template
     name: "ESP32 Beacon Mode"
@@ -183,21 +172,23 @@ switch:
           value: 'false'
       - logger.log: "Beacon mode OFF"
 
-  # RX mode switch - receive and log all packets
-  - platform: template
-    name: "ESP32 RX Mode"
-    id: rx_mode_switch
-    icon: "mdi:antenna"
-    optimistic: true
-    turn_on_action:
-      - lambda: |-
-          id(lutron_radio)->start_rx();
-    turn_off_action:
-      - lambda: |-
-          id(lutron_radio)->stop_rx();
-
-# RF transmit buttons
+# RF buttons
 button:
+  # RX control - MUST be buttons, switches cause boot loops
+  - platform: template
+    name: "RX ON"
+    id: rx_on
+    icon: "mdi:antenna"
+    on_press:
+      - lambda: id(lutron_radio)->start_rx();
+
+  - platform: template
+    name: "RX OFF"
+    id: rx_off
+    icon: "mdi:antenna-off"
+    on_press:
+      - lambda: id(lutron_radio)->stop_rx();
+
   # Pico-style buttons for device 05851117
   - platform: template
     name: "RF On (Pico)"

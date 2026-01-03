@@ -161,12 +161,12 @@ class ESP32Controller:
                                paired_id=f"0x{paired_id:08X}")
 
     async def start_rx(self):
-        """Start RX mode."""
-        await self.call_service('start_rx')
+        """Start RX mode by pressing rx_on button."""
+        await self.press_button('rx_on')
 
     async def stop_rx(self):
-        """Stop RX mode."""
-        await self.call_service('stop_rx')
+        """Stop RX mode by pressing rx_off button."""
+        await self.press_button('rx_off')
 
     async def press_button(self, button_id: str):
         """Press a button by ID."""
@@ -532,7 +532,12 @@ def cmd_serve(args):
         <div class="card rx">
             <div class="card-header">
                 <h2>RX Packets</h2>
-                <span><button class="btn-sm" onclick="copyRx()">Copy</button> <button class="btn-sm" onclick="clearRx()">Clear</button></span>
+                <span>
+                    <button class="btn-sm btn-primary" onclick="startRx()">RX ON</button>
+                    <button class="btn-sm btn-red" onclick="stopRx()">RX OFF</button>
+                    <button class="btn-sm" onclick="copyRx()">Copy</button>
+                    <button class="btn-sm" onclick="clearRx()">Clear</button>
+                </span>
             </div>
             <div class="card-body" style="padding:0;">
                 <div id="rx-packets" class="hex-box">
@@ -665,6 +670,25 @@ def cmd_serve(args):
             try {
                 const data = await apiPost('/api/reset', {pico});
                 setStatus(data.status === 'ok' ? `Reset broadcast: ${data.pico} "forget me"` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        // RX Mode
+        async function startRx() {
+            setStatus('Starting RX mode...');
+            try {
+                const data = await apiPost('/api/rx/start', {});
+                setStatus(data.status === 'ok' ? 'RX mode ON - listening for packets' : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        async function stopRx() {
+            setStatus('Stopping RX mode...');
+            try {
+                const data = await apiPost('/api/rx/stop', {});
+                setStatus(data.status === 'ok' ? 'RX mode OFF' : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
@@ -1014,6 +1038,24 @@ def cmd_serve(args):
                 'device': f'0x{device_id:08X}',
                 'type': type_name
             })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/rx/start', methods=['POST'])
+    def api_rx_start():
+        """Start RX mode."""
+        try:
+            asyncio.run(start_rx_async())
+            return jsonify({'status': 'ok'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/rx/stop', methods=['POST'])
+    def api_rx_stop():
+        """Stop RX mode."""
+        try:
+            asyncio.run(stop_rx_async())
+            return jsonify({'status': 'ok'})
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 

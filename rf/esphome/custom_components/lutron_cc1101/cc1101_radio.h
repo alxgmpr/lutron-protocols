@@ -64,8 +64,11 @@ static const uint8_t CC1101_PATABLE = 0x3E;
 static const uint8_t CC1101_TXFIFO = 0x3F;
 static const uint8_t CC1101_RXFIFO = 0x3F;
 static const uint8_t CC1101_MARCSTATE = 0x35;
+static const uint8_t CC1101_PKTSTATUS = 0x38;
 static const uint8_t CC1101_TXBYTES = 0x3A;
 static const uint8_t CC1101_RXBYTES = 0x3B;
+static const uint8_t CC1101_RSSI_REG = 0x34;
+static const uint8_t CC1101_LQI_REG = 0x33;
 
 // SPI access modes
 static const uint8_t CC1101_WRITE_SINGLE = 0x00;

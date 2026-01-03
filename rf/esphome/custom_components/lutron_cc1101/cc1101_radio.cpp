@@ -192,22 +192,47 @@ void CC1101Radio::start_rx() {
   this->flush_rx();
   delay(1);
 
-  // Configure for infinite packet mode (no sync word = sample everything)
-  // PKTCTRL0 = 0x02 (INFINITE mode)
-  this->write_register(CC1101_PKTCTRL0, 0x02);
+  // Sync word: Use 0xAAAA to match the Lutron preamble
+  // This will trigger on preamble, then we capture data after
+  // The decoder will find the actual packet start in the captured data
+  this->write_register(CC1101_SYNC1, 0xAA);
+  this->write_register(CC1101_SYNC0, 0xAA);
 
-  // Configure GDO0 to assert when data is available
-  // GDO0_CFG = 0x01 (assert when RX FIFO threshold reached or EOP)
-  this->write_register(CC1101_IOCFG0, 0x01);
+  // MDMCFG2: 2-FSK, 15/16 sync word (allow 1 bit error)
+  // Bits 6:4 = 000 = 2-FSK
+  // Bit 3 = 0 = no Manchester
+  // Bits 2:0 = 001 = 15/16 sync word bits (allows 1 bit error for robustness)
+  this->write_register(CC1101_MDMCFG2, 0x01);
 
-  // Set FIFO threshold (half full = 32 bytes)
-  this->write_register(CC1101_FIFOTHR, 0x07);
+  // PKTCTRL0: FIFO packet mode, FIXED length
+  this->write_register(CC1101_PKTCTRL0, 0x00);
+
+  // PKTCTRL1: No address check, no append status
+  this->write_register(CC1101_PKTCTRL1, 0x00);
+
+  // Capture 48 bytes to ensure we get the full packet
+  // Lutron packets are ~37 bytes encoded (24 payload * 10/8 + overhead)
+  this->write_register(CC1101_PKTLEN, 48);
+
+  // GDO0: Assert when sync word detected, deassert on end of packet
+  this->write_register(CC1101_IOCFG0, 0x06);
+
+  // FIFO threshold
+  this->write_register(CC1101_FIFOTHR, 0x0F);
+
+  // Carrier sense threshold: set to -10 dBm relative to MAGN_TARGET
+  // This helps reject noise - only trigger on strong signals
+  // AGCCTRL1 bits 3:0 = carrier sense threshold
+  // 0x00 = relative threshold disabled (use absolute)
+  // Let's use 0x40 which enables carrier sense at ~-7dB from RSSI
+  uint8_t agcctrl1 = this->read_register(CC1101_AGCCTRL1);
+  this->write_register(CC1101_AGCCTRL1, (agcctrl1 & 0xF0) | 0x00);  // Keep as is for now
 
   // Enter RX mode
   this->strobe(CC1101_SRX);
 
   this->rx_active_ = true;
-  ESP_LOGI(TAG, "RX mode active");
+  ESP_LOGI(TAG, "RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)");
 }
 
 void CC1101Radio::stop_rx() {
@@ -232,20 +257,18 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Check if GDO0 is asserted (data available)
-  if (this->gdo0_pin_ != nullptr && !this->gdo0_pin_->digital_read()) {
-    return false;
-  }
+  // Skip GDO0 check for now - just poll RXBYTES directly
+  // (GDO0 should assert when sync found, but let's verify FIFO state)
 
-  // Check how many bytes in FIFO
+  // Read RXBYTES status register
   uint8_t rx_bytes_raw = this->read_status_register(CC1101_RXBYTES);
   bool overflow = (rx_bytes_raw & 0x80) != 0;
   uint8_t rx_bytes = rx_bytes_raw & 0x7F;
 
   if (overflow) {
     ESP_LOGW(TAG, "RX FIFO overflow, flushing");
+    this->set_idle();
     this->flush_rx();
-    // Re-enter RX mode
     this->strobe(CC1101_SRX);
     return false;
   }
@@ -254,27 +277,37 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Read available data
-  uint8_t buffer[64];
-  size_t to_read = (rx_bytes < sizeof(buffer)) ? rx_bytes : sizeof(buffer);
+  // Fixed length mode: expect 48 bytes
+  const uint8_t PACKET_LEN = 48;
 
-  this->read_burst(CC1101_RXFIFO, buffer, to_read);
-
-  // Read RSSI (status byte appended to data in some modes)
-  int8_t rssi = 0;  // We don't have RSSI appended in infinite mode
-
-  // Log received data
-  char hex[200];
-  int pos = 0;
-  for (size_t i = 0; i < to_read && pos < 190; i++) {
-    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", buffer[i]);
+  // Check if we have enough bytes
+  if (rx_bytes < PACKET_LEN) {
+    // Not enough data yet, wait for more
+    return false;
   }
-  ESP_LOGI(TAG, "RX %d bytes: %s", to_read, hex);
+
+  // Read the payload
+  uint8_t buffer[64];
+  uint8_t payload_length = PACKET_LEN;
+  this->read_burst(CC1101_RXFIFO, buffer, payload_length);
+
+  // Read RSSI and LQI from registers
+  uint8_t rssi_raw = this->read_status_register(CC1101_RSSI_REG);
+  uint8_t lqi_raw = this->read_status_register(CC1101_LQI_REG);
+  int8_t rssi = (rssi_raw >= 128) ? ((rssi_raw - 256) / 2 - 74) : (rssi_raw / 2 - 74);
+  bool crc_ok = (lqi_raw & 0x80) != 0;
+
+  // Don't log here - let callback handle logging for valid packets only
 
   // Call callback if set
   if (this->rx_callback_ != nullptr) {
-    this->rx_callback_(buffer, to_read, rssi);
+    this->rx_callback_(buffer, payload_length, rssi);
   }
+
+  // Return to RX mode
+  this->set_idle();
+  this->flush_rx();
+  this->strobe(CC1101_SRX);
 
   return true;
 }

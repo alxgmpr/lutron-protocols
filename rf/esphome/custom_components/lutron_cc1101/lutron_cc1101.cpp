@@ -20,10 +20,61 @@ void LutronCC1101::setup() {
     return;
   }
 
+  // Set up RX callback for packet decoding
+  this->radio_.set_rx_callback([this](const uint8_t *data, size_t len, int8_t rssi) {
+    this->handle_rx_packet(data, len, rssi);
+  });
+
   // Create pairing handler
   this->pairing_ = new LutronPairing(&this->radio_);
 
   ESP_LOGI(TAG, "Lutron CC1101 ready");
+}
+
+void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
+  // Filter out noise - real Lutron packets have RSSI > -65 typically
+  // Noise floor is around -75 to -90
+  if (rssi < -65) {
+    return;  // Silently ignore noise
+  }
+
+  // Try to decode the packet
+  DecodedPacket pkt;
+  if (!this->decoder_.decode(data, len, pkt)) {
+    return;  // Silently ignore undecoded packets
+  }
+
+  // Only log successfully decoded packets
+  char dev_id[9];
+  LutronDecoder::format_device_id(pkt.device_id, dev_id);
+  const char *type_name = LutronDecoder::packet_type_name(pkt.type);
+
+  // Log decoded packet info
+  if (pkt.type == PKT_BUTTON_SHORT_A || pkt.type == PKT_BUTTON_LONG_A ||
+      pkt.type == PKT_BUTTON_SHORT_B || pkt.type == PKT_BUTTON_LONG_B) {
+    // Button press packet
+    const char *btn_name = LutronDecoder::button_name(pkt.button);
+    const char *action = (pkt.action == ACTION_RELEASE) ? "RELEASE" : "PRESS";
+
+    ESP_LOGI(TAG, "RX: %s | %s | %s %s | Seq=%d | RSSI=%d | CRC=%s",
+             type_name, dev_id, btn_name, action, pkt.sequence, rssi,
+             pkt.crc_valid ? "OK" : "BAD");
+  } else {
+    // Other packet types
+    ESP_LOGI(TAG, "RX: %s | %s | Seq=%d | RSSI=%d | CRC=%s",
+             type_name, dev_id, pkt.sequence, rssi,
+             pkt.crc_valid ? "OK" : "BAD");
+  }
+
+  // Log raw decoded bytes at DEBUG level for analysis
+  if (pkt.raw_len > 0) {
+    char hex[100];
+    int pos = 0;
+    for (size_t i = 0; i < pkt.raw_len && i < 24 && pos < 90; i++) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", pkt.raw[i]);
+    }
+    ESP_LOGD(TAG, "  Bytes: %s", hex);
+  }
 }
 
 void LutronCC1101::dump_config() {
@@ -31,12 +82,24 @@ void LutronCC1101::dump_config() {
   ESP_LOGCONFIG(TAG, "  Status: %s", this->radio_.is_initialized() ? "OK" : "FAILED");
 }
 
+void LutronCC1101::loop() {
+  // Only poll RX when enabled - poll every iteration to keep up with data rate
+  if (this->rx_enabled_) {
+    this->radio_.check_rx();
+  }
+}
+
 void LutronCC1101::start_rx() {
-  ESP_LOGI(TAG, "RX mode not implemented - disabled due to crashes");
+  ESP_LOGI(TAG, "=== STARTING RX MODE ===");
+  this->radio_.start_rx();
+  this->rx_enabled_ = true;
+  this->last_rx_check_ = millis();
 }
 
 void LutronCC1101::stop_rx() {
-  ESP_LOGI(TAG, "RX mode not implemented");
+  ESP_LOGI(TAG, "=== STOPPING RX MODE ===");
+  this->radio_.stop_rx();
+  this->rx_enabled_ = false;
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {

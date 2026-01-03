@@ -1,0 +1,128 @@
+#pragma once
+
+#include <cstdint>
+#include <cstddef>
+
+namespace esphome {
+namespace lutron_cc1101 {
+
+// Packet types
+static const uint8_t PKT_BUTTON_SHORT_A = 0x88;
+static const uint8_t PKT_BUTTON_LONG_A = 0x89;
+static const uint8_t PKT_BUTTON_SHORT_B = 0x8A;
+static const uint8_t PKT_BUTTON_LONG_B = 0x8B;
+static const uint8_t PKT_LEVEL = 0xA2;
+static const uint8_t PKT_STATE_REPORT = 0x82;
+static const uint8_t PKT_PAIRING_B9 = 0xB9;
+static const uint8_t PKT_PAIRING_BA = 0xBA;
+static const uint8_t PKT_PAIRING_BB = 0xBB;
+static const uint8_t PKT_PAIRING_B0 = 0xB0;
+static const uint8_t PKT_BEACON = 0x91;
+
+// Button codes
+static const uint8_t BTN_ON = 0x02;
+static const uint8_t BTN_FAVORITE = 0x03;
+static const uint8_t BTN_OFF = 0x04;
+static const uint8_t BTN_RAISE = 0x05;
+static const uint8_t BTN_LOWER = 0x06;
+
+// Action codes
+static const uint8_t ACTION_PRESS = 0x00;
+static const uint8_t ACTION_RELEASE = 0x01;
+
+// Packet structure offsets (in decoded packet)
+static const uint8_t PKT_OFFSET_TYPE = 0;
+static const uint8_t PKT_OFFSET_SEQ = 1;
+static const uint8_t PKT_OFFSET_DEVICE_ID = 2;  // 4 bytes, little-endian
+static const uint8_t PKT_OFFSET_BUTTON = 10;
+static const uint8_t PKT_OFFSET_ACTION = 11;
+static const uint8_t PKT_OFFSET_CRC = 22;       // 2 bytes, big-endian
+
+static const size_t PKT_STANDARD_LEN = 24;
+
+// CRC polynomial
+static const uint16_t LUTRON_CRC_POLY = 0xCA0F;
+
+/**
+ * @brief Decoded Lutron packet
+ */
+struct DecodedPacket {
+  bool valid;
+  uint8_t type;
+  uint8_t sequence;
+  uint32_t device_id;    // 32-bit device ID
+  uint8_t button;
+  uint8_t action;
+  uint16_t crc;
+  bool crc_valid;
+  uint8_t raw[32];       // Raw decoded bytes
+  size_t raw_len;
+};
+
+/**
+ * @brief Lutron CCA protocol decoder
+ *
+ * Decodes N81-encoded packets from CC1101 FIFO data.
+ */
+class LutronDecoder {
+ public:
+  LutronDecoder();
+
+  /**
+   * @brief Decode raw CC1101 FIFO data to Lutron packet
+   *
+   * The CC1101 captures bits after sync word detection. This function:
+   * 1. Converts bytes to bitstream
+   * 2. Finds N81 frame alignment
+   * 3. Decodes bytes from N81 format
+   * 4. Parses packet structure
+   *
+   * @param fifo_data Raw bytes from CC1101 RXFIFO
+   * @param len Number of bytes (typically 32)
+   * @param packet Output decoded packet
+   * @return true if a valid packet was decoded
+   */
+  bool decode(const uint8_t *fifo_data, size_t len, DecodedPacket &packet);
+
+  /**
+   * @brief Get human-readable packet type name
+   */
+  static const char *packet_type_name(uint8_t type);
+
+  /**
+   * @brief Get human-readable button name
+   */
+  static const char *button_name(uint8_t button);
+
+  /**
+   * @brief Format device ID as hex string (like printed on Pico label)
+   * @param device_id 32-bit device ID
+   * @param buffer Output buffer (at least 9 bytes)
+   */
+  static void format_device_id(uint32_t device_id, char *buffer);
+
+  /**
+   * @brief Calculate CRC-16 for packet data
+   */
+  uint16_t calc_crc(const uint8_t *data, size_t len);
+
+ private:
+  uint16_t crc_table_[256];
+
+  /**
+   * @brief Decode a single N81 byte from bitstream
+   * @param bits Pointer to 10 bits (as packed bytes)
+   * @param bit_offset Starting bit offset
+   * @param byte_out Output decoded byte
+   * @return true if valid N81 framing (start=0, stop=1)
+   */
+  bool decode_n81_byte(const uint8_t *bits, size_t bit_offset, uint8_t &byte_out);
+
+  /**
+   * @brief Get bit value from packed bytes
+   */
+  int get_bit(const uint8_t *data, size_t bit_index);
+};
+
+}  // namespace lutron_cc1101
+}  // namespace esphome

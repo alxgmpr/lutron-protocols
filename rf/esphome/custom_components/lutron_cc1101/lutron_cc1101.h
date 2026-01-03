@@ -5,6 +5,7 @@
 #include "cc1101_radio.h"
 #include "lutron_protocol.h"
 #include "lutron_pairing.h"
+#include "lutron_decoder.h"
 
 namespace esphome {
 namespace lutron_cc1101 {
@@ -28,6 +29,7 @@ class LutronCC1101 : public Component,
                      public CC1101SPI {
  public:
   void setup() override;
+  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
@@ -47,7 +49,7 @@ class LutronCC1101 : public Component,
   /**
    * @brief Check if RX mode is active
    */
-  bool is_rx_active() const { return radio_.is_rx_active(); }
+  bool is_rx_active() const { return rx_enabled_; }
 
   // CC1101SPI interface implementation
   void spi_enable() override { this->enable(); }
@@ -162,13 +164,17 @@ class LutronCC1101 : public Component,
   void transmit_packet(const uint8_t *packet, size_t len);
 
  protected:
+  void handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi);
 
   GPIOPin *gdo0_pin_{nullptr};
   CC1101Radio radio_;
   LutronEncoder encoder_;
+  LutronDecoder decoder_;
   LutronPairing *pairing_{nullptr};
 
   bool type_alternate_{false};
+  bool rx_enabled_{false};
+  uint32_t last_rx_check_{0};
 };
 
 }  // namespace lutron_cc1101
