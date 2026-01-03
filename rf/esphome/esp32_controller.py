@@ -553,6 +553,52 @@ def cmd_serve(args):
             </div>
         </div>
 
+        <!-- SAVE FAVORITE / SCENE -->
+        <div class="card pico">
+            <div class="card-header">
+                <h2>Save Favorite / Scene</h2>
+                <span class="badge">HOLD TO SAVE</span>
+            </div>
+            <div class="card-body">
+                <p style="font-size:12px;color:#666;margin-bottom:10px;">
+                    First set dimmer to desired level, then press save. Holds button ~6s to trigger save mode.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Pico ID</label>
+                        <input type="text" id="save-pico-id" value="0x05851117">
+                    </div>
+                    <div class="form-group">
+                        <label>Button</label>
+                        <select id="save-button">
+                            <optgroup label="5-Button Pico">
+                                <option value="0x03">FAVORITE (0x03)</option>
+                            </optgroup>
+                            <optgroup label="Scene Pico">
+                                <option value="0x08">BRIGHT (0x08)</option>
+                                <option value="0x09">ENTERTAIN (0x09)</option>
+                                <option value="0x0A">RELAX (0x0A)</option>
+                                <option value="0x0B">SCENE OFF (0x0B)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Hold (sec)</label>
+                        <input type="number" id="save-hold" value="6" min="3" max="15">
+                    </div>
+                    <button class="btn-purple" onclick="saveFavorite()">SAVE</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-sm btn-purple" onclick="quickSave(0x03)">SAVE FAV</button>
+                    <span style="margin:0 5px;color:#666;">|</span>
+                    <button class="btn-sm btn-orange" onclick="quickSave(0x08)">SAVE BRIGHT</button>
+                    <button class="btn-sm btn-orange" onclick="quickSave(0x09)">SAVE ENTERTAIN</button>
+                    <button class="btn-sm btn-orange" onclick="quickSave(0x0A)">SAVE RELAX</button>
+                    <button class="btn-sm btn-red" onclick="quickSave(0x0B)">SAVE OFF</button>
+                </div>
+            </div>
+        </div>
+
         <!-- BRIDGE CONTROLS -->
         <div class="card bridge">
             <div class="card-header">
@@ -815,6 +861,31 @@ def cmd_serve(args):
                 setStatus(data.status === 'ok' ? `Sent ${data.button} from ${data.device}` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        // Save Favorite / Scene
+        const BUTTON_NAMES = {
+            0x03: 'FAVORITE', 0x08: 'BRIGHT', 0x09: 'ENTERTAIN', 0x0A: 'RELAX', 0x0B: 'OFF'
+        };
+
+        async function saveFavorite() {
+            const device = document.getElementById('save-pico-id').value.trim();
+            const button = document.getElementById('save-button').value;
+            const hold = parseInt(document.getElementById('save-hold').value) || 6;
+            const btnCode = parseInt(button);
+            const btnName = BUTTON_NAMES[btnCode] || button;
+
+            setStatus(`Saving ${btnName} on ${device} (holding ${hold}s)...`);
+            try {
+                const data = await apiPost('/api/save-favorite', {device, button, hold});
+                setStatus(data.status === 'ok' ? `Saved ${btnName} on ${data.device}` : `Error: ${data.error}`,
+                         data.status === 'ok' ? 'success' : 'error');
+            } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
+        }
+
+        function quickSave(btn) {
+            document.getElementById('save-button').value = '0x' + btn.toString(16).padStart(2, '0');
+            saveFavorite();
         }
 
         // Bridge Level

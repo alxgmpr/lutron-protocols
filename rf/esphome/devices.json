@@ -256,13 +256,13 @@
     "id": "0869E74C",
     "type": "BTN_SHORT_B",
     "first_seen": "2026-01-03T00:00:46.915122",
-    "last_seen": "2026-01-03T01:42:58.068191",
+    "last_seen": "2026-01-03T02:11:36.798807",
     "info": {
-      "type": "BTN_LONG_B",
+      "type": "BTN_LONG_A",
       "factory_id": "0869E74C",
       "controllable": true
     },
-    "count": 894
+    "count": 907
   },
   "05851117": {
     "id": "05851117",
@@ -451,13 +451,13 @@
     "id": "CC110010",
     "type": "BTN_LONG_A",
     "first_seen": "2026-01-03T01:42:25.232885",
-    "last_seen": "2026-01-03T01:46:27.951114",
+    "last_seen": "2026-01-03T02:30:38.979423",
     "info": {
-      "type": "PAIR_BB",
+      "type": "BTN_LONG_B",
       "factory_id": "CC110010",
       "controllable": true
     },
-    "count": 25
+    "count": 26
   },
   "00C7E498": {
     "id": "00C7E498",
