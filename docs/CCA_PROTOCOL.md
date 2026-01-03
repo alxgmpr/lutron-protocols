@@ -111,6 +111,30 @@ Zero padding for clean transmission end
 
 Note: Button codes may vary by Pico model and pairing configuration.
 
+### Button Codes (4-button Scene Pico)
+
+| Button | Code | Label |
+|--------|------|-------|
+| Top | 0x08 | Bright/On |
+| Second | 0x09 | Entertain/Up |
+| Third | 0x0A | Relax/Down |
+| Bottom | 0x0B | Off |
+
+### Button Codes (4-button Raise/Lower Pico)
+
+| Button | Code | Label |
+|--------|------|-------|
+| Top | 0x08 | On |
+| Second | 0x09 | Raise |
+| Third | 0x0A | Lower |
+| Bottom | 0x0B | Off |
+
+### Special Button Codes
+
+| Code | Meaning |
+|------|---------|
+| 0xFF | Reset/Unpair broadcast ("forget me") |
+
 ### Device ID Format
 
 The Device ID printed on the Pico is transmitted in **big-endian** byte order (matching the printed label):
@@ -208,6 +232,49 @@ See `custom_components/lutron_cc1101/` for complete ESPHome external component.
 |--------|--------------|-------------------|
 | ESP-connected Pico | 0595e68d | 0x8DE69505 |
 | Handheld Pico | 08692d70 | 0x702D6908 |
+
+## Pairing Packets
+
+Pairing packets advertise the Pico's capabilities and allow it to be registered with dimmers, switches, or bridges.
+
+### Pairing Packet Types
+
+| Type | Name | Capability |
+|------|------|------------|
+| 0xB9 | PAIR_B9 | Direct-pair capable |
+| 0xBB | PAIR_BB | Direct-pair capable |
+| 0xB8 | PAIR_B8 | Bridge-only |
+| 0xBA | PAIR_BA | Bridge-only |
+| 0xB0 | PAIR_B0 | Unknown/legacy |
+
+### Pairing Capability Categories
+
+**Direct-Pair Capable (B9/BB):**
+- 2-button Pico (PJ2-2B)
+- 5-button Pico (PJ2-3BRL)
+- 4-button Raise/Lower Pico (PJ2-4B)
+
+These remotes can pair directly to Caseta/RA2 dimmers and switches without requiring a bridge. They use packet types B9 and BB, alternating between them during the pairing sequence.
+
+**Bridge-Only (BA/B8):**
+- 4-button Scene Pico (PJ2-4B-S)
+
+Scene picos can only pair through a RadioRA3 or Homeworks QSX bridge. They advertise scenes rather than direct on/off/dim commands. They use packet types BA and B8, alternating between them during the pairing sequence.
+
+### Pairing Sequence Behavior
+
+When a Pico enters pairing mode (triple-tap or hold depending on model):
+1. It transmits alternating packet types for its category
+2. Direct-pair: B9 → BB → B9 → BB...
+3. Bridge-only: BA → B8 → BA → B8...
+4. Sequence numbers increment by 6 per packet
+5. Device ID is transmitted in big-endian format (matching printed label)
+
+### Device ID in Pairing Packets
+
+Like button press packets, pairing packets use **big-endian** device IDs:
+- Printed on Pico: `084B1EBB`
+- In packet bytes: `08 4B 1E BB`
 
 ## References
 

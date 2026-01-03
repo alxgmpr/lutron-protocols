@@ -206,25 +206,25 @@
     "id": "08692D70",
     "type": "BTN_SHORT_A",
     "first_seen": "2026-01-02T23:56:54.025105",
-    "last_seen": "2026-01-02T23:58:58.147638",
+    "last_seen": "2026-01-03T00:05:30.178018",
     "info": {
       "type": "PAIR_BB",
       "factory_id": "08692D70",
       "controllable": true
     },
-    "count": 239
+    "count": 713
   },
   "084B1EBB": {
     "id": "084B1EBB",
     "type": "BTN_LONG_B",
     "first_seen": "2026-01-02T23:57:11.128119",
-    "last_seen": "2026-01-02T23:57:11.944389",
+    "last_seen": "2026-01-03T00:06:41.246347",
     "info": {
-      "type": "BTN_LONG_B",
+      "type": "PAIR_BA",
       "factory_id": "084B1EBB",
       "controllable": true
     },
-    "count": 20
+    "count": 374
   },
   "BB1E4B08": {
     "id": "BB1E4B08",
@@ -255,12 +255,24 @@
     "id": "0869E74C",
     "type": "BTN_SHORT_B",
     "first_seen": "2026-01-03T00:00:46.915122",
-    "last_seen": "2026-01-03T00:01:17.426056",
+    "last_seen": "2026-01-03T00:05:56.555308",
     "info": {
-      "type": "BTN_LONG_A",
+      "type": "PAIR_B9",
       "factory_id": "0869E74C",
       "controllable": true
     },
-    "count": 24
+    "count": 288
+  },
+  "05851117": {
+    "id": "05851117",
+    "type": "BTN_SHORT_A",
+    "first_seen": "2026-01-03T00:03:19.437139",
+    "last_seen": "2026-01-03T00:06:15.783149",
+    "info": {
+      "type": "PAIR_BB",
+      "factory_id": "05851117",
+      "controllable": true
+    },
+    "count": 130
   }
 }

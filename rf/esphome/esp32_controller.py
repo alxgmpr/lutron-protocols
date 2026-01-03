@@ -405,11 +405,24 @@ def cmd_serve(args):
                         <label>Device ID</label>
                         <input type="text" id="pair-device" value="0xCC110001">
                     </div>
-                    <button class="btn-purple" onclick="pairPico('5button')">PAIR 5-BUTTON</button>
-                    <button class="btn-blue" onclick="pairPico('scene')">PAIR SCENE</button>
+                    <div class="form-group">
+                        <label>Pico Type</label>
+                        <select id="pair-pico-type">
+                            <optgroup label="Direct-Pair (B9/BB)">
+                                <option value="2button">2-Button (PJ2-2B)</option>
+                                <option value="5button" selected>5-Button (PJ2-3BRL)</option>
+                                <option value="4button-rl">4-Button Raise/Lower (PJ2-4B)</option>
+                            </optgroup>
+                            <optgroup label="Bridge-Only (BA/B8)">
+                                <option value="scene">4-Button Scene (PJ2-4B-S)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <button class="btn-purple" onclick="pairPico()">PAIR</button>
                 </div>
                 <div style="font-size:11px;color:#8b949e;margin-top:8px;">
-                    5-Button: pairs directly to dimmers | Scene: pairs to bridge only
+                    <b>Direct-pair (B9/BB):</b> pairs to dimmers/switches without bridge<br>
+                    <b>Bridge-only (BA/B8):</b> scene picos, must pair through bridge
                 </div>
             </div>
         </div>
@@ -636,12 +649,20 @@ def cmd_serve(args):
         }
 
         // Pico Pairing
-        async function pairPico(type) {
+        const PICO_TYPE_NAMES = {
+            '2button': '2-Button Pico',
+            '5button': '5-Button Pico',
+            '4button-rl': '4-Button Raise/Lower',
+            'scene': '4-Button Scene'
+        };
+
+        async function pairPico() {
             const device = document.getElementById('pair-device').value.trim();
-            const typeName = type === 'scene' ? 'Scene Pico' : '5-Button Pico';
+            const picoType = document.getElementById('pair-pico-type').value;
+            const typeName = PICO_TYPE_NAMES[picoType] || picoType;
             setStatus(`Pairing ${device} as ${typeName}...`);
             try {
-                const data = await apiPost('/api/pair-pico', {device, type});
+                const data = await apiPost('/api/pair-pico', {device, type: picoType});
                 setStatus(data.status === 'ok' ? `Paired ${data.device} as ${data.type}` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
@@ -1541,23 +1562,39 @@ def cmd_serve(args):
 
     @app.route('/api/pair-pico', methods=['POST'])
     def api_pair_pico():
-        """Pair as Pico (5-button or Scene)."""
+        """Pair as Pico (various types).
+
+        Pico types and their pairing packet categories:
+        - Direct-pair (B9/BB): 2button, 5button, 4button-rl
+          Can pair directly to Caseta/RA2 dimmers without bridge
+        - Bridge-only (BA/B8): scene
+          Must pair through RadioRA3/Homeworks bridge
+        """
         try:
             device = request.args.get('device', '')
-            pico_type = request.args.get('type', '5button')  # '5button' or 'scene'
+            pico_type = request.args.get('type', '5button')
             if not device:
                 return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
-            # pico_type: 0 = Scene (4-button), 1 = 5-button
-            type_code = 0 if pico_type == 'scene' else 1
-            asyncio.run(pair_pico_async(device_id, type_code))
 
-            type_name = 'Scene Pico' if pico_type == 'scene' else '5-Button Pico'
+            # Map pico types to internal codes
+            # pico_type code: 0 = Scene/bridge-only (BA/B8), 1 = Direct-pair (B9/BB)
+            PICO_TYPES = {
+                '2button': {'code': 1, 'name': '2-Button Pico', 'pairing': 'B9/BB'},
+                '5button': {'code': 1, 'name': '5-Button Pico', 'pairing': 'B9/BB'},
+                '4button-rl': {'code': 1, 'name': '4-Button Raise/Lower', 'pairing': 'B9/BB'},
+                'scene': {'code': 0, 'name': '4-Button Scene', 'pairing': 'BA/B8'},
+            }
+
+            pico_info = PICO_TYPES.get(pico_type, PICO_TYPES['5button'])
+            asyncio.run(pair_pico_async(device_id, pico_info['code']))
+
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
-                'type': type_name
+                'type': pico_info['name'],
+                'pairing_packets': pico_info['pairing']
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

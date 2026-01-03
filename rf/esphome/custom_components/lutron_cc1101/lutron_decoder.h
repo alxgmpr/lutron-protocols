@@ -15,11 +15,19 @@ static const uint8_t PKT_LEVEL = 0xA2;
 static const uint8_t PKT_STATE_REPORT_81 = 0x81;
 static const uint8_t PKT_STATE_REPORT_82 = 0x82;
 static const uint8_t PKT_STATE_REPORT_83 = 0x83;
-static const uint8_t PKT_PAIRING_B8 = 0xB8;
-static const uint8_t PKT_PAIRING_B9 = 0xB9;
-static const uint8_t PKT_PAIRING_BA = 0xBA;
-static const uint8_t PKT_PAIRING_BB = 0xBB;
-static const uint8_t PKT_PAIRING_B0 = 0xB0;
+// Pairing packet types - determine remote capabilities:
+//   B9/BB: Direct-pair capable (2-button, 5-button, 4-button raise/lower)
+//          These picos can pair directly to switches/dimmers without a bridge.
+//   BA/B8: Bridge-only pairing (4-button scene picos)
+//          These picos must pair through a RadioRA3/Homeworks bridge.
+// During pairing, picos alternate between the two packet types in their category:
+//   Direct-pair: B9 <-> BB
+//   Bridge-only: BA <-> B8
+static const uint8_t PKT_PAIRING_B8 = 0xB8;  // Bridge-only (scene pico)
+static const uint8_t PKT_PAIRING_B9 = 0xB9;  // Direct-pair capable
+static const uint8_t PKT_PAIRING_BA = 0xBA;  // Bridge-only (scene pico)
+static const uint8_t PKT_PAIRING_BB = 0xBB;  // Direct-pair capable
+static const uint8_t PKT_PAIRING_B0 = 0xB0;  // Unknown/legacy
 static const uint8_t PKT_BEACON = 0x91;
 
 // Button codes - 5-button Pico
