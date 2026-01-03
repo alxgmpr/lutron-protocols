@@ -59,6 +59,48 @@ rx_queue = queue.Queue(maxsize=500)
 log_subscription_started = False
 log_subscription_lock = threading.Lock()
 
+# Device database
+import os
+DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
+devices_lock = threading.Lock()
+
+def load_devices() -> Dict:
+    """Load devices from JSON file."""
+    if os.path.exists(DEVICES_FILE):
+        try:
+            with open(DEVICES_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def save_devices(devices: Dict):
+    """Save devices to JSON file."""
+    with open(DEVICES_FILE, 'w') as f:
+        json.dump(devices, f, indent=2)
+
+def register_device(device_id: str, device_type: str, info: Dict):
+    """Register or update a device in the database."""
+    with devices_lock:
+        devices = load_devices()
+        if device_id not in devices:
+            devices[device_id] = {
+                "id": device_id,
+                "type": device_type,
+                "first_seen": datetime.now().isoformat(),
+                "last_seen": datetime.now().isoformat(),
+                "info": info,
+                "count": 1
+            }
+        else:
+            devices[device_id]["last_seen"] = datetime.now().isoformat()
+            devices[device_id]["count"] = devices[device_id].get("count", 0) + 1
+            # Update info if we have more details
+            if info:
+                devices[device_id]["info"].update(info)
+        save_devices(devices)
+        return devices[device_id]
+
 
 class ESP32Controller:
     """Controller for ESP32 Lutron RF transmitter via native API."""
@@ -530,13 +572,11 @@ def cmd_serve(args):
             </div>
         </div>
 
-        <!-- RX PACKETS -->
+        <!-- RX PACKETS (always-on, auto-resumes after TX) -->
         <div class="card rx">
             <div class="card-header">
                 <h2>RX Packets</h2>
                 <span>
-                    <button class="btn-sm btn-primary" onclick="startRx()">RX ON</button>
-                    <button class="btn-sm btn-red" onclick="stopRx()">RX OFF</button>
                     <button class="btn-sm" onclick="copyRx()">Copy</button>
                     <button class="btn-sm" onclick="clearRx()">Clear</button>
                 </span>
@@ -559,6 +599,24 @@ def cmd_serve(args):
             </div>
         </div>
     </main>
+
+    <!-- DISCOVERED DEVICES -->
+    <section style="padding:0 20px 20px;">
+        <div class="card" style="max-width:100%;">
+            <div class="card-header">
+                <h2>Discovered Devices</h2>
+                <span>
+                    <button class="btn-sm" onclick="loadDevices()">Refresh</button>
+                    <button class="btn-sm btn-red" onclick="clearDevices()">Clear All</button>
+                </span>
+            </div>
+            <div class="card-body">
+                <div id="devices-list">
+                    <div class="hex-empty">No devices discovered yet. RX is listening...</div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <div id="status-bar">Ready</div>
 
@@ -740,10 +798,73 @@ def cmd_serve(args):
                 addHexEntry('tx-packets', time, txMatch[1]);
             } else if (rxMatch) {
                 addRxEntry('rx-packets', time, rxMatch[1]);
+                // Parse and register device
+                parseAndRegisterDevice(rxMatch[1]);
             }
 
             // Always add to logs
             addLogEntry(data);
+        }
+
+        function parseAndRegisterDevice(packetInfo) {
+            // Parse: "TYPE | DEVICE_ID | ... | Seq=N | RSSI=N | CRC=OK"
+            // Examples:
+            //   "BTN_SHORT_A | 87B59D05 | SCENE2 PRESS | Seq=0 | RSSI=-38 | CRC=OK"
+            //   "LEVEL | 002C90AD -> 07002688 | Level=50% | Seq=1 | RSSI=-57 | CRC=OK"
+            //   "STATE_RPT | 062C908F | Level=30% | Seq=50 | RSSI=-41 | CRC=OK"
+            const parts = packetInfo.split(' | ');
+            if (parts.length < 2) return;
+
+            const pktType = parts[0].trim();
+            let deviceId = null;
+            let info = { type: pktType };
+
+            // Extract device ID and categorize based on packet type
+            if (pktType === 'LEVEL' && parts[1].includes('->')) {
+                // Bridge command: "SOURCE -> TARGET" - we can replay this!
+                const ids = parts[1].split('->').map(s => s.trim());
+                deviceId = ids[0];
+                info.target = ids[1];
+                info.category = 'bridge';
+                info.controllable = true;
+            } else if (pktType === 'STATE_RPT') {
+                // State report from dimmer - we CANNOT control this device directly
+                // The dimmer is just reporting its level, it needs a bridge/pico to control it
+                deviceId = parts[1].trim();
+                info.category = 'dimmer_passive';
+                info.controllable = false;
+            } else if (pktType.startsWith('BTN_')) {
+                // Button press from Pico - we can emulate this!
+                deviceId = parts[1].trim();
+                info.controllable = true;
+            } else {
+                deviceId = parts[1].trim();
+            }
+
+            // Extract additional info from remaining parts
+            for (let i = 2; i < parts.length; i++) {
+                const part = parts[i].trim();
+                if (part.startsWith('SCENE')) {
+                    info.button = part;
+                    info.category = 'scene_pico';
+                    info.controllable = true;
+                } else if (part.match(/^(ON|OFF|RAISE|LOWER|FAV)/)) {
+                    info.button = part;
+                    info.category = 'pico';
+                    info.controllable = true;
+                } else if (part.startsWith('Level=')) {
+                    info.level = part.replace('Level=', '');
+                }
+            }
+
+            if (!deviceId || deviceId.length < 6) return;
+
+            // Register device via API
+            fetch('/api/devices', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device_id: deviceId, type: pktType, info: info})
+            }).then(() => loadDevices()).catch(() => {});
         }
 
         function addRxEntry(containerId, time, packetInfo) {
@@ -816,6 +937,118 @@ def cmd_serve(args):
             navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied RX', 'success'); });
         }
 
+        // Device management
+        function loadDevices() {
+            fetch('/api/devices')
+                .then(r => r.json())
+                .then(devices => {
+                    const container = document.getElementById('devices-list');
+                    const deviceIds = Object.keys(devices);
+                    if (deviceIds.length === 0) {
+                        container.innerHTML = '<div class="hex-empty">No devices discovered yet. RX is listening...</div>';
+                        return;
+                    }
+                    container.innerHTML = deviceIds.map(id => {
+                        const d = devices[id];
+                        const info = d.info || {};
+                        const category = info.category || 'unknown';
+                        const lastBtn = info.button || '';
+                        const level = info.level || '';
+
+                        // Build action buttons based on category and controllable flag
+                        // Dimmers are passive by default (STATE_RPT = device reporting its level)
+                        const isDimmerPassive = category === 'dimmer' || category === 'dimmer_passive';
+                        const controllable = isDimmerPassive ? false : (info.controllable !== false);
+                        let buttons = '';
+
+                        if (!controllable) {
+                            // Non-controllable device (e.g., dimmer reporting state)
+                            buttons = '<span style="color:#666;font-size:11px;">Passive (needs bridge/pico)</span>';
+                        } else if (category === 'pico') {
+                            buttons = `
+                                <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)" title="ON">ON</button>
+                                <button class="btn-sm" onclick="replayButton('${id}', 0x04)" title="OFF">OFF</button>
+                                <button class="btn-sm" onclick="replayButton('${id}', 0x05)" title="Raise">&#9650;</button>
+                                <button class="btn-sm" onclick="replayButton('${id}', 0x06)" title="Lower">&#9660;</button>
+                            `;
+                        } else if (category === 'scene_pico') {
+                            buttons = `
+                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x08)" title="Bright">BRIGHT</button>
+                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x09)" title="Entertain">ENTER</button>
+                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x0A)" title="Relax">RELAX</button>
+                                <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)" title="Off">OFF</button>
+                            `;
+                        } else if (category === 'bridge') {
+                            const target = info.target || '';
+                            buttons = `
+                                <button class="btn-sm btn-primary" onclick="replayBridge('${id}', '${target}', 100)">100%</button>
+                                <button class="btn-sm" onclick="replayBridge('${id}', '${target}', 50)">50%</button>
+                                <button class="btn-sm btn-red" onclick="replayBridge('${id}', '${target}', 0)">0%</button>
+                            `;
+                        }
+
+                        return `
+                            <div class="device-entry" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #333;">
+                                <span style="font-family:monospace;color:#0af;min-width:90px;">${id}</span>
+                                <span style="color:#888;min-width:80px;">${category}</span>
+                                <span style="color:#666;min-width:100px;">${lastBtn || level || ''}</span>
+                                <span style="color:#555;font-size:11px;">seen ${d.count}x</span>
+                                <span style="flex:1;"></span>
+                                ${buttons}
+                                <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(() => {});
+        }
+
+        function clearDevices() {
+            if (!confirm('Clear all discovered devices?')) return;
+            fetch('/api/devices/clear', {method: 'POST'})
+                .then(() => loadDevices())
+                .catch(() => {});
+        }
+
+        function deleteDevice(id) {
+            fetch('/api/devices/' + id, {method: 'DELETE'})
+                .then(() => loadDevices())
+                .catch(() => {});
+        }
+
+        function replayButton(deviceId, button) {
+            setStatus('Sending button 0x' + button.toString(16).toUpperCase() + '...', 'info');
+            fetch('/api/send', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device: '0x' + deviceId, button: button})
+            }).then(r => r.json()).then(d => {
+                setStatus(d.status === 'ok' ? 'Button sent!' : 'Error: ' + d.error, d.status === 'ok' ? 'success' : 'error');
+            }).catch(() => setStatus('Failed to send', 'error'));
+        }
+
+        function replayLevel(deviceId, level) {
+            setStatus('Setting level ' + level + '%...', 'info');
+            fetch('/api/state', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device: '0x' + deviceId, level: level})
+            }).then(r => r.json()).then(d => {
+                setStatus(d.status === 'ok' ? 'Level sent!' : 'Error: ' + d.error, d.status === 'ok' ? 'success' : 'error');
+            }).catch(() => setStatus('Failed to send', 'error'));
+        }
+
+        function replayBridge(sourceId, targetId, level) {
+            setStatus('Bridge command ' + level + '%...', 'info');
+            fetch('/api/level', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({source: '0x' + sourceId, target: '0x' + targetId, level: level})
+            }).then(r => r.json()).then(d => {
+                setStatus(d.status === 'ok' ? 'Level sent!' : 'Error: ' + d.error, d.status === 'ok' ? 'success' : 'error');
+            }).catch(() => setStatus('Failed to send', 'error'));
+        }
+
         // Check connection
         async function checkConnection() {
             try {
@@ -830,6 +1063,7 @@ def cmd_serve(args):
         checkConnection();
         setInterval(checkConnection, 30000);
         startLogStream();
+        loadDevices();
     </script>
 </body>
 </html>'''
@@ -932,17 +1166,23 @@ def cmd_serve(args):
         except:
             return jsonify({'connected': False, 'ip': ESP32_IP})
 
+    def get_param(name, default=''):
+        """Get parameter from JSON body or query args."""
+        if request.is_json and request.json:
+            return request.json.get(name, request.args.get(name, default))
+        return request.args.get(name, default)
+
     @app.route('/api/send', methods=['POST'])
     def api_send():
         """Send button command."""
         try:
-            device = request.args.get('device', '')
-            button = request.args.get('button', '')
+            device = get_param('device', '')
+            button = get_param('button', '')
             if not device or not button:
                 return jsonify({'status': 'error', 'error': 'Missing device or button'}), 400
 
             device_id = parse_hex_int(device)
-            button_code = parse_hex_int(button)
+            button_code = int(button) if isinstance(button, int) else parse_hex_int(str(button))
             asyncio.run(send_button_async(device_id, button_code))
 
             return jsonify({
@@ -955,11 +1195,11 @@ def cmd_serve(args):
 
     @app.route('/api/level', methods=['POST'])
     def api_level():
-        """Send level command."""
+        """Send bridge-style level command."""
         try:
-            source = request.args.get('source', '')
-            target = request.args.get('target', '')
-            level = int(request.args.get('level', '0'))
+            source = get_param('source', '')
+            target = get_param('target', '')
+            level = int(get_param('level', '0'))
             if not source or not target:
                 return jsonify({'status': 'error', 'error': 'Missing source or target'}), 400
 
@@ -978,10 +1218,10 @@ def cmd_serve(args):
 
     @app.route('/api/state', methods=['POST'])
     def api_state():
-        """Send state report."""
+        """Send state report (fake dimmer level broadcast)."""
         try:
-            device = request.args.get('device', '')
-            level = int(request.args.get('level', '0'))
+            device = get_param('device', '')
+            level = int(get_param('level', '0'))
             if not device:
                 return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
@@ -1076,6 +1316,41 @@ def cmd_serve(args):
             return jsonify({'status': 'ok'})
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/devices')
+    def api_devices():
+        """Get all discovered devices."""
+        return jsonify(load_devices())
+
+    @app.route('/api/devices', methods=['POST'])
+    def api_register_device():
+        """Register a device from RX packet."""
+        data = request.json
+        device_id = data.get('device_id')
+        device_type = data.get('type', 'unknown')
+        info = data.get('info', {})
+        if not device_id:
+            return jsonify({'status': 'error', 'error': 'device_id required'}), 400
+        device = register_device(device_id, device_type, info)
+        return jsonify({'status': 'ok', 'device': device})
+
+    @app.route('/api/devices/<device_id>', methods=['DELETE'])
+    def api_delete_device(device_id):
+        """Delete a device from the database."""
+        with devices_lock:
+            devices = load_devices()
+            if device_id in devices:
+                del devices[device_id]
+                save_devices(devices)
+                return jsonify({'status': 'ok'})
+            return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/clear', methods=['POST'])
+    def api_clear_devices():
+        """Clear all devices."""
+        with devices_lock:
+            save_devices({})
+        return jsonify({'status': 'ok'})
 
     @app.route('/api/logs/stream')
     def api_logs_stream():

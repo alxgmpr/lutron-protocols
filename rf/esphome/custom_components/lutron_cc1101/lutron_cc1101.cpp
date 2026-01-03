@@ -28,6 +28,12 @@ void LutronCC1101::setup() {
   // Create pairing handler
   this->pairing_ = new LutronPairing(&this->radio_);
 
+  // Auto-start RX mode if enabled (default: on)
+  if (this->rx_auto_) {
+    ESP_LOGI(TAG, "Auto-starting RX mode...");
+    this->start_rx();
+  }
+
   ESP_LOGI(TAG, "Lutron CC1101 ready");
 }
 
@@ -106,6 +112,7 @@ void LutronCC1101::start_rx() {
   ESP_LOGI(TAG, "=== STARTING RX MODE ===");
   this->radio_.start_rx();
   this->rx_enabled_ = true;
+  this->rx_auto_ = true;  // Re-enable auto-resume when manually started
   this->last_rx_check_ = millis();
 }
 
@@ -113,6 +120,7 @@ void LutronCC1101::stop_rx() {
   ESP_LOGI(TAG, "=== STOPPING RX MODE ===");
   this->radio_.stop_rx();
   this->rx_enabled_ = false;
+  this->rx_auto_ = false;  // Disable auto-resume when manually stopped
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
@@ -162,6 +170,13 @@ void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
            len, encoded_len, preamble_bits, encoded_len > 64 ? "STREAM" : "DIRECT");
 
   this->radio_.transmit_raw(tx_buffer, encoded_len);
+
+  // Auto-resume RX after TX if auto mode enabled
+  // (transmit_raw leaves radio in IDLE, we need to restart RX)
+  if (this->rx_auto_) {
+    this->radio_.start_rx();
+    this->rx_enabled_ = true;
+  }
 }
 
 void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {

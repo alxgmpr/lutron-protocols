@@ -174,6 +174,7 @@ class LutronCC1101 : public Component,
 
   bool type_alternate_{false};
   bool rx_enabled_{false};
+  bool rx_auto_{true};  // Auto-resume RX after TX (default: on)
   uint32_t last_rx_check_{0};
 };
 

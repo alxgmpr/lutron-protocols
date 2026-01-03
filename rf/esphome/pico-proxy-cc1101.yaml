@@ -173,22 +173,8 @@ switch:
       - logger.log: "Beacon mode OFF"
 
 # RF buttons
+# NOTE: RX is now always-on by default (auto-starts at boot, auto-resumes after TX)
 button:
-  # RX control - MUST be buttons, switches cause boot loops
-  - platform: template
-    name: "RX ON"
-    id: rx_on
-    icon: "mdi:antenna"
-    on_press:
-      - lambda: id(lutron_radio)->start_rx();
-
-  - platform: template
-    name: "RX OFF"
-    id: rx_off
-    icon: "mdi:antenna-off"
-    on_press:
-      - lambda: id(lutron_radio)->stop_rx();
-
   # Pico-style buttons for device 05851117
   - platform: template
     name: "RF On (Pico)"
