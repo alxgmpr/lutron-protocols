@@ -59,7 +59,9 @@ rx_queue = queue.Queue(maxsize=500)
 log_subscription_started = False
 log_subscription_lock = threading.Lock()
 log_thread_heartbeat = 0  # Timestamp of last heartbeat from log thread
+log_last_received = 0  # Timestamp of last actual log received from ESP32
 LOG_THREAD_TIMEOUT = 30  # Consider thread dead if no heartbeat for this many seconds
+LOG_STALE_TIMEOUT = 60  # Consider connection stale if no logs for this long
 
 # Device database
 import os
@@ -986,13 +988,17 @@ def cmd_serve(args):
     def api_logs_status():
         """Get log subscription status."""
         now = time.time()
-        age = now - log_thread_heartbeat if log_thread_heartbeat > 0 else -1
-        is_healthy = age >= 0 and age < LOG_THREAD_TIMEOUT
+        heartbeat_age = now - log_thread_heartbeat if log_thread_heartbeat > 0 else -1
+        last_log_age = now - log_last_received if log_last_received > 0 else -1
+        thread_alive = heartbeat_age >= 0 and heartbeat_age < LOG_THREAD_TIMEOUT
+        receiving_logs = last_log_age >= 0 and last_log_age < LOG_STALE_TIMEOUT
         return jsonify({
             'started': log_subscription_started,
-            'heartbeat_age': round(age, 1),
-            'healthy': is_healthy,
-            'timeout_threshold': LOG_THREAD_TIMEOUT
+            'heartbeat_age': round(heartbeat_age, 1),
+            'last_log_age': round(last_log_age, 1),
+            'thread_alive': thread_alive,
+            'receiving_logs': receiving_logs,
+            'healthy': thread_alive and receiving_logs
         })
 
     @app.route('/api/logs/restart', methods=['POST'])
@@ -1013,16 +1019,17 @@ def cmd_serve(args):
 
     def subscribe_to_logs():
         """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""
-        global log_subscription_started, log_thread_heartbeat
+        global log_subscription_started, log_thread_heartbeat, log_last_received
         print("[LOG THREAD] Starting subscribe_to_logs thread", flush=True)
 
         async def _subscribe():
-            global log_subscription_started, log_thread_heartbeat
+            global log_subscription_started, log_thread_heartbeat, log_last_received
             print("[LOG THREAD] _subscribe async started", flush=True)
 
             while True:  # Reconnect loop
                 # Update heartbeat
                 log_thread_heartbeat = time.time()
+                connection_stale = False
 
                 print(f"[LOG THREAD] Connecting to {ESP32_IP}:{ESP32_PORT}...", flush=True)
                 client = APIClient(
@@ -1032,9 +1039,11 @@ def cmd_serve(args):
                     noise_psk=ESP32_ENCRYPTION_KEY,
                 )
                 try:
-                    await client.connect(login=True)
+                    await asyncio.wait_for(client.connect(login=True), timeout=15.0)
                     print("[LOG THREAD] Connected successfully!", flush=True)
-                    log_thread_heartbeat = time.time()
+                    now = time.time()
+                    log_thread_heartbeat = now
+                    log_last_received = now  # Reset on new connection
                     log_queue.put_nowait({
                         'time': datetime.now().isoformat(),
                         'level': 'I',
@@ -1044,10 +1053,12 @@ def cmd_serve(args):
                     })
 
                     def on_log(msg):
-                        global log_thread_heartbeat
+                        global log_thread_heartbeat, log_last_received
                         try:
-                            # Update heartbeat on every log received
-                            log_thread_heartbeat = time.time()
+                            # Update timestamps on every log received
+                            now = time.time()
+                            log_thread_heartbeat = now
+                            log_last_received = now
                             # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
                             level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
                             level_int = msg.level if isinstance(msg.level, int) else 3
@@ -1066,14 +1077,42 @@ def cmd_serve(args):
                     # subscribe_logs returns an unsubscribe callback, not a coroutine
                     unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
 
-                    # Keep connection alive with periodic heartbeat
+                    # Keep connection alive with periodic heartbeat and stale check
                     try:
-                        while True:
+                        while not connection_stale:
                             await asyncio.sleep(5)
                             log_thread_heartbeat = time.time()
+
+                            # Check if connection is stale (no logs received)
+                            stale_seconds = time.time() - log_last_received
+                            if stale_seconds > LOG_STALE_TIMEOUT:
+                                print(f"[LOG THREAD] Connection stale ({stale_seconds:.0f}s since last log), forcing reconnect", flush=True)
+                                connection_stale = True
+                                try:
+                                    log_queue.put_nowait({
+                                        'time': datetime.now().isoformat(),
+                                        'level': 'W',
+                                        'msg': f'Connection stale ({stale_seconds:.0f}s), reconnecting...',
+                                        'type': 'status',
+                                        'status': 'stale'
+                                    })
+                                except queue.Full:
+                                    pass
                     finally:
                         unsub()
 
+                except asyncio.TimeoutError:
+                    print(f"[LOG THREAD] Connection timeout", flush=True)
+                    try:
+                        log_queue.put_nowait({
+                            'time': datetime.now().isoformat(),
+                            'level': 'E',
+                            'msg': 'Connection timeout',
+                            'type': 'status',
+                            'status': 'timeout'
+                        })
+                    except queue.Full:
+                        pass
                 except Exception as e:
                     print(f"[LOG THREAD] Error: {e}", flush=True)
                     try:
@@ -1088,7 +1127,7 @@ def cmd_serve(args):
                         pass
                 finally:
                     try:
-                        await client.disconnect()
+                        await asyncio.wait_for(client.disconnect(), timeout=5.0)
                     except:
                         pass
 
@@ -1097,16 +1136,16 @@ def cmd_serve(args):
                     log_queue.put_nowait({
                         'time': datetime.now().isoformat(),
                         'level': 'W',
-                        'msg': 'Reconnecting to ESP32 in 5s...',
+                        'msg': 'Reconnecting to ESP32 in 3s...',
                         'type': 'status',
                         'status': 'reconnecting'
                     })
                 except queue.Full:
                     pass
 
-                # Wait before reconnecting
-                print("[LOG THREAD] Waiting 5s before reconnect...", flush=True)
-                await asyncio.sleep(5)
+                # Wait before reconnecting (shorter delay)
+                print("[LOG THREAD] Waiting 3s before reconnect...", flush=True)
+                await asyncio.sleep(3)
                 log_thread_heartbeat = time.time()
 
         try:
