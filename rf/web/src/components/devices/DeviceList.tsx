@@ -109,7 +109,7 @@ export function DeviceList({
     if (category === 'pico') return 'pico-5btn'
     if (category === 'scene_pico') return 'pico-scene'
     if (category === 'bridge_controlled' || category === 'bridge') return 'dimmer'
-    if (category === 'dimmer' || category === 'dimmer_passive') return 'passive-dimmer'
+    if (category === 'dimmer' || category === 'dimmer_passive') return 'dimmer'
     return 'auto'
   }, [])
 

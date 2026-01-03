@@ -83,8 +83,13 @@ export function DeviceDetailModal({
   
   const { guess, confidence, details } = inferDeviceInfo(device)
   const effectiveType = getEffectiveType(device)
-  
+
   const allDevices = groupDevices || [[device.id, device] as [string, Device]]
+
+  // Only STATE_RPT (level reports) can be assigned to existing devices
+  // because the RF TX ID may differ from the hardware ID
+  const isStateReport = device.info?.type === 'STATE_RPT' || device.info?.category === 'dimmer_passive'
+  const canAssignToExisting = !isLabeled && isStateReport && existingLabels.length > 0
   
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -95,11 +100,13 @@ export function DeviceDetailModal({
   }, [onClose])
 
   const handleSave = () => {
-    const label = mode === 'new' ? newLabel : selectedLabel
+    const label = isLabeled ? selectedLabel :
+      (canAssignToExisting && mode === 'existing') ? selectedLabel : newLabel
     onSave(label, deviceType, model)
   }
 
-  const canSave = isLabeled || (mode === 'new' ? newLabel.trim().length > 0 : selectedLabel.length > 0)
+  const canSave = isLabeled ? selectedLabel.trim().length > 0 :
+    (canAssignToExisting && mode === 'existing') ? selectedLabel.length > 0 : newLabel.trim().length > 0
 
   const renderControlButtons = useCallback((targetDevice: Device) => {
     const info = targetDevice.info || {}
@@ -133,7 +140,9 @@ export function DeviceDetailModal({
       }
     }
     
-    if (effectiveType === 'passive-dimmer' || effectiveType === 'passive-switch' || effectiveType === 'passive-fan') {
+    // Show fake state controls for passive dimmers (detected from RX state reports)
+    const category = targetDevice.info?.category || ''
+    if (category === 'dimmer_passive' || category === 'dimmer') {
       return (
         <div className="modal-control-buttons">
           <Button size="sm" variant="purple" onClick={() => onFakeState(targetDevice.id, 50)}>FAKE 50%</Button>
@@ -229,39 +238,28 @@ export function DeviceDetailModal({
 
           {/* Label Section */}
           <div className="label-section">
-            <h3>{isLabeled ? 'Edit Label' : 'Assign to Device Group'}</h3>
-            
-            {isLabeled ? (
-              <div className="label-input-group">
-                <label>Device Group Name</label>
-                <input
-                  type="text"
-                  value={selectedLabel}
-                  onChange={e => setSelectedLabel(e.target.value)}
-                  placeholder="e.g., Kitchen Lights, Master Bedroom"
-                />
-              </div>
-            ) : (
+            <h3>{isLabeled ? 'Edit Name' : (canAssignToExisting ? 'Assign RF TX ID' : 'Name Device')}</h3>
+
+            {canAssignToExisting ? (
               <>
                 <div className="label-mode-tabs">
-                  <button 
+                  <button
                     className={`mode-tab ${mode === 'new' ? 'active' : ''}`}
                     onClick={() => setMode('new')}
                   >
-                    Create New
+                    New Device
                   </button>
-                  <button 
+                  <button
                     className={`mode-tab ${mode === 'existing' ? 'active' : ''}`}
                     onClick={() => setMode('existing')}
-                    disabled={existingLabels.length === 0}
                   >
-                    Add to Existing ({existingLabels.length})
+                    Link to Existing ({existingLabels.length})
                   </button>
                 </div>
 
                 {mode === 'new' ? (
                   <div className="label-input-group">
-                    <label>Device Group Name</label>
+                    <label>Device Name</label>
                     <input
                       type="text"
                       value={newLabel}
@@ -272,18 +270,30 @@ export function DeviceDetailModal({
                   </div>
                 ) : (
                   <div className="label-input-group">
-                    <label>Select Existing Group</label>
-                    <select 
-                      value={selectedLabel} 
+                    <label>Link to Device</label>
+                    <select
+                      value={selectedLabel}
                       onChange={e => setSelectedLabel(e.target.value)}
                     >
                       {existingLabels.map(label => (
                         <option key={label} value={label}>{label}</option>
                       ))}
                     </select>
+                    <p className="label-hint">This RF TX ID will be associated with the selected device</p>
                   </div>
                 )}
               </>
+            ) : (
+              <div className="label-input-group">
+                <label>Device Name</label>
+                <input
+                  type="text"
+                  value={isLabeled ? selectedLabel : newLabel}
+                  onChange={e => isLabeled ? setSelectedLabel(e.target.value) : setNewLabel(e.target.value)}
+                  placeholder="e.g., Kitchen Lights, Master Bedroom"
+                  autoFocus={!isLabeled}
+                />
+              </div>
             )}
           </div>
 

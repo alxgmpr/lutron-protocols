@@ -34,6 +34,7 @@ export function BridgeLevel({ showStatus }: Props) {
 
   return (
     <Card title="Bridge Level Control" badge="BRIDGE → DEVICE" variant="bridge">
+      <p className="help-text">Set the level of a device that has paired to the bridge. Unlike pico commands, bridges can set specific levels to devices.</p>
       <div className="form-row">
         <FormGroup label="Bridge ID">
           <FormInput value={bridgeId} onChange={setBridgeId} width={120} />

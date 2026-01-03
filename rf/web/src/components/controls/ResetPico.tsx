@@ -27,6 +27,7 @@ export function ResetPico({ showStatus }: Props) {
 
   return (
     <Card title="Reset Pico" badge="FORGET ME" variant="device">
+      <p className="help-text">Broadcasts "forget" message to devices within earshot. Devices who have paired to this Pico will forget about it.</p>
       <div className="form-row">
         <FormGroup label="Pico ID" flex="auto">
           <FormInput 
@@ -37,7 +38,6 @@ export function ResetPico({ showStatus }: Props) {
         </FormGroup>
         <Button variant="red" onClick={handleReset}>RESET</Button>
       </div>
-      <p className="help-text">Broadcasts "forget about me" to all paired devices</p>
     </Card>
   )
 }

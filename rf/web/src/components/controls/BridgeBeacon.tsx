@@ -31,7 +31,8 @@ export function BridgeBeacon({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Beacon Mode" badge="BRIDGE PAIRING" variant="bridge">
+    <Card title="Bridge Beacon Mode" badge="BRIDGE PAIRING <WIP>" variant="bridge">
+      <p className="help-text">Starts pairing mode on the bridge which is a beacon that blinks to indicate pairing mode. Devices within range will go to their bridge pairing mode, where a 10 second press of the button will pair to the bridge. <span className="text-muted">(WIP)</span></p>
       <div className="form-row">
         <FormGroup label="Bridge ID">
           <FormInput value={bridgeId} onChange={setBridgeId} width={120} />

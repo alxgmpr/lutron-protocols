@@ -10,6 +10,19 @@ interface DeviceGroupProps {
   formatTime?: (dateString: string) => string
 }
 
+function getInferredTypeHint(device: Device): string | null {
+  const category = device.info?.category || ''
+  const type = device.info?.type || ''
+
+  if (category === 'pico') return 'Pico 5-Button'
+  if (category === 'scene_pico') return 'Scene Pico'
+  if (category === 'bridge_controlled') return 'Dimmer'
+  if (category === 'dimmer_passive' || category === 'dimmer') return 'Dimmer'
+  if (type === 'LEVEL') return 'Dimmer'
+  if (type?.startsWith('BTN_')) return 'Remote'
+  return null
+}
+
 export function DeviceGroup({
   label,
   devices,
@@ -18,6 +31,11 @@ export function DeviceGroup({
   formatTime
 }: DeviceGroupProps) {
   const groupType = devices.find(([, d]) => d.device_type)?.[1].device_type || 'auto'
+
+  // Get inferred type hint for auto mode
+  const inferredHint = groupType === 'auto'
+    ? getInferredTypeHint(devices[0]?.[1])
+    : null
   
   const mostRecentTime = devices.reduce((latest, [, d]) => {
     const time = new Date(d.last_seen || 0).getTime()
@@ -53,6 +71,7 @@ export function DeviceGroup({
             <option key={key} value={key}>{val.name}</option>
           ))}
         </select>
+        {inferredHint && <span className="device-type-hint">({inferredHint})</span>}
         <span className="device-group-meta">{devices.length} ID{devices.length > 1 ? 's' : ''}</span>
         {lastSeenStr && <span className="device-group-time">{lastSeenStr}</span>}
         <span className="device-group-action">Click to manage →</span>

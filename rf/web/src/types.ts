@@ -61,9 +61,6 @@ export const DEVICE_TYPES: Record<string, { name: string; buttons: string | null
   'pico-2btn': { name: 'Pico 2-Button', buttons: 'pico_2btn' },
   'dimmer': { name: 'Dimmer', buttons: 'dimmer' },
   'switch': { name: 'Switch', buttons: 'switch' },
-  'fan': { name: 'Fan', buttons: 'fan' },
-  'passive-dimmer': { name: 'Passive Dimmer', buttons: 'passive_dimmer' },
-  'passive-switch': { name: 'Passive Switch', buttons: 'passive_switch' },
-  'passive-fan': { name: 'Passive Fan', buttons: 'passive_fan' }
+  'fan': { name: 'Fan', buttons: 'fan' }
 }
 

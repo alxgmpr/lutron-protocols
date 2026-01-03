@@ -72,6 +72,12 @@
   border-color: var(--border-accent);
 }
 
+.device-type-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .device-group-ids {
   display: flex;
   flex-wrap: wrap;
