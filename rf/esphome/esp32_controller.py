@@ -963,6 +963,7 @@ def cmd_serve(args):
             'auto': { name: 'Auto', buttons: null },
             // Pico remotes
             'pico-5btn': { name: 'Pico 5-Button', buttons: 'pico' },
+            'pico-4btn-rl': { name: 'Pico 4B Raise/Lower', buttons: 'pico_4btn_rl' },
             'pico-scene': { name: 'Pico Scene', buttons: 'scene_pico' },
             'pico-2btn': { name: 'Pico 2-Button', buttons: 'pico_2btn' },
             // Controllable devices
@@ -993,6 +994,13 @@ def cmd_serve(args):
                     return `
                         <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)">ON</button>
                         <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x04)">OFF</button>
+                    `;
+                case 'pico_4btn_rl':
+                    return `
+                        <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x08)">ON</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x09)">&#9650;</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x0A)">&#9660;</button>
+                        <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)">OFF</button>
                     `;
                 case 'scene_pico':
                     return `

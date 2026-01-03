@@ -205,21 +205,44 @@
   "08692D70": {
     "id": "08692D70",
     "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-02T23:33:44.862449",
-    "last_seen": "2026-01-02T23:35:31.611154",
+    "first_seen": "2026-01-02T23:39:23.147198",
+    "last_seen": "2026-01-02T23:55:34.704046",
     "info": {
       "type": "BTN_LONG_B",
       "factory_id": "08692D70",
       "controllable": true
     },
-    "count": 123,
-    "device_type": "pico-scene"
+    "count": 57,
+    "device_type": "pico-4btn-rl"
+  },
+  "0869E74C": {
+    "id": "0869E74C",
+    "type": "BTN_SHORT_B",
+    "first_seen": "2026-01-02T23:43:17.026914",
+    "last_seen": "2026-01-02T23:54:08.483681",
+    "info": {
+      "type": "PAIR_B9",
+      "factory_id": "0869E74C",
+      "controllable": true
+    },
+    "count": 370,
+    "device_type": "pico-2btn"
+  },
+  "4CE76908": {
+    "id": "4CE76908",
+    "type": "PAIR_B9",
+    "first_seen": "2026-01-02T23:51:35.930347",
+    "last_seen": "2026-01-02T23:51:40.332314",
+    "info": {
+      "type": "PAIR_B9"
+    },
+    "count": 56
   },
   "002C90AD": {
     "id": "002C90AD",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-02T23:33:58.699103",
-    "last_seen": "2026-01-02T23:34:13.746664",
+    "first_seen": "2026-01-02T23:55:34.838934",
+    "last_seen": "2026-01-02T23:55:34.838941",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "002C90AD",
@@ -227,13 +250,13 @@
       "controllable": false,
       "level": "17%"
     },
-    "count": 2
+    "count": 1
   },
   "002C90AF": {
     "id": "002C90AF",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-02T23:33:58.775024",
-    "last_seen": "2026-01-02T23:34:14.576750",
+    "first_seen": "2026-01-02T23:55:34.976716",
+    "last_seen": "2026-01-02T23:55:35.669514",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "002C90AF",
@@ -241,20 +264,6 @@
       "controllable": false,
       "level": "17%"
     },
-    "count": 22
-  },
-  "8BD782A1": {
-    "id": "8BD782A1",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-02T23:35:21.603150",
-    "last_seen": "2026-01-02T23:35:21.603157",
-    "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "8BD782A1",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "1%"
-    },
-    "count": 1
+    "count": 8
   }
 }

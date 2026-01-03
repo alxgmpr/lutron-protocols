@@ -224,6 +224,13 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                          (best_bytes[12] << 16) |
                          (best_bytes[13] << 24);
     }
+  } else if (packet.type == PKT_PAIRING_B9 || packet.type == PKT_PAIRING_BA ||
+             packet.type == PKT_PAIRING_BB || packet.type == PKT_PAIRING_B0) {
+    // Pairing packets use BIG-endian (like Pico button packets)
+    packet.device_id = (best_bytes[PKT_OFFSET_DEVICE_ID] << 24) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 8) |
+                       best_bytes[PKT_OFFSET_DEVICE_ID + 3];
   } else {
     // All other packets - default to LITTLE-endian
     packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
@@ -269,17 +276,19 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
 
 const char *LutronDecoder::button_name(uint8_t button) {
   switch (button) {
-    // 5-button Pico
-    case BTN_ON: return "ON";
-    case BTN_FAVORITE: return "FAV";
-    case BTN_OFF: return "OFF";
-    case BTN_RAISE: return "RAISE";
-    case BTN_LOWER: return "LOWER";
-    // Scene Pico (4-button)
-    case BTN_SCENE1: return "SCENE1";
-    case BTN_SCENE2: return "SCENE2";
-    case BTN_SCENE3: return "SCENE3";
-    case BTN_SCENE4: return "SCENE4";
+    // 5-button Pico (PJ2-3BRL)
+    case BTN_ON: return "ON";           // 0x02
+    case BTN_FAVORITE: return "FAV";    // 0x03
+    case BTN_OFF: return "OFF";         // 0x04
+    case BTN_RAISE: return "RAISE";     // 0x05
+    case BTN_LOWER: return "LOWER";     // 0x06
+    // 4-button Picos: Scene (PJ2-4B-S) or On/Raise/Lower/Off (PJ2-4B)
+    case BTN_SCENE4: return "ON";       // 0x08
+    case BTN_SCENE3: return "UP";       // 0x09
+    case BTN_SCENE2: return "DOWN";     // 0x0A
+    case BTN_SCENE1: return "OFF";      // 0x0B
+    // Special
+    case 0xFF: return "RESET";          // Pico unpair/reset broadcast
     default: return "?";
   }
 }
