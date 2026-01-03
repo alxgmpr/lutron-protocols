@@ -234,7 +234,7 @@
     "id": "058C8E37",
     "type": "LEVEL",
     "first_seen": "2026-01-03T06:00:40.023972",
-    "last_seen": "2026-01-03T06:09:01.567694",
+    "last_seen": "2026-01-03T07:19:50.053189",
     "info": {
       "type": "LEVEL",
       "bridge_id": "002C90AF",
@@ -243,7 +243,7 @@
       "controllable": true,
       "level": "1%"
     },
-    "count": 54
+    "count": 66
   },
   "002C90AD": {
     "id": "002C90AD",
@@ -307,13 +307,13 @@
     "id": "00C7E498",
     "type": "BTN_SHORT_B",
     "first_seen": "2026-01-03T06:16:22.215677",
-    "last_seen": "2026-01-03T06:16:22.215687",
+    "last_seen": "2026-01-03T07:21:44.472209",
     "info": {
-      "type": "BTN_SHORT_B",
+      "type": "BTN_LONG_B",
       "factory_id": "00C7E498",
       "controllable": true
     },
-    "count": 1
+    "count": 2
   },
   "084B89E7": {
     "id": "084B89E7",
@@ -368,5 +368,33 @@
       "level": "0%"
     },
     "count": 1
+  },
+  "1F2C9080": {
+    "id": "1F2C9080",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T07:30:48.415299",
+    "last_seen": "2026-01-03T07:44:11.913235",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "1F2C9080",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "level": "0%"
+    },
+    "count": 3
+  },
+  "1F2C908F": {
+    "id": "1F2C908F",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T07:30:48.440434",
+    "last_seen": "2026-01-03T07:44:12.565253",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "1F2C908F",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "level": "0%"
+    },
+    "count": 47
   }
 }

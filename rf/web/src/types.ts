@@ -7,6 +7,7 @@ export interface Device {
   label?: string
   model?: string
   device_type?: string
+  link_id?: string
   info: DeviceInfo
 }
 

@@ -64,6 +64,28 @@ import os
 DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
 devices_lock = threading.Lock()
 
+def extract_link_id(device_id: str) -> str:
+    """Extract the 16-bit link ID from a 32-bit device ID.
+
+    The link ID is the middle 16 bits (bits 8-23) of the device ID.
+    For example:
+      - 0x002C90AF -> link ID = 0x2C90
+      - 0x002C90AD -> link ID = 0x2C90
+      - 0xAA2C90AE -> link ID = 0x2C90
+
+    Devices with the same link ID are part of the same zone/group.
+    """
+    try:
+        if device_id.startswith('0x') or device_id.startswith('0X'):
+            dev_int = int(device_id, 16)
+        else:
+            dev_int = int(device_id, 16) if len(device_id) == 8 else int(device_id)
+        # Extract bits 8-23 (middle 16 bits)
+        link_id = (dev_int >> 8) & 0xFFFF
+        return f"{link_id:04X}"
+    except:
+        return "UNKNOWN"
+
 def load_devices() -> Dict:
     """Load devices from JSON file."""
     if os.path.exists(DEVICES_FILE):
@@ -83,9 +105,11 @@ def register_device(device_id: str, device_type: str, info: Dict):
     """Register or update a device in the database."""
     with devices_lock:
         devices = load_devices()
+        link_id = extract_link_id(device_id)
         if device_id not in devices:
             devices[device_id] = {
                 "id": device_id,
+                "link_id": link_id,
                 "type": device_type,
                 "first_seen": datetime.now().isoformat(),
                 "last_seen": datetime.now().isoformat(),
@@ -95,6 +119,9 @@ def register_device(device_id: str, device_type: str, info: Dict):
         else:
             devices[device_id]["last_seen"] = datetime.now().isoformat()
             devices[device_id]["count"] = devices[device_id].get("count", 0) + 1
+            # Ensure link_id is set (for older devices)
+            if "link_id" not in devices[device_id]:
+                devices[device_id]["link_id"] = link_id
             # Update info if we have more details
             if info:
                 devices[device_id]["info"].update(info)
@@ -782,6 +809,53 @@ def cmd_serve(args):
                 save_devices(devices)
                 return jsonify({'status': 'ok'})
             return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/links')
+    def api_links():
+        """Get devices grouped by link ID.
+
+        Returns a structure like:
+        {
+          "2C90": {
+            "link_id": "2C90",
+            "devices": [
+              {"id": "002C90AF", "type": "LEVEL", ...},
+              {"id": "002C90AD", "type": "LEVEL", ...}
+            ],
+            "device_count": 2,
+            "last_seen": "2026-01-03T..."
+          }
+        }
+        """
+        devices = load_devices()
+        links = {}
+
+        for device_id, device in devices.items():
+            # Compute link_id if not present
+            link_id = device.get('link_id') or extract_link_id(device_id)
+
+            if link_id not in links:
+                links[link_id] = {
+                    "link_id": link_id,
+                    "devices": [],
+                    "device_count": 0,
+                    "last_seen": device.get("last_seen", ""),
+                    "total_count": 0
+                }
+
+            links[link_id]["devices"].append(device)
+            links[link_id]["device_count"] += 1
+            links[link_id]["total_count"] += device.get("count", 0)
+
+            # Track most recent activity
+            if device.get("last_seen", "") > links[link_id]["last_seen"]:
+                links[link_id]["last_seen"] = device.get("last_seen", "")
+
+        # Sort devices within each link by type and ID
+        for link_id in links:
+            links[link_id]["devices"].sort(key=lambda d: (d.get("type", ""), d.get("id", "")))
+
+        return jsonify(links)
 
     @app.route('/api/devices/<device_id>/label', methods=['POST'])
     def api_label_device(device_id):

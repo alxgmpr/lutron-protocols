@@ -115,7 +115,7 @@ export function DeviceList({
 
   const { labeled, unlabeled, existingLabels, totalLabeled, totalUnlabeled } = useMemo(() => {
     const deviceList = Object.entries(devices)
-    
+
     const sortByLastSeen = (a: [string, Device], b: [string, Device]) => {
       const aTime = new Date(a[1].last_seen || 0).getTime()
       const bTime = new Date(b[1].last_seen || 0).getTime()
@@ -138,6 +138,7 @@ export function DeviceList({
     labeledDevices.sort(sortByLastSeen)
     unlabeledDevices.sort(sortByLastSeen)
 
+    // Group labeled devices by label
     const grouped: Record<string, Array<[string, Device]>> = {}
     labeledDevices.forEach(([id, device]) => {
       const label = device.label!

@@ -17,6 +17,17 @@ interface DeviceDetailModalProps {
   getEffectiveType: (device: Device) => string
 }
 
+function extractBridgePairing(bridgeId: string): string {
+  try {
+    const idStr = bridgeId.replace(/^0x/i, '')
+    const idNum = parseInt(idStr, 16)
+    const pairingId = (idNum >> 8) & 0xFFFF
+    return pairingId.toString(16).toUpperCase().padStart(4, '0')
+  } catch {
+    return '????'
+  }
+}
+
 function inferDeviceInfo(device: Device): { guess: string; confidence: string; details: string[] } {
   const info = device.info || {}
   const category = info.category || ''
@@ -192,6 +203,12 @@ export function DeviceDetailModal({
               <span>First: {new Date(device.first_seen).toLocaleString()}</span>
               <span>Last: {new Date(device.last_seen).toLocaleString()}</span>
             </div>
+            {device.info?.bridge_id && (
+              <div className="device-link-id">
+                <span className="link-id-label">Bridge Pairing:</span>
+                <span className="link-id-value">{extractBridgePairing(device.info.bridge_id)}</span>
+              </div>
+            )}
           </div>
 
           {/* Paired Device IDs Section - for labeled devices */}
