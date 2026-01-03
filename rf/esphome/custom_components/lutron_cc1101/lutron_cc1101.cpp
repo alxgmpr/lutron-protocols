@@ -929,11 +929,11 @@ void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) 
     packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
     packet[1] = seq;
 
-    // Device ID (big-endian)
-    packet[2] = (device_id >> 24) & 0xFF;
-    packet[3] = (device_id >> 16) & 0xFF;
-    packet[4] = (device_id >> 8) & 0xFF;
-    packet[5] = device_id & 0xFF;
+    // Device ID (little-endian, matching real dimmers)
+    packet[2] = device_id & 0xFF;
+    packet[3] = (device_id >> 8) & 0xFF;
+    packet[4] = (device_id >> 16) & 0xFF;
+    packet[5] = (device_id >> 24) & 0xFF;
 
     // Constants from captured packets
     packet[6] = 0x00;
@@ -962,8 +962,8 @@ void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) 
 
     this->transmit_packet(packet, 24);
 
-    // Sequence increments by 5 like real dimmer
-    seq = (seq + 5) & 0xFF;
+    // Sequence increments by 2 like real dimmer
+    seq = (seq + 2) & 0xFF;
 
     if (rep < 19) delay(50);
   }
