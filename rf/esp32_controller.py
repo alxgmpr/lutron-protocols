@@ -157,6 +157,11 @@ def _is_echo_from_device(device_id: str) -> bool:
 
 def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
     """Store RX packet in database and queue, with echo filtering."""
+    # Skip UNKNOWN packet types - not useful for display
+    packet_type = pkt_data.get('packet_type', 'UNKNOWN')
+    if packet_type == 'UNKNOWN':
+        return
+
     # Check for echo BEFORE storing - filter by device_id
     device_id = pkt_data.get('device_id')
     if _is_echo_from_device(device_id):
