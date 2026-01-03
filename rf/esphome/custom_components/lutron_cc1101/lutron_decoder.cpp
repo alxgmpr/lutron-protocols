@@ -152,7 +152,13 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
   }
 
   if (best_decoded < 10) {  // Need at least some bytes to be useful
-    ESP_LOGD(TAG, "Could not decode enough bytes: %d", best_decoded);
+    // Log raw FIFO data for debugging
+    char hex[100];
+    int pos = 0;
+    for (size_t i = 0; i < len && i < 16 && pos < 90; i++) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", fifo_data[i]);
+    }
+    ESP_LOGD(TAG, "Decode fail (%d bytes): %s", best_decoded, hex);
     return false;
   }
 
@@ -172,14 +178,28 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                      (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
                      (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
 
-  // Button and action for button press packets
+  // Initialize optional fields
+  packet.button = 0;
+  packet.action = 0;
+  packet.level = 0;
+  packet.target_id = 0;
+
+  // Parse type-specific fields
   if (packet.type == PKT_BUTTON_SHORT_A || packet.type == PKT_BUTTON_LONG_A ||
       packet.type == PKT_BUTTON_SHORT_B || packet.type == PKT_BUTTON_LONG_B) {
+    // Button press packets
     packet.button = best_bytes[PKT_OFFSET_BUTTON];
     packet.action = best_bytes[PKT_OFFSET_ACTION];
-  } else {
-    packet.button = 0;
-    packet.action = 0;
+  } else if (packet.type == PKT_LEVEL || packet.type == PKT_STATE_REPORT) {
+    // Level/state packets have level at offset 9
+    packet.level = best_bytes[PKT_OFFSET_LEVEL];
+    // Target device ID at offset 10-13 (little-endian)
+    if (best_decoded >= 14) {
+      packet.target_id = best_bytes[PKT_OFFSET_TARGET_ID] |
+                         (best_bytes[PKT_OFFSET_TARGET_ID + 1] << 8) |
+                         (best_bytes[PKT_OFFSET_TARGET_ID + 2] << 16) |
+                         (best_bytes[PKT_OFFSET_TARGET_ID + 3] << 24);
+    }
   }
 
   // CRC from packet (if we have enough bytes)
@@ -217,11 +237,17 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
 
 const char *LutronDecoder::button_name(uint8_t button) {
   switch (button) {
+    // 5-button Pico
     case BTN_ON: return "ON";
     case BTN_FAVORITE: return "FAV";
     case BTN_OFF: return "OFF";
     case BTN_RAISE: return "RAISE";
     case BTN_LOWER: return "LOWER";
+    // Scene Pico (4-button)
+    case BTN_SCENE1: return "SCENE1";
+    case BTN_SCENE2: return "SCENE2";
+    case BTN_SCENE3: return "SCENE3";
+    case BTN_SCENE4: return "SCENE4";
     default: return "?";
   }
 }

@@ -731,8 +731,8 @@ def cmd_serve(args):
             // Extract TX hex bytes: "TX 40 bytes: AA AA AA AA..."
             const txMatch = msg.match(/TX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
 
-            // Extract decoded RX packets: "RX: TYPE | DEVICE_ID | ..."
-            const rxMatch = msg.match(/^RX:\s+(.+)$/);
+            // Extract decoded RX packets: "RX: TYPE | DEVICE | ..." (after ESPHome prefix)
+            const rxMatch = msg.match(/RX:\s+(\S+\s+\|.+)/);
 
             const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
 
@@ -1108,52 +1108,67 @@ def cmd_serve(args):
                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
     def subscribe_to_logs():
-        """Subscribe to ESP32 logs and push to queue."""
-        async def _subscribe():
-            client = APIClient(
-                address=ESP32_IP,
-                port=ESP32_PORT,
-                password=ESP32_PASSWORD,
-                noise_psk=ESP32_ENCRYPTION_KEY,
-            )
-            try:
-                await client.connect(login=True)
+        """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""
+        global log_subscription_started
 
-                def on_log(msg):
+        async def _subscribe():
+            global log_subscription_started
+            while True:  # Reconnect loop
+                client = APIClient(
+                    address=ESP32_IP,
+                    port=ESP32_PORT,
+                    password=ESP32_PASSWORD,
+                    noise_psk=ESP32_ENCRYPTION_KEY,
+                )
+                try:
+                    await client.connect(login=True)
+                    log_queue.put_nowait({
+                        'time': datetime.now().isoformat(),
+                        'level': 'I',
+                        'msg': 'Log subscription connected to ESP32'
+                    })
+
+                    def on_log(msg):
+                        try:
+                            # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
+                            level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
+                            level_int = msg.level if isinstance(msg.level, int) else 3
+                            # msg.message may be bytes
+                            message = msg.message if hasattr(msg, 'message') else str(msg)
+                            if isinstance(message, bytes):
+                                message = message.decode('utf-8', errors='replace')
+                            log_queue.put_nowait({
+                                'time': datetime.now().isoformat(),
+                                'level': level_map.get(level_int, 'I'),
+                                'msg': message
+                            })
+                        except queue.Full:
+                            pass
+
+                    # subscribe_logs returns an unsubscribe callback, not a coroutine
+                    unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
+
+                    # Keep connection alive
                     try:
-                        # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
-                        level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
-                        level_int = msg.level if isinstance(msg.level, int) else 3
-                        # msg.message may be bytes
-                        message = msg.message if hasattr(msg, 'message') else str(msg)
-                        if isinstance(message, bytes):
-                            message = message.decode('utf-8', errors='replace')
-                        log_queue.put_nowait({
-                            'time': datetime.now().isoformat(),
-                            'level': level_map.get(level_int, 'I'),
-                            'msg': message
-                        })
-                    except queue.Full:
+                        while True:
+                            await asyncio.sleep(1)
+                    finally:
+                        unsub()
+
+                except Exception as e:
+                    log_queue.put_nowait({
+                        'time': datetime.now().isoformat(),
+                        'level': 'E',
+                        'msg': f'Log subscription error: {e}'
+                    })
+                finally:
+                    try:
+                        await client.disconnect()
+                    except:
                         pass
 
-                # subscribe_logs returns an unsubscribe callback, not a coroutine
-                unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
-
-                # Keep connection alive
-                try:
-                    while True:
-                        await asyncio.sleep(1)
-                finally:
-                    unsub()
-
-            except Exception as e:
-                log_queue.put_nowait({
-                    'time': datetime.now().isoformat(),
-                    'level': 'E',
-                    'msg': f'Log subscription error: {e}'
-                })
-            finally:
-                await client.disconnect()
+                # Wait before reconnecting
+                await asyncio.sleep(5)
 
         asyncio.run(_subscribe())
 

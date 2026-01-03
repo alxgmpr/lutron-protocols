@@ -19,12 +19,17 @@ static const uint8_t PKT_PAIRING_BB = 0xBB;
 static const uint8_t PKT_PAIRING_B0 = 0xB0;
 static const uint8_t PKT_BEACON = 0x91;
 
-// Button codes
+// Button codes - 5-button Pico
 static const uint8_t BTN_ON = 0x02;
 static const uint8_t BTN_FAVORITE = 0x03;
 static const uint8_t BTN_OFF = 0x04;
 static const uint8_t BTN_RAISE = 0x05;
 static const uint8_t BTN_LOWER = 0x06;
+// Button codes - Scene Pico (4-button) - numbered top to bottom
+static const uint8_t BTN_SCENE1 = 0x0B;  // Top button (Bright)
+static const uint8_t BTN_SCENE2 = 0x0A;  // Second (Entertain)
+static const uint8_t BTN_SCENE3 = 0x09;  // Third (Relax)
+static const uint8_t BTN_SCENE4 = 0x08;  // Bottom (Off)
 
 // Action codes
 static const uint8_t ACTION_PRESS = 0x00;
@@ -36,6 +41,8 @@ static const uint8_t PKT_OFFSET_SEQ = 1;
 static const uint8_t PKT_OFFSET_DEVICE_ID = 2;  // 4 bytes, little-endian
 static const uint8_t PKT_OFFSET_BUTTON = 10;
 static const uint8_t PKT_OFFSET_ACTION = 11;
+static const uint8_t PKT_OFFSET_LEVEL = 9;      // Level byte for LEVEL/STATE packets
+static const uint8_t PKT_OFFSET_TARGET_ID = 10; // Target device ID for bridge commands
 static const uint8_t PKT_OFFSET_CRC = 22;       // 2 bytes, big-endian
 
 static const size_t PKT_STANDARD_LEN = 24;
@@ -50,9 +57,11 @@ struct DecodedPacket {
   bool valid;
   uint8_t type;
   uint8_t sequence;
-  uint32_t device_id;    // 32-bit device ID
+  uint32_t device_id;    // 32-bit device ID (source)
   uint8_t button;
   uint8_t action;
+  uint8_t level;         // Level 0-100 for LEVEL/STATE packets
+  uint32_t target_id;    // Target device ID for bridge commands
   uint16_t crc;
   bool crc_valid;
   uint8_t raw[32];       // Raw decoded bytes

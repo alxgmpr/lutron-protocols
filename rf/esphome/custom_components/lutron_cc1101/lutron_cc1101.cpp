@@ -59,8 +59,15 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     ESP_LOGI(TAG, "RX: %s | %s | %s %s | Seq=%d | RSSI=%d | CRC=%s",
              type_name, dev_id, btn_name, action, pkt.sequence, rssi,
              pkt.crc_valid ? "OK" : "BAD");
+  } else if (pkt.type == PKT_LEVEL || pkt.type == PKT_STATE_REPORT) {
+    // Level/state packet
+    char target_id[9];
+    LutronDecoder::format_device_id(pkt.target_id, target_id);
+    ESP_LOGI(TAG, "RX: %s | %s -> %s | Level=%d%% | Seq=%d | RSSI=%d | CRC=%s",
+             type_name, dev_id, target_id, pkt.level, pkt.sequence, rssi,
+             pkt.crc_valid ? "OK" : "BAD");
   } else {
-    // Other packet types
+    // Other packet types (pairing, beacon, etc.)
     ESP_LOGI(TAG, "RX: %s | %s | Seq=%d | RSSI=%d | CRC=%s",
              type_name, dev_id, pkt.sequence, rssi,
              pkt.crc_valid ? "OK" : "BAD");
