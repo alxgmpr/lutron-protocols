@@ -12,7 +12,7 @@ export function PicoPairing({ showStatus }: Props) {
   const { post } = useApi()
   const [deviceId, setDeviceId] = useState('0xCC110001')
   const [preset, setPreset] = useState('5btn')
-  const [duration, setDuration] = useState(10)
+  const [duration, setDuration] = useState(4)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [pktType, setPktType] = useState('B9')
   const [byte10, setByte10] = useState('0x04')
@@ -75,7 +75,7 @@ export function PicoPairing({ showStatus }: Props) {
           <FormInput 
             type="number" 
             value={duration} 
-            onChange={v => setDuration(parseInt(v) || 10)} 
+            onChange={v => setDuration(parseInt(v) || 4)} 
             width={60}
             min={3}
             max={30}

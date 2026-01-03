@@ -289,5 +289,17 @@
       "level": "0%"
     },
     "count": 1
+  },
+  "08692D70": {
+    "id": "08692D70",
+    "type": "BTN_SHORT_B",
+    "first_seen": "2026-01-03T05:37:15.185428",
+    "last_seen": "2026-01-03T05:38:59.976960",
+    "info": {
+      "type": "BTN_LONG_B",
+      "factory_id": "08692D70",
+      "controllable": true
+    },
+    "count": 64
   }
 }
