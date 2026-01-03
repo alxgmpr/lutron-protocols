@@ -185,15 +185,21 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     // Button press packets
     packet.button = best_bytes[PKT_OFFSET_BUTTON];
     packet.action = best_bytes[PKT_OFFSET_ACTION];
-  } else if (packet.type == PKT_LEVEL || packet.type == PKT_STATE_REPORT) {
-    // Level/state packets have level at offset 9
-    packet.level = best_bytes[PKT_OFFSET_LEVEL];
+  } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
+             packet.type == PKT_STATE_REPORT_83) {
+    // State report packets have level at offset 11
+    // Level is 0x00-0xFE = 0-100%
+    uint8_t raw_level = best_bytes[PKT_OFFSET_LEVEL];
+    packet.level = (raw_level * 100) / 254;  // Convert 0-254 to 0-100%
+  } else if (packet.type == PKT_LEVEL) {
+    // Level command packets (0xA2) - different format, level at offset 9
+    packet.level = best_bytes[9];
     // Target device ID at offset 10-13 (little-endian)
     if (best_decoded >= 14) {
-      packet.target_id = best_bytes[PKT_OFFSET_TARGET_ID] |
-                         (best_bytes[PKT_OFFSET_TARGET_ID + 1] << 8) |
-                         (best_bytes[PKT_OFFSET_TARGET_ID + 2] << 16) |
-                         (best_bytes[PKT_OFFSET_TARGET_ID + 3] << 24);
+      packet.target_id = best_bytes[10] |
+                         (best_bytes[11] << 8) |
+                         (best_bytes[12] << 16) |
+                         (best_bytes[13] << 24);
     }
   }
 
@@ -220,7 +226,9 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_BUTTON_SHORT_B: return "BTN_SHORT_B";
     case PKT_BUTTON_LONG_B: return "BTN_LONG_B";
     case PKT_LEVEL: return "LEVEL";
-    case PKT_STATE_REPORT: return "STATE_RPT";
+    case PKT_STATE_REPORT_81: return "STATE_RPT";
+    case PKT_STATE_REPORT_82: return "STATE_RPT";
+    case PKT_STATE_REPORT_83: return "STATE_RPT";
     case PKT_PAIRING_B9: return "PAIR_B9";
     case PKT_PAIRING_BA: return "PAIR_BA";
     case PKT_PAIRING_BB: return "PAIR_BB";

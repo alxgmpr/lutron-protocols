@@ -1110,10 +1110,13 @@ def cmd_serve(args):
     def subscribe_to_logs():
         """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""
         global log_subscription_started
+        print("[LOG THREAD] Starting subscribe_to_logs thread", flush=True)
 
         async def _subscribe():
             global log_subscription_started
+            print("[LOG THREAD] _subscribe async started", flush=True)
             while True:  # Reconnect loop
+                print(f"[LOG THREAD] Connecting to {ESP32_IP}:{ESP32_PORT}...", flush=True)
                 client = APIClient(
                     address=ESP32_IP,
                     port=ESP32_PORT,
@@ -1122,6 +1125,7 @@ def cmd_serve(args):
                 )
                 try:
                     await client.connect(login=True)
+                    print("[LOG THREAD] Connected successfully!", flush=True)
                     log_queue.put_nowait({
                         'time': datetime.now().isoformat(),
                         'level': 'I',
@@ -1156,6 +1160,7 @@ def cmd_serve(args):
                         unsub()
 
                 except Exception as e:
+                    print(f"[LOG THREAD] Error: {e}", flush=True)
                     log_queue.put_nowait({
                         'time': datetime.now().isoformat(),
                         'level': 'E',
@@ -1168,6 +1173,7 @@ def cmd_serve(args):
                         pass
 
                 # Wait before reconnecting
+                print("[LOG THREAD] Waiting 5s before reconnect...", flush=True)
                 await asyncio.sleep(5)
 
         asyncio.run(_subscribe())
