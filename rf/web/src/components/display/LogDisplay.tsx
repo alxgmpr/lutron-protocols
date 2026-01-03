@@ -6,16 +6,19 @@ import './LogDisplay.css'
 interface LogDisplayProps {
   logs: LogEntry[]
   onClear: () => void
+  paused?: boolean
+  onTogglePause?: () => void
 }
 
-export function LogDisplay({ logs, onClear }: LogDisplayProps) {
+export function LogDisplay({ logs, onClear, paused = false, onTogglePause }: LogDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Only auto-scroll when not paused
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && !paused) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [logs])
+  }, [logs, paused])
 
   const handleCopy = () => {
     const text = logs.map(log => {
@@ -29,9 +32,15 @@ export function LogDisplay({ logs, onClear }: LogDisplayProps) {
     <Card
       title="ESP32 Logs"
       variant="logs"
-      className="log-card"
+      className={`log-card ${paused ? 'paused' : ''}`}
+      badge={paused ? 'paused' : undefined}
       actions={
         <>
+          {onTogglePause && (
+            <Button size="sm" variant={paused ? 'primary' : 'default'} onClick={onTogglePause}>
+              {paused ? 'Resume' : 'Pause'}
+            </Button>
+          )}
           <Button size="sm" onClick={handleCopy}>Copy</Button>
           <Button size="sm" onClick={onClear}>Clear</Button>
         </>

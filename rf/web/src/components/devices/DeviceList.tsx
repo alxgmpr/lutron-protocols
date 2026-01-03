@@ -12,7 +12,6 @@ interface DeviceListProps {
   onDelete: (id: string) => void
   onClear: () => void
   onClearUnlabeled: () => void
-  onSetType: (id: string, type: string) => void
   onRefresh: () => void
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
@@ -22,18 +21,33 @@ function formatRelativeTime(dateString: string): string {
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffSec = Math.floor(diffMs / 1000)
-  
+
   if (diffSec < 5) return 'just now'
   if (diffSec < 60) return `${diffSec}s ago`
-  
+
   const diffMin = Math.floor(diffSec / 60)
   if (diffMin < 60) return `${diffMin}m ago`
-  
+
   const diffHr = Math.floor(diffMin / 60)
   if (diffHr < 24) return `${diffHr}h ago`
-  
+
   const diffDays = Math.floor(diffHr / 24)
   return `${diffDays}d ago`
+}
+
+function extractBridgePairing(device: Device): string | null {
+  // First check if we have a pre-extracted bridge_pairing (from STATE_RPT)
+  if (device.info?.bridge_pairing) {
+    return device.info.bridge_pairing as string
+  }
+  // Otherwise extract from bridge_id (from LEVEL commands)
+  if (device.info?.bridge_id) {
+    const idStr = (device.info.bridge_id as string).replace(/^0x/i, '')
+    const idNum = parseInt(idStr, 16)
+    const pairingId = (idNum >> 8) & 0xFFFF
+    return pairingId.toString(16).toUpperCase().padStart(4, '0')
+  }
+  return null
 }
 
 interface SelectedGroup {
@@ -47,13 +61,13 @@ export function DeviceList({
   onDelete,
   onClear,
   onClearUnlabeled,
-  onSetType,
   onRefresh,
   showStatus
 }: DeviceListProps) {
   const { post, postJson } = useApi()
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<SelectedGroup | null>(null)
+  const [bridgeFilter, setBridgeFilter] = useState<string>('all')
 
   const replayButton = useCallback(async (deviceId: string, button: number) => {
     showStatus(`Sending button 0x${button.toString(16).toUpperCase()}...`)
@@ -113,7 +127,36 @@ export function DeviceList({
     return 'auto'
   }, [])
 
-  const { labeled, unlabeled, existingLabels, totalLabeled, totalUnlabeled } = useMemo(() => {
+  // Quick action handler for on/off buttons in list view
+  const handleQuickAction = useCallback(async (deviceId: string, action: 'on' | 'off') => {
+    const device = devices[deviceId]
+    if (!device) return
+
+    const effectiveType = getEffectiveType(device)
+    const category = device.info?.category || ''
+
+    // For picos, send button press
+    if (effectiveType.startsWith('pico') || category === 'pico' || category === 'scene_pico') {
+      const button = action === 'on' ? 0x02 : 0x04
+      await replayButton(deviceId, button)
+    }
+    // For bridge-controlled dimmers, send level command
+    else if (device.info?.bridge_id && device.info?.factory_id) {
+      const level = action === 'on' ? 100 : 0
+      await replayBridge(
+        device.info.bridge_id as string,
+        device.info.factory_id as string,
+        level
+      )
+    }
+    // For passive dimmers, fake the state
+    else if (category === 'dimmer_passive' || category === 'dimmer') {
+      const level = action === 'on' ? 100 : 0
+      await fakeState(deviceId, level)
+    }
+  }, [devices, getEffectiveType, replayButton, replayBridge, fakeState])
+
+  const { labeled, unlabeled, existingLabels, totalLabeled, totalUnlabeled, bridgePairings } = useMemo(() => {
     const deviceList = Object.entries(devices)
 
     const sortByLastSeen = (a: [string, Device], b: [string, Device]) => {
@@ -125,8 +168,13 @@ export function DeviceList({
     const labeledDevices: Array<[string, Device]> = []
     const unlabeledDevices: Array<[string, Device]> = []
     const labels = new Set<string>()
+    const pairings = new Set<string>()
 
     deviceList.forEach(([id, device]) => {
+      // Collect bridge pairings
+      const pairing = extractBridgePairing(device)
+      if (pairing) pairings.add(pairing)
+
       if (device.label) {
         labeledDevices.push([id, device])
         labels.add(device.label)
@@ -157,14 +205,38 @@ export function DeviceList({
       unlabeled: unlabeledDevices,
       existingLabels: Array.from(labels).sort(),
       totalLabeled: labeledDevices.length,
-      totalUnlabeled: unlabeledDevices.length
+      totalUnlabeled: unlabeledDevices.length,
+      bridgePairings: Array.from(pairings).sort()
     }
   }, [devices])
+
+  // Filter labeled groups by bridge pairing
+  const filteredLabeled = useMemo(() => {
+    if (bridgeFilter === 'all') return labeled
+    if (bridgeFilter === 'none') {
+      return labeled.filter(([, groupDevices]) => {
+        return !groupDevices.some(([, d]) => extractBridgePairing(d))
+      })
+    }
+    // Filter by specific bridge pairing
+    return labeled.filter(([, groupDevices]) => {
+      return groupDevices.some(([, d]) => extractBridgePairing(d) === bridgeFilter)
+    })
+  }, [labeled, bridgeFilter])
+
+  // Filter unlabeled devices by bridge pairing
+  const filteredUnlabeled = useMemo(() => {
+    if (bridgeFilter === 'all') return unlabeled
+    if (bridgeFilter === 'none') {
+      return unlabeled.filter(([, d]) => !extractBridgePairing(d))
+    }
+    return unlabeled.filter(([, d]) => extractBridgePairing(d) === bridgeFilter)
+  }, [unlabeled, bridgeFilter])
 
   const handleModalSave = useCallback(async (label: string, deviceType: string, model: string) => {
     const targetDevice = selectedDevice || selectedGroup?.primaryDevice
     if (!targetDevice) return
-    
+
     try {
       if (selectedGroup) {
         for (const [id] of selectedGroup.devices) {
@@ -212,8 +284,9 @@ export function DeviceList({
     })
   }, [])
 
-  const hasUnlabeled = unlabeled.length > 0
-  const hasLabeled = labeled.length > 0
+  const hasUnlabeled = filteredUnlabeled.length > 0
+  const hasLabeled = filteredLabeled.length > 0
+  const totalFiltered = filteredLabeled.reduce((sum, [, devs]) => sum + devs.length, 0) + filteredUnlabeled.length
   const totalDevices = totalLabeled + totalUnlabeled
 
   const activeDevice = selectedDevice || selectedGroup?.primaryDevice
@@ -225,10 +298,10 @@ export function DeviceList({
         title="Discovered Devices"
         variant="device"
         className="device-list-card"
-        badge={totalDevices > 0 ? `${totalDevices}` : undefined}
+        badge={totalDevices > 0 ? `${totalFiltered}/${totalDevices}` : undefined}
         actions={
           <>
-            {hasUnlabeled && (
+            {unlabeled.length > 0 && (
               <Button size="sm" variant="orange" onClick={onClearUnlabeled}>
                 Clear Unknown
               </Button>
@@ -237,25 +310,45 @@ export function DeviceList({
           </>
         }
       >
+        {/* Bridge Filter */}
+        {bridgePairings.length > 0 && (
+          <div className="device-filter-bar">
+            <label className="device-filter-label">Bridge:</label>
+            <select
+              className="device-filter-select"
+              value={bridgeFilter}
+              onChange={e => setBridgeFilter(e.target.value)}
+            >
+              <option value="all">All Devices</option>
+              <option value="none">No Bridge (Picos)</option>
+              {bridgePairings.map(pairing => (
+                <option key={pairing} value={pairing}>Bridge {pairing}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="device-list-container">
           {totalDevices === 0 ? (
             <div className="device-empty">No devices discovered yet. RX is listening...</div>
+          ) : !hasLabeled && !hasUnlabeled ? (
+            <div className="device-empty">No devices match filter</div>
           ) : (
             <>
               {hasLabeled && (
                 <div className="device-section device-section-known">
                   <div className="device-section-header">
-                    <span className="device-section-icon">✓</span>
+                    <span className="device-section-icon">+</span>
                     <span className="device-section-title">Known Devices</span>
-                    <span className="device-section-count">{totalLabeled}</span>
+                    <span className="device-section-count">{filteredLabeled.length}</span>
                   </div>
-                  {labeled.map(([label, groupDevices]) => (
+                  {filteredLabeled.map(([label, groupDevices]) => (
                     <DeviceGroup
                       key={label}
                       label={label}
                       devices={groupDevices}
-                      onSetType={onSetType}
                       onClick={() => handleGroupClick(label, groupDevices)}
+                      onQuickAction={handleQuickAction}
                       formatTime={formatRelativeTime}
                     />
                   ))}
@@ -267,9 +360,9 @@ export function DeviceList({
                   <div className="device-section-header device-section-header-unknown">
                     <span className="device-section-icon">?</span>
                     <span className="device-section-title">Unknown Devices</span>
-                    <span className="device-section-count">{totalUnlabeled}</span>
+                    <span className="device-section-count">{filteredUnlabeled.length}</span>
                   </div>
-                  {unlabeled.map(([id, device]) => (
+                  {filteredUnlabeled.map(([id, device]) => (
                     <UnknownDeviceRow
                       key={id}
                       device={device}

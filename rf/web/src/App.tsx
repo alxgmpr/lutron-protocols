@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useApi } from './hooks/useApi'
 import { useLogStream } from './hooks/useLogStream'
+import { usePacketStream } from './hooks/usePacketStream'
 
 // Layout
 import { Header, StatusBar } from './components/layout'
@@ -27,7 +28,24 @@ import './App.css'
 
 function App() {
   const { get, postJson, del } = useApi()
-  const { logs, txPackets, rxPackets, connected, clearLogs, clearTx, clearRx, clearAll } = useLogStream()
+
+  // Packet stream from backend (parsed packets via SSE)
+  const {
+    txPackets, rxPackets,
+    clearTx, clearRx, clearAll: clearAllPackets,
+    pausedTx, pausedRx, allPaused: allPacketsPaused,
+    togglePauseTx, togglePauseRx, togglePauseAll: togglePauseAllPackets,
+    connected
+  } = usePacketStream()
+
+  // Log stream from backend (raw logs for debugging)
+  const {
+    logs,
+    clearLogs,
+    pausedLogs,
+    togglePauseLogs
+  } = useLogStream()
+
   const [devices, setDevices] = useState<Record<string, Device>>({})
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
 
@@ -84,11 +102,6 @@ function App() {
     showStatus(`Cleared ${unlabeledIds.length} unlabeled device(s)`, 'success')
   }, [devices, del, loadDevices, showStatus])
 
-  const setDeviceType = useCallback(async (deviceId: string, deviceType: string) => {
-    await postJson(`/api/devices/${deviceId}/type`, { device_type: deviceType })
-    loadDevices()
-  }, [postJson, loadDevices])
-
   // Auto-register devices from RX packets
   // Uses new Packet interface with type, summary, details
   useEffect(() => {
@@ -118,6 +131,13 @@ function App() {
         info.rf_tx_id = deviceId
         info.category = 'dimmer_passive'
         info.controllable = false
+        // Extract bridge pairing from device ID (middle 16 bits)
+        // This helps identify which bridge controls this device
+        if (deviceId && /^[0-9A-Fa-f]{8}$/.test(deviceId)) {
+          const idNum = parseInt(deviceId, 16)
+          const bridgePairing = (idNum >> 8) & 0xFFFF
+          info.bridge_pairing = bridgePairing.toString(16).toUpperCase().padStart(4, '0')
+        }
       } else if (pktType.startsWith('BTN_')) {
         deviceId = summary.trim()
         info.factory_id = deviceId
@@ -164,21 +184,38 @@ function App() {
         <section className="panel center-panel">
           <div className="center-panel-header">
             <h2>Log Monitor</h2>
-            <button className="clear-all-btn" onClick={clearAll}>Clear All</button>
+            <div className="center-panel-actions">
+              <button
+                className={`pause-all-btn ${allPacketsPaused && pausedLogs ? 'paused' : ''}`}
+                onClick={() => { togglePauseAllPackets(); togglePauseLogs(); }}
+              >
+                {allPacketsPaused && pausedLogs ? 'Resume All' : 'Pause All'}
+              </button>
+              <button className="clear-all-btn" onClick={() => { clearAllPackets(); clearLogs(); }}>Clear All</button>
+            </div>
           </div>
           <PacketDisplay
             title="TX Packets"
             packets={txPackets}
             onClear={clearTx}
             variant="tx"
+            paused={pausedTx}
+            onTogglePause={togglePauseTx}
           />
           <PacketDisplay
             title="RX Packets"
             packets={rxPackets}
             onClear={clearRx}
             variant="rx"
+            paused={pausedRx}
+            onTogglePause={togglePauseRx}
           />
-          <LogDisplay logs={logs} onClear={clearLogs} />
+          <LogDisplay
+            logs={logs}
+            onClear={clearLogs}
+            paused={pausedLogs}
+            onTogglePause={togglePauseLogs}
+          />
         </section>
 
         <section className="panel right-panel">
@@ -187,7 +224,6 @@ function App() {
             onDelete={deleteDevice}
             onClear={clearDevices}
             onClearUnlabeled={clearUnlabeledDevices}
-            onSetType={setDeviceType}
             onRefresh={loadDevices}
             showStatus={showStatus}
           />

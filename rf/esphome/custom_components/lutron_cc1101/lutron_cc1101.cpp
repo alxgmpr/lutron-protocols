@@ -37,6 +37,8 @@ void LutronCC1101::setup() {
   ESP_LOGI(TAG, "Lutron CC1101 ready");
 }
 
+// Echo detection moved to backend - ESP32 just streams all valid packets
+
 void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
   // Filter out noise - real Lutron packets have RSSI > -70 typically
   // Noise floor is around -80 to -95
@@ -49,6 +51,9 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
   if (!this->decoder_.decode(data, len, pkt)) {
     return;  // Silently ignore undecoded packets
   }
+
+  // Echo filtering is handled by backend using raw byte matching
+  // ESP32 just logs all valid packets for simplicity
 
   // Only log successfully decoded packets
   char dev_id[9];
@@ -85,7 +90,7 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
              pkt.crc_valid ? "OK" : "BAD");
   }
 
-  // Log raw decoded bytes at DEBUG level for analysis
+  // Log raw decoded bytes for web UI packet display
   if (pkt.raw_len > 0) {
     char hex[180];  // 56 bytes * 3 chars + margin
     int pos = 0;
@@ -94,7 +99,7 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     for (size_t i = 0; i < pkt.raw_len && i < max_bytes && pos < 170; i++) {
       pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", pkt.raw[i]);
     }
-    ESP_LOGD(TAG, "  Bytes: %s(%d)", hex, (int)pkt.raw_len);
+    ESP_LOGI(TAG, "  Bytes: %s", hex);
   }
 }
 
@@ -128,6 +133,15 @@ void LutronCC1101::stop_rx() {
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
+  // Log decoded packet bytes for backend echo detection
+  char hex[180];
+  int pos = 0;
+  size_t max_log = (len > 53) ? 53 : len;
+  for (size_t i = 0; i < max_log && pos < 170; i++) {
+    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", packet[i]);
+  }
+  ESP_LOGI(TAG, "TX %d bytes: %s", (int)len, hex);
+
   uint8_t tx_buffer[128];
 
   // For large packets, use shorter preamble to fit in FIFO (64 bytes)

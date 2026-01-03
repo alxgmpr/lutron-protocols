@@ -8,17 +8,20 @@ interface PacketDisplayProps {
   packets: Packet[]
   onClear: () => void
   variant: 'tx' | 'rx'
+  paused?: boolean
+  onTogglePause?: () => void
 }
 
-export function PacketDisplay({ title, packets, onClear, variant }: PacketDisplayProps) {
+export function PacketDisplay({ title, packets, onClear, variant, paused = false, onTogglePause }: PacketDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null)
 
+  // Only auto-scroll when not paused
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef.current && !paused) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [packets])
+  }, [packets, paused])
 
   const handleCopy = () => {
     const text = packets.map(p => {
@@ -41,10 +44,15 @@ export function PacketDisplay({ title, packets, onClear, variant }: PacketDispla
       <Card
         title={title}
         variant={variant}
-        className="packet-card"
-        badge={packets.length > 0 ? `${packets.length}` : undefined}
+        className={`packet-card ${paused ? 'paused' : ''}`}
+        badge={packets.length > 0 ? `${packets.length}${paused ? ' (paused)' : ''}` : undefined}
         actions={
           <>
+            {onTogglePause && (
+              <Button size="sm" variant={paused ? 'primary' : 'default'} onClick={onTogglePause}>
+                {paused ? 'Resume' : 'Pause'}
+              </Button>
+            )}
             <Button size="sm" onClick={handleCopy}>Copy</Button>
             <Button size="sm" onClick={onClear}>Clear</Button>
           </>

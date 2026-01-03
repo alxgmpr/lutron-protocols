@@ -182,15 +182,16 @@
     "id": "092C9080",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T22:35:25.915043",
-    "last_seen": "2026-01-03T10:49:05.063940",
+    "last_seen": "2026-01-03T12:23:48.042466",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "092C9080",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "100%"
+      "level": "56%",
+      "bridge_pairing": "2C90"
     },
-    "count": 4,
+    "count": 5,
     "label": "Foyer Downlights",
     "link_id": "2C90"
   },
@@ -198,15 +199,16 @@
     "id": "092C908F",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T22:35:25.927002",
-    "last_seen": "2026-01-03T10:49:05.686523",
+    "last_seen": "2026-01-03T12:23:48.633648",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "092C908F",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "100%"
+      "level": "56%",
+      "bridge_pairing": "2C90"
     },
-    "count": 77,
+    "count": 95,
     "label": "Foyer Downlights",
     "link_id": "2C90"
   },
@@ -350,14 +352,79 @@
     "link_id": "2C90",
     "type": "STATE_RPT",
     "first_seen": "2026-01-03T12:13:25.285637",
-    "last_seen": "2026-01-03T12:13:25.864213",
+    "last_seen": "2026-01-03T12:16:01.655199",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "122C908F",
       "category": "dimmer_passive",
       "controllable": false,
+      "level": "100%",
+      "bridge_pairing": "2C90"
+    },
+    "count": 12
+  },
+  "1F2C9080": {
+    "id": "1F2C9080",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:18:34.999684",
+    "last_seen": "2026-01-03T12:18:34.999694",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "1F2C9080",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "bridge_pairing": "2C90",
       "level": "100%"
     },
-    "count": 11
+    "count": 1
+  },
+  "1F2C908F": {
+    "id": "1F2C908F",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:18:35.001118",
+    "last_seen": "2026-01-03T12:18:35.600349",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "1F2C908F",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "bridge_pairing": "2C90",
+      "level": "100%"
+    },
+    "count": 16
+  },
+  "372C908D": {
+    "id": "372C908D",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:27:34.442999",
+    "last_seen": "2026-01-03T12:27:34.443009",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "372C908D",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "bridge_pairing": "2C90",
+      "level": "0%"
+    },
+    "count": 1
+  },
+  "372C908F": {
+    "id": "372C908F",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:27:34.466171",
+    "last_seen": "2026-01-03T12:27:35.089497",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "372C908F",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "bridge_pairing": "2C90",
+      "level": "0%"
+    },
+    "count": 17
   }
 }

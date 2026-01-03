@@ -17,6 +17,7 @@ export interface DeviceInfo {
   button?: string
   level?: string
   bridge_id?: string
+  bridge_pairing?: string
   factory_id?: string
   rf_tx_id?: string
   controllable?: boolean

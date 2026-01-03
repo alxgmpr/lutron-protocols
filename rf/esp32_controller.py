@@ -25,6 +25,7 @@ import json
 import time
 import threading
 import queue
+import re
 from typing import Optional, List, Dict
 from datetime import datetime
 
@@ -35,6 +36,15 @@ except ImportError:
     print("Error: aioesphomeapi not installed")
     print("Run: pip install aioesphomeapi")
     sys.exit(1)
+
+# Import database module
+try:
+    import database as db
+except ImportError:
+    # If running from different directory, try relative import
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    import database as db
 
 # ESP32 connection settings
 ESP32_IP = "10.1.4.59"
@@ -56,6 +66,7 @@ BUTTONS = {
 # Global log queue for SSE streaming
 log_queue = queue.Queue(maxsize=1000)
 rx_queue = queue.Queue(maxsize=500)
+packet_queue = queue.Queue(maxsize=500)  # Parsed packets for SSE
 log_subscription_started = False
 log_subscription_lock = threading.Lock()
 log_thread_heartbeat = 0  # Timestamp of last heartbeat from log thread
@@ -63,10 +74,8 @@ log_last_received = 0  # Timestamp of last actual log received from ESP32
 LOG_THREAD_TIMEOUT = 30  # Consider thread dead if no heartbeat for this many seconds
 LOG_STALE_TIMEOUT = 60  # Consider connection stale if no logs for this long
 
-# Device database
+# Device database - now uses SQLite via database module
 import os
-DEVICES_FILE = os.path.join(os.path.dirname(__file__), "devices.json")
-devices_lock = threading.Lock()
 
 def extract_link_id(device_id: str) -> str:
     """Extract the 16-bit link ID from a 32-bit device ID.
@@ -90,47 +99,309 @@ def extract_link_id(device_id: str) -> str:
     except:
         return "UNKNOWN"
 
-def load_devices() -> Dict:
-    """Load devices from JSON file."""
-    if os.path.exists(DEVICES_FILE):
-        try:
-            with open(DEVICES_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
-def save_devices(devices: Dict):
-    """Save devices to JSON file."""
-    with open(DEVICES_FILE, 'w') as f:
-        json.dump(devices, f, indent=2)
-
 def register_device(device_id: str, device_type: str, info: Dict):
     """Register or update a device in the database."""
-    with devices_lock:
-        devices = load_devices()
-        link_id = extract_link_id(device_id)
-        if device_id not in devices:
-            devices[device_id] = {
-                "id": device_id,
-                "link_id": link_id,
-                "type": device_type,
-                "first_seen": datetime.now().isoformat(),
-                "last_seen": datetime.now().isoformat(),
-                "info": info,
-                "count": 1
-            }
-        else:
-            devices[device_id]["last_seen"] = datetime.now().isoformat()
-            devices[device_id]["count"] = devices[device_id].get("count", 0) + 1
-            # Ensure link_id is set (for older devices)
-            if "link_id" not in devices[device_id]:
-                devices[device_id]["link_id"] = link_id
-            # Update info if we have more details
-            if info:
-                devices[device_id]["info"].update(info)
-        save_devices(devices)
-        return devices[device_id]
+    # Map old device_type to category
+    category = info.get('category', device_type)
+    return db.upsert_device(
+        device_id=device_id,
+        category=category,
+        bridge_id=info.get('bridge_id'),
+        factory_id=info.get('factory_id'),
+        info=info
+    )
+
+
+# Regex patterns for parsing ESP32 logs
+RX_PATTERN = re.compile(r'RX:\s+(\S+)\s+\|\s*(.+)')
+TX_PATTERN = re.compile(r'TX\s+(\d+)\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)', re.IGNORECASE)
+BYTES_PATTERN = re.compile(r'Bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)', re.IGNORECASE)
+RSSI_PATTERN = re.compile(r'RSSI=(-?\d+)')
+
+# Echo detection - track recent TX device IDs to filter from RX
+# Key: device_id (uppercase), Value: timestamp
+ECHO_WINDOW_MS = 200  # Filter RX packets from same device within this window
+recent_tx_devices: Dict[str, float] = {}
+recent_tx_lock = threading.Lock()
+
+# Pending RX packet - waiting for Bytes line
+pending_rx_packet: Dict = None
+pending_rx_lock = threading.Lock()
+
+def _register_tx_device(device_id: str):
+    """Register a TX device ID for echo detection."""
+    if not device_id:
+        return
+    normalized = device_id.upper()
+    now = time.time()
+    with recent_tx_lock:
+        recent_tx_devices[normalized] = now
+        # Cleanup old entries (older than 2 seconds)
+        cutoff = now - 2.0
+        to_remove = [k for k, v in recent_tx_devices.items() if v < cutoff]
+        for k in to_remove:
+            del recent_tx_devices[k]
+
+def _is_echo_from_device(device_id: str) -> bool:
+    """Check if RX packet is an echo based on device ID."""
+    if not device_id:
+        return False
+    normalized = device_id.upper()
+    now = time.time()
+    with recent_tx_lock:
+        if normalized in recent_tx_devices:
+            tx_time = recent_tx_devices[normalized]
+            if (now - tx_time) * 1000 < ECHO_WINDOW_MS:
+                return True
+    return False
+
+def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
+    """Store RX packet in database and queue, with echo filtering."""
+    # Check for echo BEFORE storing - filter by device_id
+    device_id = pkt_data.get('device_id')
+    if _is_echo_from_device(device_id):
+        return  # Skip echo packets - we recently TX'd as this device
+
+    pkt_data['raw_hex'] = raw_hex
+
+    # Store in database
+    db.insert_decoded_packet(
+        direction='rx',
+        packet_type=pkt_data.get('packet_type', 'UNKNOWN'),
+        timestamp=pkt_data.get('timestamp', datetime.now().isoformat()),
+        raw_hex=raw_hex,
+        device_id=pkt_data.get('device_id'),
+        source_id=pkt_data.get('source_id'),
+        target_id=pkt_data.get('target_id'),
+        level=pkt_data.get('level'),
+        button=pkt_data.get('button'),
+        rssi=pkt_data.get('rssi'),
+        decoded_data=pkt_data.get('decoded_data')
+    )
+
+    # Push to packet queue for SSE streaming
+    try:
+        timestamp = pkt_data.get('timestamp', '')
+        packet_queue.put_nowait({
+            'direction': 'rx',
+            'type': pkt_data.get('packet_type', 'UNKNOWN'),
+            'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
+            'device_id': pkt_data.get('device_id'),
+            'source_id': pkt_data.get('source_id'),
+            'target_id': pkt_data.get('target_id'),
+            'summary': f"{pkt_data.get('source_id')} -> {pkt_data.get('target_id')}" if pkt_data.get('source_id') and pkt_data.get('target_id') else pkt_data.get('device_id') or '',
+            'details': pkt_data.get('decoded_data', {}),
+            'raw_hex': raw_hex,
+            'rssi': pkt_data.get('rssi')
+        })
+    except queue.Full:
+        pass
+
+    # Update device registry
+    device_id = pkt_data.get('device_id')
+    if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
+        category = _infer_category_from_type(pkt_data.get('packet_type', ''), pkt_data.get('button'))
+        db.upsert_device(
+            device_id=device_id,
+            category=category,
+            bridge_id=pkt_data.get('source_id') if pkt_data.get('packet_type') == 'LEVEL' else None,
+            factory_id=pkt_data.get('target_id') if pkt_data.get('packet_type') == 'LEVEL' else device_id,
+            info=pkt_data.get('decoded_data', {})
+        )
+
+def _parse_and_store_packet(message: str):
+    """Parse a log message and store any packets in the database.
+
+    RX packets come in two log lines:
+      1. RX: TYPE | DEVICE_ID | ... | RSSI=X | CRC=ok
+      2.   Bytes: XX XX XX ...
+
+    TX packets come in one line:
+      TX N bytes: XX XX XX ...
+    """
+    global pending_rx_packet
+    try:
+        timestamp = datetime.now().isoformat()
+
+        # Check for Bytes line (follows RX line)
+        bytes_match = BYTES_PATTERN.search(message)
+        if bytes_match and '  Bytes:' in message:  # Indented = follows RX
+            raw_hex = bytes_match.group(1)
+            with pending_rx_lock:
+                if pending_rx_packet:
+                    # Complete pending RX with bytes and store
+                    _store_rx_packet(pending_rx_packet, raw_hex)
+                    pending_rx_packet = None
+            return
+
+        # Parse RX packets: "RX: LEVEL | AF902C00 -> 002C90AF | Level=50%"
+        rx_match = RX_PATTERN.search(message)
+        if rx_match:
+            pkt_type = rx_match.group(1)
+            rest = rx_match.group(2)
+            parts = [p.strip() for p in rest.split('|')]
+
+            # Extract device ID from first part
+            device_id = None
+            source_id = None
+            target_id = None
+            level = None
+            button = None
+
+            if parts:
+                summary = parts[0]
+                # Check for "source -> target" format
+                if '->' in summary:
+                    ids = [s.strip() for s in summary.split('->')]
+                    if len(ids) >= 2:
+                        source_id = ids[0]
+                        target_id = ids[1]
+                        device_id = target_id  # Primary device is target
+                else:
+                    # Single device ID
+                    device_id = summary if re.match(r'^[0-9A-Fa-f]{8}$', summary) else None
+
+            # Parse additional details
+            decoded_data = {}
+            for part in parts[1:]:
+                if '=' in part:
+                    key, val = part.split('=', 1)
+                    key = key.strip().lower()
+                    val = val.strip().rstrip('%')
+                    decoded_data[key] = val
+                    if key == 'level':
+                        try:
+                            level = int(val)
+                        except ValueError:
+                            pass
+                elif re.match(r'^(ON|OFF|RAISE|LOWER|FAV|SCENE)', part):
+                    button = part.strip()
+                    decoded_data['button'] = button
+
+            # Extract RSSI
+            rssi_match = RSSI_PATTERN.search(message)
+            rssi = int(rssi_match.group(1)) if rssi_match else None
+
+            # Store as pending - wait for Bytes line
+            with pending_rx_lock:
+                # If there's an old pending packet, store it without bytes
+                if pending_rx_packet:
+                    _store_rx_packet(pending_rx_packet, None)
+
+                pending_rx_packet = {
+                    'packet_type': pkt_type,
+                    'timestamp': timestamp,
+                    'device_id': device_id,
+                    'source_id': source_id,
+                    'target_id': target_id,
+                    'level': level,
+                    'button': button,
+                    'rssi': rssi,
+                    'decoded_data': decoded_data
+                }
+            return
+
+        # Parse TX packets: "TX 23 bytes: 81 00 01 ..."
+        tx_match = TX_PATTERN.search(message)
+        if tx_match:
+            raw_hex = tx_match.group(2)
+            bytes_list = raw_hex.split()
+
+            # Decode based on first byte
+            pkt_type_byte = bytes_list[0].upper() if bytes_list else '??'
+            pkt_type = 'TX'
+            device_id = None
+            source_id = None
+            target_id = None
+            level = None
+            decoded_data = {}
+
+            if pkt_type_byte in ('81', '82', '83'):
+                pkt_type = 'LEVEL'
+                if len(bytes_list) >= 13:
+                    source_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+                    target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+                    device_id = target_id
+                    decoded_data['source'] = source_id
+                    decoded_data['target'] = target_id
+                if len(bytes_list) >= 18:
+                    level_raw = int(bytes_list[16] + bytes_list[17], 16)
+                    level = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
+                    decoded_data['level'] = str(level)
+            elif pkt_type_byte in ('B9', 'BA', 'BB', 'B8'):
+                pkt_type = f'PAIR_{pkt_type_byte}'
+                if len(bytes_list) >= 6:
+                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+                    decoded_data['seq'] = str(int(bytes_list[1], 16))
+            elif pkt_type_byte in ('02', '03', '04', '05', '06'):
+                pkt_type = 'BUTTON'
+                btn_names = {'02': 'ON', '03': 'FAV', '04': 'OFF', '05': 'RAISE', '06': 'LOWER'}
+                if len(bytes_list) >= 6:
+                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+                    decoded_data['button'] = btn_names.get(pkt_type_byte, f'0x{pkt_type_byte}')
+            elif pkt_type_byte in ('91', '92', '93'):
+                pkt_type = 'BEACON'
+                if len(bytes_list) >= 6:
+                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+            elif pkt_type_byte == '89':
+                pkt_type = 'RESET'
+                if len(bytes_list) >= 6:
+                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+
+            # Register device_id for echo detection
+            if device_id:
+                _register_tx_device(device_id)
+            if source_id and source_id != device_id:
+                _register_tx_device(source_id)
+
+            db.insert_decoded_packet(
+                direction='tx',
+                packet_type=pkt_type,
+                timestamp=timestamp,
+                raw_hex=raw_hex,
+                device_id=device_id,
+                source_id=source_id,
+                target_id=target_id,
+                level=level,
+                decoded_data=decoded_data
+            )
+
+            # Push to packet queue for SSE streaming
+            try:
+                packet_queue.put_nowait({
+                    'direction': 'tx',
+                    'type': pkt_type,
+                    'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
+                    'device_id': device_id,
+                    'source_id': source_id,
+                    'target_id': target_id,
+                    'summary': f"{source_id} -> {target_id}" if source_id and target_id else device_id or '',
+                    'details': decoded_data,
+                    'raw_hex': raw_hex,
+                    'rssi': None
+                })
+            except queue.Full:
+                pass  # Drop if queue is full
+    except Exception as e:
+        # Don't let parsing errors break the log stream
+        pass
+
+
+def _infer_category_from_type(pkt_type: str, button: str = None) -> str:
+    """Infer device category from packet type."""
+    if pkt_type == 'LEVEL':
+        return 'bridge_controlled'
+    elif pkt_type == 'STATE_RPT':
+        return 'dimmer_passive'
+    elif pkt_type.startswith('BTN_'):
+        if button and button.startswith('SCENE'):
+            return 'scene_pico'
+        return 'pico'
+    elif pkt_type.startswith('BEACON'):
+        return 'beacon'
+    elif pkt_type.startswith('PAIR'):
+        return 'pairing'
+    return 'unknown'
 
 
 class ESP32Controller:
@@ -789,7 +1060,7 @@ def cmd_serve(args):
     @app.route('/api/devices')
     def api_devices():
         """Get all discovered devices."""
-        return jsonify(load_devices())
+        return jsonify(db.get_all_devices())
 
     @app.route('/api/devices', methods=['POST'])
     def api_register_device():
@@ -806,13 +1077,9 @@ def cmd_serve(args):
     @app.route('/api/devices/<device_id>', methods=['DELETE'])
     def api_delete_device(device_id):
         """Delete a device from the database."""
-        with devices_lock:
-            devices = load_devices()
-            if device_id in devices:
-                del devices[device_id]
-                save_devices(devices)
-                return jsonify({'status': 'ok'})
-            return jsonify({'status': 'error', 'error': 'not found'}), 404
+        if db.delete_device(device_id):
+            return jsonify({'status': 'ok'})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/links')
     def api_links():
@@ -831,7 +1098,7 @@ def cmd_serve(args):
           }
         }
         """
-        devices = load_devices()
+        devices = db.get_all_devices()
         links = {}
 
         for device_id, device in devices.items():
@@ -866,46 +1133,86 @@ def cmd_serve(args):
         """Set a user-friendly label for a device."""
         data = request.json or {}
         label = data.get('label', '').strip()
-        with devices_lock:
-            devices = load_devices()
-            if device_id in devices:
-                devices[device_id]['label'] = label
-                save_devices(devices)
-                return jsonify({'status': 'ok', 'device_id': device_id, 'label': label})
-            return jsonify({'status': 'error', 'error': 'not found'}), 404
+        if db.update_device_label(device_id, label):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'label': label})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/<device_id>/type', methods=['POST'])
     def api_set_device_type(device_id):
         """Set the device type for a device (controls buttons shown)."""
         data = request.json or {}
         device_type = data.get('device_type', 'auto').strip()
-        with devices_lock:
-            devices = load_devices()
-            if device_id in devices:
-                devices[device_id]['device_type'] = device_type
-                save_devices(devices)
-                return jsonify({'status': 'ok', 'device_id': device_id, 'device_type': device_type})
-            return jsonify({'status': 'error', 'error': 'not found'}), 404
+        if db.update_device_type(device_id, device_type):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'device_type': device_type})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/<device_id>/model', methods=['POST'])
     def api_set_device_model(device_id):
         """Set the Lutron model number for a device (informational only)."""
         data = request.json or {}
         model = data.get('model', '').strip()
-        with devices_lock:
-            devices = load_devices()
-            if device_id in devices:
-                devices[device_id]['model'] = model
-                save_devices(devices)
-                return jsonify({'status': 'ok', 'device_id': device_id, 'model': model})
-            return jsonify({'status': 'error', 'error': 'not found'}), 404
+        if db.update_device_model(device_id, model):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'model': model})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/clear', methods=['POST'])
     def api_clear_devices():
         """Clear all devices."""
-        with devices_lock:
-            save_devices({})
-        return jsonify({'status': 'ok'})
+        count = db.clear_all_devices()
+        return jsonify({'status': 'ok', 'deleted': count})
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # DATABASE QUERY ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/db/stats')
+    def api_db_stats():
+        """Get database statistics."""
+        return jsonify(db.get_stats())
+
+    @app.route('/api/db/packets')
+    def api_db_packets():
+        """Query decoded packets.
+
+        Query params:
+        - direction: 'rx' or 'tx'
+        - type: packet type (LEVEL, BTN_SHORT_A, etc.)
+        - device: device ID to filter
+        - limit: max results (default 100)
+        - offset: pagination offset
+        """
+        direction = request.args.get('direction')
+        packet_type = request.args.get('type')
+        device_id = request.args.get('device')
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+
+        packets = db.get_decoded_packets(
+            direction=direction,
+            packet_type=packet_type,
+            device_id=device_id,
+            limit=limit,
+            offset=offset
+        )
+        return jsonify(packets)
+
+    @app.route('/api/db/raw-packets')
+    def api_db_raw_packets():
+        """Query unique raw packets.
+
+        Query params:
+        - limit: max results (default 100)
+        - offset: pagination offset
+        """
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+        packets = db.get_raw_packets(limit=limit, offset=offset)
+        return jsonify(packets)
+
+    @app.route('/api/db/bridges')
+    def api_db_bridges():
+        """Get list of unique bridge pairing IDs."""
+        return jsonify(db.get_bridge_pairings())
 
     @app.route('/api/button/<button_id>/press', methods=['POST', 'GET'])
     def api_button_press(button_id):
@@ -979,6 +1286,28 @@ def cmd_serve(args):
                     yield f"data: {json.dumps(log_entry)}\n\n"
                 except queue.Empty:
                     # Send heartbeat to keep connection alive
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'time': datetime.now().isoformat()})}\n\n"
+
+        return Response(generate(), mimetype='text/event-stream',
+                       headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+    @app.route('/api/packets/stream')
+    def api_packets_stream():
+        """Stream parsed packets via Server-Sent Events.
+
+        Unlike /api/logs/stream which streams raw logs, this streams
+        already-parsed packets with type, device_id, summary, details, and raw_hex.
+        """
+        def generate():
+            # Initial connection
+            yield f"data: {json.dumps({'type': 'connected', 'time': datetime.now().isoformat()})}\n\n"
+
+            while True:
+                try:
+                    packet = packet_queue.get(timeout=10)
+                    yield f"data: {json.dumps(packet)}\n\n"
+                except queue.Empty:
+                    # Heartbeat
                     yield f"data: {json.dumps({'type': 'heartbeat', 'time': datetime.now().isoformat()})}\n\n"
 
         return Response(generate(), mimetype='text/event-stream',
@@ -1066,6 +1395,10 @@ def cmd_serve(args):
                             message = msg.message if hasattr(msg, 'message') else str(msg)
                             if isinstance(message, bytes):
                                 message = message.decode('utf-8', errors='replace')
+
+                            # Parse and store packets in database
+                            _parse_and_store_packet(message)
+
                             log_queue.put_nowait({
                                 'time': datetime.now().isoformat(),
                                 'level': level_map.get(level_int, 'I'),

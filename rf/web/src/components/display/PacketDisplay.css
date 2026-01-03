@@ -5,6 +5,14 @@
   min-height: 0;
 }
 
+.packet-card.paused {
+  opacity: 0.85;
+}
+
+.packet-card.paused .card-header {
+  border-left: 3px solid #ff9800;
+}
+
 .packet-card .card-header {
   flex-shrink: 0;
 }
