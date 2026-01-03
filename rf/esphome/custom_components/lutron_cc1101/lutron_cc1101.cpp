@@ -182,11 +182,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     packet[0] = type_base;
     packet[1] = seq;
-    // Device ID in big-endian (matches real Pico)
-    packet[2] = (device_id >> 24) & 0xFF;
-    packet[3] = (device_id >> 16) & 0xFF;
-    packet[4] = (device_id >> 8) & 0xFF;
-    packet[5] = (device_id >> 0) & 0xFF;
+    // Device ID in little-endian (matching real Pico captures)
+    packet[2] = device_id & 0xFF;
+    packet[3] = (device_id >> 8) & 0xFF;
+    packet[4] = (device_id >> 16) & 0xFF;
+    packet[5] = (device_id >> 24) & 0xFF;
     packet[6] = 0x21;
     packet[8] = 0x03;
     packet[9] = 0x00;
@@ -195,10 +195,10 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     if (is_dimming) {
       packet[7] = 0x0C;
-      packet[12] = (device_id >> 24) & 0xFF;
-      packet[13] = (device_id >> 16) & 0xFF;
-      packet[14] = (device_id >> 8) & 0xFF;
-      packet[15] = (device_id >> 0) & 0xFF;
+      packet[12] = device_id & 0xFF;
+      packet[13] = (device_id >> 8) & 0xFF;
+      packet[14] = (device_id >> 16) & 0xFF;
+      packet[15] = (device_id >> 24) & 0xFF;
       packet[16] = 0x00;
       packet[17] = 0x42;
       packet[18] = 0x00;
@@ -224,11 +224,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
 
     packet[0] = type_base | 0x01;  // Long format
     packet[1] = seq;
-    // Device ID in big-endian (matches real Pico)
-    packet[2] = (device_id >> 24) & 0xFF;
-    packet[3] = (device_id >> 16) & 0xFF;
-    packet[4] = (device_id >> 8) & 0xFF;
-    packet[5] = (device_id >> 0) & 0xFF;
+    // Device ID in little-endian (matching real Pico captures)
+    packet[2] = device_id & 0xFF;
+    packet[3] = (device_id >> 8) & 0xFF;
+    packet[4] = (device_id >> 16) & 0xFF;
+    packet[5] = (device_id >> 24) & 0xFF;
     packet[6] = 0x21;
     packet[7] = 0x0E;
     packet[8] = 0x03;
@@ -236,11 +236,11 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
     packet[10] = button;
     packet[11] = 0x01;
 
-    // Second device ID instance also in big-endian
-    packet[12] = (device_id >> 24) & 0xFF;
-    packet[13] = (device_id >> 16) & 0xFF;
-    packet[14] = (device_id >> 8) & 0xFF;
-    packet[15] = (device_id >> 0) & 0xFF;
+    // Second device ID instance also in little-endian
+    packet[12] = device_id & 0xFF;
+    packet[13] = (device_id >> 8) & 0xFF;
+    packet[14] = (device_id >> 16) & 0xFF;
+    packet[15] = (device_id >> 24) & 0xFF;
     packet[16] = 0x00;
 
     if (button == LUTRON_BUTTON_RAISE) {
@@ -287,11 +287,11 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
 
     packet[0] = 0x81 + (rep % 3);
     packet[1] = seq;
-    // Device ID in big-endian (matches real devices)
-    packet[2] = (device_id >> 24) & 0xFF;
-    packet[3] = (device_id >> 16) & 0xFF;
-    packet[4] = (device_id >> 8) & 0xFF;
-    packet[5] = (device_id >> 0) & 0xFF;
+    // Device ID in little-endian (matching real captures)
+    packet[2] = device_id & 0xFF;
+    packet[3] = (device_id >> 8) & 0xFF;
+    packet[4] = (device_id >> 16) & 0xFF;
+    packet[5] = (device_id >> 24) & 0xFF;
     packet[6] = 0x21;
     packet[7] = 0x0E;
     packet[8] = 0x00;
