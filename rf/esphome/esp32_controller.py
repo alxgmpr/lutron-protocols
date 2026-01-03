@@ -958,6 +958,122 @@ def cmd_serve(args):
             navigator.clipboard.writeText(text.join('\\n')).then(function() { setStatus('Copied RX', 'success'); });
         }
 
+        // Lutron device types with model numbers and button configurations
+        const DEVICE_TYPES = {
+            'auto': { name: 'Auto-detect', buttons: null },
+            // Pico remotes
+            'pico-5btn': { name: 'Pico 5-Button (PJ2-3BRL)', buttons: 'pico' },
+            'pico-scene': { name: 'Pico Scene (PJ2-4B-xxx)', buttons: 'scene_pico' },
+            'pico-2btn': { name: 'Pico 2-Button (PJ2-2B)', buttons: 'pico_2btn' },
+            // Dimmers
+            'dimmer': { name: 'Dimmer (DVCL/DVRF-6L)', buttons: 'dimmer' },
+            'dimmer-elv': { name: 'ELV Dimmer (DVRF-5NE)', buttons: 'dimmer' },
+            // Switches
+            'switch': { name: 'On/Off Switch (DVRF-5NS)', buttons: 'switch' },
+            'switch-outdoor': { name: 'Outdoor Switch (PD-5ANS)', buttons: 'switch' },
+            // Fan controls
+            'fan': { name: 'Fan Control (DVRF-5FBL)', buttons: 'fan' },
+            // Passive (state reports only)
+            'passive-dimmer': { name: 'Passive Dimmer (state report)', buttons: 'passive_dimmer' },
+            'passive-switch': { name: 'Passive Switch (state report)', buttons: 'passive_switch' },
+            'passive-fan': { name: 'Passive Fan (state report)', buttons: 'passive_fan' },
+            // Custom
+            'custom': { name: 'Custom...', buttons: null }
+        };
+
+        function getButtonsForType(deviceType, id, info) {
+            const bridgeId = info.bridge_id || info.zone_id || '';
+            const factoryId = id;
+            const rfTxId = info.rf_tx_id || id;
+
+            switch(deviceType) {
+                case 'pico':
+                    return `
+                        <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)">ON</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x04)">OFF</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x05)">&#9650;</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x06)">&#9660;</button>
+                        <button class="btn-sm" onclick="replayButton('${id}', 0x03)">FAV</button>
+                    `;
+                case 'pico_2btn':
+                    return `
+                        <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)">ON</button>
+                        <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x04)">OFF</button>
+                    `;
+                case 'scene_pico':
+                    return `
+                        <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x08)">BRIGHT</button>
+                        <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x09)">ENTER</button>
+                        <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x0A)">RELAX</button>
+                        <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)">OFF</button>
+                    `;
+                case 'dimmer':
+                    return `
+                        <input type="number" id="level-${id}" value="50" min="0" max="100" style="width:50px;padding:4px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:3px;">
+                        <button class="btn-sm btn-blue" onclick="replayBridge('${bridgeId}', '${factoryId}', document.getElementById('level-${id}').value)">SET</button>
+                        <button class="btn-sm btn-primary" onclick="replayBridge('${bridgeId}', '${factoryId}', 100)">100</button>
+                        <button class="btn-sm btn-red" onclick="replayBridge('${bridgeId}', '${factoryId}', 0)">0</button>
+                    `;
+                case 'switch':
+                    return `
+                        <button class="btn-sm btn-primary" onclick="replayBridge('${bridgeId}', '${factoryId}', 100)">ON</button>
+                        <button class="btn-sm btn-red" onclick="replayBridge('${bridgeId}', '${factoryId}', 0)">OFF</button>
+                    `;
+                case 'fan':
+                    return `
+                        <button class="btn-sm btn-red" onclick="replayBridge('${bridgeId}', '${factoryId}', 0)">OFF</button>
+                        <button class="btn-sm" onclick="replayBridge('${bridgeId}', '${factoryId}', 25)">25</button>
+                        <button class="btn-sm" onclick="replayBridge('${bridgeId}', '${factoryId}', 50)">50</button>
+                        <button class="btn-sm" onclick="replayBridge('${bridgeId}', '${factoryId}', 75)">75</button>
+                        <button class="btn-sm btn-primary" onclick="replayBridge('${bridgeId}', '${factoryId}', 100)">100</button>
+                    `;
+                case 'passive_dimmer':
+                    return `
+                        <input type="number" id="fake-${id}" value="50" min="0" max="100" style="width:50px;padding:4px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;border-radius:3px;">
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', document.getElementById('fake-${id}').value)">FAKE</button>
+                        <button class="btn-sm" onclick="fakeState('${rfTxId}', 100)">100</button>
+                        <button class="btn-sm" onclick="fakeState('${rfTxId}', 0)">0</button>
+                    `;
+                case 'passive_switch':
+                    return `
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 100)">FAKE ON</button>
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 0)">FAKE OFF</button>
+                    `;
+                case 'passive_fan':
+                    return `
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 0)">0</button>
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 25)">25</button>
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 50)">50</button>
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 75)">75</button>
+                        <button class="btn-sm btn-orange" onclick="fakeState('${rfTxId}', 100)">100</button>
+                    `;
+                default:
+                    return '<span style="color:#666;font-size:11px;">Unknown type</span>';
+            }
+        }
+
+        function setDeviceType(deviceId, typeKey) {
+            if (typeKey === 'custom') {
+                const custom = prompt('Enter custom model number:');
+                if (!custom) return;
+                typeKey = custom;
+            }
+            fetch('/api/devices/' + deviceId + '/type', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device_type: typeKey})
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'ok') loadDevices();
+            });
+        }
+
+        function buildTypeDropdown(id, currentType) {
+            let options = Object.entries(DEVICE_TYPES).map(([key, val]) =>
+                `<option value="${key}" ${currentType === key ? 'selected' : ''}>${val.name}</option>`
+            ).join('');
+            return `<select onchange="setDeviceType('${id}', this.value)" style="padding:3px;background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:3px;font-size:10px;max-width:120px;">${options}</select>`;
+        }
+
         // Device management
         function loadDevices() {
             fetch('/api/devices')
@@ -973,57 +1089,29 @@ def cmd_serve(args):
                         const d = devices[id];
                         const info = d.info || {};
                         const category = info.category || 'unknown';
-                        const lastBtn = info.button || '';
                         const level = info.level || '';
 
-                        // Build action buttons based on category and controllable flag
-                        // Dimmers are passive by default (STATE_RPT = device reporting its level)
-                        const isDimmerPassive = category === 'dimmer' || category === 'dimmer_passive';
-                        const controllable = isDimmerPassive ? false : (info.controllable !== false);
-                        let buttons = '';
-                        let displayId = id;
-                        let subtitle = '';
+                        // Determine device type - user-set or auto-detected
+                        const userType = d.device_type || 'auto';
+                        let effectiveType = userType;
 
-                        if (!controllable) {
-                            // Non-controllable device (e.g., dimmer reporting state)
-                            buttons = '<span style="color:#666;font-size:11px;">Passive (needs bridge/pico)</span>';
-                            subtitle = info.rf_tx_id ? `RF TX: ${info.rf_tx_id}` : '';
-                        } else if (category === 'pico') {
-                            buttons = `
-                                <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)" title="ON">ON</button>
-                                <button class="btn-sm" onclick="replayButton('${id}', 0x04)" title="OFF">OFF</button>
-                                <button class="btn-sm" onclick="replayButton('${id}', 0x05)" title="Raise">&#9650;</button>
-                                <button class="btn-sm" onclick="replayButton('${id}', 0x06)" title="Lower">&#9660;</button>
-                            `;
-                        } else if (category === 'scene_pico') {
-                            buttons = `
-                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x08)" title="Bright">BRIGHT</button>
-                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x09)" title="Entertain">ENTER</button>
-                                <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x0A)" title="Relax">RELAX</button>
-                                <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)" title="Off">OFF</button>
-                            `;
-                        } else if (category === 'bridge_controlled' || category === 'bridge') {
-                            // Bridge-controlled device: id is factory ID, bridge_id is the bridge's ID
-                            const bridgeId = info.bridge_id || info.zone_id || '';
-                            const factoryId = id;
-                            // Note: bridge_id is same for all devices on this bridge
-                            subtitle = bridgeId ? `via ${bridgeId}` : '';
-                            buttons = `
-                                <button class="btn-sm btn-primary" onclick="replayBridge('${bridgeId}', '${factoryId}', 100)">100%</button>
-                                <button class="btn-sm" onclick="replayBridge('${bridgeId}', '${factoryId}', 50)">50%</button>
-                                <button class="btn-sm btn-red" onclick="replayBridge('${bridgeId}', '${factoryId}', 0)">0%</button>
-                            `;
+                        // If auto, determine from category
+                        if (userType === 'auto') {
+                            if (category === 'pico') effectiveType = 'pico-5btn';
+                            else if (category === 'scene_pico') effectiveType = 'pico-scene';
+                            else if (category === 'bridge_controlled' || category === 'bridge') effectiveType = 'dimmer';
+                            else if (category === 'dimmer' || category === 'dimmer_passive') effectiveType = 'passive-dimmer';
+                            else effectiveType = 'auto';
                         }
 
-                        // Format category display name
-                        const categoryDisplay = {
-                            'pico': 'Pico',
-                            'scene_pico': 'Scene Pico',
-                            'bridge_controlled': 'Dimmer',
-                            'bridge': 'Dimmer',
-                            'dimmer': 'Dimmer (passive)',
-                            'dimmer_passive': 'Dimmer (passive)'
-                        }[category] || category;
+                        // Get button configuration for this type
+                        const typeConfig = DEVICE_TYPES[effectiveType] || DEVICE_TYPES[userType];
+                        const buttonType = typeConfig ? typeConfig.buttons : null;
+                        let buttons = buttonType ? getButtonsForType(buttonType, id, info) : '<span style="color:#666;">Select type</span>';
+
+                        // Subtitle shows bridge ID for controlled devices
+                        const bridgeId = info.bridge_id || info.zone_id || '';
+                        let subtitle = (category === 'bridge_controlled' || category === 'bridge') && bridgeId ? `via ${bridgeId}` : '';
 
                         // Device label (user-assigned name)
                         const label = d.label || '';
@@ -1031,17 +1119,20 @@ def cmd_serve(args):
                             `<span style="color:#3fb950;font-weight:500;">${label}</span>` :
                             `<span style="color:#484f58;font-style:italic;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to add label">unnamed</span>`;
 
+                        // Type dropdown
+                        const typeDropdown = buildTypeDropdown(id, userType);
+
                         return `
-                            <div class="device-entry" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #333;">
-                                <div style="min-width:120px;">
-                                    <div style="font-family:monospace;color:#0af;font-size:11px;">${displayId}</div>
-                                    ${subtitle ? `<div style="font-size:10px;color:#666;">${subtitle}</div>` : ''}
+                            <div class="device-entry" style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;">
+                                <div style="min-width:100px;">
+                                    <div style="font-family:monospace;color:#0af;font-size:11px;">${id}</div>
+                                    ${subtitle ? `<div style="font-size:9px;color:#666;">${subtitle}</div>` : ''}
                                 </div>
-                                <div style="min-width:120px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
+                                <div style="min-width:100px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
                                     ${labelDisplay}
                                 </div>
-                                <span style="color:#888;min-width:80px;font-size:11px;">${categoryDisplay}</span>
-                                <span style="color:#666;min-width:50px;font-size:11px;">${level || ''}</span>
+                                ${typeDropdown}
+                                <span style="color:#666;min-width:40px;font-size:11px;">${level || ''}</span>
                                 <span style="color:#555;font-size:10px;">x${d.count}</span>
                                 <span style="flex:1;"></span>
                                 ${buttons}
@@ -1106,6 +1197,7 @@ def cmd_serve(args):
         }
 
         function replayBridge(sourceId, targetId, level) {
+            level = parseInt(level) || 0;
             setStatus('Bridge command ' + level + '%...', 'info');
             fetch('/api/level', {
                 method: 'POST',
@@ -1113,6 +1205,18 @@ def cmd_serve(args):
                 body: JSON.stringify({source: '0x' + sourceId, target: '0x' + targetId, level: level})
             }).then(r => r.json()).then(d => {
                 setStatus(d.status === 'ok' ? 'Level sent!' : 'Error: ' + d.error, d.status === 'ok' ? 'success' : 'error');
+            }).catch(() => setStatus('Failed to send', 'error'));
+        }
+
+        function fakeState(deviceId, level) {
+            level = parseInt(level) || 0;
+            setStatus('Faking state ' + level + '% for ' + deviceId + '...', 'info');
+            fetch('/api/state', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({device: '0x' + deviceId, level: level})
+            }).then(r => r.json()).then(d => {
+                setStatus(d.status === 'ok' ? 'Fake state sent!' : 'Error: ' + d.error, d.status === 'ok' ? 'success' : 'error');
             }).catch(() => setStatus('Failed to send', 'error'));
         }
 
@@ -1423,6 +1527,19 @@ def cmd_serve(args):
                 devices[device_id]['label'] = label
                 save_devices(devices)
                 return jsonify({'status': 'ok', 'device_id': device_id, 'label': label})
+            return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/<device_id>/type', methods=['POST'])
+    def api_set_device_type(device_id):
+        """Set the device type (model) for a device."""
+        data = request.json or {}
+        device_type = data.get('device_type', 'auto').strip()
+        with devices_lock:
+            devices = load_devices()
+            if device_id in devices:
+                devices[device_id]['device_type'] = device_type
+                save_devices(devices)
+                return jsonify({'status': 'ok', 'device_id': device_id, 'device_type': device_type})
             return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/clear', methods=['POST'])
