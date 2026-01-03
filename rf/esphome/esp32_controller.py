@@ -1025,15 +1025,24 @@ def cmd_serve(args):
                             'dimmer_passive': 'Dimmer (passive)'
                         }[category] || category;
 
+                        // Device label (user-assigned name)
+                        const label = d.label || '';
+                        const labelDisplay = label ?
+                            `<span style="color:#3fb950;font-weight:500;">${label}</span>` :
+                            `<span style="color:#484f58;font-style:italic;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to add label">unnamed</span>`;
+
                         return `
                             <div class="device-entry" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #333;">
                                 <div style="min-width:120px;">
-                                    <div style="font-family:monospace;color:#0af;">${displayId}</div>
+                                    <div style="font-family:monospace;color:#0af;font-size:11px;">${displayId}</div>
                                     ${subtitle ? `<div style="font-size:10px;color:#666;">${subtitle}</div>` : ''}
                                 </div>
-                                <span style="color:#888;min-width:100px;">${categoryDisplay}</span>
-                                <span style="color:#666;min-width:60px;">${lastBtn || level || ''}</span>
-                                <span style="color:#555;font-size:11px;">x${d.count}</span>
+                                <div style="min-width:120px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
+                                    ${labelDisplay}
+                                </div>
+                                <span style="color:#888;min-width:80px;font-size:11px;">${categoryDisplay}</span>
+                                <span style="color:#666;min-width:50px;font-size:11px;">${level || ''}</span>
+                                <span style="color:#555;font-size:10px;">x${d.count}</span>
                                 <span style="flex:1;"></span>
                                 ${buttons}
                                 <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
@@ -1055,6 +1064,23 @@ def cmd_serve(args):
             fetch('/api/devices/' + id, {method: 'DELETE'})
                 .then(() => loadDevices())
                 .catch(() => {});
+        }
+
+        function renameDevice(id) {
+            const newName = prompt('Enter label for device ' + id + ':', '');
+            if (newName === null) return;  // Cancelled
+            fetch('/api/devices/' + id + '/label', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({label: newName})
+            }).then(r => r.json()).then(d => {
+                if (d.status === 'ok') {
+                    setStatus('Device labeled: ' + (newName || '(cleared)'), 'success');
+                    loadDevices();
+                } else {
+                    setStatus('Error: ' + d.error, 'error');
+                }
+            }).catch(() => setStatus('Failed to rename', 'error'));
         }
 
         function replayButton(deviceId, button) {
@@ -1384,6 +1410,19 @@ def cmd_serve(args):
                 del devices[device_id]
                 save_devices(devices)
                 return jsonify({'status': 'ok'})
+            return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/<device_id>/label', methods=['POST'])
+    def api_label_device(device_id):
+        """Set a user-friendly label for a device."""
+        data = request.json or {}
+        label = data.get('label', '').strip()
+        with devices_lock:
+            devices = load_devices()
+            if device_id in devices:
+                devices[device_id]['label'] = label
+                save_devices(devices)
+                return jsonify({'status': 'ok', 'device_id': device_id, 'label': label})
             return jsonify({'status': 'error', 'error': 'not found'}), 404
 
     @app.route('/api/devices/clear', methods=['POST'])
