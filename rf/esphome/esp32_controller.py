@@ -810,8 +810,19 @@ def cmd_serve(args):
             // Parse: "TYPE | DEVICE_ID | ... | Seq=N | RSSI=N | CRC=OK"
             // Examples:
             //   "BTN_SHORT_A | 87B59D05 | SCENE2 PRESS | Seq=0 | RSSI=-38 | CRC=OK"
-            //   "LEVEL | 002C90AD -> 07002688 | Level=50% | Seq=1 | RSSI=-57 | CRC=OK"
+            //   "LEVEL | 002C90AD -> 06FDEFED | Level=50% | Seq=1 | RSSI=-57 | CRC=OK"
             //   "STATE_RPT | 062C908F | Level=30% | Seq=50 | RSSI=-41 | CRC=OK"
+            //
+            // KEY INSIGHT: Two different ID types exist:
+            //   - Zone ID (bridge-assigned): e.g., 002C90AD - used as source in bridge commands
+            //   - Factory ID (hardware): e.g., 06FDEFED - printed on device label, globally unique
+            //
+            // For bridge commands (LEVEL with ->):
+            //   - SOURCE = zone ID (bridge-assigned)
+            //   - TARGET = factory ID (unique hardware address)
+            //   - We KEY by factory ID (target) since that's the unique device
+            //   - We store zone_id for replay (needed to send commands)
+
             const parts = packetInfo.split(' | ');
             if (parts.length < 2) return;
 
@@ -821,21 +832,30 @@ def cmd_serve(args):
 
             // Extract device ID and categorize based on packet type
             if (pktType === 'LEVEL' && parts[1].includes('->')) {
-                // Bridge command: "SOURCE -> TARGET" - we can replay this!
+                // Bridge command: "ZONE_ID -> FACTORY_ID"
+                // Key by FACTORY_ID (target) - that's the unique device!
+                // Store zone_id for replay
                 const ids = parts[1].split('->').map(s => s.trim());
-                deviceId = ids[0];
-                info.target = ids[1];
-                info.category = 'bridge';
+                const zoneId = ids[0];
+                const factoryId = ids[1];
+                deviceId = factoryId;  // KEY by factory ID (unique)
+                info.zone_id = zoneId;  // Store zone ID for replay
+                info.factory_id = factoryId;
+                info.category = 'bridge_controlled';
                 info.controllable = true;
             } else if (pktType === 'STATE_RPT') {
-                // State report from dimmer - we CANNOT control this device directly
-                // The dimmer is just reporting its level, it needs a bridge/pico to control it
+                // State report from dimmer - the ID here is the dimmer's RF transmit ID
+                // We CANNOT control this device directly (needs bridge/pico)
+                // This RF ID may not be the same as the factory ID
                 deviceId = parts[1].trim();
+                info.rf_tx_id = deviceId;
                 info.category = 'dimmer_passive';
                 info.controllable = false;
             } else if (pktType.startsWith('BTN_')) {
                 // Button press from Pico - we can emulate this!
+                // This is the Pico's factory ID
                 deviceId = parts[1].trim();
+                info.factory_id = deviceId;
                 info.controllable = true;
             } else {
                 deviceId = parts[1].trim();
@@ -960,10 +980,13 @@ def cmd_serve(args):
                         const isDimmerPassive = category === 'dimmer' || category === 'dimmer_passive';
                         const controllable = isDimmerPassive ? false : (info.controllable !== false);
                         let buttons = '';
+                        let displayId = id;
+                        let subtitle = '';
 
                         if (!controllable) {
                             // Non-controllable device (e.g., dimmer reporting state)
                             buttons = '<span style="color:#666;font-size:11px;">Passive (needs bridge/pico)</span>';
+                            subtitle = info.rf_tx_id ? `RF TX: ${info.rf_tx_id}` : '';
                         } else if (category === 'pico') {
                             buttons = `
                                 <button class="btn-sm btn-primary" onclick="replayButton('${id}', 0x02)" title="ON">ON</button>
@@ -978,21 +1001,37 @@ def cmd_serve(args):
                                 <button class="btn-sm btn-orange" onclick="replayButton('${id}', 0x0A)" title="Relax">RELAX</button>
                                 <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)" title="Off">OFF</button>
                             `;
-                        } else if (category === 'bridge') {
-                            const target = info.target || '';
+                        } else if (category === 'bridge_controlled' || category === 'bridge') {
+                            // Bridge-controlled device: id is factory ID, zone_id is bridge zone
+                            const zoneId = info.zone_id || info.target || '';
+                            const factoryId = id;
+                            subtitle = zoneId ? `Zone: ${zoneId}` : '';
                             buttons = `
-                                <button class="btn-sm btn-primary" onclick="replayBridge('${id}', '${target}', 100)">100%</button>
-                                <button class="btn-sm" onclick="replayBridge('${id}', '${target}', 50)">50%</button>
-                                <button class="btn-sm btn-red" onclick="replayBridge('${id}', '${target}', 0)">0%</button>
+                                <button class="btn-sm btn-primary" onclick="replayBridge('${zoneId}', '${factoryId}', 100)">100%</button>
+                                <button class="btn-sm" onclick="replayBridge('${zoneId}', '${factoryId}', 50)">50%</button>
+                                <button class="btn-sm btn-red" onclick="replayBridge('${zoneId}', '${factoryId}', 0)">0%</button>
                             `;
                         }
 
+                        // Format category display name
+                        const categoryDisplay = {
+                            'pico': 'Pico',
+                            'scene_pico': 'Scene Pico',
+                            'bridge_controlled': 'Dimmer',
+                            'bridge': 'Dimmer',
+                            'dimmer': 'Dimmer (passive)',
+                            'dimmer_passive': 'Dimmer (passive)'
+                        }[category] || category;
+
                         return `
                             <div class="device-entry" style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid #333;">
-                                <span style="font-family:monospace;color:#0af;min-width:90px;">${id}</span>
-                                <span style="color:#888;min-width:80px;">${category}</span>
-                                <span style="color:#666;min-width:100px;">${lastBtn || level || ''}</span>
-                                <span style="color:#555;font-size:11px;">seen ${d.count}x</span>
+                                <div style="min-width:120px;">
+                                    <div style="font-family:monospace;color:#0af;">${displayId}</div>
+                                    ${subtitle ? `<div style="font-size:10px;color:#666;">${subtitle}</div>` : ''}
+                                </div>
+                                <span style="color:#888;min-width:100px;">${categoryDisplay}</span>
+                                <span style="color:#666;min-width:60px;">${lastBtn || level || ''}</span>
+                                <span style="color:#555;font-size:11px;">x${d.count}</span>
                                 <span style="flex:1;"></span>
                                 ${buttons}
                                 <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
