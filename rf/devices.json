@@ -3,7 +3,7 @@
     "id": "06FE8020",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:35:55.005490",
-    "last_seen": "2026-01-03T05:26:29.113174",
+    "last_seen": "2026-01-03T10:55:42.655618",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -13,14 +13,15 @@
       "level": "0%",
       "bridge_id": "002C90AD"
     },
-    "count": 106,
-    "label": "Kitchen Downlights"
+    "count": 110,
+    "label": "Kitchen Downlights",
+    "link_id": "FE80"
   },
   "06FDEFED": {
     "id": "06FDEFED",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:36:47.107999",
-    "last_seen": "2026-01-03T05:29:03.787347",
+    "last_seen": "2026-01-03T10:54:29.535401",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -30,8 +31,9 @@
       "level": "0%",
       "bridge_id": "002C90AF"
     },
-    "count": 56,
-    "label": "Kitchen Island Pendants"
+    "count": 60,
+    "label": "Kitchen Island Pendants",
+    "link_id": "FDEF"
   },
   "0700438C": {
     "id": "0700438C",
@@ -148,7 +150,7 @@
     "id": "0D2C9080",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T21:56:04.957940",
-    "last_seen": "2026-01-03T10:38:45.445155",
+    "last_seen": "2026-01-03T10:54:46.973956",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "0D2C9080",
@@ -156,7 +158,7 @@
       "controllable": false,
       "level": "100%"
     },
-    "count": 5,
+    "count": 6,
     "label": "Kitchen Island Pendants",
     "link_id": "2C90"
   },
@@ -164,7 +166,7 @@
     "id": "0D2C908F",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T21:56:04.961399",
-    "last_seen": "2026-01-03T10:38:46.063857",
+    "last_seen": "2026-01-03T10:54:47.601782",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "0D2C908F",
@@ -172,7 +174,7 @@
       "controllable": false,
       "level": "100%"
     },
-    "count": 83,
+    "count": 101,
     "label": "Kitchen Island Pendants",
     "link_id": "2C90"
   },
@@ -180,269 +182,182 @@
     "id": "092C9080",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T22:35:25.915043",
-    "last_seen": "2026-01-02T22:35:25.915074",
+    "last_seen": "2026-01-03T10:49:05.063940",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "092C9080",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "56%"
+      "level": "100%"
     },
-    "count": 1,
-    "label": "Foyer Downlights"
+    "count": 4,
+    "label": "Foyer Downlights",
+    "link_id": "2C90"
   },
   "092C908F": {
     "id": "092C908F",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T22:35:25.927002",
-    "last_seen": "2026-01-02T22:35:26.522424",
+    "last_seen": "2026-01-03T10:49:05.686523",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "092C908F",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "56%"
+      "level": "100%"
     },
-    "count": 17,
-    "label": "Foyer Downlights"
+    "count": 77,
+    "label": "Foyer Downlights",
+    "link_id": "2C90"
   },
-  "08692D70": {
-    "id": "08692D70",
-    "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T05:58:43.800189",
-    "last_seen": "2026-01-03T06:14:01.462059",
+  "0873B374": {
+    "id": "0873B374",
+    "link_id": "73B3",
+    "type": "BTN_LONG_A",
+    "first_seen": "2026-01-03T11:56:10.876629",
+    "last_seen": "2026-01-03T12:00:59.906874",
     "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "08692D70",
+      "type": "BTN_LONG_B",
+      "factory_id": "0873B374",
       "controllable": true
     },
-    "count": 112
+    "count": 42,
+    "label": "Kitchen Backsplash",
+    "device_type": "pico-4btn-rl"
   },
-  "058CB911": {
-    "id": "058CB911",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T06:00:34.699155",
-    "last_seen": "2026-01-03T06:29:59.787608",
+  "059BE1B9": {
+    "id": "059BE1B9",
+    "link_id": "9BE1",
+    "type": "BTN_SHORT_B",
+    "first_seen": "2026-01-03T12:02:41.336655",
+    "last_seen": "2026-01-03T12:05:07.047759",
     "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "058CB911",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "28%"
+      "type": "BTN_LONG_B",
+      "factory_id": "059BE1B9",
+      "controllable": true
     },
-    "count": 250
+    "count": 24
   },
-  "058C8E37": {
-    "id": "058C8E37",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T06:00:40.023972",
-    "last_seen": "2026-01-03T07:19:50.053189",
+  "AB2C90AF": {
+    "id": "AB2C90AF",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:02:41.776242",
+    "last_seen": "2026-01-03T12:02:42.325553",
     "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "058C8E37",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "1%"
+      "type": "STATE_RPT",
+      "rf_tx_id": "AB2C90AF",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "level": "89%"
     },
-    "count": 66
+    "count": 5
+  },
+  "059DB587": {
+    "id": "059DB587",
+    "link_id": "9DB5",
+    "type": "BTN_SHORT_A",
+    "first_seen": "2026-01-03T12:05:38.496014",
+    "last_seen": "2026-01-03T12:07:51.664185",
+    "info": {
+      "type": "BTN_LONG_B",
+      "factory_id": "059DB587",
+      "controllable": true
+    },
+    "count": 21
   },
   "002C90AD": {
     "id": "002C90AD",
+    "link_id": "2C90",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-03T06:03:41.187160",
-    "last_seen": "2026-01-03T06:07:40.051513",
+    "first_seen": "2026-01-03T12:06:10.175122",
+    "last_seen": "2026-01-03T12:07:33.613135",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "002C90AD",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "88%"
+      "level": "71%"
     },
-    "count": 7
+    "count": 4
   },
   "002C90AF": {
     "id": "002C90AF",
+    "link_id": "2C90",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-03T06:03:41.225903",
-    "last_seen": "2026-01-03T06:07:49.487308",
+    "first_seen": "2026-01-03T12:06:10.260814",
+    "last_seen": "2026-01-03T12:07:34.477175",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "002C90AF",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "88%"
+      "level": "71%"
     },
-    "count": 112
+    "count": 18
   },
-  "06F47432": {
-    "id": "06F47432",
+  "0296BD72": {
+    "id": "0296BD72",
+    "link_id": "96BD",
     "type": "LEVEL",
-    "first_seen": "2026-01-03T06:05:32.355602",
-    "last_seen": "2026-01-03T06:05:50.653834",
+    "first_seen": "2026-01-03T12:07:32.798995",
+    "last_seen": "2026-01-03T12:07:33.264859",
+    "info": {
+      "type": "LEVEL",
+      "bridge_id": "00D782A1",
+      "factory_id": "0296BD72",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
+    },
+    "count": 6,
+    "label": "Undercabinet Lights",
+    "device_type": "auto"
+  },
+  "06FE2CF9": {
+    "id": "06FE2CF9",
+    "link_id": "FE2C",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T12:10:36.645526",
+    "last_seen": "2026-01-03T12:10:37.257916",
     "info": {
       "type": "LEVEL",
       "bridge_id": "002C90AF",
-      "factory_id": "06F47432",
+      "factory_id": "06FE2CF9",
       "category": "bridge_controlled",
       "controllable": true,
-      "level": "0%"
-    },
-    "count": 20
-  },
-  "06FD678A": {
-    "id": "06FD678A",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T06:06:37.657945",
-    "last_seen": "2026-01-03T06:06:41.248013",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "06FD678A",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 22
-  },
-  "00C7E498": {
-    "id": "00C7E498",
-    "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T06:16:22.215677",
-    "last_seen": "2026-01-03T07:21:44.472209",
-    "info": {
-      "type": "BTN_LONG_B",
-      "factory_id": "00C7E498",
-      "controllable": true
-    },
-    "count": 2
-  },
-  "084B89E7": {
-    "id": "084B89E7",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-03T06:18:24.786861",
-    "last_seen": "2026-01-03T10:35:00.158800",
-    "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "084B89E7",
-      "controllable": true
-    },
-    "count": 236,
-    "link_id": "4B89"
-  },
-  "0869E74C": {
-    "id": "0869E74C",
-    "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T06:42:51.542579",
-    "last_seen": "2026-01-03T06:43:29.804325",
-    "info": {
-      "type": "BTN_LONG_B",
-      "factory_id": "0869E74C",
-      "controllable": true
-    },
-    "count": 155
-  },
-  "06FB242B": {
-    "id": "06FB242B",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T07:11:17.473012",
-    "last_seen": "2026-01-03T07:11:17.473021",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AD",
-      "factory_id": "06FB242B",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 1
-  },
-  "06FDEF87": {
-    "id": "06FDEF87",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T07:11:17.509067",
-    "last_seen": "2026-01-03T07:11:17.509075",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AD",
-      "factory_id": "06FDEF87",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 1
-  },
-  "1F2C9080": {
-    "id": "1F2C9080",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-03T07:30:48.415299",
-    "last_seen": "2026-01-03T07:44:11.913235",
-    "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "1F2C9080",
-      "category": "dimmer_passive",
-      "controllable": false,
       "level": "0%"
     },
     "count": 3
   },
-  "1F2C908F": {
-    "id": "1F2C908F",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-03T07:30:48.440434",
-    "last_seen": "2026-01-03T07:44:12.565253",
-    "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "1F2C908F",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "0%"
-    },
-    "count": 47
-  },
-  "01D4F21B": {
-    "id": "01D4F21B",
-    "link_id": "D4F2",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-03T10:38:15.958254",
-    "last_seen": "2026-01-03T10:39:10.791315",
-    "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "01D4F21B",
-      "controllable": true
-    },
-    "count": 47
-  },
-  "06FE285F": {
-    "id": "06FE285F",
-    "link_id": "FE28",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T10:38:31.785169",
-    "last_seen": "2026-01-03T10:38:32.383509",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "06FE285F",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "100%"
-    },
-    "count": 3
-  },
-  "0E2C908D": {
-    "id": "0E2C908D",
+  "122C9080": {
+    "id": "122C9080",
     "link_id": "2C90",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-03T10:38:46.468467",
-    "last_seen": "2026-01-03T10:38:46.468478",
+    "first_seen": "2026-01-03T12:13:25.226495",
+    "last_seen": "2026-01-03T12:13:25.226501",
     "info": {
       "type": "STATE_RPT",
-      "rf_tx_id": "0E2C908D",
+      "rf_tx_id": "122C9080",
       "category": "dimmer_passive",
       "controllable": false,
       "level": "100%"
     },
     "count": 1
+  },
+  "122C908F": {
+    "id": "122C908F",
+    "link_id": "2C90",
+    "type": "STATE_RPT",
+    "first_seen": "2026-01-03T12:13:25.285637",
+    "last_seen": "2026-01-03T12:13:25.864213",
+    "info": {
+      "type": "STATE_RPT",
+      "rf_tx_id": "122C908F",
+      "category": "dimmer_passive",
+      "controllable": false,
+      "level": "100%"
+    },
+    "count": 11
   }
 }

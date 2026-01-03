@@ -27,7 +27,7 @@ import './App.css'
 
 function App() {
   const { get, postJson, del } = useApi()
-  const { logs, txPackets, rxPackets, connected, clearLogs, clearTx, clearRx } = useLogStream()
+  const { logs, txPackets, rxPackets, connected, clearLogs, clearTx, clearRx, clearAll } = useLogStream()
   const [devices, setDevices] = useState<Record<string, Device>>({})
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
 
@@ -90,15 +90,12 @@ function App() {
   }, [postJson, loadDevices])
 
   // Auto-register devices from RX packets
-  // Only register from properly decoded packets (not raw byte dumps)
+  // Uses new Packet interface with type, summary, details
   useEffect(() => {
     rxPackets.slice(-1).forEach(packet => {
-      const parts = packet.data.split(' | ')
-      if (parts.length < 3) return  // Valid RX has at least 3 parts: type | deviceId | info
+      const pktType = packet.type
 
-      const pktType = parts[0].trim()
-
-      // Only process known packet types (not raw hex dumps)
+      // Only process known packet types
       const validTypes = ['BTN_SHORT_A', 'BTN_LONG_A', 'BTN_SHORT_B', 'BTN_LONG_B',
                           'LEVEL', 'STATE_RPT', 'PAIR_B8', 'PAIR_B9', 'PAIR_BA', 'PAIR_BB', 'BEACON']
       if (!validTypes.some(t => pktType.startsWith(t))) return
@@ -106,36 +103,39 @@ function App() {
       let deviceId: string | null = null
       const info: Record<string, unknown> = { type: pktType }
 
-      if (pktType === 'LEVEL' && parts[1].includes('->')) {
-        const ids = parts[1].split('->').map(s => s.trim())
+      // Parse summary which contains device ID(s)
+      const summary = packet.summary
+
+      if (pktType === 'LEVEL' && summary.includes('->')) {
+        const ids = summary.split('->').map(s => s.trim())
         deviceId = ids[1]
         info.bridge_id = ids[0]
         info.factory_id = ids[1]
         info.category = 'bridge_controlled'
         info.controllable = true
       } else if (pktType === 'STATE_RPT') {
-        deviceId = parts[1].trim()
+        deviceId = summary.trim()
         info.rf_tx_id = deviceId
         info.category = 'dimmer_passive'
         info.controllable = false
       } else if (pktType.startsWith('BTN_')) {
-        deviceId = parts[1].trim()
+        deviceId = summary.trim()
         info.factory_id = deviceId
         info.controllable = true
       } else {
-        deviceId = parts[1].trim()
+        deviceId = summary.trim()
       }
 
-      for (let i = 2; i < parts.length; i++) {
-        const part = parts[i].trim()
-        if (part.startsWith('SCENE')) {
-          info.button = part
+      // Parse details array
+      for (const detail of packet.details) {
+        if (detail.startsWith('SCENE')) {
+          info.button = detail
           info.category = 'scene_pico'
-        } else if (part.match(/^(ON|OFF|RAISE|LOWER|FAV)/)) {
-          info.button = part
+        } else if (detail.match(/^(ON|OFF|RAISE|LOWER|FAV)/)) {
+          info.button = detail
           info.category = 'pico'
-        } else if (part.startsWith('Level=')) {
-          info.level = part.replace('Level=', '')
+        } else if (detail.startsWith('Level=')) {
+          info.level = detail.replace('Level=', '')
         }
       }
 
@@ -162,6 +162,10 @@ function App() {
         </section>
 
         <section className="panel center-panel">
+          <div className="center-panel-header">
+            <h2>Log Monitor</h2>
+            <button className="clear-all-btn" onClick={clearAll}>Clear All</button>
+          </div>
           <PacketDisplay
             title="TX Packets"
             packets={txPackets}

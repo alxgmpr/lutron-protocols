@@ -29,6 +29,15 @@ export interface LogEntry {
   type?: string
 }
 
+export interface Packet {
+  time: string
+  type: string        // e.g., "LEVEL", "BTN_SHORT_A", "BEACON", "PAIRING"
+  summary: string     // Short description for display
+  details: string[]   // Additional info parts
+  rawBytes?: string   // Hex bytes if available
+  direction: 'tx' | 'rx'
+}
+
 export interface ApiResponse {
   status: 'ok' | 'error'
   error?: string

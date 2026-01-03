@@ -38,7 +38,41 @@
   background: var(--border-primary);
 }
 
-.center-panel > * {
+.center-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.center-panel-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.clear-all-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.clear-all-btn:hover {
+  background: #ef5350;
+  border-color: #ef5350;
+  color: white;
+}
+
+.center-panel > *:not(.center-panel-header) {
   flex: 1;
   min-height: 0;
   background: var(--bg-secondary);
