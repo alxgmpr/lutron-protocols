@@ -361,12 +361,21 @@ def cmd_serve(args):
             await controller.disconnect()
 
     async def send_beacon_async(device_id: int, beacon_type: int, duration: int):
+        """Send beacon - fire and forget since this is a long-running operation."""
         controller = ESP32Controller()
         try:
             await controller.connect()
+            # Fire the beacon command - don't wait for completion
             await controller.send_beacon(device_id, beacon_type, duration)
+        except asyncio.TimeoutError:
+            # Expected - beacon runs longer than API timeout
+            pass
         finally:
-            await controller.disconnect()
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                # Ignore disconnect timeout - ESP32 is busy with beacon
+                pass
 
     async def pair_pico_async(device_id: int, pico_type: int = 1, button_scheme: int = 0x04):
         """pico_type: 0 = Scene, 1 = 5-button
@@ -387,8 +396,13 @@ def cmd_serve(args):
             await controller.call_service('pair_5button',
                                          device_id=f"0x{device_id:08X}",
                                          duration_seconds=duration)
+        except asyncio.TimeoutError:
+            pass  # Expected for long pairing operations
         finally:
-            await controller.disconnect()
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     async def pair_advanced_async(device_id: int, preset: str, duration: int,
                                   pkt_type: str, byte10: int, byte30: int,
@@ -427,8 +441,13 @@ def cmd_serve(args):
                                          byte31=byte31,
                                          byte37=byte37,
                                          byte38=byte38)
+        except asyncio.TimeoutError:
+            pass  # Expected for long pairing operations
         finally:
-            await controller.disconnect()
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     async def send_reset_async(source_id: int, paired_id: int):
         """Send reset/unpair packet."""
@@ -445,8 +464,13 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.save_favorite(device_id, button, hold_seconds)
+        except asyncio.TimeoutError:
+            pass  # Expected for long hold operations
         finally:
-            await controller.disconnect()
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     async def start_rx_async():
         """Start RX mode."""
@@ -474,6 +498,30 @@ def cmd_serve(args):
             return True
         except:
             return False
+
+    async def set_switch_async(switch_id: str, state: bool):
+        """Set a switch on or off."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.set_switch(switch_id, state)
+        finally:
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+    async def set_beacon_device_async(device_id: int):
+        """Set the beacon device ID for toggle mode."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.call_service('set_beacon_device', device_id=f"0x{device_id:08X}")
+        finally:
+            try:
+                await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
 
     @app.route('/api/status')
     def api_status():
@@ -787,6 +835,30 @@ def cmd_serve(args):
         try:
             asyncio.run(press_button_async(button_id))
             return jsonify({'status': 'ok', 'button': button_id})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/switch/<switch_id>', methods=['POST'])
+    def api_switch_control(switch_id):
+        """Control a switch (on/off)."""
+        try:
+            data = request.json or {}
+            state = data.get('state', False)
+            asyncio.run(set_switch_async(switch_id, state))
+            return jsonify({'status': 'ok', 'switch': switch_id, 'state': state})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/beacon/device', methods=['POST'])
+    def api_beacon_device():
+        """Set the beacon device ID for toggle mode."""
+        try:
+            data = request.json or {}
+            device_id = data.get('device_id', 0)
+            if isinstance(device_id, str):
+                device_id = int(device_id, 16) if device_id.startswith('0x') else int(device_id)
+            asyncio.run(set_beacon_device_async(device_id))
+            return jsonify({'status': 'ok', 'device_id': f"0x{device_id:08X}"})
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 

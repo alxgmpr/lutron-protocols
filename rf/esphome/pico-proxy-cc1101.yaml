@@ -71,6 +71,16 @@ api:
             ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
             id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
 
+    # Set beacon device ID for toggle mode
+    - service: set_beacon_device
+      variables:
+        device_id: string
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            id(beacon_device_id) = dev_id;
+            ESP_LOGI("service", "set_beacon_device: 0x%08X", dev_id);
+
     # Complete bridge pairing sequence
     - service: bridge_pair
       variables:

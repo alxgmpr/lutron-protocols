@@ -319,13 +319,13 @@
     "id": "084B89E7",
     "type": "BTN_SHORT_A",
     "first_seen": "2026-01-03T06:18:24.786861",
-    "last_seen": "2026-01-03T06:42:15.265450",
+    "last_seen": "2026-01-03T06:47:30.772847",
     "info": {
-      "type": "PAIR_BB",
+      "type": "BTN_LONG_A",
       "factory_id": "084B89E7",
       "controllable": true
     },
-    "count": 158
+    "count": 171
   },
   "0869E74C": {
     "id": "0869E74C",
@@ -338,5 +338,35 @@
       "controllable": true
     },
     "count": 155
+  },
+  "06FB242B": {
+    "id": "06FB242B",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T07:11:17.473012",
+    "last_seen": "2026-01-03T07:11:17.473021",
+    "info": {
+      "type": "LEVEL",
+      "bridge_id": "002C90AD",
+      "factory_id": "06FB242B",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
+    },
+    "count": 1
+  },
+  "06FDEF87": {
+    "id": "06FDEF87",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T07:11:17.509067",
+    "last_seen": "2026-01-03T07:11:17.509075",
+    "info": {
+      "type": "LEVEL",
+      "bridge_id": "002C90AD",
+      "factory_id": "06FDEF87",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
+    },
+    "count": 1
   }
 }

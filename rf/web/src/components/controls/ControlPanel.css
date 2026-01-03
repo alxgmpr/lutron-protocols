@@ -50,3 +50,82 @@
   margin-top: 8px;
 }
 
+/* Beacon Toggle */
+.beacon-toggle-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.beacon-toggle-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.beacon-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.beacon-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-track {
+  width: 48px;
+  height: 26px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 13px;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.beacon-toggle.active .toggle-track {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.beacon-toggle.active .toggle-thumb {
+  left: 24px;
+  background: white;
+}
+
+.beacon-toggle.loading .toggle-thumb {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.toggle-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 28px;
+}
+
+.beacon-toggle.active .toggle-text {
+  color: var(--accent-green);
+}
+
