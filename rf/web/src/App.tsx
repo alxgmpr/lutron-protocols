@@ -90,12 +90,19 @@ function App() {
   }, [postJson, loadDevices])
 
   // Auto-register devices from RX packets
+  // Only register from properly decoded packets (not raw byte dumps)
   useEffect(() => {
     rxPackets.slice(-1).forEach(packet => {
       const parts = packet.data.split(' | ')
-      if (parts.length < 2) return
-      
+      if (parts.length < 3) return  // Valid RX has at least 3 parts: type | deviceId | info
+
       const pktType = parts[0].trim()
+
+      // Only process known packet types (not raw hex dumps)
+      const validTypes = ['BTN_SHORT_A', 'BTN_LONG_A', 'BTN_SHORT_B', 'BTN_LONG_B',
+                          'LEVEL', 'STATE_RPT', 'PAIR_B8', 'PAIR_B9', 'PAIR_BA', 'PAIR_BB', 'BEACON']
+      if (!validTypes.some(t => pktType.startsWith(t))) return
+
       let deviceId: string | null = null
       const info: Record<string, unknown> = { type: pktType }
 
@@ -132,7 +139,8 @@ function App() {
         }
       }
 
-      if (deviceId && deviceId.length >= 6) {
+      // Device ID must be exactly 8 hex characters
+      if (deviceId && /^[0-9A-Fa-f]{8}$/.test(deviceId)) {
         registerDevice(deviceId, pktType, info)
       }
     })

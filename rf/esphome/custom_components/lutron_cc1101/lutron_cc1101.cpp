@@ -38,9 +38,9 @@ void LutronCC1101::setup() {
 }
 
 void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
-  // Filter out noise - real Lutron packets have RSSI > -65 typically
-  // Noise floor is around -75 to -90
-  if (rssi < -65) {
+  // Filter out noise - real Lutron packets have RSSI > -70 typically
+  // Noise floor is around -80 to -95
+  if (rssi < -70) {
     return;  // Silently ignore noise
   }
 

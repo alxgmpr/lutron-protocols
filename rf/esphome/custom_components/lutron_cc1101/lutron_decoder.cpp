@@ -157,8 +157,13 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
   }
 
   if (best_decoded < 10) {  // Need at least some bytes to be useful
-    // BUG: 4-button picos (scene/raise-lower) cause decode failures
-    // See KNOWN_ISSUES.md - possibly different timing or packet structure
+    // Log decode failure with first few raw bytes for debugging
+    char hex[32];
+    int pos = 0;
+    for (size_t i = 0; i < len && i < 8 && pos < 28; i++) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", fifo_data[i]);
+    }
+    ESP_LOGV(TAG, "Decode fail: %d bytes, raw: %s", (int)best_decoded, hex);
     return false;
   }
 
@@ -289,11 +294,13 @@ const char *LutronDecoder::button_name(uint8_t button) {
     case BTN_OFF: return "OFF";         // 0x04
     case BTN_RAISE: return "RAISE";     // 0x05
     case BTN_LOWER: return "LOWER";     // 0x06
-    // 4-button Picos: Scene (PJ2-4B-S) or On/Raise/Lower/Off (PJ2-4B)
-    case BTN_SCENE4: return "ON";       // 0x08
-    case BTN_SCENE3: return "UP";       // 0x09
-    case BTN_SCENE2: return "DOWN";     // 0x0A
-    case BTN_SCENE1: return "OFF";      // 0x0B
+    // 4-button Picos: Scene (PJ2-4B-S) or Raise/Lower (PJ2-4B)
+    // 0x08/0x0B = ON/OFF on both types
+    // 0x09/0x0A = Scene2/Scene3 on scene pico, RAISE/LOWER on raise/lower pico
+    case BTN_SCENE4: return "ON";       // 0x08 - top button
+    case BTN_SCENE3: return "RAISE";    // 0x09 - second from top (raise on PJ2-4B)
+    case BTN_SCENE2: return "LOWER";    // 0x0A - third (lower on PJ2-4B)
+    case BTN_SCENE1: return "OFF";      // 0x0B - bottom button
     // Special
     case 0xFF: return "RESET";          // Pico unpair/reset broadcast
     default: return "?";

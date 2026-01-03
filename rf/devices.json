@@ -3,7 +3,7 @@
     "id": "06FE8020",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:35:55.005490",
-    "last_seen": "2026-01-03T01:30:22.290533",
+    "last_seen": "2026-01-03T05:26:29.113174",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -13,14 +13,14 @@
       "level": "0%",
       "bridge_id": "002C90AD"
     },
-    "count": 105,
+    "count": 106,
     "label": "Kitchen Downlights"
   },
   "06FDEFED": {
     "id": "06FDEFED",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:36:47.107999",
-    "last_seen": "2026-01-03T01:30:23.436939",
+    "last_seen": "2026-01-03T05:29:03.787347",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -30,7 +30,7 @@
       "level": "0%",
       "bridge_id": "002C90AF"
     },
-    "count": 33,
+    "count": 56,
     "label": "Kitchen Island Pendants"
   },
   "0700438C": {
@@ -70,7 +70,7 @@
     "id": "06F4587E",
     "type": "LEVEL",
     "first_seen": "2026-01-02T21:41:13.945255",
-    "last_seen": "2026-01-02T23:59:41.275649",
+    "last_seen": "2026-01-03T05:26:29.495139",
     "info": {
       "type": "LEVEL",
       "zone_id": "002C90AF",
@@ -78,9 +78,9 @@
       "category": "bridge_controlled",
       "controllable": true,
       "level": "0%",
-      "bridge_id": "002C90AF"
+      "bridge_id": "002C90AD"
     },
-    "count": 64,
+    "count": 65,
     "label": "Foyer Downlights"
   },
   "062C908C": {
@@ -147,7 +147,7 @@
     "id": "0D2C9080",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T21:56:04.957940",
-    "last_seen": "2026-01-02T21:56:10.483503",
+    "last_seen": "2026-01-03T05:23:44.428818",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "0D2C9080",
@@ -155,14 +155,14 @@
       "controllable": false,
       "level": "0%"
     },
-    "count": 2,
+    "count": 4,
     "label": "Kitchen Island Pendants"
   },
   "0D2C908F": {
     "id": "0D2C908F",
     "type": "STATE_RPT",
     "first_seen": "2026-01-02T21:56:04.961399",
-    "last_seen": "2026-01-02T21:56:11.004710",
+    "last_seen": "2026-01-03T05:23:45.062864",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "0D2C908F",
@@ -170,7 +170,7 @@
       "controllable": false,
       "level": "0%"
     },
-    "count": 33,
+    "count": 66,
     "label": "Kitchen Island Pendants"
   },
   "092C9080": {
@@ -203,81 +203,91 @@
     "count": 17,
     "label": "Foyer Downlights"
   },
-  "06FB242B": {
-    "id": "06FB242B",
+  "058BD5E8": {
+    "id": "058BD5E8",
+    "type": "BTN_SHORT_A",
+    "first_seen": "2026-01-03T05:29:00.464417",
+    "last_seen": "2026-01-03T05:29:01.371786",
+    "info": {
+      "type": "BTN_LONG_A",
+      "factory_id": "058BD5E8",
+      "controllable": true
+    },
+    "count": 21
+  },
+  "0296BD72": {
+    "id": "0296BD72",
     "type": "LEVEL",
-    "first_seen": "2026-01-03T04:54:53.554439",
-    "last_seen": "2026-01-03T04:54:54.298262",
+    "first_seen": "2026-01-03T05:29:01.476123",
+    "last_seen": "2026-01-03T05:29:02.316448",
     "info": {
       "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "06FB242B",
+      "bridge_id": "00D782A1",
+      "factory_id": "0296BD72",
       "category": "bridge_controlled",
       "controllable": true,
       "level": "0%"
     },
-    "count": 10
-  },
-  "084B89E7": {
-    "id": "084B89E7",
-    "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T04:57:52.502184",
-    "last_seen": "2026-01-03T04:57:53.549957",
-    "info": {
-      "type": "BTN_LONG_B",
-      "factory_id": "084B89E7",
-      "controllable": true
-    },
     "count": 11
   },
-  "172C9080": {
-    "id": "172C9080",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-03T04:58:13.045328",
-    "last_seen": "2026-01-03T04:58:13.045336",
+  "07002688": {
+    "id": "07002688",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T05:29:02.590969",
+    "last_seen": "2026-01-03T05:29:02.590983",
     "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "172C9080",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "44%"
+      "type": "LEVEL",
+      "bridge_id": "002C90AD",
+      "factory_id": "07002688",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
     },
     "count": 1
   },
-  "172C908F": {
-    "id": "172C908F",
-    "type": "STATE_RPT",
-    "first_seen": "2026-01-03T04:58:13.073521",
-    "last_seen": "2026-01-03T04:58:13.695480",
+  "07004E6D": {
+    "id": "07004E6D",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T05:29:02.668976",
+    "last_seen": "2026-01-03T05:29:02.669007",
     "info": {
-      "type": "STATE_RPT",
-      "rf_tx_id": "172C908F",
-      "category": "dimmer_passive",
-      "controllable": false,
-      "level": "44%"
+      "type": "LEVEL",
+      "bridge_id": "002C90AD",
+      "factory_id": "07004E6D",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
     },
-    "count": 18
+    "count": 1
   },
-  "08692D70": {
-    "id": "08692D70",
-    "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T05:00:02.158950",
-    "last_seen": "2026-01-03T05:01:03.387529",
+  "06FE285F": {
+    "id": "06FE285F",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T05:29:02.750888",
+    "last_seen": "2026-01-03T05:29:02.750901",
     "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "08692D70",
-      "controllable": true
+      "type": "LEVEL",
+      "bridge_id": "002C90AF",
+      "factory_id": "06FE285F",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
     },
-    "count": 309
+    "count": 1
   },
-  "21702D69": {
-    "id": "21702D69",
-    "type": "UNKNOWN",
-    "first_seen": "2026-01-03T05:00:02.535639",
-    "last_seen": "2026-01-03T05:00:51.243590",
+  "070A88C1": {
+    "id": "070A88C1",
+    "type": "LEVEL",
+    "first_seen": "2026-01-03T05:29:02.824235",
+    "last_seen": "2026-01-03T05:29:02.824263",
     "info": {
-      "type": "UNKNOWN"
+      "type": "LEVEL",
+      "bridge_id": "002C90AF",
+      "factory_id": "070A88C1",
+      "category": "bridge_controlled",
+      "controllable": true,
+      "level": "0%"
     },
-    "count": 3
+    "count": 1
   }
 }

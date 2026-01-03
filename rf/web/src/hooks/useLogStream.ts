@@ -43,6 +43,12 @@ export function useLogStream() {
           setRxPackets(prev => [...prev.slice(-29), { time, data: rxMatch[1] }])
         }
 
+        // Also capture raw Bytes: dumps (undecoded packets)
+        const bytesMatch = msg.match(/Bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i)
+        if (bytesMatch && !rxMatch) {
+          setRxPackets(prev => [...prev.slice(-29), { time, data: bytesMatch[1] }])
+        }
+
         setLogs(prev => [...prev.slice(-199), { ...data, msg }])
       }
 
