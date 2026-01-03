@@ -350,11 +350,11 @@ void LutronCC1101::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_de
     packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
     packet[1] = seq;
 
-    // Bridge zone ID (big-endian as seen in captures)
-    packet[2] = (bridge_zone_id >> 24) & 0xFF;
-    packet[3] = (bridge_zone_id >> 16) & 0xFF;
-    packet[4] = (bridge_zone_id >> 8) & 0xFF;
-    packet[5] = bridge_zone_id & 0xFF;
+    // Bridge zone ID (little-endian, matching real bridge captures)
+    packet[2] = bridge_zone_id & 0xFF;
+    packet[3] = (bridge_zone_id >> 8) & 0xFF;
+    packet[4] = (bridge_zone_id >> 16) & 0xFF;
+    packet[5] = (bridge_zone_id >> 24) & 0xFF;
 
     packet[6] = 0x21;  // Protocol marker
     packet[7] = 0x0E;  // Format

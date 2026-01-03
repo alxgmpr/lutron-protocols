@@ -187,10 +187,25 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     packet.action = best_bytes[PKT_OFFSET_ACTION];
   } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
              packet.type == PKT_STATE_REPORT_83) {
-    // State report packets have level at offset 11
-    // Level is 0x00-0xFE = 0-100%
-    uint8_t raw_level = best_bytes[PKT_OFFSET_LEVEL];
-    packet.level = (raw_level * 100) / 254;  // Convert 0-254 to 0-100%
+    // Types 0x81/0x82/0x83 can be either:
+    // - State report: bytes 6-7 = 0x00 0x08, level at byte 11
+    // - Bridge level command: bytes 6-7 = 0x21 0x0E, level at bytes 16-17
+    if (best_bytes[6] == 0x21 && best_bytes[7] == 0x0E) {
+      // Bridge level command - reclassify as LEVEL type
+      packet.type = PKT_LEVEL;
+      // Level is 16-bit big-endian at bytes 16-17 (0x0000-0xFEFF)
+      uint16_t raw_level = (best_bytes[16] << 8) | best_bytes[17];
+      packet.level = (uint8_t)((uint32_t)raw_level * 100 / 65279);
+      // Target device ID at bytes 9-12 (big-endian in bridge commands)
+      packet.target_id = (best_bytes[9] << 24) |
+                         (best_bytes[10] << 16) |
+                         (best_bytes[11] << 8) |
+                         best_bytes[12];
+    } else {
+      // True state report - level at byte 11 (0x00-0xFE = 0-100%)
+      uint8_t raw_level = best_bytes[PKT_OFFSET_LEVEL];
+      packet.level = (raw_level * 100) / 254;
+    }
   } else if (packet.type == PKT_LEVEL) {
     // Level command packets (0xA2) - different format, level at offset 9
     packet.level = best_bytes[9];
