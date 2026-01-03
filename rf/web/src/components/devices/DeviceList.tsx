@@ -228,7 +228,6 @@ export function DeviceList({
         badge={totalDevices > 0 ? `${totalDevices}` : undefined}
         actions={
           <>
-            <Button size="sm" onClick={onRefresh}>Refresh</Button>
             {hasUnlabeled && (
               <Button size="sm" variant="orange" onClick={onClearUnlabeled}>
                 Clear Unknown
