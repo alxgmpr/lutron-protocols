@@ -167,26 +167,29 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
   packet.type = best_bytes[PKT_OFFSET_TYPE];
   packet.sequence = best_bytes[PKT_OFFSET_SEQ];
 
-  // Device ID is 4 bytes little-endian starting at offset 2
-  packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
-                     (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
-                     (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
-                     (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
-
   // Initialize optional fields
   packet.button = 0;
   packet.action = 0;
   packet.level = 0;
   packet.target_id = 0;
 
-  // Parse type-specific fields
+  // Parse type-specific fields - device ID endianness depends on packet type
   if (packet.type == PKT_BUTTON_SHORT_A || packet.type == PKT_BUTTON_LONG_A ||
       packet.type == PKT_BUTTON_SHORT_B || packet.type == PKT_BUTTON_LONG_B) {
-    // Button press packets
+    // Button press packets - Pico IDs are BIG-endian (as printed on device)
+    packet.device_id = (best_bytes[PKT_OFFSET_DEVICE_ID] << 24) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 8) |
+                       best_bytes[PKT_OFFSET_DEVICE_ID + 3];
     packet.button = best_bytes[PKT_OFFSET_BUTTON];
     packet.action = best_bytes[PKT_OFFSET_ACTION];
   } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
              packet.type == PKT_STATE_REPORT_83) {
+    // State reports use LITTLE-endian device IDs
+    packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
     // Types 0x81/0x82/0x83 can be either:
     // - State report: bytes 6-7 = 0x00 0x08, level at byte 11
     // - Bridge level command: bytes 6-7 = 0x21 0x0E, level at bytes 16-17
@@ -207,6 +210,11 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
       packet.level = (raw_level * 100) / 254;
     }
   } else if (packet.type == PKT_LEVEL) {
+    // Level commands use LITTLE-endian device IDs
+    packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
     // Level command packets (0xA2) - different format, level at offset 9
     packet.level = best_bytes[9];
     // Target device ID at offset 10-13 (little-endian)
@@ -216,6 +224,12 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                          (best_bytes[12] << 16) |
                          (best_bytes[13] << 24);
     }
+  } else {
+    // All other packets - default to LITTLE-endian
+    packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
   }
 
   // CRC from packet (if we have enough bytes)

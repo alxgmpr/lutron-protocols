@@ -62,8 +62,8 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     const char *btn_name = LutronDecoder::button_name(pkt.button);
     const char *action = (pkt.action == ACTION_RELEASE) ? "RELEASE" : "PRESS";
 
-    ESP_LOGI(TAG, "RX: %s | %s | %s %s | Seq=%d | RSSI=%d | CRC=%s",
-             type_name, dev_id, btn_name, action, pkt.sequence, rssi,
+    ESP_LOGI(TAG, "RX: %s | %s | 0x%02X %s %s | Seq=%d | RSSI=%d | CRC=%s",
+             type_name, dev_id, pkt.button, btn_name, action, pkt.sequence, rssi,
              pkt.crc_valid ? "OK" : "BAD");
   } else if (pkt.type == PKT_STATE_REPORT_81 || pkt.type == PKT_STATE_REPORT_82 ||
              pkt.type == PKT_STATE_REPORT_83) {
