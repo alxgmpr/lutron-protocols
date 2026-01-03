@@ -203,96 +203,38 @@
     "count": 17,
     "label": "Foyer Downlights"
   },
-  "08692D70": {
-    "id": "08692D70",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-02T23:56:54.025105",
-    "last_seen": "2026-01-03T01:21:18.815443",
-    "info": {
-      "type": "PAIR_B9",
-      "factory_id": "08692D70",
-      "controllable": true
-    },
-    "count": 1065
-  },
-  "084B1EBB": {
-    "id": "084B1EBB",
-    "type": "BTN_LONG_B",
-    "first_seen": "2026-01-02T23:57:11.128119",
-    "last_seen": "2026-01-03T01:21:55.227726",
-    "info": {
-      "type": "PAIR_B8",
-      "factory_id": "084B1EBB",
-      "controllable": true
-    },
-    "count": 485
-  },
-  "BB1E4B08": {
-    "id": "BB1E4B08",
-    "type": "UNKNOWN",
-    "first_seen": "2026-01-02T23:57:17.106950",
-    "last_seen": "2026-01-02T23:57:21.527773",
-    "info": {
-      "type": "UNKNOWN"
-    },
-    "count": 97
-  },
-  "0708B5B5": {
-    "id": "0708B5B5",
+  "06FB242B": {
+    "id": "06FB242B",
     "type": "LEVEL",
-    "first_seen": "2026-01-02T23:59:45.630534",
-    "last_seen": "2026-01-02T23:59:46.546419",
+    "first_seen": "2026-01-03T04:54:53.554439",
+    "last_seen": "2026-01-03T04:54:54.298262",
     "info": {
       "type": "LEVEL",
       "bridge_id": "002C90AF",
-      "factory_id": "0708B5B5",
+      "factory_id": "06FB242B",
       "category": "bridge_controlled",
       "controllable": true,
       "level": "0%"
     },
-    "count": 11
+    "count": 10
   },
-  "0869E74C": {
-    "id": "0869E74C",
+  "084B89E7": {
+    "id": "084B89E7",
     "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T00:00:46.915122",
-    "last_seen": "2026-01-03T02:11:36.798807",
+    "first_seen": "2026-01-03T04:57:52.502184",
+    "last_seen": "2026-01-03T04:57:53.549957",
     "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "0869E74C",
+      "type": "BTN_LONG_B",
+      "factory_id": "084B89E7",
       "controllable": true
     },
-    "count": 907
-  },
-  "05851117": {
-    "id": "05851117",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-03T00:03:19.437139",
-    "last_seen": "2026-01-03T01:18:38.394059",
-    "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "05851117",
-      "controllable": true
-    },
-    "count": 823
-  },
-  "CC110001": {
-    "id": "CC110001",
-    "type": "BTN_LONG_A",
-    "first_seen": "2026-01-03T00:17:22.349107",
-    "last_seen": "2026-01-03T01:53:43.282063",
-    "info": {
-      "type": "BTN_LONG_A",
-      "factory_id": "CC110001",
-      "controllable": true
-    },
-    "count": 13
+    "count": 11
   },
   "172C9080": {
     "id": "172C9080",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-03T00:26:16.921288",
-    "last_seen": "2026-01-03T00:26:16.921298",
+    "first_seen": "2026-01-03T04:58:13.045328",
+    "last_seen": "2026-01-03T04:58:13.045336",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "172C9080",
@@ -305,170 +247,37 @@
   "172C908F": {
     "id": "172C908F",
     "type": "STATE_RPT",
-    "first_seen": "2026-01-03T00:26:16.936461",
-    "last_seen": "2026-01-03T00:26:22.542022",
+    "first_seen": "2026-01-03T04:58:13.073521",
+    "last_seen": "2026-01-03T04:58:13.695480",
     "info": {
       "type": "STATE_RPT",
       "rf_tx_id": "172C908F",
       "category": "dimmer_passive",
       "controllable": false,
-      "level": "0%"
+      "level": "44%"
     },
-    "count": 27
+    "count": 18
   },
-  "0296BD72": {
-    "id": "0296BD72",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T01:12:51.548231",
-    "last_seen": "2026-01-03T01:30:21.845547",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "00D782A1",
-      "factory_id": "0296BD72",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 20
-  },
-  "058CB911": {
-    "id": "058CB911",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T01:13:10.146575",
-    "last_seen": "2026-01-03T01:13:10.957302",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "058CB911",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 9
-  },
-  "000E2100": {
-    "id": "000E2100",
-    "type": "UNKNOWN",
-    "first_seen": "2026-01-03T01:13:10.553924",
-    "last_seen": "2026-01-03T01:13:10.553932",
-    "info": {
-      "type": "UNKNOWN"
-    },
-    "count": 1
-  },
-  "2C90AFA0": {
-    "id": "2C90AFA0",
-    "type": "UNKNOWN",
-    "first_seen": "2026-01-03T01:13:10.728149",
-    "last_seen": "2026-01-03T01:13:10.728160",
-    "info": {
-      "type": "UNKNOWN"
-    },
-    "count": 1
-  },
-  "058BD5E8": {
-    "id": "058BD5E8",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-03T01:30:19.964406",
-    "last_seen": "2026-01-03T01:30:30.417225",
-    "info": {
-      "type": "PAIR_B9",
-      "factory_id": "058BD5E8",
-      "controllable": true
-    },
-    "count": 112
-  },
-  "07004E6D": {
-    "id": "07004E6D",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T01:30:22.394357",
-    "last_seen": "2026-01-03T01:30:22.394368",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "07004E6D",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 1
-  },
-  "06FE285F": {
-    "id": "06FE285F",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T01:30:22.397858",
-    "last_seen": "2026-01-03T01:30:22.397869",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AD",
-      "factory_id": "06FE285F",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 1
-  },
-  "070A88C1": {
-    "id": "070A88C1",
-    "type": "LEVEL",
-    "first_seen": "2026-01-03T01:30:22.496788",
-    "last_seen": "2026-01-03T01:30:22.496804",
-    "info": {
-      "type": "LEVEL",
-      "bridge_id": "002C90AF",
-      "factory_id": "070A88C1",
-      "category": "bridge_controlled",
-      "controllable": true,
-      "level": "0%"
-    },
-    "count": 1
-  },
-  "0595E68D": {
-    "id": "0595E68D",
-    "type": "BTN_SHORT_A",
-    "first_seen": "2026-01-03T01:31:23.291505",
-    "last_seen": "2026-01-03T01:35:29.148097",
-    "info": {
-      "type": "BTN_LONG_B",
-      "factory_id": "0595E68D",
-      "controllable": true
-    },
-    "count": 358
-  },
-  "0596B3DA": {
-    "id": "0596B3DA",
-    "type": "BTN_LONG_A",
-    "first_seen": "2026-01-03T01:37:44.751067",
-    "last_seen": "2026-01-03T03:46:53.537905",
-    "info": {
-      "type": "BTN_SHORT_A",
-      "factory_id": "0596B3DA",
-      "controllable": true
-    },
-    "count": 60
-  },
-  "CC110010": {
-    "id": "CC110010",
-    "type": "BTN_LONG_A",
-    "first_seen": "2026-01-03T01:42:25.232885",
-    "last_seen": "2026-01-03T02:30:38.979423",
-    "info": {
-      "type": "BTN_LONG_B",
-      "factory_id": "CC110010",
-      "controllable": true
-    },
-    "count": 26
-  },
-  "00C7E498": {
-    "id": "00C7E498",
+  "08692D70": {
+    "id": "08692D70",
     "type": "BTN_SHORT_B",
-    "first_seen": "2026-01-03T01:54:18.402790",
-    "last_seen": "2026-01-03T01:54:18.402803",
+    "first_seen": "2026-01-03T05:00:02.158950",
+    "last_seen": "2026-01-03T05:01:03.387529",
     "info": {
-      "type": "BTN_SHORT_B",
-      "factory_id": "00C7E498",
+      "type": "BTN_LONG_A",
+      "factory_id": "08692D70",
       "controllable": true
     },
-    "count": 1
+    "count": 309
+  },
+  "21702D69": {
+    "id": "21702D69",
+    "type": "UNKNOWN",
+    "first_seen": "2026-01-03T05:00:02.535639",
+    "last_seen": "2026-01-03T05:00:51.243590",
+    "info": {
+      "type": "UNKNOWN"
+    },
+    "count": 3
   }
 }

@@ -1,0 +1,77 @@
+.unknown-device-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.unknown-device-row:hover {
+  background: rgba(245, 158, 11, 0.08);
+  border-left-color: var(--accent-orange);
+}
+
+.unknown-device-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.unknown-device-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-cyan);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.unknown-device-via {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.unknown-device-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.unknown-device-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.unknown-device-level {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-green);
+}
+
+.unknown-device-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  min-width: 50px;
+  text-align: right;
+}
+
+.unknown-device-action {
+  font-size: 10px;
+  color: var(--accent-orange);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.unknown-device-row:hover .unknown-device-action {
+  opacity: 1;
+}
+

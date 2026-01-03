@@ -1,0 +1,13 @@
+.quick-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.quick-button-divider {
+  color: var(--text-muted);
+  padding: 0 4px;
+  font-weight: 300;
+}
+

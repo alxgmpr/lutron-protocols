@@ -1,6 +1,12 @@
-esphome:
-  name: pico-trigger
+substitutions:
+  device_name: pico-trigger
   friendly_name: Pico RF Transmitter
+  # Default device ID for ESP32 virtual Pico (can be overridden)
+  esp32_pico_id: "0xCC110001"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
 
 esp32:
   board: esp32dev
@@ -14,32 +20,11 @@ wifi:
 logger:
   level: DEBUG
 
-# Debug info for monitoring ESP32 health
-debug:
-  update_interval: 5s
-
-text_sensor:
-  - platform: debug
-    device:
-      name: "Device Info"
-    reset_reason:
-      name: "Reset Reason"
-
-sensor:
-  - platform: debug
-    free:
-      name: "Heap Free"
-    block:
-      name: "Heap Max Block"
-    loop_time:
-      name: "Loop Time"
-
 api:
   encryption:
     key: "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
   services:
     # Dynamic button press - any device ID, any button code
-    # Using string for device_id to support full 32-bit unsigned range
     - service: send_button
       variables:
         device_id: string
@@ -86,8 +71,7 @@ api:
             ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
             id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
 
-    # Complete bridge pairing sequence - matches REAL bridge RF captures
-    # Sends proper 0xB1/B2/B3 beacons then 0xA1/A2/A3 assignment packets
+    # Complete bridge pairing sequence
     - service: bridge_pair
       variables:
         bridge_id: string
@@ -112,8 +96,6 @@ api:
             id(lutron_radio)->send_state_report(dev_id, level_percent);
 
     # Save Favorite/Scene - Hold button for extended time to save current level
-    # button_code: 0x03=FAV for 5-button, 0x08-0x0B for scene pico buttons
-    # hold_seconds: How long to hold (default 6, dimmer needs ~5s to enter save mode)
     - service: save_favorite
       variables:
         device_id: string
@@ -127,9 +109,6 @@ api:
             id(lutron_radio)->send_save_favorite(dev_id, button_code, hold_seconds);
 
     # Experimental pairing - configurable protocol parameters
-    # protocol_variant: 0=new (0x25), 1=old (0x21/0x17)
-    # pico_type: 0=scene (4-btn), 1=5-button
-    # button_scheme: 0x04=5-button codes (0x02-0x06), 0x0B=4-button codes (0x08-0x0B)
     - service: pair_experiment
       variables:
         device_id: string
@@ -147,8 +126,6 @@ api:
                                                          protocol_variant, pico_type, button_scheme);
 
     # 5-Button Pico Pairing - Uses B9 packets matching real Pico exactly
-    # This is for direct pairing to Caseta dimmers (no bridge)
-    # Bytes 37-38 advertise button range 0x02-0x06, so FAV (0x03) works as favorite
     - service: pair_5button
       variables:
         device_id: string
@@ -160,12 +137,6 @@ api:
             id(lutron_radio)->send_pairing_5button(dev_id, duration_seconds);
 
     # Advanced Pairing - Full control over ALL capability bytes
-    # Replicate ANY Pico type: 2-btn paddle, 5-btn, 4-btn R/L, 4-btn scene
-    # pkt_type_a/b: Packet types to alternate (B8/BA for bridge-only, B9/BB for direct-pair)
-    # byte10: Button scheme (0x04=5-btn codes, 0x0B=4-btn codes)
-    # byte30: Pico type (0x02=R/L, 0x03=5btn/paddle, 0x04=scene)
-    # byte31: Unknown (0x00 usually, 0x08 for 2-btn paddle)
-    # byte37/38: Button range (first/last button codes)
     - service: pair_advanced
       variables:
         device_id: string
@@ -187,8 +158,6 @@ api:
                                                      byte10, byte30, byte31, byte37, byte38);
 
     # Reset/Unpair - Remove a Pico from a device
-    # source_id: The Pico ID that's paired (our ESP32 fake Pico)
-    # paired_id: The Pico ID to unregister
     - service: send_reset
       variables:
         source_id: string
@@ -204,28 +173,21 @@ ota:
   platform: esphome
   password: "test"
 
-# web_server removed to save memory - use local Python server with aioesphomeapi instead
-# See: esphome/esp32_controller.py
-
-# External component for Lutron CC1101
 external_components:
   - source:
       type: local
       path: custom_components
 
-# SPI bus for CC1101
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
   miso_pin: GPIO19
 
-# Lutron CC1101 component
 lutron_cc1101:
   id: lutron_radio
   cs_pin: GPIO21
   gdo0_pin: GPIO4
 
-# Globals
 globals:
   - id: beacon_active
     type: bool
@@ -233,22 +195,21 @@ globals:
   - id: beacon_seq
     type: uint8_t
     initial_value: '0'
+  - id: beacon_device_id
+    type: uint32_t
+    initial_value: '0xCC110001'
 
-# Interval to send beacons when enabled
 interval:
   - interval: 65ms
     then:
       - lambda: |-
           if (id(beacon_active)) {
-            // Send beacon using proper function (includes CRC calculation)
-            // Using AF902C01 as our load ID
-            id(beacon_seq) = id(lutron_radio)->send_beacon_single(0xAF902C01, id(beacon_seq));
+            id(beacon_seq) = id(lutron_radio)->send_beacon_single(id(beacon_device_id), id(beacon_seq));
           }
 
-# Beacon toggle switch only (RX uses buttons to avoid boot loops)
 switch:
   - platform: template
-    name: "ESP32 Beacon Mode"
+    name: "Beacon Mode"
     id: beacon_mode_switch
     icon: "mdi:broadcast"
     optimistic: true
@@ -263,459 +224,20 @@ switch:
           value: 'false'
       - logger.log: "Beacon mode OFF"
 
-# RF buttons
-# NOTE: RX is now always-on by default (auto-starts at boot, auto-resumes after TX)
 button:
-  # Pico-style buttons for device 05851117
   - platform: template
-    name: "RF On (Pico)"
-    id: rf_on
-    icon: "mdi:lightbulb-on"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x05851117, 0x02);
-
-  - platform: template
-    name: "RF Off (Pico)"
-    id: rf_off
-    icon: "mdi:lightbulb-off"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x05851117, 0x04);
-
-  - platform: template
-    name: "RF Raise (Pico)"
-    id: rf_raise
-    icon: "mdi:arrow-up-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x05851117, 0x05);
-
-  - platform: template
-    name: "RF Lower (Pico)"
-    id: rf_lower
-    icon: "mdi:arrow-down-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x05851117, 0x06);
-
-  - platform: template
-    name: "RF Favorite (Pico)"
-    id: rf_favorite
-    icon: "mdi:star"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x05851117, 0x03);
-
-  # 4-button Pico 08692d70 (PJ2-4B-GWH-L01)
-  # Button codes: ON=0x08, OFF=0x0B, RAISE=0x09, LOWER=0x0A
-  - platform: template
-    name: "Pico2 On (08692d70)"
-    id: pico2_on
-    icon: "mdi:lightbulb-on"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x08692d70, 0x08);
-
-  - platform: template
-    name: "Pico2 Off (08692d70)"
-    id: pico2_off
-    icon: "mdi:lightbulb-off"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x08692d70, 0x0B);
-
-  - platform: template
-    name: "Pico2 Raise (08692d70)"
-    id: pico2_raise
-    icon: "mdi:arrow-up-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x08692d70, 0x09);
-
-  - platform: template
-    name: "Pico2 Lower (08692d70)"
-    id: pico2_lower
-    icon: "mdi:arrow-down-bold"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x08692d70, 0x0A);
-
-  # Bridge-style level commands for device AF902C00
-  - platform: template
-    name: "Level 0% (AF902C00)"
-    icon: "mdi:lightbulb-off-outline"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_level(0xAF902C00, 0);
-
-  - platform: template
-    name: "Level 25% (AF902C00)"
-    icon: "mdi:brightness-4"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_level(0xAF902C00, 25);
-
-  - platform: template
-    name: "Level 50% (AF902C00)"
-    icon: "mdi:brightness-5"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_level(0xAF902C00, 50);
-
-  - platform: template
-    name: "Level 75% (AF902C00)"
-    icon: "mdi:brightness-6"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_level(0xAF902C00, 75);
-
-  - platform: template
-    name: "Level 100% (AF902C00)"
-    icon: "mdi:brightness-7"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_level(0xAF902C00, 100);
-
-  # PAIRING - Uses 0xB9 format from real Pico capture
-  - platform: template
-    name: "PAIR (0xB9)"
-    icon: "mdi:link-plus"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_pairing_b9(0x05851117);
-
-  # TEST - Single packet for RTL-SDR capture analysis
-  - platform: template
-    name: "TEST PKT"
+    name: "Test Packet"
     id: test_pkt
     icon: "mdi:access-point"
     on_press:
       - lambda: |-
-          id(lutron_radio)->send_test_packet(0x05851117);
+          uint32_t dev_id = strtoul("${esp32_pico_id}", nullptr, 0);
+          id(lutron_radio)->send_test_packet(dev_id);
 
-  # DEBUG - Send raw 0xAA pattern to test CC1101
   - platform: template
-    name: "DEBUG PATTERN"
+    name: "Debug Pattern"
     id: debug_pattern
     icon: "mdi:bug"
     on_press:
       - lambda: |-
           id(lutron_radio)->send_debug_pattern();
-
-  # PAIR with NEW unique device ID for ESP32 (old B9 method)
-  - platform: template
-    name: "PAIR ESP32 (B9)"
-    id: pair_esp32
-    icon: "mdi:link-variant-plus"
-    on_press:
-      - lambda: |-
-          // Unique device ID for ESP32 (not the real Pico's ID)
-          // Using 0xCC110001 = "CC1101" with suffix 01
-          id(lutron_radio)->send_pairing_b9(0xCC110001);
-
-  # PICO-STYLE PAIRING (0xBB) - Discovered from real Pico capture!
-  # This sends 0xBB packets like a real Pico does when holding FAVORITE
-  - platform: template
-    name: "PAIR PICO-STYLE (BB)"
-    id: pair_pico_style
-    icon: "mdi:remote"
-    on_press:
-      - lambda: |-
-          // Use unique ESP32 device ID, send for 6 seconds like real Pico
-          id(lutron_radio)->send_pairing_pico(0xCC110001, 6);
-
-  # TEST: Clone real Pico ID for pairing test
-  - platform: template
-    name: "PAIR CLONE PICO"
-    id: pair_clone_pico
-    icon: "mdi:content-copy"
-    on_press:
-      - lambda: |-
-          // Clone real Pico 05851117 ID to test if ID format matters
-          id(lutron_radio)->send_pairing_pico(0x05851117, 6);
-
-  # =====================================================
-  # FAKE PICO (0xCC110001) - Our ESP32's virtual Pico
-  # Use PAIR PICO-STYLE (BB) first, then these buttons
-  # Testing all button codes to find which work
-  # =====================================================
-  # 5-button Pico codes (0x02-0x06)
-  - platform: template
-    name: "Fake ON 0x02"
-    id: fake_on_02
-    icon: "mdi:lightbulb-on"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x02);
-
-  - platform: template
-    name: "Fake FAV 0x03"
-    id: fake_fav_03
-    icon: "mdi:star"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x03);
-
-  - platform: template
-    name: "Fake OFF 0x04"
-    id: fake_off_04
-    icon: "mdi:lightbulb-off"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x04);
-
-  - platform: template
-    name: "Fake RAISE 0x05"
-    id: fake_raise_05
-    icon: "mdi:arrow-up"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x05);
-
-  - platform: template
-    name: "Fake LOWER 0x06"
-    id: fake_lower_06
-    icon: "mdi:arrow-down"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x06);
-
-  # Scene Pico codes (0x08-0x0B)
-  - platform: template
-    name: "Fake BTN1 0x08"
-    id: fake_btn1_08
-    icon: "mdi:numeric-1"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x08);
-
-  - platform: template
-    name: "Fake BTN2 0x09"
-    id: fake_btn2_09
-    icon: "mdi:numeric-2"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x09);
-
-  - platform: template
-    name: "Fake BTN3 0x0A"
-    id: fake_btn3_0a
-    icon: "mdi:numeric-3"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x0A);
-
-  - platform: template
-    name: "Fake BTN4 0x0B"
-    id: fake_btn4_0b
-    icon: "mdi:numeric-4"
-    on_press:
-      - lambda: id(lutron_radio)->send_button_press(0xCC110001, 0x0B);
-
-  # Scene Pico 084b1ebb buttons (Bright/Entertain/Relax/Off)
-  # Scene Picos use button codes 0x08-0x0B, NOT 0x02-0x06 like dimmer Picos
-  - platform: template
-    name: "Bright (084b1ebb)"
-    id: rf_bright_084b1ebb
-    icon: "mdi:brightness-7"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x084b1ebb, 0x08);
-
-  - platform: template
-    name: "Entertain (084b1ebb)"
-    id: rf_entertain_084b1ebb
-    icon: "mdi:party-popper"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x084b1ebb, 0x09);
-
-  - platform: template
-    name: "Relax (084b1ebb)"
-    id: rf_relax_084b1ebb
-    icon: "mdi:sofa"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x084b1ebb, 0x0A);
-
-  - platform: template
-    name: "Off (084b1ebb)"
-    id: rf_off_084b1ebb
-    icon: "mdi:lightbulb-off"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_button_press(0x084b1ebb, 0x0B);
-
-  # =====================================================
-  # BRIDGE EMULATION - Pairing Beacons
-  # These should make dimmers/picos flash as if bridge
-  # is in pairing mode!
-  # =====================================================
-
-  # Main beacon button - sends 0x92 beacons for 10 seconds
-  # Using REAL bridge zone ID: af902c00
-  - platform: template
-    name: "BEACON (Pairing Mode)"
-    id: beacon_pairing
-    icon: "mdi:broadcast"
-    on_press:
-      - lambda: |-
-          // Send 0x92 pairing beacons using real bridge zone ID
-          id(lutron_radio)->send_beacon(0xAF902C00, 0x92, 10);
-
-  # Quick 5-second beacon for testing
-  - platform: template
-    name: "BEACON 5s"
-    id: beacon_short
-    icon: "mdi:broadcast"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_beacon(0xAF902C00, 0x92, 5);
-
-  # Different beacon types for experimentation
-  - platform: template
-    name: "BEACON 0x91"
-    id: beacon_91
-    icon: "mdi:radio-tower"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_beacon(0xAF902C00, 0x91, 5);
-
-  - platform: template
-    name: "BEACON 0x93"
-    id: beacon_93
-    icon: "mdi:radio-tower"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_beacon(0xAF902C00, 0x93, 5);
-
-  # =====================================================
-  # ESP32 AS BRIDGE - Direct pairing to dimmers
-  # Use load ID: 0xAF902C01 (close to real bridge AF902C00)
-  # =====================================================
-
-  # COMPLETE BRIDGE PAIRING - Single button to pair dimmer 06FDEFF4
-  # Sends proper 0xB1/B2/B3 beacons for 20 seconds, then 0xA1/A2/A3 assignment
-  # USAGE: Press this button, then HOLD OFF on dimmer for 10 seconds
-  - platform: template
-    name: "PAIR 06FDEFF4 (Full Sequence)"
-    id: pair_06fdeff4_full
-    icon: "mdi:link-plus"
-    on_press:
-      - lambda: |-
-          // Full bridge pairing sequence - 20 seconds of beacons + assignment
-          id(lutron_radio)->send_bridge_pair_sequence(0xAF902C01, 0x06FDEFF4, 20);
-
-  # Legacy beacon-only (for testing)
-  - platform: template
-    name: "ESP32 Beacon Only"
-    id: esp32_beacon
-    icon: "mdi:access-point"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_beacon(0xAF902C01, 0x92, 10);
-
-  # Legacy B0 assignment only (for testing)
-  - platform: template
-    name: "ESP32 B0 Assign Only"
-    id: esp32_pair_06fdeff4
-    icon: "mdi:link-variant"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_pairing_b0(0xAF902C01, 0x06FDEFF4);
-
-  # Level commands using ESP32 as bridge
-  - platform: template
-    name: "ESP32 Level 100% (06fdeff4)"
-    id: esp32_level_100
-    icon: "mdi:brightness-7"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C01, 0x06FDEFF4, 100);
-
-  - platform: template
-    name: "ESP32 Level 0% (06fdeff4)"
-    id: esp32_level_0
-    icon: "mdi:brightness-1"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C01, 0x06FDEFF4, 0);
-
-  # =====================================================
-  # BRIDGE-STYLE LEVEL COMMANDS
-  # Uses bridge zone ID + target dimmer ID in payload
-  # Target: dimmer 06fdeff4
-  # =====================================================
-
-  - platform: template
-    name: "Bridge Level 100% (06fdeff4)"
-    id: bridge_level_100
-    icon: "mdi:brightness-7"
-    on_press:
-      - lambda: |-
-          // Bridge zone ID: 0xAF902C00, Target: 0x06FDEFF4
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 100);
-
-  - platform: template
-    name: "Bridge Level 50% (06fdeff4)"
-    id: bridge_level_50
-    icon: "mdi:brightness-5"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 50);
-
-  - platform: template
-    name: "Bridge Level 0% (06fdeff4)"
-    id: bridge_level_0
-    icon: "mdi:brightness-1"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x06FDEFF4, 0);
-
-  # Bridge level commands for dimmer 07004e8c
-  - platform: template
-    name: "Bridge2 Level 100% (07004e8c)"
-    id: bridge2_level_100
-    icon: "mdi:brightness-7"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 100);
-
-  - platform: template
-    name: "Bridge2 Level 50% (07004e8c)"
-    id: bridge2_level_50
-    icon: "mdi:brightness-5"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 50);
-
-  - platform: template
-    name: "Bridge2 Level 0% (07004e8c)"
-    id: bridge2_level_0
-    icon: "mdi:brightness-1"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_bridge_level(0xAF902C00, 0x07004E8C, 0);
-
-  # =====================================================
-  # FAKE STATE REPORTS
-  # Emulate dimmer reporting its level to the bridge
-  # Uses captured dimmer RF ID: 8f902c08 (the "902c" dimmer)
-  # =====================================================
-
-  - platform: template
-    name: "Fake State 0% (8f902c08)"
-    id: fake_state_0
-    icon: "mdi:flash-off"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_state_report(0x8F902C08, 0);
-
-  - platform: template
-    name: "Fake State 50% (8f902c08)"
-    id: fake_state_50
-    icon: "mdi:flash"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_state_report(0x8F902C08, 50);
-
-  - platform: template
-    name: "Fake State 100% (8f902c08)"
-    id: fake_state_100
-    icon: "mdi:flash-alert"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_state_report(0x8F902C08, 100);

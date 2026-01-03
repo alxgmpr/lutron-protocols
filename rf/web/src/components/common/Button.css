@@ -1,0 +1,65 @@
+.btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn:hover {
+  opacity: 0.85;
+}
+
+.btn:active {
+  opacity: 0.75;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+.btn-primary {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.btn-blue {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.btn-cyan {
+  background: var(--accent-cyan);
+  color: #000;
+}
+
+.btn-purple {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+.btn-orange {
+  background: var(--accent-orange);
+  color: #000;
+}
+
+.btn-red {
+  background: var(--accent-red);
+  color: #fff;
+}
+
+.btn-green {
+  background: var(--accent-green);
+  color: #000;
+}
+

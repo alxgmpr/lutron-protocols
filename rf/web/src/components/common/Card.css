@@ -1,0 +1,59 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  border-left: 3px solid var(--border-accent);
+  flex-shrink: 0;
+}
+
+.card-pico .card-header { border-left-color: var(--accent-green); }
+.card-bridge .card-header { border-left-color: var(--accent-blue); }
+.card-pairing .card-header { border-left-color: var(--accent-purple); }
+.card-device .card-header { border-left-color: var(--accent-orange); }
+.card-tx .card-header { border-left-color: var(--accent-green); }
+.card-rx .card-header { border-left-color: var(--accent-cyan); }
+.card-logs .card-header { border-left-color: var(--text-muted); }
+
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.card-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.card-body {
+  padding: 14px;
+  flex: 1;
+  min-height: 0;
+}

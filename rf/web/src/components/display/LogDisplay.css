@@ -1,0 +1,55 @@
+.log-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.log-card .card-header {
+  flex-shrink: 0;
+}
+
+.log-card .card-body {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.log-container {
+  height: 100%;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.log-entry {
+  display: flex;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  gap: 8px;
+}
+
+.log-entry:hover {
+  background: var(--bg-elevated);
+}
+
+.log-time {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.log-level {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.log-level-I { color: var(--accent-cyan); }
+.log-level-D { color: var(--text-muted); }
+.log-level-W { color: var(--accent-orange); }
+.log-level-E { color: var(--accent-red); }
+
+.log-msg {
+  color: var(--text-primary);
+  word-break: break-all;
+}

@@ -1,0 +1,20 @@
+.status-bar {
+  padding: 8px 16px;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-primary);
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.status-bar.success {
+  background: rgba(72, 187, 120, 0.1);
+  color: var(--accent-green);
+}
+
+.status-bar.error {
+  background: rgba(245, 101, 101, 0.1);
+  color: var(--accent-red);
+}
+

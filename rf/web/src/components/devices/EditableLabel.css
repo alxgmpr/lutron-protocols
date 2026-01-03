@@ -1,0 +1,45 @@
+.editable-label {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  min-width: 70px;
+  transition: all 0.15s ease;
+}
+
+.editable-label:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-primary);
+}
+
+.editable-label.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.editable-label-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.editable-label.editing {
+  padding: 0;
+}
+
+.editable-label-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent-blue);
+  border-radius: 4px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.editable-label-input::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+

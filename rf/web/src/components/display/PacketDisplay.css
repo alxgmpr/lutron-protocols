@@ -1,0 +1,52 @@
+.packet-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.packet-card .card-header {
+  flex-shrink: 0;
+}
+
+.packet-card .card-body {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.packet-container {
+  height: 100%;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.packet-entry {
+  display: flex;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.packet-entry:hover {
+  background: var(--bg-elevated);
+}
+
+.packet-time {
+  color: var(--text-muted);
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.packet-data {
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.packet-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
