@@ -41,7 +41,7 @@ export function SaveFavorite({ showStatus }: Props) {
   return (
     <Card title="Save Favorite / Scene" badge="HOLD TO SAVE" variant="pico">
       <p className="help-text">
-        First set dimmer to desired level, then press save. Holds button ~6s to trigger save mode.
+        First set dimmer to desired level, then press save. Holds button ~6s to trigger save mode. Dimmers who have paired to this device will update their saved value to this level.
       </p>
       <div className="form-row">
         <FormGroup label="Pico ID">

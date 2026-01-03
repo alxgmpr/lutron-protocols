@@ -301,5 +301,17 @@
       "controllable": true
     },
     "count": 64
+  },
+  "084B89E7": {
+    "id": "084B89E7",
+    "type": "BTN_SHORT_A",
+    "first_seen": "2026-01-03T05:39:38.869992",
+    "last_seen": "2026-01-03T05:39:59.833599",
+    "info": {
+      "type": "BTN_LONG_B",
+      "factory_id": "084B89E7",
+      "controllable": true
+    },
+    "count": 28
   }
 }

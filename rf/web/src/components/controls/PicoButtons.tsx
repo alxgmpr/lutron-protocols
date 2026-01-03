@@ -34,6 +34,9 @@ export function PicoButtons({ showStatus }: Props) {
   return (
     <Card title="Pico Button Press" badge="PICO → DEVICE" variant="pico">
       <div className="form-row">
+        <p className="help-text">
+          Send Pico remote button presses to any devices that have paired to this Pico. Choose a predefined button or specify a custom code to emulate different Pico remote actions.
+        </p>
         <FormGroup label="Pico ID">
           <FormInput value={deviceId} onChange={setDeviceId} width={120} />
         </FormGroup>
