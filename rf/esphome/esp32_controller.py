@@ -402,27 +402,28 @@ def cmd_serve(args):
             <div class="card-body">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Device ID</label>
+                        <label>Pico ID</label>
                         <input type="text" id="pair-device" value="0xCC110001">
                     </div>
                     <div class="form-group">
-                        <label>Pico Type</label>
-                        <select id="pair-pico-type">
-                            <optgroup label="Direct-Pair (B9/BB)">
-                                <option value="2button">2-Button (PJ2-2B)</option>
-                                <option value="5button" selected>5-Button (PJ2-3BRL)</option>
-                                <option value="4button-rl">4-Button Raise/Lower (PJ2-4B)</option>
-                            </optgroup>
-                            <optgroup label="Bridge-Only (BA/B8)">
-                                <option value="scene">4-Button Scene (PJ2-4B-S)</option>
-                            </optgroup>
+                        <label>Pairing Method</label>
+                        <select id="pair-method">
+                            <option value="direct" selected>Direct (B9/BB)</option>
+                            <option value="bridge">Bridge (BA/B8)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Button Scheme</label>
+                        <select id="pair-button-scheme">
+                            <option value="0x04">5-btn (0x04)</option>
+                            <option value="0x0B">4-btn (0x0B)</option>
                         </select>
                     </div>
                     <button class="btn-purple" onclick="pairPico()">PAIR</button>
                 </div>
                 <div style="font-size:11px;color:#8b949e;margin-top:8px;">
-                    <b>Direct-pair (B9/BB):</b> pairs to dimmers/switches without bridge<br>
-                    <b>Bridge-only (BA/B8):</b> scene picos, must pair through bridge
+                    <b>Direct (B9/BB):</b> pairs to dimmers/switches | <b>Bridge (BA/B8):</b> pairs through bridge<br>
+                    <b>5-btn scheme (0x04):</b> 2-btn, 5-btn picos | <b>4-btn scheme (0x0B):</b> 4-btn raise/lower, scene
                 </div>
             </div>
         </div>
@@ -649,21 +650,15 @@ def cmd_serve(args):
         }
 
         // Pico Pairing
-        const PICO_TYPE_NAMES = {
-            '2button': '2-Button Pico',
-            '5button': '5-Button Pico',
-            '4button-rl': '4-Button Raise/Lower',
-            'scene': '4-Button Scene'
-        };
-
         async function pairPico() {
             const device = document.getElementById('pair-device').value.trim();
-            const picoType = document.getElementById('pair-pico-type').value;
-            const typeName = PICO_TYPE_NAMES[picoType] || picoType;
-            setStatus(`Pairing ${device} as ${typeName}...`);
+            const method = document.getElementById('pair-method').value;
+            const buttonScheme = document.getElementById('pair-button-scheme').value;
+            const methodName = method === 'direct' ? 'Direct (B9/BB)' : 'Bridge (BA/B8)';
+            setStatus(`Pairing ${device} via ${methodName} with button scheme ${buttonScheme}...`);
             try {
-                const data = await apiPost('/api/pair-pico', {device, type: picoType});
-                setStatus(data.status === 'ok' ? `Paired ${data.device} as ${data.type}` : `Error: ${data.error}`,
+                const data = await apiPost('/api/pair-pico', {device, method, button_scheme: buttonScheme});
+                setStatus(data.status === 'ok' ? `Paired ${data.device} via ${data.method} [${data.button_scheme}]` : `Error: ${data.error}`,
                          data.status === 'ok' ? 'success' : 'error');
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
@@ -1562,39 +1557,43 @@ def cmd_serve(args):
 
     @app.route('/api/pair-pico', methods=['POST'])
     def api_pair_pico():
-        """Pair as Pico (various types).
+        """Pair as Pico with configurable method and button scheme.
 
-        Pico types and their pairing packet categories:
-        - Direct-pair (B9/BB): 2button, 5button, 4button-rl
-          Can pair directly to Caseta/RA2 dimmers without bridge
-        - Bridge-only (BA/B8): scene
-          Must pair through RadioRA3/Homeworks bridge
+        Parameters:
+        - device: Pico ID (hex string like 0xCC110001)
+        - method: 'direct' (B9/BB) or 'bridge' (BA/B8)
+        - button_scheme: Button code at byte 10 - tells receiver what buttons to expect
+          - 0x04: 5-button scheme (buttons 0x02-0x06) - used by 2-btn, 5-btn picos
+          - 0x0B: 4-button scheme (buttons 0x08-0x0B) - used by 4-btn raise/lower, scene
+
+        Pairing method determines packet types:
+        - Direct (B9/BB): Can pair directly to Caseta/RA2 dimmers without bridge
+        - Bridge (BA/B8): Must pair through RadioRA3/Homeworks bridge (scene picos)
         """
         try:
-            device = request.args.get('device', '')
-            pico_type = request.args.get('type', '5button')
+            device = get_param('device', '')
+            method = get_param('method', 'direct')  # 'direct' or 'bridge'
+            button_scheme = get_param('button_scheme', '0x04')  # '0x04' or '0x0B'
+
             if not device:
                 return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
+            button_code = parse_hex_int(button_scheme)
 
-            # Map pico types to internal codes
-            # pico_type code: 0 = Scene/bridge-only (BA/B8), 1 = Direct-pair (B9/BB)
-            PICO_TYPES = {
-                '2button': {'code': 1, 'name': '2-Button Pico', 'pairing': 'B9/BB'},
-                '5button': {'code': 1, 'name': '5-Button Pico', 'pairing': 'B9/BB'},
-                '4button-rl': {'code': 1, 'name': '4-Button Raise/Lower', 'pairing': 'B9/BB'},
-                'scene': {'code': 0, 'name': '4-Button Scene', 'pairing': 'BA/B8'},
-            }
+            # pico_type: 0 = Bridge (BA/B8), 1 = Direct (B9/BB)
+            pico_type = 0 if method == 'bridge' else 1
+            method_name = 'Bridge (BA/B8)' if method == 'bridge' else 'Direct (B9/BB)'
 
-            pico_info = PICO_TYPES.get(pico_type, PICO_TYPES['5button'])
-            asyncio.run(pair_pico_async(device_id, pico_info['code']))
+            # TODO: Pass button_code to ESP32 pairing function
+            # For now, just log it - ESP32 firmware needs update to use this
+            asyncio.run(pair_pico_async(device_id, pico_type))
 
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
-                'type': pico_info['name'],
-                'pairing_packets': pico_info['pairing']
+                'method': method_name,
+                'button_scheme': f'0x{button_code:02X}'
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

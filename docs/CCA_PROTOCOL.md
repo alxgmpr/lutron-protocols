@@ -261,13 +261,44 @@ These remotes can pair directly to Caseta/RA2 dimmers and switches without requi
 
 Scene picos can only pair through a RadioRA3 or Homeworks QSX bridge. They advertise scenes rather than direct on/off/dim commands. They use packet types BA and B8, alternating between them during the pairing sequence.
 
+### Pairing Packet Structure
+
+```
+Offset:  0  1  2  3  4  5  6  7  8  9  10 11 12 13-17       18 19 20-23
+Field:   TY SQ [Device ID ] 21 25 04 00 BS 03 00 [BROADCAST] 0D 05 [Device ID]
+```
+
+| Offset | Field | Description |
+|--------|-------|-------------|
+| 0 | Type | Packet type (B8, B9, BA, BB) |
+| 1 | Sequence | Increments each packet |
+| 2-5 | Device ID | Pico ID, big-endian |
+| 6-7 | Protocol | Always `21 25` |
+| 8-9 | Unknown | Always `04 00` |
+| 10 | **Button Scheme** | Tells receiver what button codes to expect |
+| 11-12 | Unknown | Always `03 00` |
+| 13-17 | Broadcast | `FF FF FF FF FF` |
+| 18-19 | Unknown | Always `0D 05` |
+| 20-23 | Device ID | Pico ID repeated, big-endian |
+
+### Button Scheme (Byte 10)
+
+**Key discovery:** Byte 10 in pairing packets tells the receiver what button codes this remote will send.
+
+| Byte 10 | Button Scheme | Button Codes | Pico Types |
+|---------|---------------|--------------|------------|
+| `0x04` | 5-button | 0x02-0x06 (ON, FAV, OFF, RAISE, LOWER) | 2-button, 5-button |
+| `0x0B` | 4-button | 0x08-0x0B (ON, UP, DOWN, OFF) | 4-button raise/lower, 4-button scene |
+
+This allows the dimmer/switch to know which button codes to expect from the paired remote.
+
 ### Pairing Sequence Behavior
 
 When a Pico enters pairing mode (triple-tap or hold depending on model):
 1. It transmits alternating packet types for its category
 2. Direct-pair: B9 → BB → B9 → BB...
 3. Bridge-only: BA → B8 → BA → B8...
-4. Sequence numbers increment by 6 per packet
+4. Sequence numbers increment by 6 per packet (sometimes by 2 for 4-button picos)
 5. Device ID is transmitted in big-endian format (matching printed label)
 
 ### Device ID in Pairing Packets
