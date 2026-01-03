@@ -814,14 +814,15 @@ def cmd_serve(args):
             //   "STATE_RPT | 062C908F | Level=30% | Seq=50 | RSSI=-41 | CRC=OK"
             //
             // KEY INSIGHT: Two different ID types exist:
-            //   - Zone ID (bridge-assigned): e.g., 002C90AD - used as source in bridge commands
-            //   - Factory ID (hardware): e.g., 06FDEFED - printed on device label, globally unique
+            //   - Bridge ID: e.g., 0xAF902C00 - the bridge's own ID
+            //     In packets it appears little-endian: 002C90AF (same bytes reversed)
+            //   - Factory ID: e.g., 06FDEFED - printed on device label, globally unique
             //
             // For bridge commands (LEVEL with ->):
-            //   - SOURCE = zone ID (bridge-assigned)
+            //   - SOURCE = bridge ID (little-endian in packet)
             //   - TARGET = factory ID (unique hardware address)
+            //   - All devices on same bridge share the same source ID!
             //   - We KEY by factory ID (target) since that's the unique device
-            //   - We store zone_id for replay (needed to send commands)
 
             const parts = packetInfo.split(' | ');
             if (parts.length < 2) return;
@@ -832,14 +833,14 @@ def cmd_serve(args):
 
             // Extract device ID and categorize based on packet type
             if (pktType === 'LEVEL' && parts[1].includes('->')) {
-                // Bridge command: "ZONE_ID -> FACTORY_ID"
+                // Bridge command: "BRIDGE_ID -> FACTORY_ID"
                 // Key by FACTORY_ID (target) - that's the unique device!
-                // Store zone_id for replay
+                // Store bridge_id for replay (it's the bridge's ID, same for all devices)
                 const ids = parts[1].split('->').map(s => s.trim());
-                const zoneId = ids[0];
+                const bridgeIdLE = ids[0];  // Little-endian in packet
                 const factoryId = ids[1];
                 deviceId = factoryId;  // KEY by factory ID (unique)
-                info.zone_id = zoneId;  // Store zone ID for replay
+                info.bridge_id = bridgeIdLE;  // Bridge ID (little-endian as seen in packet)
                 info.factory_id = factoryId;
                 info.category = 'bridge_controlled';
                 info.controllable = true;
@@ -1002,14 +1003,15 @@ def cmd_serve(args):
                                 <button class="btn-sm btn-red" onclick="replayButton('${id}', 0x0B)" title="Off">OFF</button>
                             `;
                         } else if (category === 'bridge_controlled' || category === 'bridge') {
-                            // Bridge-controlled device: id is factory ID, zone_id is bridge zone
-                            const zoneId = info.zone_id || info.target || '';
+                            // Bridge-controlled device: id is factory ID, bridge_id is the bridge's ID
+                            const bridgeId = info.bridge_id || info.zone_id || '';
                             const factoryId = id;
-                            subtitle = zoneId ? `Zone: ${zoneId}` : '';
+                            // Note: bridge_id is same for all devices on this bridge
+                            subtitle = bridgeId ? `via ${bridgeId}` : '';
                             buttons = `
-                                <button class="btn-sm btn-primary" onclick="replayBridge('${zoneId}', '${factoryId}', 100)">100%</button>
-                                <button class="btn-sm" onclick="replayBridge('${zoneId}', '${factoryId}', 50)">50%</button>
-                                <button class="btn-sm btn-red" onclick="replayBridge('${zoneId}', '${factoryId}', 0)">0%</button>
+                                <button class="btn-sm btn-primary" onclick="replayBridge('${bridgeId}', '${factoryId}', 100)">100%</button>
+                                <button class="btn-sm" onclick="replayBridge('${bridgeId}', '${factoryId}', 50)">50%</button>
+                                <button class="btn-sm btn-red" onclick="replayBridge('${bridgeId}', '${factoryId}', 0)">0%</button>
                             `;
                         }
 
