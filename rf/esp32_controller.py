@@ -58,6 +58,8 @@ log_queue = queue.Queue(maxsize=1000)
 rx_queue = queue.Queue(maxsize=500)
 log_subscription_started = False
 log_subscription_lock = threading.Lock()
+log_thread_heartbeat = 0  # Timestamp of last heartbeat from log thread
+LOG_THREAD_TIMEOUT = 30  # Consider thread dead if no heartbeat for this many seconds
 
 # Device database
 import os
@@ -939,42 +941,89 @@ def cmd_serve(args):
     @app.route('/api/logs/stream')
     def api_logs_stream():
         """Stream ESP32 logs via Server-Sent Events."""
-        global log_subscription_started
+        global log_subscription_started, log_thread_heartbeat
 
         def generate():
-            global log_subscription_started
+            global log_subscription_started, log_thread_heartbeat
 
             # Send initial connection message
             yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Connected to log stream'})}\n\n"
 
-            # Start log subscription only once (singleton)
+            # Start log subscription thread if needed
             with log_subscription_lock:
-                if not log_subscription_started:
+                now = time.time()
+                thread_is_stale = (now - log_thread_heartbeat) > LOG_THREAD_TIMEOUT
+
+                if not log_subscription_started or thread_is_stale:
+                    if thread_is_stale and log_subscription_started:
+                        print(f"[LOG STREAM] Log thread appears dead (no heartbeat for {now - log_thread_heartbeat:.0f}s), restarting...", flush=True)
+                        # Clear the queue of stale messages
+                        while not log_queue.empty():
+                            try:
+                                log_queue.get_nowait()
+                            except queue.Empty:
+                                break
+
                     log_subscription_started = True
+                    log_thread_heartbeat = now
                     log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
                     log_thread.start()
+                    yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Starting ESP32 log subscription...'})}\n\n"
 
             # Stream logs from queue
             while True:
                 try:
-                    log_entry = log_queue.get(timeout=30)
+                    log_entry = log_queue.get(timeout=10)
                     yield f"data: {json.dumps(log_entry)}\n\n"
                 except queue.Empty:
-                    # Send heartbeat
-                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                    # Send heartbeat to keep connection alive
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'time': datetime.now().isoformat()})}\n\n"
 
         return Response(generate(), mimetype='text/event-stream',
                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
+    @app.route('/api/logs/status')
+    def api_logs_status():
+        """Get log subscription status."""
+        now = time.time()
+        age = now - log_thread_heartbeat if log_thread_heartbeat > 0 else -1
+        is_healthy = age >= 0 and age < LOG_THREAD_TIMEOUT
+        return jsonify({
+            'started': log_subscription_started,
+            'heartbeat_age': round(age, 1),
+            'healthy': is_healthy,
+            'timeout_threshold': LOG_THREAD_TIMEOUT
+        })
+
+    @app.route('/api/logs/restart', methods=['POST'])
+    def api_logs_restart():
+        """Force restart the log subscription thread."""
+        global log_subscription_started, log_thread_heartbeat
+        with log_subscription_lock:
+            print("[API] Forcing log thread restart...", flush=True)
+            log_subscription_started = False
+            log_thread_heartbeat = 0
+            # Clear queue
+            while not log_queue.empty():
+                try:
+                    log_queue.get_nowait()
+                except queue.Empty:
+                    break
+        return jsonify({'status': 'ok', 'message': 'Log subscription will restart on next stream connection'})
+
     def subscribe_to_logs():
         """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""
-        global log_subscription_started
+        global log_subscription_started, log_thread_heartbeat
         print("[LOG THREAD] Starting subscribe_to_logs thread", flush=True)
 
         async def _subscribe():
-            global log_subscription_started
+            global log_subscription_started, log_thread_heartbeat
             print("[LOG THREAD] _subscribe async started", flush=True)
+
             while True:  # Reconnect loop
+                # Update heartbeat
+                log_thread_heartbeat = time.time()
+
                 print(f"[LOG THREAD] Connecting to {ESP32_IP}:{ESP32_PORT}...", flush=True)
                 client = APIClient(
                     address=ESP32_IP,
@@ -985,14 +1034,20 @@ def cmd_serve(args):
                 try:
                     await client.connect(login=True)
                     print("[LOG THREAD] Connected successfully!", flush=True)
+                    log_thread_heartbeat = time.time()
                     log_queue.put_nowait({
                         'time': datetime.now().isoformat(),
                         'level': 'I',
-                        'msg': 'Log subscription connected to ESP32'
+                        'msg': 'Log subscription connected to ESP32',
+                        'type': 'status',
+                        'status': 'connected'
                     })
 
                     def on_log(msg):
+                        global log_thread_heartbeat
                         try:
+                            # Update heartbeat on every log received
+                            log_thread_heartbeat = time.time()
                             # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
                             level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
                             level_int = msg.level if isinstance(msg.level, int) else 3
@@ -1011,31 +1066,57 @@ def cmd_serve(args):
                     # subscribe_logs returns an unsubscribe callback, not a coroutine
                     unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
 
-                    # Keep connection alive
+                    # Keep connection alive with periodic heartbeat
                     try:
                         while True:
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(5)
+                            log_thread_heartbeat = time.time()
                     finally:
                         unsub()
 
                 except Exception as e:
                     print(f"[LOG THREAD] Error: {e}", flush=True)
-                    log_queue.put_nowait({
-                        'time': datetime.now().isoformat(),
-                        'level': 'E',
-                        'msg': f'Log subscription error: {e}'
-                    })
+                    try:
+                        log_queue.put_nowait({
+                            'time': datetime.now().isoformat(),
+                            'level': 'E',
+                            'msg': f'Log subscription error: {e}',
+                            'type': 'status',
+                            'status': 'error'
+                        })
+                    except queue.Full:
+                        pass
                 finally:
                     try:
                         await client.disconnect()
                     except:
                         pass
 
+                # Send reconnecting status
+                try:
+                    log_queue.put_nowait({
+                        'time': datetime.now().isoformat(),
+                        'level': 'W',
+                        'msg': 'Reconnecting to ESP32 in 5s...',
+                        'type': 'status',
+                        'status': 'reconnecting'
+                    })
+                except queue.Full:
+                    pass
+
                 # Wait before reconnecting
                 print("[LOG THREAD] Waiting 5s before reconnect...", flush=True)
                 await asyncio.sleep(5)
+                log_thread_heartbeat = time.time()
 
-        asyncio.run(_subscribe())
+        try:
+            asyncio.run(_subscribe())
+        except Exception as e:
+            print(f"[LOG THREAD] Fatal error, thread dying: {e}", flush=True)
+        finally:
+            # Reset flag so a new thread can be started
+            print("[LOG THREAD] Thread exiting, resetting log_subscription_started", flush=True)
+            log_subscription_started = False
 
     print(f"\n{'='*60}")
     print(f"  CCA Playground - Lutron Clear Connect Dashboard")

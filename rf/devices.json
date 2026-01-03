@@ -319,13 +319,14 @@
     "id": "084B89E7",
     "type": "BTN_SHORT_A",
     "first_seen": "2026-01-03T06:18:24.786861",
-    "last_seen": "2026-01-03T06:47:30.772847",
+    "last_seen": "2026-01-03T07:58:25.660850",
     "info": {
       "type": "BTN_LONG_A",
       "factory_id": "084B89E7",
       "controllable": true
     },
-    "count": 171
+    "count": 203,
+    "link_id": "4B89"
   },
   "0869E74C": {
     "id": "0869E74C",
