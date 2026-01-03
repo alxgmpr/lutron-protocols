@@ -1086,71 +1086,113 @@ def cmd_serve(args):
                         container.innerHTML = '<div class="hex-empty">No devices discovered yet. RX is listening...</div>';
                         return;
                     }
-                    container.innerHTML = deviceIds.map(id => {
+
+                    // Group devices by label (devices with same non-empty label are grouped)
+                    const groups = {};
+                    const ungrouped = [];
+                    deviceIds.forEach(id => {
                         const d = devices[id];
-                        const info = d.info || {};
-                        const category = info.category || 'unknown';
-                        const level = info.level || '';
-
-                        // Determine device type - user-set or auto-detected
-                        const userType = d.device_type || 'auto';
-                        let effectiveType = userType;
-
-                        // If auto, determine from category
-                        if (userType === 'auto') {
-                            if (category === 'pico') effectiveType = 'pico-5btn';
-                            else if (category === 'scene_pico') effectiveType = 'pico-scene';
-                            else if (category === 'bridge_controlled' || category === 'bridge') effectiveType = 'dimmer';
-                            else if (category === 'dimmer' || category === 'dimmer_passive') effectiveType = 'passive-dimmer';
-                            else effectiveType = 'auto';
-                        }
-
-                        // Get button configuration for this type
-                        const typeConfig = DEVICE_TYPES[effectiveType] || DEVICE_TYPES[userType];
-                        const buttonType = typeConfig ? typeConfig.buttons : null;
-                        let buttons = buttonType ? getButtonsForType(buttonType, id, info) : '<span style="color:#666;">Select type</span>';
-
-                        // Subtitle shows bridge ID for controlled devices
-                        const bridgeId = info.bridge_id || info.zone_id || '';
-                        let subtitle = (category === 'bridge_controlled' || category === 'bridge') && bridgeId ? `via ${bridgeId}` : '';
-
-                        // Device label (user-assigned name)
                         const label = d.label || '';
-                        const labelDisplay = label ?
-                            `<span style="color:#3fb950;font-weight:500;">${label}</span>` :
-                            `<span style="color:#484f58;font-style:italic;">unnamed</span>`;
+                        if (label) {
+                            if (!groups[label]) groups[label] = [];
+                            groups[label].push({id, ...d});
+                        } else {
+                            ungrouped.push({id, ...d});
+                        }
+                    });
 
-                        // Model number (informational)
-                        const model = d.model || '';
-                        const modelDisplay = model ?
-                            `<span style="color:#8b949e;font-size:10px;">${model}</span>` :
-                            `<span style="color:#484f58;font-size:10px;font-style:italic;">model?</span>`;
+                    let html = '';
 
-                        // Type dropdown
-                        const typeDropdown = buildTypeDropdown(id, userType);
+                    // Render grouped devices first
+                    Object.entries(groups).forEach(([label, groupDevices]) => {
+                        const totalCount = groupDevices.reduce((sum, d) => sum + (d.count || 0), 0);
+                        const model = groupDevices.find(d => d.model)?.model || '';
 
-                        return `
-                            <div class="device-entry" style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;">
-                                <div style="min-width:90px;">
-                                    <div style="font-family:monospace;color:#0af;font-size:11px;">${id}</div>
-                                    ${subtitle ? `<div style="font-size:9px;color:#666;">${subtitle}</div>` : ''}
-                                </div>
-                                <div style="min-width:90px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename">
-                                    ${labelDisplay}
-                                </div>
-                                <div style="min-width:70px;cursor:pointer;" onclick="setDeviceModel('${id}')" title="Click to set model #">
-                                    ${modelDisplay}
-                                </div>
-                                ${typeDropdown}
-                                <span style="color:#666;min-width:40px;font-size:11px;">${level || ''}</span>
-                                <span style="flex:1;"></span>
-                                ${buttons}
-                                <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
-                            </div>
-                        `;
-                    }).join('');
+                        html += `<div style="background:#1c2128;border:1px solid #30363d;border-radius:6px;margin-bottom:8px;overflow:hidden;">`;
+                        html += `<div style="padding:8px 12px;background:#21262d;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:10px;">`;
+                        html += `<span style="color:#3fb950;font-weight:600;">${label}</span>`;
+                        if (model) html += `<span style="color:#8b949e;font-size:11px;">${model}</span>`;
+                        html += `<span style="color:#555;font-size:10px;">x${totalCount}</span>`;
+                        html += `<span style="flex:1;"></span>`;
+                        html += `<span style="color:#666;font-size:10px;">${groupDevices.length} ID${groupDevices.length > 1 ? 's' : ''}</span>`;
+                        html += `</div>`;
+
+                        groupDevices.forEach(d => {
+                            html += renderDeviceRow(d.id, d, true);
+                        });
+                        html += `</div>`;
+                    });
+
+                    // Render ungrouped devices
+                    ungrouped.forEach(d => {
+                        html += renderDeviceRow(d.id, d, false);
+                    });
+
+                    container.innerHTML = html;
                 })
                 .catch(() => {});
+        }
+
+        function renderDeviceRow(id, d, isGrouped) {
+            const info = d.info || {};
+            const category = info.category || 'unknown';
+            const level = info.level || '';
+            const count = d.count || 0;
+
+            // Determine device type - user-set or auto-detected
+            const userType = d.device_type || 'auto';
+            let effectiveType = userType;
+
+            // If auto, determine from category
+            if (userType === 'auto') {
+                if (category === 'pico') effectiveType = 'pico-5btn';
+                else if (category === 'scene_pico') effectiveType = 'pico-scene';
+                else if (category === 'bridge_controlled' || category === 'bridge') effectiveType = 'dimmer';
+                else if (category === 'dimmer' || category === 'dimmer_passive') effectiveType = 'passive-dimmer';
+                else effectiveType = 'auto';
+            }
+
+            // Get button configuration for this type
+            const typeConfig = DEVICE_TYPES[effectiveType] || DEVICE_TYPES[userType];
+            const buttonType = typeConfig ? typeConfig.buttons : null;
+            let buttons = buttonType ? getButtonsForType(buttonType, id, info) : '<span style="color:#666;">Select type</span>';
+
+            // Subtitle shows bridge ID for controlled devices
+            const bridgeId = info.bridge_id || info.zone_id || '';
+            let subtitle = (category === 'bridge_controlled' || category === 'bridge') && bridgeId ? `via ${bridgeId}` : '';
+
+            // For grouped devices, don't show label (it's in header)
+            // For ungrouped, show label
+            const label = d.label || '';
+            const labelDisplay = isGrouped ? '' : (label ?
+                `<div style="min-width:90px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename"><span style="color:#3fb950;font-weight:500;">${label}</span></div>` :
+                `<div style="min-width:90px;cursor:pointer;" onclick="renameDevice('${id}')" title="Click to rename"><span style="color:#484f58;font-style:italic;">unnamed</span></div>`);
+
+            // Model number (informational) - only show for ungrouped
+            const model = d.model || '';
+            const modelDisplay = isGrouped ? '' : `<div style="min-width:60px;cursor:pointer;" onclick="setDeviceModel('${id}')" title="Click to set model #">${model ? `<span style="color:#8b949e;font-size:10px;">${model}</span>` : `<span style="color:#484f58;font-size:10px;font-style:italic;">model?</span>`}</div>`;
+
+            // Type dropdown
+            const typeDropdown = buildTypeDropdown(id, userType);
+
+            const bgStyle = isGrouped ? 'background:#161b22;' : 'border-bottom:1px solid #333;';
+
+            return `
+                <div class="device-entry" style="display:flex;align-items:center;gap:8px;padding:6px 12px;${bgStyle}flex-wrap:wrap;">
+                    <div style="min-width:90px;">
+                        <div style="font-family:monospace;color:#0af;font-size:11px;">${id}</div>
+                        ${subtitle ? `<div style="font-size:9px;color:#666;">${subtitle}</div>` : ''}
+                    </div>
+                    ${labelDisplay}
+                    ${modelDisplay}
+                    ${typeDropdown}
+                    <span style="color:#666;min-width:40px;font-size:11px;">${level || ''}</span>
+                    <span style="color:#555;font-size:10px;">x${count}</span>
+                    <span style="flex:1;"></span>
+                    ${buttons}
+                    <button class="btn-sm btn-red" onclick="deleteDevice('${id}')" title="Delete">X</button>
+                </div>
+            `;
         }
 
         function clearDevices() {
