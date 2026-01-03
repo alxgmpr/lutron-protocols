@@ -56,6 +56,8 @@ BUTTONS = {
 # Global log queue for SSE streaming
 log_queue = queue.Queue(maxsize=1000)
 rx_queue = queue.Queue(maxsize=500)
+log_subscription_started = False
+log_subscription_lock = threading.Lock()
 
 
 class ESP32Controller:
@@ -726,22 +728,38 @@ def cmd_serve(args):
             data.msg = stripAnsi(data.msg || '');
             const msg = data.msg;
 
-            // Extract hex bytes from TX/RX messages
-            // Pattern: "TX 40 bytes: AA AA AA AA..." or "RX 32 bytes: AA AA AA..."
-            // The hex data comes after "bytes:" followed by space
+            // Extract TX hex bytes: "TX 40 bytes: AA AA AA AA..."
             const txMatch = msg.match(/TX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
-            const rxMatch = msg.match(/RX\s+\d+\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)/i);
+
+            // Extract decoded RX packets: "RX: TYPE | DEVICE_ID | ..."
+            const rxMatch = msg.match(/^RX:\s+(.+)$/);
 
             const time = data.time ? data.time.split('T')[1].split('.')[0] : '';
 
             if (txMatch) {
                 addHexEntry('tx-packets', time, txMatch[1]);
             } else if (rxMatch) {
-                addHexEntry('rx-packets', time, rxMatch[1]);
+                addRxEntry('rx-packets', time, rxMatch[1]);
             }
 
             // Always add to logs
             addLogEntry(data);
+        }
+
+        function addRxEntry(containerId, time, packetInfo) {
+            const container = document.getElementById(containerId);
+            const empty = container.querySelector('.hex-empty');
+            if (empty) empty.remove();
+
+            const entry = document.createElement('div');
+            entry.className = 'hex-entry';
+            entry.innerHTML = `<span class="hex-time">${escapeHtml(time)}</span><span class="hex-data">${escapeHtml(packetInfo)}</span>`;
+            container.appendChild(entry);
+
+            while (container.children.length > 30) {
+                container.removeChild(container.firstChild);
+            }
+            container.scrollTop = container.scrollHeight;
         }
 
         function addHexEntry(containerId, time, hexData) {
@@ -1062,13 +1080,20 @@ def cmd_serve(args):
     @app.route('/api/logs/stream')
     def api_logs_stream():
         """Stream ESP32 logs via Server-Sent Events."""
+        global log_subscription_started
+
         def generate():
+            global log_subscription_started
+
             # Send initial connection message
             yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Connected to log stream'})}\n\n"
 
-            # Start log subscription in background
-            log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
-            log_thread.start()
+            # Start log subscription only once (singleton)
+            with log_subscription_lock:
+                if not log_subscription_started:
+                    log_subscription_started = True
+                    log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
+                    log_thread.start()
 
             # Stream logs from queue
             while True:
