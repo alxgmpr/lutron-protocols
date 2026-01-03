@@ -17,6 +17,28 @@
 
 ## Known Issues
 
+### RX Decode Failures with 4-Button Picos
+
+**Symptom:** When receiving packets from 4-button picos (scene or raise/lower), the decoder sometimes fails to decode packets that should be valid. The raw FIFO data shows garbage like `AA AB FE 5F...` instead of proper N81-encoded data.
+
+**Details:**
+- Happens on EVERY 4-button pico press (at least one failure per burst)
+- Does NOT happen with 5-button picos
+- Successfully decoded packets from same device work fine
+- Failed packets have different FIFO content than valid packets
+
+**Possible causes:**
+1. **Different packet timing** - 4-button picos may send with slightly different inter-packet gaps
+2. **CC1101 sync word false trigger** - 15/16 sync matching may catch noise between packets
+3. **Different packet structure** - 4-button picos may use a variant we don't handle
+4. **FIFO overflow/underflow** - Rapid packet bursts may cause data loss
+
+**Impact:** Low - most packets decode correctly, just extra noise in debug logs.
+
+**Status:** Bug - needs investigation
+
+---
+
 ### Scene Pico Commands Intermittent (~70% reliability)
 
 **Symptom:** Scene Pico button emulation (BRIGHT, ENTERTAIN, RELAX, OFF) works but not every time. Some button presses are ignored by the bridge.

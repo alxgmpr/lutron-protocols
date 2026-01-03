@@ -152,13 +152,8 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
   }
 
   if (best_decoded < 10) {  // Need at least some bytes to be useful
-    // Log raw FIFO data for debugging
-    char hex[100];
-    int pos = 0;
-    for (size_t i = 0; i < len && i < 16 && pos < 90; i++) {
-      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", fifo_data[i]);
-    }
-    ESP_LOGD(TAG, "Decode fail (%d bytes): %s", best_decoded, hex);
+    // BUG: 4-button picos (scene/raise-lower) cause decode failures
+    // See KNOWN_ISSUES.md - possibly different timing or packet structure
     return false;
   }
 
