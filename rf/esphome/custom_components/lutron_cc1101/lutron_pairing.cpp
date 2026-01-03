@@ -30,31 +30,26 @@ void LutronPairing::transmit_encoded(const uint8_t *packet, size_t len) {
 }
 
 void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
-  ESP_LOGI(TAG, "=== PAIRING START (0xBA/BB) ===");
-  ESP_LOGI(TAG, "Device ID: 0x%08X", device_id);
-  ESP_LOGI(TAG, "Matching REAL Pico: 0xBA capability + 0xBB pair request");
+  // DEPRECATED: Use send_pairing_5button or send_pairing_experimental instead
+  // This function now properly alternates B9/BB like real picos do
 
-  // Real Pico pairing sequence (from pico_pairrequest.txt capture):
-  // 1. Send ~60 x 0xBA packets (capability announcement)
-  // 2. Send ~12 x 0xBB packets (pair request)
-  //
-  // Real Pico 0xBA packet structure (52 bytes with CRC):
-  // ba 00 02 a2 4c 77 21 21 04 00 07 03 00 ff ff ff ff ff 0d 00
-  //    02 a2 4c 77 02 a2 4c 77 00 20 03 00 08 07 03 00 07 ff ff ff ff
-  //    cc cc cc cc cc cc cc cc cc cc 87 b5
+  ESP_LOGI(TAG, "=== PAIRING (B9/BB ALTERNATING) ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X, Duration: %ds", device_id, duration_seconds);
+  ESP_LOGI(TAG, "Real Pico behavior: B9 -> BB -> B9 -> BB (not phases!)");
 
-  // Real packet is 53 bytes: 51 data + 2 CRC
   uint8_t packet[53];
   this->sequence_ = 0x00;
 
-  // --- PHASE 1: 0xBA capability announcement packets ---
-  ESP_LOGI(TAG, "Phase 1: Sending 0xBA capability packets...");
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (duration_seconds * 1000);
+  int packet_count = 0;
+  bool use_b9 = true;
 
-  int ba_count = 60;  // Match real Pico
-  for (int i = 0; i < ba_count; i++) {
+  while (millis() < end_time) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0xBA;  // Capability announcement
+    // ALTERNATE between B9 and BB
+    packet[0] = use_b9 ? 0xB9 : 0xBB;
     packet[1] = this->next_seq();
 
     // Device ID (big-endian)
@@ -63,173 +58,67 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[4] = (device_id >> 8) & 0xFF;
     packet[5] = (device_id >> 0) & 0xFF;
 
-    // Protocol header for 0xBA (from real capture)
     packet[6] = 0x21;
-    packet[7] = 0x25;  // Real Pico uses 0x25!
+    packet[7] = 0x25;
     packet[8] = 0x04;
     packet[9] = 0x00;
-    packet[10] = 0x0B;  // Real Pico uses 0x0B for BA
+    packet[10] = 0x04;  // 5-button scheme
     packet[11] = 0x03;
     packet[12] = 0x00;
 
-    // Broadcast address (5 bytes)
-    packet[13] = 0xFF;
-    packet[14] = 0xFF;
-    packet[15] = 0xFF;
-    packet[16] = 0xFF;
-    packet[17] = 0xFF;
+    // Broadcast
+    packet[13] = 0xFF; packet[14] = 0xFF; packet[15] = 0xFF;
+    packet[16] = 0xFF; packet[17] = 0xFF;
 
     packet[18] = 0x0D;
-    packet[19] = 0x05;  // Real Pico uses 0x05!
+    packet[19] = 0x05;
 
-    // Device ID - 2nd instance
+    // Device ID x2
     packet[20] = (device_id >> 24) & 0xFF;
     packet[21] = (device_id >> 16) & 0xFF;
     packet[22] = (device_id >> 8) & 0xFF;
     packet[23] = (device_id >> 0) & 0xFF;
-
-    // Device ID - 3rd instance
     packet[24] = (device_id >> 24) & 0xFF;
     packet[25] = (device_id >> 16) & 0xFF;
     packet[26] = (device_id >> 8) & 0xFF;
     packet[27] = (device_id >> 0) & 0xFF;
 
-    // 0xBA capability info at bytes 28-40 (5-button Pico)
-    // MUST MATCH BB capability bytes for consistent pairing!
-    // 00 20 03 00 08 07 03 01 07 02 06 00 00
+    // 5-button capability bytes
     packet[28] = 0x00;
     packet[29] = 0x20;
-    packet[30] = 0x03;  // 5-button Pico
+    packet[30] = 0x03;
     packet[31] = 0x00;
     packet[32] = 0x08;
     packet[33] = 0x07;
-    packet[34] = 0x03;  // 5-button Pico
+    packet[34] = 0x03;
     packet[35] = 0x01;
     packet[36] = 0x07;
     packet[37] = 0x02;
-    packet[38] = 0x06;  // 5-button OFF code
+    packet[38] = 0x06;
     packet[39] = 0x00;
     packet[40] = 0x00;
-    // Bytes 41-44 = 0xFF (not CC!)
-    packet[41] = 0xFF;
-    packet[42] = 0xFF;
-    packet[43] = 0xFF;
-    packet[44] = 0xFF;
-    // Bytes 45-50 = 0xCC padding (already set by memset)
+    packet[41] = 0xFF; packet[42] = 0xFF;
+    packet[43] = 0xFF; packet[44] = 0xFF;
 
-    // CRC over bytes 0-50 (51 bytes)
     uint16_t crc = this->encoder_.calc_crc(packet, 51);
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
-    if (i % 12 == 0) {
-      ESP_LOGD(TAG, "TX 0xBA seq=0x%02X CRC=0x%04X (%d/%d)",
-               packet[1], crc, i + 1, ba_count);
+    if (packet_count % 20 == 0) {
+      ESP_LOGD(TAG, "TX %s seq=0x%02X (%d packets)",
+               use_b9 ? "B9" : "BB", packet[1], packet_count);
     }
 
     this->transmit_encoded(packet, 53);
+    packet_count++;
+    use_b9 = !use_b9;
 
-    // ~75ms between packets (matching real Pico timing)
-    delay(75);
-    yield();
-  }
-
-  ESP_LOGI(TAG, "Phase 1 complete (sent %d x 0xBA)", ba_count);
-
-  // --- PHASE 2: 0xBB pair request packets ---
-  ESP_LOGI(TAG, "Phase 2: Sending 0xBB pair request packets...");
-
-  // Reset sequence for BB phase
-  this->sequence_ = 0x00;
-
-  // BB packet is also 53 bytes (51 data + 2 CRC)
-  // bb 00 02 a2 4c 77 21 17 04 00 07 03 00 ff ff ff ff ff 0d 01
-  //    02 a2 4c 77 02 a2 4c 77 00 ff ff cc cc cc cc cc cc cc cc
-  //    cc cc cc cc cc cc cc cc cc cc cc cc a3 51
-  int bb_count = 12;  // Match real Pico
-  for (int i = 0; i < bb_count; i++) {
-    memset(packet, 0xCC, sizeof(packet));
-
-    packet[0] = 0xBB;  // Pair request
-    packet[1] = this->next_seq();
-
-    // Device ID (big-endian)
-    packet[2] = (device_id >> 24) & 0xFF;
-    packet[3] = (device_id >> 16) & 0xFF;
-    packet[4] = (device_id >> 8) & 0xFF;
-    packet[5] = (device_id >> 0) & 0xFF;
-
-    // Protocol header for 0xBB (from real capture - same as BA!)
-    packet[6] = 0x21;
-    packet[7] = 0x25;  // Real Pico uses 0x25 for BB too!
-    packet[8] = 0x04;
-    packet[9] = 0x00;
-    packet[10] = 0x04;  // Real Pico uses 0x04 for BB
-    packet[11] = 0x03;
-    packet[12] = 0x00;
-
-    // Broadcast address (5 bytes)
-    packet[13] = 0xFF;
-    packet[14] = 0xFF;
-    packet[15] = 0xFF;
-    packet[16] = 0xFF;
-    packet[17] = 0xFF;
-
-    packet[18] = 0x0D;
-    packet[19] = 0x05;  // Real Pico uses 0x05!
-
-    // Device ID - 2nd instance
-    packet[20] = (device_id >> 24) & 0xFF;
-    packet[21] = (device_id >> 16) & 0xFF;
-    packet[22] = (device_id >> 8) & 0xFF;
-    packet[23] = (device_id >> 0) & 0xFF;
-
-    // Device ID - 3rd instance
-    packet[24] = (device_id >> 24) & 0xFF;
-    packet[25] = (device_id >> 16) & 0xFF;
-    packet[26] = (device_id >> 8) & 0xFF;
-    packet[27] = (device_id >> 0) & 0xFF;
-
-    // 0xBB payload at bytes 28-40 (5-button Pico capture)
-    // 00 20 03 00 08 07 03 01 07 02 06 00 00
-    // NOTE: This is 5-button capability - for Scene Pico use experimental pairing
-    packet[28] = 0x00;
-    packet[29] = 0x20;
-    packet[30] = 0x03;  // 5-button Pico
-    packet[31] = 0x00;
-    packet[32] = 0x08;
-    packet[33] = 0x07;
-    packet[34] = 0x03;  // 5-button Pico
-    packet[35] = 0x01;
-    packet[36] = 0x07;
-    packet[37] = 0x02;
-    packet[38] = 0x06;  // 5-button OFF code
-    packet[39] = 0x00;
-    packet[40] = 0x00;
-    // Bytes 41-44 = 0xFF (not CC!)
-    packet[41] = 0xFF;
-    packet[42] = 0xFF;
-    packet[43] = 0xFF;
-    packet[44] = 0xFF;
-    // Bytes 45-50 = 0xCC padding (already set by memset)
-
-    // CRC over bytes 0-50 (51 bytes)
-    uint16_t crc = this->encoder_.calc_crc(packet, 51);
-    packet[51] = (crc >> 8) & 0xFF;
-    packet[52] = crc & 0xFF;
-
-    ESP_LOGD(TAG, "TX 0xBB seq=0x%02X CRC=0x%04X (%d/%d)",
-             packet[1], crc, i + 1, bb_count);
-
-    this->transmit_encoded(packet, 53);
-
-    // ~75ms between packets
     delay(75);
     yield();
   }
 
   ESP_LOGI(TAG, "=== PAIRING COMPLETE ===");
-  ESP_LOGI(TAG, "Sent %d x 0xBA + %d x 0xBB packets", ba_count, bb_count);
+  ESP_LOGI(TAG, "Sent %d alternating B9/BB packets", packet_count);
 }
 
 void LutronPairing::send_raw_packet(const uint8_t *packet, size_t len) {
@@ -260,57 +149,65 @@ void LutronPairing::replay_raw(const uint8_t *raw_encoded, size_t len) {
 }
 
 void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
-                                               int protocol_variant, int pico_type) {
-  // Experimental pairing with configurable parameters
+                                               int protocol_variant, int pico_type, int button_scheme) {
+  // Experimental pairing with configurable parameters - NOW WITH PROPER ALTERNATING!
   // protocol_variant: 0=new (0x25), 1=old (0x21/0x17)
-  // pico_type: 0=scene (4-btn), 1=5-button
+  // pico_type: 0=scene/bridge-only (B8/BA), 1=direct-pair (B9/BB)
+  // button_scheme: Byte 10 value - tells receiver what button codes to expect
+  //   0x04 = 5-button scheme (button codes 0x02-0x06)
+  //   0x0B = 4-button scheme (button codes 0x08-0x0B)
 
-  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING ===");
-  ESP_LOGI(TAG, "Device: 0x%08X, BA:%d, BB:%d, Proto:%d, Type:%d",
-           device_id, ba_count, bb_count, protocol_variant, pico_type);
+  // CRITICAL: Real picos ALTERNATE packet types!
+  // Direct-pair (pico_type=1): B9 -> BB -> B9 -> BB...
+  // Bridge-only (pico_type=0): B8 -> BA -> B8 -> BA...
+
+  // Packet types based on pairing mode
+  uint8_t pkt_type_a = (pico_type == 0) ? 0xB8 : 0xB9;  // Primary
+  uint8_t pkt_type_b = (pico_type == 0) ? 0xBA : 0xBB;  // Secondary
+
+  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING (ALTERNATING %02X/%02X) ===",
+           pkt_type_a, pkt_type_b);
+  ESP_LOGI(TAG, "Device: 0x%08X, Count:%d, Proto:%d, Type:%d, BtnScheme:0x%02X",
+           device_id, ba_count + bb_count, protocol_variant, pico_type, button_scheme);
 
   uint8_t packet[53];
   this->sequence_ = 0x00;
 
   // Protocol bytes based on variant
-  uint8_t ba_byte7 = (protocol_variant == 0) ? 0x25 : 0x21;
-  uint8_t bb_byte7 = (protocol_variant == 0) ? 0x25 : 0x17;
-  uint8_t ba_byte10 = (protocol_variant == 0) ? 0x0B : 0x07;
-  uint8_t bb_byte10 = (protocol_variant == 0) ? 0x04 : 0x07;
-  uint8_t byte19 = (protocol_variant == 0) ? 0x05 : 0x00;  // BA
-  uint8_t bb_byte19 = (protocol_variant == 0) ? 0x05 : 0x01;  // BB
+  uint8_t byte7 = (protocol_variant == 0) ? 0x25 : 0x21;
+  uint8_t byte19 = (protocol_variant == 0) ? 0x05 : 0x00;
 
   // Capability bytes based on pico type
   // Scene Pico (4-btn): 00 20 04 00 08 07 04 01 07 02 27 00 00
   // 5-Button Pico:      00 20 03 00 08 07 03 01 07 02 06 00 00
   uint8_t cap_byte30 = (pico_type == 0) ? 0x04 : 0x03;
   uint8_t cap_byte34 = (pico_type == 0) ? 0x04 : 0x03;
-  uint8_t cap_byte35 = (pico_type == 0) ? 0x01 : 0x01;  // Same
   uint8_t cap_byte38 = (pico_type == 0) ? 0x27 : 0x06;
 
-  ESP_LOGI(TAG, "Proto bytes: BA[7]=0x%02X BB[7]=0x%02X [19]=0x%02X/0x%02X",
-           ba_byte7, bb_byte7, byte19, bb_byte19);
-  ESP_LOGI(TAG, "Cap bytes: [30]=0x%02X [34]=0x%02X [38]=0x%02X",
-           cap_byte30, cap_byte34, cap_byte38);
+  ESP_LOGI(TAG, "Packets: %02X/%02X | byte10=0x%02X | cap[30]=0x%02X [38]=0x%02X",
+           pkt_type_a, pkt_type_b, button_scheme, cap_byte30, cap_byte38);
 
-  // --- PHASE 1: 0xBA capability announcement ---
-  ESP_LOGI(TAG, "Phase 1: Sending %d x 0xBA...", ba_count);
+  int total_packets = ba_count + bb_count;
+  bool use_type_a = true;  // Alternate between type_a and type_b
 
-  for (int i = 0; i < ba_count; i++) {
+  for (int i = 0; i < total_packets; i++) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0xBA;
+    // ALTERNATE packet type each time!
+    packet[0] = use_type_a ? pkt_type_a : pkt_type_b;
     packet[1] = this->next_seq();
+
+    // Device ID (big-endian)
     packet[2] = (device_id >> 24) & 0xFF;
     packet[3] = (device_id >> 16) & 0xFF;
     packet[4] = (device_id >> 8) & 0xFF;
     packet[5] = (device_id >> 0) & 0xFF;
 
     packet[6] = 0x21;
-    packet[7] = ba_byte7;
+    packet[7] = byte7;
     packet[8] = 0x04;
     packet[9] = 0x00;
-    packet[10] = ba_byte10;
+    packet[10] = button_scheme;
     packet[11] = 0x03;
     packet[12] = 0x00;
 
@@ -339,14 +236,13 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[32] = 0x08;
     packet[33] = 0x07;
     packet[34] = cap_byte34;
-    packet[35] = cap_byte35;
+    packet[35] = 0x01;
     packet[36] = 0x07;
     packet[37] = 0x02;
     packet[38] = cap_byte38;
     packet[39] = 0x00;
     packet[40] = 0x00;
 
-    // Must be 0xFF for new protocol
     packet[41] = 0xFF; packet[42] = 0xFF;
     packet[43] = 0xFF; packet[44] = 0xFF;
 
@@ -354,32 +250,172 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
+    if (i % 20 == 0) {
+      ESP_LOGD(TAG, "TX %02X seq=0x%02X (%d/%d)",
+               packet[0], packet[1], i + 1, total_packets);
+    }
+
     this->transmit_encoded(packet, 53);
+
+    // Flip-flop for next packet
+    use_type_a = !use_type_a;
+
     delay(75);
     yield();
   }
 
-  ESP_LOGI(TAG, "Phase 1 complete");
+  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING COMPLETE ===");
+  ESP_LOGI(TAG, "Sent %d alternating %02X/%02X packets", total_packets, pkt_type_a, pkt_type_b);
+}
 
-  // --- PHASE 2: 0xBB pair request ---
-  ESP_LOGI(TAG, "Phase 2: Sending %d x 0xBB...", bb_count);
-  this->sequence_ = 0x00;  // Reset sequence
+void LutronPairing::send_pairing_5button(uint32_t device_id, int duration_seconds) {
+  // Direct-pair using ALTERNATING B9/BB packets - matches REAL Pico behavior
+  // Real picos flip-flop: B9 → BB → B9 → BB (not all B9 then all BB!)
+  //
+  // Key discovery: Bytes 37-38 advertise the button range (0x02-0x06)
+  // This tells the dimmer that button 0x03 (FAV) is a dedicated function
 
-  for (int i = 0; i < bb_count; i++) {
+  ESP_LOGI(TAG, "=== 5-BUTTON PICO PAIRING (B9/BB alternating) ===");
+  ESP_LOGI(TAG, "Device ID: 0x%08X, Duration: %ds", device_id, duration_seconds);
+  ESP_LOGI(TAG, "Button range: 0x02-0x06 (ON, FAV, OFF, RAISE, LOWER)");
+
+  uint8_t packet[53];
+  this->sequence_ = 0x00;
+
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (duration_seconds * 1000);
+  int packet_count = 0;
+  bool use_b9 = true;  // Alternate between B9 and BB
+
+  while (millis() < end_time) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0xBB;
+    // ALTERNATE between B9 and BB each packet!
+    packet[0] = use_b9 ? 0xB9 : 0xBB;
     packet[1] = this->next_seq();
+
+    // Device ID (big-endian)
     packet[2] = (device_id >> 24) & 0xFF;
     packet[3] = (device_id >> 16) & 0xFF;
     packet[4] = (device_id >> 8) & 0xFF;
     packet[5] = (device_id >> 0) & 0xFF;
 
+    // Protocol bytes
     packet[6] = 0x21;
-    packet[7] = bb_byte7;
+    packet[7] = 0x25;  // New protocol
     packet[8] = 0x04;
     packet[9] = 0x00;
-    packet[10] = bb_byte10;
+    packet[10] = 0x04;  // Button scheme: 5-button (codes 0x02-0x06)
+    packet[11] = 0x03;
+    packet[12] = 0x00;
+
+    // Broadcast address
+    packet[13] = 0xFF;
+    packet[14] = 0xFF;
+    packet[15] = 0xFF;
+    packet[16] = 0xFF;
+    packet[17] = 0xFF;
+
+    packet[18] = 0x0D;
+    packet[19] = 0x05;
+
+    // Device ID - 2nd occurrence
+    packet[20] = (device_id >> 24) & 0xFF;
+    packet[21] = (device_id >> 16) & 0xFF;
+    packet[22] = (device_id >> 8) & 0xFF;
+    packet[23] = (device_id >> 0) & 0xFF;
+
+    // Device ID - 3rd occurrence
+    packet[24] = (device_id >> 24) & 0xFF;
+    packet[25] = (device_id >> 16) & 0xFF;
+    packet[26] = (device_id >> 8) & 0xFF;
+    packet[27] = (device_id >> 0) & 0xFF;
+
+    // Capability bytes - EXACT MATCH to real 5-button Pico
+    packet[28] = 0x00;
+    packet[29] = 0x20;
+    packet[30] = 0x03;  // Pico type: 5-button
+    packet[31] = 0x00;  // 0x00 for most picos
+    packet[32] = 0x08;
+    packet[33] = 0x07;
+    packet[34] = 0x03;
+    packet[35] = 0x01;
+    packet[36] = 0x07;  // Function count
+    packet[37] = 0x02;  // First button code (ON)
+    packet[38] = 0x06;  // Last button code (LOWER) - FAV (0x03) is in range!
+    packet[39] = 0x00;
+    packet[40] = 0x00;
+
+    // Padding
+    packet[41] = 0xFF;
+    packet[42] = 0xFF;
+    packet[43] = 0xFF;
+    packet[44] = 0xFF;
+
+    // CRC over bytes 0-50
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    if (packet_count % 20 == 0) {
+      ESP_LOGD(TAG, "TX %s seq=0x%02X (%d packets)",
+               use_b9 ? "B9" : "BB", packet[1], packet_count);
+    }
+
+    this->transmit_encoded(packet, 53);
+    packet_count++;
+
+    // Flip-flop for next packet
+    use_b9 = !use_b9;
+
+    delay(75);  // ~75ms between packets
+    yield();
+  }
+
+  ESP_LOGI(TAG, "=== 5-BUTTON PAIRING COMPLETE ===");
+  ESP_LOGI(TAG, "Sent %d B9/BB packets over %d seconds", packet_count, duration_seconds);
+}
+
+void LutronPairing::send_pairing_advanced(uint32_t device_id, int duration_seconds,
+                                           uint8_t pkt_type_a, uint8_t pkt_type_b,
+                                           uint8_t byte10, uint8_t byte30, uint8_t byte31,
+                                           uint8_t byte37, uint8_t byte38) {
+  // Fully configurable pairing - replicate ANY Pico type
+  // Real Picos alternate: pkt_type_a -> pkt_type_b -> pkt_type_a -> ...
+
+  ESP_LOGI(TAG, "=== ADVANCED PAIRING ===");
+  ESP_LOGI(TAG, "Device: 0x%08X, Duration: %ds", device_id, duration_seconds);
+  ESP_LOGI(TAG, "Packets: %02X <-> %02X (alternating)", pkt_type_a, pkt_type_b);
+  ESP_LOGI(TAG, "Bytes: [10]=0x%02X [30]=0x%02X [31]=0x%02X [37]=0x%02X [38]=0x%02X",
+           byte10, byte30, byte31, byte37, byte38);
+
+  uint8_t packet[53];
+  this->sequence_ = 0x00;
+
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (duration_seconds * 1000);
+  int packet_count = 0;
+  bool use_type_a = true;
+
+  while (millis() < end_time) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    // ALTERNATE packet type
+    packet[0] = use_type_a ? pkt_type_a : pkt_type_b;
+    packet[1] = this->next_seq();
+
+    // Device ID (big-endian)
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = (device_id >> 0) & 0xFF;
+
+    // Protocol bytes
+    packet[6] = 0x21;
+    packet[7] = 0x25;  // New protocol
+    packet[8] = 0x04;
+    packet[9] = 0x00;
+    packet[10] = byte10;  // CONFIGURABLE: button scheme
     packet[11] = 0x03;
     packet[12] = 0x00;
 
@@ -388,7 +424,7 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[16] = 0xFF; packet[17] = 0xFF;
 
     packet[18] = 0x0D;
-    packet[19] = bb_byte19;
+    packet[19] = 0x05;
 
     // Device ID x2
     packet[20] = (device_id >> 24) & 0xFF;
@@ -400,18 +436,18 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[26] = (device_id >> 8) & 0xFF;
     packet[27] = (device_id >> 0) & 0xFF;
 
-    // BB capability/payload (same structure, different values)
+    // Capability bytes - ALL CONFIGURABLE
     packet[28] = 0x00;
     packet[29] = 0x20;
-    packet[30] = cap_byte30;
-    packet[31] = 0x00;
+    packet[30] = byte30;  // CONFIGURABLE: pico type (0x02, 0x03, 0x04)
+    packet[31] = byte31;  // CONFIGURABLE: 0x00 or 0x08
     packet[32] = 0x08;
     packet[33] = 0x07;
-    packet[34] = cap_byte34;
-    packet[35] = cap_byte35;
+    packet[34] = byte30;  // Same as byte30
+    packet[35] = 0x01;
     packet[36] = 0x07;
-    packet[37] = 0x02;
-    packet[38] = cap_byte38;
+    packet[37] = byte37;  // CONFIGURABLE: first button/capability
+    packet[38] = byte38;  // CONFIGURABLE: last button/capability
     packet[39] = 0x00;
     packet[40] = 0x00;
 
@@ -422,12 +458,21 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
+    if (packet_count % 20 == 0) {
+      ESP_LOGD(TAG, "TX %02X seq=0x%02X (%d packets)",
+               packet[0], packet[1], packet_count);
+    }
+
     this->transmit_encoded(packet, 53);
+    packet_count++;
+    use_type_a = !use_type_a;
+
     delay(75);
     yield();
   }
 
-  ESP_LOGI(TAG, "=== EXPERIMENTAL PAIRING COMPLETE ===");
+  ESP_LOGI(TAG, "=== ADVANCED PAIRING COMPLETE ===");
+  ESP_LOGI(TAG, "Sent %d alternating %02X/%02X packets", packet_count, pkt_type_a, pkt_type_b);
 }
 
 }  // namespace lutron_cc1101

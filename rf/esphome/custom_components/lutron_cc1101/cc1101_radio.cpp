@@ -210,9 +210,10 @@ void CC1101Radio::start_rx() {
   // PKTCTRL1: No address check, no append status
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
-  // Capture 48 bytes to ensure we get the full packet
-  // Lutron packets are ~37 bytes encoded (24 payload * 10/8 + overhead)
-  this->write_register(CC1101_PKTLEN, 48);
+  // Capture 64 bytes (max FIFO) for full pairing packets
+  // Button packets: 24 bytes * 10/8 = 30 bytes encoded
+  // Pairing packets: 53 bytes * 10/8 = 66 bytes - we get ~51 with 64 byte FIFO
+  this->write_register(CC1101_PKTLEN, 64);
 
   // GDO0: Assert when sync word detected, deassert on end of packet
   this->write_register(CC1101_IOCFG0, 0x06);
@@ -277,8 +278,9 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Fixed length mode: expect 48 bytes
-  const uint8_t PACKET_LEN = 48;
+  // Fixed length mode: expect 64 bytes (max FIFO size)
+  // Needed for pairing packets which are 53 bytes (530 bits N81 encoded)
+  const uint8_t PACKET_LEN = 64;
 
   // Check if we have enough bytes
   if (rx_bytes < PACKET_LEN) {

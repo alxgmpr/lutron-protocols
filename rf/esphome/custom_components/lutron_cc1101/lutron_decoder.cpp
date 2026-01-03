@@ -82,7 +82,7 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
 
   size_t best_offset = 0;
   size_t best_decoded = 0;
-  uint8_t best_bytes[32];
+  uint8_t best_bytes[56];  // Expanded for pairing packets (up to 53 bytes)
 
   // Strategy 1: Search every bit position for valid N81 sequence starting with known packet types
   for (size_t bit_pos = 0; bit_pos + 270 < total_bits; bit_pos++) {
@@ -116,10 +116,15 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     }
 
     // Try to decode the packet
-    uint8_t decoded_bytes[32];
+    uint8_t decoded_bytes[56];  // Expanded for pairing packets
     size_t decoded_count = 0;
 
-    for (size_t byte_idx = 0; byte_idx < 24; byte_idx++) {
+    // Determine max bytes based on packet type hint
+    // Pairing packets (B0-BF) can be up to 53 bytes
+    // Standard button packets are 24 bytes
+    size_t max_decode = 53;  // Decode as many as possible
+
+    for (size_t byte_idx = 0; byte_idx < max_decode; byte_idx++) {
       size_t bp = data_start + byte_idx * 10;
       if (bp + 10 > total_bits) break;
 
@@ -145,7 +150,7 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     // Keep track of best partial decode
     if (decoded_count > best_decoded) {
       best_decoded = decoded_count;
-      for (size_t i = 0; i < decoded_count && i < 32; i++) {
+      for (size_t i = 0; i < decoded_count && i < 56; i++) {
         best_bytes[i] = decoded_bytes[i];
       }
     }

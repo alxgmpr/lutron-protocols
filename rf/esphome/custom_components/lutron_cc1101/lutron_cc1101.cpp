@@ -87,18 +87,22 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
 
   // Log raw decoded bytes at DEBUG level for analysis
   if (pkt.raw_len > 0) {
-    char hex[100];
+    char hex[180];  // 56 bytes * 3 chars + margin
     int pos = 0;
-    for (size_t i = 0; i < pkt.raw_len && i < 24 && pos < 90; i++) {
+    // Show up to 53 bytes for pairing packets (capability bytes at 28-40)
+    size_t max_bytes = (pkt.type >= 0xB0 && pkt.type <= 0xBF) ? 53 : 24;
+    for (size_t i = 0; i < pkt.raw_len && i < max_bytes && pos < 170; i++) {
       pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", pkt.raw[i]);
     }
-    ESP_LOGD(TAG, "  Bytes: %s", hex);
+    ESP_LOGD(TAG, "  Bytes: %s(%d)", hex, (int)pkt.raw_len);
   }
 }
 
 void LutronCC1101::dump_config() {
   ESP_LOGCONFIG(TAG, "Lutron CC1101:");
   ESP_LOGCONFIG(TAG, "  Status: %s", this->radio_.is_initialized() ? "OK" : "FAILED");
+  ESP_LOGCONFIG(TAG, "  RX Enabled: %s", this->rx_enabled_ ? "YES" : "NO");
+  ESP_LOGCONFIG(TAG, "  RX Auto: %s", this->rx_auto_ ? "YES" : "NO");
 }
 
 void LutronCC1101::loop() {
@@ -280,6 +284,118 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   }
 
   ESP_LOGI(TAG, "Button press complete");
+}
+
+void LutronCC1101::send_save_favorite(uint32_t device_id, uint8_t button, int hold_seconds) {
+  // "Save favorite/scene" sequence - holds button for extended time to trigger save mode
+  // Captured from real Pico: ~5 seconds of SHORT (0x8A) packets, then LONG (0x8B) release packets
+  //
+  // SHORT packet format (hold/press signal):
+  //   8A 00 05 85 11 17 21 04 03 00 03 00 CC CC CC CC CC CC CC CC CC CC [CRC]
+  //   Type=0x8A, byte[7]=0x04, button at [10], action=0x00 (press)
+  //
+  // LONG packet format (release/save signal):
+  //   8B 00 05 85 11 17 21 0E 03 00 03 01 05 85 11 17 00 40 00 21 00 00 [CRC]
+  //   Type=0x8B, byte[7]=0x0E, button at [10], action=0x01 (release)
+  //   Device ID repeated at [12-15], byte[17]=0x40, byte[19]=0x1E+button
+
+  ESP_LOGI(TAG, "=== SAVE FAVORITE/SCENE ===");
+  ESP_LOGI(TAG, "Device: 0x%08X, Button: 0x%02X, Hold: %ds", device_id, button, hold_seconds);
+
+  uint8_t packet[24];
+  uint8_t type_base = this->type_alternate_ ? PKT_TYPE_BUTTON_SHORT_B : PKT_TYPE_BUTTON_SHORT_A;
+  this->type_alternate_ = !this->type_alternate_;
+
+  // --- PHASE 1: SHORT FORMAT - Extended hold (~5+ seconds) ---
+  ESP_LOGI(TAG, "Phase 1: Holding button (SHORT packets) for %ds...", hold_seconds);
+
+  unsigned long start_time = millis();
+  unsigned long end_time = start_time + (hold_seconds * 1000);
+  uint8_t seq = 0x00;
+  int packet_count = 0;
+
+  while (millis() < end_time) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = type_base;  // 0x88 or 0x8A
+    packet[1] = seq;
+    // Device ID in big-endian
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x04;  // SHORT format
+    packet[8] = 0x03;
+    packet[9] = 0x00;
+    packet[10] = button;
+    packet[11] = 0x00;  // ACTION = PRESS
+    // Bytes 12-21 = 0xCC padding (already set by memset)
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    packet_count++;
+
+    // Sequence increments by 6 (0x00, 0x06, 0x0C, 0x12, ...)
+    seq = (seq + 6) & 0xFF;
+    // Reset after reaching 0x42 (like captured)
+    if (seq > 0x42) seq = 0;
+
+    delay(75);  // ~75ms between packets (matching real Pico)
+    yield();
+  }
+
+  ESP_LOGI(TAG, "Phase 1 complete: %d SHORT packets sent", packet_count);
+
+  // --- PHASE 2: LONG FORMAT - Release packets (save trigger) ---
+  ESP_LOGI(TAG, "Phase 2: Releasing button (LONG packets)...");
+
+  seq = 0x00;  // Reset sequence for release phase
+
+  for (int rep = 0; rep < 10; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = type_base | 0x01;  // LONG format (0x89 or 0x8B)
+    packet[1] = seq;
+    // Device ID in big-endian
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;  // LONG format
+    packet[8] = 0x03;
+    packet[9] = 0x00;
+    packet[10] = button;
+    packet[11] = 0x01;  // ACTION = RELEASE
+
+    // Device ID repeated at bytes 12-15
+    packet[12] = (device_id >> 24) & 0xFF;
+    packet[13] = (device_id >> 16) & 0xFF;
+    packet[14] = (device_id >> 8) & 0xFF;
+    packet[15] = device_id & 0xFF;
+    packet[16] = 0x00;
+
+    // Save indicator: byte[17]=0x40, byte[19]=0x1E+button
+    packet[17] = 0x40;
+    packet[18] = 0x00;
+    packet[19] = 0x1E + button;  // 0x21 for FAV (0x03), 0x26 for button 0x08, etc.
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    seq = (seq + 6) & 0xFF;
+    if (rep < 9) delay(70);
+  }
+
+  ESP_LOGI(TAG, "=== SAVE FAVORITE COMPLETE ===");
 }
 
 void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
@@ -1031,10 +1147,27 @@ void LutronCC1101::send_debug_pattern() {
 }
 
 void LutronCC1101::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
-                                              int protocol_variant, int pico_type) {
+                                              int protocol_variant, int pico_type, int button_scheme) {
   if (this->pairing_) {
     this->pairing_->send_pairing_experimental(device_id, ba_count, bb_count,
-                                               protocol_variant, pico_type);
+                                               protocol_variant, pico_type, button_scheme);
+  }
+}
+
+void LutronCC1101::send_pairing_5button(uint32_t device_id, int duration_seconds) {
+  if (this->pairing_) {
+    this->pairing_->send_pairing_5button(device_id, duration_seconds);
+  }
+}
+
+void LutronCC1101::send_pairing_advanced(uint32_t device_id, int duration_seconds,
+                                          uint8_t pkt_type_a, uint8_t pkt_type_b,
+                                          uint8_t byte10, uint8_t byte30, uint8_t byte31,
+                                          uint8_t byte37, uint8_t byte38) {
+  if (this->pairing_) {
+    this->pairing_->send_pairing_advanced(device_id, duration_seconds,
+                                           pkt_type_a, pkt_type_b,
+                                           byte10, byte30, byte31, byte37, byte38);
   }
 }
 

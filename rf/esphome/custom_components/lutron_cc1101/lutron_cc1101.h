@@ -62,6 +62,15 @@ class LutronCC1101 : public Component,
   void send_button_press(uint32_t device_id, uint8_t button);
 
   /**
+   * @brief Send "save favorite/scene" sequence
+   * Holds button for specified duration then releases - triggers save mode on paired dimmers
+   * @param device_id Pico device ID
+   * @param button Button code (0x03=FAV for 5-btn, 0x08-0x0B for scene pico)
+   * @param hold_seconds Duration to hold (default 6s, dimmer requires ~5s to enter save mode)
+   */
+  void send_save_favorite(uint32_t device_id, uint8_t button, int hold_seconds = 6);
+
+  /**
    * @brief Send a level/dimming command (WORKING - direct paired devices)
    */
   void send_level(uint32_t device_id, uint8_t level_percent);
@@ -123,9 +132,35 @@ class LutronCC1101 : public Component,
    * @param bb_count Number of 0xBB packets
    * @param protocol_variant 0=new, 1=old
    * @param pico_type 0=scene, 1=5-button
+   * @param button_scheme Byte 10 - button codes: 0x04=5-btn, 0x0B=4-btn
    */
   void send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
-                                  int protocol_variant, int pico_type);
+                                  int protocol_variant, int pico_type, int button_scheme);
+
+  /**
+   * @brief Direct-pair as 5-button Pico using B9 packets
+   * Matches REAL 5-button Pico pairing exactly. Bytes 37-38 advertise button
+   * range 0x02-0x06 so FAV (0x03) works as a real favorite button.
+   * @param device_id 32-bit device ID
+   * @param duration_seconds How long to transmit (default 10)
+   */
+  void send_pairing_5button(uint32_t device_id, int duration_seconds = 10);
+
+  /**
+   * @brief Advanced pairing with FULL control over ALL capability bytes
+   * Replicate ANY Pico type exactly - 2-btn paddle, 5-btn, 4-btn R/L, scene
+   *
+   * Captured values:
+   * - 2-btn paddle: A=B9, B=BB, b10=04, b30=03, b31=08, b37=01, b38=01
+   * - 5-button:     A=B9, B=BB, b10=04, b30=03, b31=00, b37=02, b38=06
+   * - 4-btn R/L:    A=B9, B=BB, b10=0B, b30=02, b31=00, b37=02, b38=21
+   * - 4-btn scene:  A=B9, B=BB, b10=0B, b30=04, b31=00, b37=02, b38=28 (custom)
+   * - 4-btn scene:  A=B8, B=BA, b10=0B, b30=04, b31=00, b37=02, b38=27 (std)
+   */
+  void send_pairing_advanced(uint32_t device_id, int duration_seconds,
+                             uint8_t pkt_type_a, uint8_t pkt_type_b,
+                             uint8_t byte10, uint8_t byte30, uint8_t byte31,
+                             uint8_t byte37, uint8_t byte38);
 
   /**
    * @brief Send fake dimmer state report to bridge

@@ -75,7 +75,7 @@ struct DecodedPacket {
   uint32_t target_id;    // Target device ID for bridge commands
   uint16_t crc;
   bool crc_valid;
-  uint8_t raw[32];       // Raw decoded bytes
+  uint8_t raw[56];       // Raw decoded bytes (expanded for pairing packets)
   size_t raw_len;
 };
 

@@ -189,14 +189,29 @@ class ESP32Controller:
         await self.call_service('send_beacon', device_id=f"0x{device_id:08X}",
                                beacon_type=beacon_type, duration_seconds=duration)
 
-    async def pair_pico(self, device_id: int, pico_type: int = 1, ba_count: int = 12, bb_count: int = 6):
-        """Send Pico pairing. pico_type: 0=Scene (bridge only), 1=5-button (direct to dimmer)."""
+    async def pair_pico(self, device_id: int, pico_type: int = 1, ba_count: int = 12, bb_count: int = 6, button_scheme: int = 0x04):
+        """Send Pico pairing.
+        pico_type: 0=Scene (bridge only), 1=5-button (direct to dimmer)
+        button_scheme: 0x04=5-btn codes (0x02-0x06), 0x0B=4-btn codes (0x08-0x0B)
+        """
         await self.call_service('pair_experiment',
                                device_id=f"0x{device_id:08X}",
                                ba_count=ba_count,
                                bb_count=bb_count,
                                protocol_variant=0,  # New protocol (0x25)
-                               pico_type=pico_type)  # 0=Scene, 1=5-button
+                               pico_type=pico_type,  # 0=Scene, 1=5-button
+                               button_scheme=button_scheme)  # Byte 10: button code scheme
+
+    async def save_favorite(self, device_id: int, button: int = 0x03, hold_seconds: int = 6):
+        """Send save favorite/scene sequence.
+        Holds button for extended time to trigger save mode on paired dimmers.
+        button: 0x03=FAV for 5-button, 0x08-0x0B for scene pico buttons
+        hold_seconds: How long to hold (default 6, dimmer needs ~5s)
+        """
+        await self.call_service('save_favorite',
+                               device_id=f"0x{device_id:08X}",
+                               button_code=button,
+                               hold_seconds=hold_seconds)
 
     async def send_reset(self, source_id: int, paired_id: int):
         """Send Reset/Unpair packet to remove a Pico from a device."""
@@ -406,25 +421,82 @@ def cmd_serve(args):
                         <input type="text" id="pair-device" value="0xCC110001">
                     </div>
                     <div class="form-group">
-                        <label>Pairing Method</label>
-                        <select id="pair-method">
-                            <option value="direct" selected>Direct (B9/BB)</option>
-                            <option value="bridge">Bridge (BA/B8)</option>
+                        <label>Pico Type Preset</label>
+                        <select id="pair-preset" onchange="updatePairingPreset()">
+                            <option value="5btn" selected>5-Button Pico (B9, FAV works)</option>
+                            <option value="2btn">2-Button Paddle (B9)</option>
+                            <option value="4btn-rl">4-Button Raise/Lower (B9)</option>
+                            <option value="4btn-scene-custom">4-Button Scene Custom (B9, direct!)</option>
+                            <option value="4btn-scene-std">4-Button Scene Standard (BA/BB, bridge)</option>
+                            <option value="custom">Custom (Advanced)</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Button Scheme</label>
-                        <select id="pair-button-scheme">
-                            <option value="0x04">5-btn (0x04)</option>
-                            <option value="0x0B">4-btn (0x0B)</option>
-                        </select>
+                        <label>Duration</label>
+                        <input type="number" id="pair-duration" value="10" min="3" max="30" style="width:60px;">
                     </div>
                     <button class="btn-purple" onclick="pairPico()">PAIR</button>
                 </div>
-                <div style="font-size:11px;color:#8b949e;margin-top:8px;">
-                    <b>Direct (B9/BB):</b> pairs to dimmers/switches | <b>Bridge (BA/B8):</b> pairs through bridge<br>
-                    <b>5-btn scheme (0x04):</b> 2-btn, 5-btn picos | <b>4-btn scheme (0x0B):</b> 4-btn raise/lower, scene
+
+                <!-- Advanced Parameters (hidden by default) -->
+                <div id="pair-advanced" style="display:none;margin-top:12px;padding:10px;background:#0d1117;border-radius:4px;">
+                    <div style="font-size:11px;color:#58a6ff;margin-bottom:8px;">Advanced Parameters</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Pkt Type</label>
+                            <select id="pair-pkt-type" style="width:80px;">
+                                <option value="B9">B9 (direct)</option>
+                                <option value="BA">BA (bridge)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Byte 10</label>
+                            <input type="text" id="pair-byte10" value="0x04" style="width:50px;">
+                        </div>
+                        <div class="form-group">
+                            <label>Byte 30</label>
+                            <input type="text" id="pair-byte30" value="0x03" style="width:50px;">
+                        </div>
+                        <div class="form-group">
+                            <label>Byte 31</label>
+                            <input type="text" id="pair-byte31" value="0x00" style="width:50px;">
+                        </div>
+                        <div class="form-group">
+                            <label>Byte 37</label>
+                            <input type="text" id="pair-byte37" value="0x02" style="width:50px;">
+                        </div>
+                        <div class="form-group">
+                            <label>Byte 38</label>
+                            <input type="text" id="pair-byte38" value="0x06" style="width:50px;">
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Preset info display -->
+                <div id="pair-info" style="font-size:11px;color:#8b949e;margin-top:8px;font-family:monospace;">
+                    <span id="pair-info-text">B9 | byte10=0x04 | byte30=0x03 | bytes37-38=0x02-0x06 | Direct pair, FAV button works</span>
+                </div>
+
+                <!-- Reference table -->
+                <details style="margin-top:10px;">
+                    <summary style="font-size:11px;color:#58a6ff;cursor:pointer;">Captured Pico Comparison</summary>
+                    <table style="width:100%;font-size:10px;margin-top:6px;border-collapse:collapse;">
+                        <tr style="background:#21262d;">
+                            <th style="padding:4px;text-align:left;">Type</th>
+                            <th style="padding:4px;">Pkt</th>
+                            <th style="padding:4px;">B10</th>
+                            <th style="padding:4px;">B30</th>
+                            <th style="padding:4px;">B31</th>
+                            <th style="padding:4px;">B37-38</th>
+                            <th style="padding:4px;">Notes</th>
+                        </tr>
+                        <tr><td style="padding:3px;">5-button</td><td>B9</td><td>04</td><td>03</td><td>00</td><td>02-06</td><td style="color:#3fb950;">FAV works</td></tr>
+                        <tr style="background:#161b22;"><td style="padding:3px;">2-btn paddle</td><td>B9</td><td>04</td><td>03</td><td>08</td><td>01-01</td><td style="color:#d29922;">FAV=ON</td></tr>
+                        <tr><td style="padding:3px;">4-btn R/L</td><td>B9</td><td>0B</td><td>02</td><td>00</td><td>02-21</td><td>Direct</td></tr>
+                        <tr style="background:#161b22;"><td style="padding:3px;">4-btn Scene (custom)</td><td>B9</td><td>0B</td><td>04</td><td>00</td><td>02-28</td><td style="color:#3fb950;">Direct!</td></tr>
+                        <tr><td style="padding:3px;">4-btn Scene (std)</td><td>B8</td><td>0B</td><td>04</td><td>00</td><td>02-27</td><td style="color:#f85149;">Bridge only</td></tr>
+                    </table>
+                </details>
             </div>
         </div>
 
@@ -649,17 +721,65 @@ def cmd_serve(args):
             return await resp.json();
         }
 
-        // Pico Pairing
+        // Pico Pairing Presets
+        const PAIRING_PRESETS = {
+            '5btn':             { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'Direct pair, FAV button works' },
+            '2btn':             { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x08', b37: '0x01', b38: '0x01', desc: 'Direct pair, FAV acts as ON' },
+            '4btn-rl':          { pkt: 'B9', b10: '0x0B', b30: '0x02', b31: '0x00', b37: '0x02', b38: '0x21', desc: 'Direct pair, raise/lower' },
+            '4btn-scene-custom':{ pkt: 'B9', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x28', desc: 'Direct pair scene (custom engraved)' },
+            '4btn-scene-std':   { pkt: 'BA', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x27', desc: 'Bridge-only scene pico' },
+            'custom':           { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'Custom parameters' }
+        };
+
+        function updatePairingPreset() {
+            const preset = document.getElementById('pair-preset').value;
+            const p = PAIRING_PRESETS[preset] || PAIRING_PRESETS['5btn'];
+
+            // Update advanced fields
+            document.getElementById('pair-pkt-type').value = p.pkt;
+            document.getElementById('pair-byte10').value = p.b10;
+            document.getElementById('pair-byte30').value = p.b30;
+            document.getElementById('pair-byte31').value = p.b31;
+            document.getElementById('pair-byte37').value = p.b37;
+            document.getElementById('pair-byte38').value = p.b38;
+
+            // Show/hide advanced panel
+            document.getElementById('pair-advanced').style.display = (preset === 'custom') ? 'block' : 'none';
+
+            // Update info text
+            document.getElementById('pair-info-text').textContent =
+                `${p.pkt} | byte10=${p.b10} | byte30=${p.b30} | bytes37-38=${p.b37}-${p.b38} | ${p.desc}`;
+        }
+
         async function pairPico() {
             const device = document.getElementById('pair-device').value.trim();
-            const method = document.getElementById('pair-method').value;
-            const buttonScheme = document.getElementById('pair-button-scheme').value;
-            const methodName = method === 'direct' ? 'Direct (B9/BB)' : 'Bridge (BA/B8)';
-            setStatus(`Pairing ${device} via ${methodName} with button scheme ${buttonScheme}...`);
+            const preset = document.getElementById('pair-preset').value;
+            const duration = parseInt(document.getElementById('pair-duration').value) || 10;
+
+            // Get parameters from UI (preset or custom)
+            const pktType = document.getElementById('pair-pkt-type').value;
+            const byte10 = document.getElementById('pair-byte10').value;
+            const byte30 = document.getElementById('pair-byte30').value;
+            const byte31 = document.getElementById('pair-byte31').value;
+            const byte37 = document.getElementById('pair-byte37').value;
+            const byte38 = document.getElementById('pair-byte38').value;
+
+            const presetName = document.getElementById('pair-preset').selectedOptions[0].text;
+            setStatus(`Pairing ${device} as ${presetName} for ${duration}s...`);
+
             try {
-                const data = await apiPost('/api/pair-pico', {device, method, button_scheme: buttonScheme});
-                setStatus(data.status === 'ok' ? `Paired ${data.device} via ${data.method} [${data.button_scheme}]` : `Error: ${data.error}`,
-                         data.status === 'ok' ? 'success' : 'error');
+                const data = await apiPost('/api/pair-pico', {
+                    device,
+                    preset,
+                    duration,
+                    pkt_type: pktType,
+                    byte10, byte30, byte31, byte37, byte38
+                });
+                if (data.status === 'ok') {
+                    setStatus(`Paired ${data.device} | ${data.preset} | ${data.duration}s`, 'success');
+                } else {
+                    setStatus(`Error: ${data.error}`, 'error');
+                }
             } catch (e) { setStatus(`Error: ${e.message}`, 'error'); }
         }
 
@@ -1391,12 +1511,65 @@ def cmd_serve(args):
         finally:
             await controller.disconnect()
 
-    async def pair_pico_async(device_id: int, pico_type: int = 1):
-        """pico_type: 0 = Scene, 1 = 5-button"""
+    async def pair_pico_async(device_id: int, pico_type: int = 1, button_scheme: int = 0x04):
+        """pico_type: 0 = Scene, 1 = 5-button
+        button_scheme: 0x04 = 5-btn, 0x0B = 4-btn
+        """
         controller = ESP32Controller()
         try:
             await controller.connect()
-            await controller.pair_pico(device_id, pico_type)
+            await controller.pair_pico(device_id, pico_type, button_scheme=button_scheme)
+        finally:
+            await controller.disconnect()
+
+    async def pair_5button_async(device_id: int, duration: int = 10):
+        """Pair using 5-button Pico B9 packets (matches real Pico exactly)."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.call_service('pair_5button',
+                                         device_id=f"0x{device_id:08X}",
+                                         duration_seconds=duration)
+        finally:
+            await controller.disconnect()
+
+    async def pair_advanced_async(device_id: int, preset: str, duration: int,
+                                  pkt_type: str, byte10: int, byte30: int,
+                                  byte31: int, byte37: int, byte38: int):
+        """Advanced pairing with full parameter control.
+
+        Uses the new pair_advanced service to send pairing with exact byte values.
+        Captured Pico types:
+        - 2-btn paddle: B9/BB, b10=04, b30=03, b31=08, b37=01, b38=01
+        - 5-button:     B9/BB, b10=04, b30=03, b31=00, b37=02, b38=06
+        - 4-btn R/L:    B9/BB, b10=0B, b30=02, b31=00, b37=02, b38=21
+        - 4-btn scene:  B9/BB, b10=0B, b30=04, b31=00, b37=02, b38=28 (custom)
+        - 4-btn scene:  B8/BA, b10=0B, b30=04, b31=00, b37=02, b38=27 (std)
+        """
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+
+            # Determine packet types based on pkt_type parameter
+            # B9/BB = direct pair capable, B8/BA = bridge-only
+            if pkt_type in ('B8', 'BA'):
+                pkt_type_a = 0xB8
+                pkt_type_b = 0xBA
+            else:
+                pkt_type_a = 0xB9
+                pkt_type_b = 0xBB
+
+            # Call the new pair_advanced service with ALL parameters
+            await controller.call_service('pair_advanced',
+                                         device_id=f"0x{device_id:08X}",
+                                         duration_seconds=duration,
+                                         pkt_type_a=pkt_type_a,
+                                         pkt_type_b=pkt_type_b,
+                                         byte10=byte10,
+                                         byte30=byte30,
+                                         byte31=byte31,
+                                         byte37=byte37,
+                                         byte38=byte38)
         finally:
             await controller.disconnect()
 
@@ -1406,6 +1579,15 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_reset(source_id, paired_id)
+        finally:
+            await controller.disconnect()
+
+    async def save_favorite_async(device_id: int, button: int, hold_seconds: int):
+        """Send save favorite/scene sequence."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.save_favorite(device_id, button, hold_seconds)
         finally:
             await controller.disconnect()
 
@@ -1557,43 +1739,95 @@ def cmd_serve(args):
 
     @app.route('/api/pair-pico', methods=['POST'])
     def api_pair_pico():
-        """Pair as Pico with configurable method and button scheme.
+        """Pair as Pico with preset or custom parameters.
+
+        Presets (based on real Pico captures):
+        - 5btn: 5-Button Pico (B9, FAV works) - direct pair to dimmers
+        - 2btn: 2-Button Paddle (B9, FAV=ON)
+        - 4btn-rl: 4-Button Raise/Lower (B9)
+        - 4btn-scene-custom: 4-Button Scene Custom (B9, direct!)
+        - 4btn-scene-std: 4-Button Scene Standard (BA/BB, bridge only)
+        - custom: Use advanced byte parameters
 
         Parameters:
         - device: Pico ID (hex string like 0xCC110001)
-        - method: 'direct' (B9/BB) or 'bridge' (BA/B8)
-        - button_scheme: Button code at byte 10 - tells receiver what buttons to expect
-          - 0x04: 5-button scheme (buttons 0x02-0x06) - used by 2-btn, 5-btn picos
-          - 0x0B: 4-button scheme (buttons 0x08-0x0B) - used by 4-btn raise/lower, scene
-
-        Pairing method determines packet types:
-        - Direct (B9/BB): Can pair directly to Caseta/RA2 dimmers without bridge
-        - Bridge (BA/B8): Must pair through RadioRA3/Homeworks bridge (scene picos)
+        - preset: Preset name (see above)
+        - duration: Pairing duration in seconds
+        - pkt_type: 'B9' (direct) or 'BA' (bridge)
+        - byte10, byte30, byte31, byte37, byte38: Advanced capability bytes
         """
         try:
             device = get_param('device', '')
-            method = get_param('method', 'direct')  # 'direct' or 'bridge'
-            button_scheme = get_param('button_scheme', '0x04')  # '0x04' or '0x0B'
+            preset = get_param('preset', '5btn')
+            duration = int(get_param('duration', '10'))
+
+            # Advanced parameters (used for custom preset)
+            pkt_type = get_param('pkt_type', 'B9')
+            byte10 = parse_hex_int(get_param('byte10', '0x04'))
+            byte30 = parse_hex_int(get_param('byte30', '0x03'))
+            byte31 = parse_hex_int(get_param('byte31', '0x00'))
+            byte37 = parse_hex_int(get_param('byte37', '0x02'))
+            byte38 = parse_hex_int(get_param('byte38', '0x06'))
 
             if not device:
                 return jsonify({'status': 'error', 'error': 'Missing device'}), 400
 
             device_id = parse_hex_int(device)
-            button_code = parse_hex_int(button_scheme)
 
-            # pico_type: 0 = Bridge (BA/B8), 1 = Direct (B9/BB)
-            pico_type = 0 if method == 'bridge' else 1
-            method_name = 'Bridge (BA/B8)' if method == 'bridge' else 'Direct (B9/BB)'
+            # Use the advanced async function
+            asyncio.run(pair_advanced_async(
+                device_id, preset, duration,
+                pkt_type, byte10, byte30, byte31, byte37, byte38
+            ))
 
-            # TODO: Pass button_code to ESP32 pairing function
-            # For now, just log it - ESP32 firmware needs update to use this
-            asyncio.run(pair_pico_async(device_id, pico_type))
+            preset_names = {
+                '5btn': '5-Button Pico (B9)',
+                '2btn': '2-Button Paddle (B9)',
+                '4btn-rl': '4-Button R/L (B9)',
+                '4btn-scene-custom': '4-Button Scene (B9)',
+                '4btn-scene-std': '4-Button Scene (BA/BB)',
+                'custom': f'Custom (B10={byte10:02X})'
+            }
 
             return jsonify({
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
-                'method': method_name,
-                'button_scheme': f'0x{button_code:02X}'
+                'preset': preset_names.get(preset, preset),
+                'duration': duration
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/save-favorite', methods=['POST'])
+    def api_save_favorite():
+        """Save favorite/scene level.
+
+        Holds button for extended time to trigger save mode on paired dimmers.
+        First set the dimmer to desired level, then call this to save.
+
+        Parameters:
+        - device: Pico ID (hex string like 0x05851117)
+        - button: Button code (0x03=FAV for 5-btn, 0x08-0x0B for scene pico)
+        - hold: Duration in seconds (default 6, dimmer needs ~5s)
+        """
+        try:
+            device = get_param('device', '')
+            button = get_param('button', '0x03')
+            hold_seconds = int(get_param('hold', '6'))
+
+            if not device:
+                return jsonify({'status': 'error', 'error': 'Missing device'}), 400
+
+            device_id = parse_hex_int(device)
+            button_code = parse_hex_int(button)
+
+            asyncio.run(save_favorite_async(device_id, button_code, hold_seconds))
+
+            return jsonify({
+                'status': 'ok',
+                'device': f'0x{device_id:08X}',
+                'button': f'0x{button_code:02X}',
+                'hold_seconds': hold_seconds
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

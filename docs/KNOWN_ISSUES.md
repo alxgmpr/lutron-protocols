@@ -11,11 +11,43 @@
 | Fake state reports | ✅ Working | Spoof dimmer level to bridge |
 | Beacon mode (pairing trigger) | ✅ Working | Devices flash, use AF902C01 as load ID |
 | Pico reset (unpair) | ✅ Working | Broadcasts "forget me" to all paired devices |
-| Pairing new devices | ❌ Not working | Beacon works, handshake unknown |
+| Pairing as 5-button Pico | ✅ Working | Direct pair to dimmers, FAV works |
+| Pairing as 2-button paddle | ✅ Working | Direct pair, FAV acts as ON |
+| Pairing as 4-button R/L | ✅ Working | Direct pair, raise/lower |
+| Pairing as 4-button scene | ❌ Not working | See known issues below |
 
 ---
 
 ## Known Issues
+
+### Scene Pico Pairing Not Working
+
+**Symptom:** Pairing as a 4-button scene Pico (either standard or custom-engraved) does not work. The dimmer does not accept the pairing even though the packets match captured real Pico data.
+
+**What works:**
+- 5-button Pico pairing (B9/BB, byte10=0x04, bytes37-38=0x02-0x06)
+- 2-button paddle pairing (B9/BB, byte10=0x04, byte31=0x08, bytes37-38=0x01-0x01)
+- 4-button raise/lower pairing (B9/BB, byte10=0x0B, byte30=0x02, bytes37-38=0x02-0x21)
+
+**What doesn't work:**
+- 4-button scene standard (B8/BA, byte10=0x0B, byte30=0x04, bytes37-38=0x02-0x27)
+- 4-button scene custom (B9/BB, byte10=0x0B, byte30=0x04, bytes37-38=0x02-0x28)
+
+**Captured byte values from real scene Picos:**
+| Type | PktA/B | byte10 | byte30 | byte31 | byte37 | byte38 |
+|------|--------|--------|--------|--------|--------|--------|
+| Scene standard | B8/BA | 0x0B | 0x04 | 0x00 | 0x02 | 0x27 |
+| Scene custom | B9/BB | 0x0B | 0x04 | 0x00 | 0x02 | 0x28 |
+
+**Theories:**
+1. **Additional unknown bytes** - Scene Picos may use different values in bytes we haven't captured/analyzed
+2. **Timing differences** - Scene pairing may require different inter-packet timing
+3. **Bridge involvement** - Standard scene Picos (B8/BA) may require bridge mediation
+4. **Device ID format** - Scene Picos may have device IDs that follow a different pattern
+
+**Status:** Needs investigation - may require more captures comparing scene vs non-scene Picos.
+
+---
 
 ### RX Decode Failures with 4-Button Picos
 

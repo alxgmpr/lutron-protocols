@@ -186,6 +186,60 @@ Real Pico remotes transmit:
 - ~75ms gap between repetitions
 - Sequence number increments by 6 each repetition
 
+## Save Favorite/Scene Sequence
+
+To save a new favorite or scene level on a paired dimmer, the Pico performs an extended button hold sequence:
+
+### Phase 1: SHORT Format (Hold Signal)
+
+Hold the button for ~5-6 seconds, continuously transmitting SHORT format packets:
+
+```
+8A 00 05 85 11 17 21 04 03 00 03 00 CC CC CC CC CC CC CC CC CC CC [CRC]
+```
+
+| Byte | Value | Description |
+|------|-------|-------------|
+| 0 | 0x88/0x8A | Type (SHORT_A or SHORT_B) |
+| 1 | Seq | Sequence, +6 each packet |
+| 2-5 | Device ID | Big-endian Pico ID |
+| 6 | 0x21 | Protocol marker |
+| 7 | 0x04 | SHORT format indicator |
+| 8 | 0x03 | Unknown |
+| 9 | 0x00 | Unknown |
+| 10 | Button | Button code (0x03=FAV, 0x08-0x0B for scene) |
+| 11 | 0x00 | Action = PRESS |
+| 12-21 | 0xCC | Padding |
+| 22-23 | CRC | CRC-16 |
+
+### Phase 2: LONG Format (Release/Save)
+
+After holding ~5 seconds, release and send LONG format packets:
+
+```
+8B 00 05 85 11 17 21 0E 03 00 03 01 05 85 11 17 00 40 00 21 00 00 [CRC]
+```
+
+| Byte | Value | Description |
+|------|-------|-------------|
+| 0 | 0x89/0x8B | Type (LONG_A or LONG_B) |
+| 1 | Seq | Sequence |
+| 2-5 | Device ID | Big-endian Pico ID |
+| 6 | 0x21 | Protocol marker |
+| 7 | 0x0E | LONG format indicator |
+| 8-9 | 0x03 0x00 | Unknown |
+| 10 | Button | Button code |
+| 11 | 0x01 | Action = RELEASE |
+| 12-15 | Device ID | Pico ID repeated |
+| 16 | 0x00 | Unknown |
+| 17 | 0x40 | Save indicator |
+| 18 | 0x00 | Unknown |
+| 19 | 0x1E + button | Save target (0x21 for FAV, 0x26 for btn 0x08, etc.) |
+| 20-21 | 0x00 0x00 | Padding |
+| 22-23 | CRC | CRC-16 |
+
+**Key timing:** The dimmer enters save mode after receiving ~5 seconds of continuous PRESS packets. The RELEASE packets with byte[17]=0x40 and byte[19]=0x1E+button confirm the save.
+
 ## Receiving (RX) with RTL-SDR
 
 ### Capture Command
@@ -253,19 +307,24 @@ Pairing packets advertise the Pico's capabilities and allow it to be registered 
 - 2-button Pico (PJ2-2B)
 - 5-button Pico (PJ2-3BRL)
 - 4-button Raise/Lower Pico (PJ2-4B)
+- 4-button Scene Pico with custom engraving
 
 These remotes can pair directly to Caseta/RA2 dimmers and switches without requiring a bridge. They use packet types B9 and BB, alternating between them during the pairing sequence.
 
 **Bridge-Only (BA/B8):**
-- 4-button Scene Pico (PJ2-4B-S)
+- 4-button Scene Pico (standard, PJ2-4B-S)
 
-Scene picos can only pair through a RadioRA3 or Homeworks QSX bridge. They advertise scenes rather than direct on/off/dim commands. They use packet types BA and B8, alternating between them during the pairing sequence.
+Standard scene picos can only pair through a RadioRA3 or Homeworks QSX bridge. They advertise scenes rather than direct on/off/dim commands. They use packet types BA and B8, alternating between them during the pairing sequence.
 
-### Pairing Packet Structure
+**Note:** Custom-engraved scene picos appear to have different firmware that enables direct-pairing (B9/BB packets) despite being scene picos. This may be intentional or a side effect of the customization process.
+
+### Pairing Packet Structure (Full 45 bytes)
+
+Pairing packets are 45 bytes (excluding CRC) with extended capability information:
 
 ```
-Offset:  0  1  2  3  4  5  6  7  8  9  10 11 12 13-17       18 19 20-23
-Field:   TY SQ [Device ID ] 21 25 04 00 BS 03 00 [BROADCAST] 0D 05 [Device ID]
+Offset:  0  1  2-5         6  7  8  9  10 11 12 13-17          18 19 20-23       24-27       28 29 30 31 32 33 34 35 36 37 38 39 40 41-44
+Field:   TY SQ [Device ID] 21 25 04 00 BS 03 00 [BROADCAST   ] 0D 05 [Device ID] [Device ID] ?? ?? ?? DT ?? ?? ?? ?? FC B1 B2 00 00 [PADDING]
 ```
 
 | Offset | Field | Description |
@@ -279,7 +338,45 @@ Field:   TY SQ [Device ID ] 21 25 04 00 BS 03 00 [BROADCAST] 0D 05 [Device ID]
 | 11-12 | Unknown | Always `03 00` |
 | 13-17 | Broadcast | `FF FF FF FF FF` |
 | 18-19 | Unknown | Always `0D 05` |
-| 20-23 | Device ID | Pico ID repeated, big-endian |
+| 20-23 | Device ID | Pico ID repeated (2nd occurrence) |
+| 24-27 | Device ID | Pico ID repeated (3rd occurrence) |
+| 28-30 | Unknown | Always `00 20 03` |
+| 31 | **Unknown** | `0x00` or `0x08` (model-specific, see below) |
+| 32-35 | Unknown | Always `08 07 03 01` |
+| 36 | **Function Count?** | `0x07` for 5-button, `0x2A` for 2-button paddle |
+| 37 | **Capability B1** | First button code or capability value |
+| 38 | **Capability B2** | Last button code or capability value (see below) |
+| 39-40 | Padding | `00 00` |
+| 41-44 | Padding | `FF FF FF FF` |
+
+### Button Range Advertisement (Bytes 37-38)
+
+**Key discovery:** Bytes 37-38 advertise capability information. For 5-button scheme picos, these represent the range of valid button codes. For 4-button scheme picos, byte 38 has different meaning (values like 0x21, 0x27 are too large to be button codes).
+
+| Remote Type | Pkt Type | Byte 10 | Byte 30 | Byte 37 | Byte 38 | Notes |
+|-------------|----------|---------|---------|---------|---------|-------|
+| 5-button Pico | B9/BB | `0x04` | `0x03` | `0x02` | `0x06` | Button range 0x02-0x06 |
+| 2-button Paddle | B9/BB | `0x04` | `0x03` | `0x01` | `0x01` | Invalid range → FAV=ON |
+| 4-btn Raise/Lower | B9/BB | `0x0B` | `0x02` | `0x02` | `0x21` | Direct-pair capable |
+| 4-btn Scene (std) | B8/BA | `0x0B` | `0x04` | `0x02` | `0x27` | Bridge-only |
+| 4-btn Scene (custom) | B9/BB | `0x0B` | `0x04` | `0x02` | `0x28` | Direct-pair! Custom engraving |
+
+**5-button scheme (byte 10 = 0x04):** Bytes 37-38 define button code range. Button 0x03 (FAV) works as favorite only if it falls within [B1, B2].
+
+**4-button scheme (byte 10 = 0x0B):** Bytes 37-38 meaning differs - values 0x21, 0x27 suggest these encode something other than a simple button range.
+
+### Byte 31 (Unknown Purpose)
+
+Observed values by Pico model (all are handheld remotes, same form factor):
+
+| Pico Model | Byte 31 | Notes |
+|------------|---------|-------|
+| 5-button Pico | `0x00` | Standard Pico with ON/FAV/OFF/RAISE/LOWER |
+| 4-button Raise/Lower | `0x00` | ON/RAISE/LOWER/OFF |
+| 4-button Scene | `0x00` | Scene presets (Bright/Entertain/Relax/Off) |
+| 2-button Paddle | `0x08` | Simple ON/OFF only |
+
+The meaning of this byte is not yet understood. It does NOT indicate physical form factor.
 
 ### Button Scheme (Byte 10)
 

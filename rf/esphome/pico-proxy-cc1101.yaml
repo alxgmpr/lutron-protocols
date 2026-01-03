@@ -97,9 +97,25 @@ api:
             ESP_LOGI("service", "send_state_report: device=0x%08X level=%d%%", dev_id, level_percent);
             id(lutron_radio)->send_state_report(dev_id, level_percent);
 
+    # Save Favorite/Scene - Hold button for extended time to save current level
+    # button_code: 0x03=FAV for 5-button, 0x08-0x0B for scene pico buttons
+    # hold_seconds: How long to hold (default 6, dimmer needs ~5s to enter save mode)
+    - service: save_favorite
+      variables:
+        device_id: string
+        button_code: int
+        hold_seconds: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "save_favorite: device=0x%08X button=0x%02X hold=%ds",
+                     dev_id, button_code, hold_seconds);
+            id(lutron_radio)->send_save_favorite(dev_id, button_code, hold_seconds);
+
     # Experimental pairing - configurable protocol parameters
     # protocol_variant: 0=new (0x25), 1=old (0x21/0x17)
     # pico_type: 0=scene (4-btn), 1=5-button
+    # button_scheme: 0x04=5-button codes (0x02-0x06), 0x0B=4-button codes (0x08-0x0B)
     - service: pair_experiment
       variables:
         device_id: string
@@ -107,13 +123,54 @@ api:
         bb_count: int
         protocol_variant: int
         pico_type: int
+        button_scheme: int
       then:
         - lambda: |-
             uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "pair_experiment: device=0x%08X BA=%d BB=%d proto=%d type=%d",
-                     dev_id, ba_count, bb_count, protocol_variant, pico_type);
+            ESP_LOGI("service", "pair_experiment: device=0x%08X BA=%d BB=%d proto=%d type=%d btn_scheme=0x%02X",
+                     dev_id, ba_count, bb_count, protocol_variant, pico_type, button_scheme);
             id(lutron_radio)->send_pairing_experimental(dev_id, ba_count, bb_count,
-                                                         protocol_variant, pico_type);
+                                                         protocol_variant, pico_type, button_scheme);
+
+    # 5-Button Pico Pairing - Uses B9 packets matching real Pico exactly
+    # This is for direct pairing to Caseta dimmers (no bridge)
+    # Bytes 37-38 advertise button range 0x02-0x06, so FAV (0x03) works as favorite
+    - service: pair_5button
+      variables:
+        device_id: string
+        duration_seconds: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "pair_5button: device=0x%08X duration=%ds", dev_id, duration_seconds);
+            id(lutron_radio)->send_pairing_5button(dev_id, duration_seconds);
+
+    # Advanced Pairing - Full control over ALL capability bytes
+    # Replicate ANY Pico type: 2-btn paddle, 5-btn, 4-btn R/L, 4-btn scene
+    # pkt_type_a/b: Packet types to alternate (B8/BA for bridge-only, B9/BB for direct-pair)
+    # byte10: Button scheme (0x04=5-btn codes, 0x0B=4-btn codes)
+    # byte30: Pico type (0x02=R/L, 0x03=5btn/paddle, 0x04=scene)
+    # byte31: Unknown (0x00 usually, 0x08 for 2-btn paddle)
+    # byte37/38: Button range (first/last button codes)
+    - service: pair_advanced
+      variables:
+        device_id: string
+        duration_seconds: int
+        pkt_type_a: int
+        pkt_type_b: int
+        byte10: int
+        byte30: int
+        byte31: int
+        byte37: int
+        byte38: int
+      then:
+        - lambda: |-
+            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "pair_advanced: device=0x%08X pkt=%02X/%02X b10=%02X b30=%02X b31=%02X b37=%02X b38=%02X",
+                     dev_id, pkt_type_a, pkt_type_b, byte10, byte30, byte31, byte37, byte38);
+            id(lutron_radio)->send_pairing_advanced(dev_id, duration_seconds,
+                                                     pkt_type_a, pkt_type_b,
+                                                     byte10, byte30, byte31, byte37, byte38);
 
     # Reset/Unpair - Remove a Pico from a device
     # source_id: The Pico ID that's paired (our ESP32 fake Pico)
