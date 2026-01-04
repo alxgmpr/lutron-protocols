@@ -21,6 +21,9 @@ export interface DeviceInfo {
   factory_id?: string
   rf_tx_id?: string
   controllable?: boolean
+  id_format?: 'subnet' | 'label'  // subnet = little-endian with subnet, label = big-endian printed ID
+  packet_type?: string
+  subnet?: string  // Subnet address in Lutron Designer format (big-endian, e.g., "902C")
 }
 
 export interface LogEntry {

@@ -38,6 +38,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  cursor: pointer;
+  padding: 6px 10px;
+  margin: -6px -10px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.header-right:hover {
+  background: var(--bg-elevated);
 }
 
 .status-indicator {

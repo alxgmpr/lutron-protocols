@@ -46,11 +46,15 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(__file__))
     import database as db
 
-# ESP32 connection settings
+# ESP32 connection settings (defaults)
 ESP32_IP = "10.1.4.59"
 ESP32_PORT = 6053
 ESP32_PASSWORD = ""
 ESP32_ENCRYPTION_KEY = "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
+
+# Current ESP32 host (can be changed at runtime)
+current_esp_host = ESP32_IP
+esp_config_lock = threading.Lock()
 
 # Button ID mappings
 BUTTONS = {
@@ -204,14 +208,32 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
 
     # Update device registry
     device_id = pkt_data.get('device_id')
+    packet_type = pkt_data.get('packet_type', '')
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
-        category = _infer_category_from_type(pkt_data.get('packet_type', ''), pkt_data.get('button'))
+        category = _infer_category_from_type(packet_type, pkt_data.get('button'))
+        # Determine ID format based on packet type:
+        # - STATE_RPT/LEVEL: little-endian, contains subnet
+        # - BTN_*/PAIRING: big-endian, matches printed label
+        id_format = 'subnet' if packet_type in ('STATE_RPT', 'LEVEL') else 'label'
+        decoded_data = pkt_data.get('decoded_data', {})
+        decoded_data['id_format'] = id_format
+        decoded_data['packet_type'] = packet_type
+
+        # Extract subnet from subnet-style device IDs
+        # Device ID format for subnet-style: [Zone][SubnetLo][SubnetHi][Endpoint]
+        # Subnet displayed big-endian (as in Lutron Designer): SubnetHi + SubnetLo
+        if id_format == 'subnet' and len(device_id) == 8:
+            subnet_lo = device_id[2:4]  # bytes 1
+            subnet_hi = device_id[4:6]  # bytes 2
+            subnet = (subnet_hi + subnet_lo).upper()  # Big-endian for display
+            decoded_data['subnet'] = subnet
+
         db.upsert_device(
             device_id=device_id,
             category=category,
-            bridge_id=pkt_data.get('source_id') if pkt_data.get('packet_type') == 'LEVEL' else None,
-            factory_id=pkt_data.get('target_id') if pkt_data.get('packet_type') == 'LEVEL' else device_id,
-            info=pkt_data.get('decoded_data', {})
+            bridge_id=pkt_data.get('source_id') if packet_type == 'LEVEL' else None,
+            factory_id=pkt_data.get('target_id') if packet_type == 'LEVEL' else device_id,
+            info=decoded_data
         )
 
 def _parse_and_store_packet(message: str):
@@ -412,8 +434,9 @@ def _infer_category_from_type(pkt_type: str, button: str = None) -> str:
 class ESP32Controller:
     """Controller for ESP32 Lutron RF transmitter via native API."""
 
-    def __init__(self, host: str = ESP32_IP, port: int = ESP32_PORT):
-        self.host = host
+    def __init__(self, host: str = None, port: int = ESP32_PORT):
+        # Use current_esp_host if no host specified
+        self.host = host if host is not None else current_esp_host
         self.port = port
         self.client: Optional[APIClient] = None
         self._entities = {}
@@ -806,6 +829,16 @@ def cmd_serve(args):
         except:
             return False
 
+    async def test_connection_async(host: str):
+        """Test connection to a specific ESP32 host."""
+        controller = ESP32Controller(host=host)
+        try:
+            await asyncio.wait_for(controller.connect(), timeout=10.0)
+            await controller.disconnect()
+            return True
+        except:
+            return False
+
     async def set_switch_async(switch_id: str, state: bool):
         """Set a switch on or off."""
         controller = ESP32Controller()
@@ -835,9 +868,99 @@ def cmd_serve(args):
         """Check ESP32 connection status."""
         try:
             connected = asyncio.run(check_connection_async())
-            return jsonify({'connected': connected, 'ip': ESP32_IP})
+            return jsonify({'connected': connected, 'ip': current_esp_host})
         except:
-            return jsonify({'connected': False, 'ip': ESP32_IP})
+            return jsonify({'connected': False, 'ip': current_esp_host})
+
+    @app.route('/api/esp/config')
+    def api_esp_config():
+        """Get ESP32 connection configuration and status."""
+        now = time.time()
+        heartbeat_age = now - log_thread_heartbeat if log_thread_heartbeat > 0 else -1
+        last_log_age = now - log_last_received if log_last_received > 0 else -1
+        thread_alive = heartbeat_age >= 0 and heartbeat_age < LOG_THREAD_TIMEOUT
+        receiving_logs = last_log_age >= 0 and last_log_age < LOG_STALE_TIMEOUT
+
+        # Calculate last_seen as ISO string
+        last_seen = None
+        if log_last_received > 0:
+            last_seen = datetime.fromtimestamp(log_last_received).isoformat()
+
+        return jsonify({
+            'host': current_esp_host,
+            'port': ESP32_PORT,
+            'default_host': ESP32_IP,
+            'last_seen': last_seen,
+            'last_log_age': round(last_log_age, 1) if last_log_age >= 0 else None,
+            'thread_alive': thread_alive,
+            'receiving_logs': receiving_logs,
+            'healthy': thread_alive and receiving_logs
+        })
+
+    @app.route('/api/esp/config', methods=['POST'])
+    def api_esp_config_set():
+        """Set ESP32 host and optionally trigger reconnect."""
+        global current_esp_host
+        data = request.json or {}
+        new_host = data.get('host', '').strip()
+
+        if not new_host:
+            return jsonify({'status': 'error', 'error': 'host is required'}), 400
+
+        with esp_config_lock:
+            old_host = current_esp_host
+            current_esp_host = new_host
+            print(f"[API] ESP32 host changed: {old_host} -> {new_host}", flush=True)
+
+        return jsonify({
+            'status': 'ok',
+            'host': current_esp_host,
+            'previous_host': old_host
+        })
+
+    @app.route('/api/esp/reconnect', methods=['POST'])
+    def api_esp_reconnect():
+        """Force reconnect to ESP32 (restart log subscription)."""
+        global log_subscription_started, log_thread_heartbeat
+        with log_subscription_lock:
+            print(f"[API] Forcing ESP32 reconnect to {current_esp_host}...", flush=True)
+            log_subscription_started = False
+            log_thread_heartbeat = 0
+            # Clear queues
+            while not log_queue.empty():
+                try:
+                    log_queue.get_nowait()
+                except queue.Empty:
+                    break
+            while not packet_queue.empty():
+                try:
+                    packet_queue.get_nowait()
+                except queue.Empty:
+                    break
+        return jsonify({
+            'status': 'ok',
+            'message': f'Reconnecting to {current_esp_host}...',
+            'host': current_esp_host
+        })
+
+    @app.route('/api/esp/test', methods=['POST'])
+    def api_esp_test():
+        """Test connection to ESP32 (checks if device is reachable)."""
+        host = request.json.get('host', current_esp_host) if request.is_json else current_esp_host
+        try:
+            connected = asyncio.run(test_connection_async(host))
+            return jsonify({
+                'status': 'ok',
+                'connected': connected,
+                'host': host
+            })
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'connected': False,
+                'host': host,
+                'error': str(e)
+            })
 
     def get_param(name, default=''):
         """Get parameter from JSON body or query args."""
@@ -1365,9 +1488,10 @@ def cmd_serve(args):
                 log_thread_heartbeat = time.time()
                 connection_stale = False
 
-                print(f"[LOG THREAD] Connecting to {ESP32_IP}:{ESP32_PORT}...", flush=True)
+                host = current_esp_host
+                print(f"[LOG THREAD] Connecting to {host}:{ESP32_PORT}...", flush=True)
                 client = APIClient(
-                    address=ESP32_IP,
+                    address=host,
                     port=ESP32_PORT,
                     password=ESP32_PASSWORD,
                     noise_psk=ESP32_ENCRYPTION_KEY,

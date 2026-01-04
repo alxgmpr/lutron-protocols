@@ -144,6 +144,22 @@
   font-weight: 600;
 }
 
+.device-id-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.paired-device-label-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--accent-orange);
+  background: rgba(245, 158, 11, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
 .device-inference {
   margin-bottom: 12px;
 }

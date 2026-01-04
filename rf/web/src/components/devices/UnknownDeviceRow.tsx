@@ -1,5 +1,4 @@
 import type { Device } from '../../types'
-import { extractSubnet } from '../../utils'
 import './UnknownDeviceRow.css'
 
 interface UnknownDeviceRowProps {
@@ -26,7 +25,8 @@ export function UnknownDeviceRow({ device, onClick, formatTime }: UnknownDeviceR
   const bridgeId = info.bridge_id || ''
   const lastSeen = formatTime ? formatTime(device.last_seen) : ''
   const hint = getDeviceHint(device)
-  const subnet = extractSubnet(device.id)
+  // Use stored subnet from backend (extracted from STATE_RPT/LEVEL packets)
+  const subnet = info.subnet
 
   return (
     <div className="unknown-device-row" onClick={onClick}>
@@ -36,7 +36,7 @@ export function UnknownDeviceRow({ device, onClick, formatTime }: UnknownDeviceR
           {subnet && <span className="unknown-device-subnet" title="Subnet Address">{subnet}</span>}
           {bridgeId && <span className="unknown-device-via">via {bridgeId}</span>}
         </div>
-        <div className="unknown-device-hint">{hint}</div>
+        <div className="unknown-device-hint">{hint}{info.id_format === 'label' ? ' (Label ID)' : ''}</div>
       </div>
       <div className="unknown-device-meta">
         {info.level && <span className="unknown-device-level">{info.level}</span>}
