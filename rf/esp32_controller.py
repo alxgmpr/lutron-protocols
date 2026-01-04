@@ -1400,6 +1400,8 @@ def cmd_serve(args):
                             message = msg.message if hasattr(msg, 'message') else str(msg)
                             if isinstance(message, bytes):
                                 message = message.decode('utf-8', errors='replace')
+                            # Strip ANSI escape codes (color codes from ESP32 logs)
+                            message = re.sub(r'\x1b\[[0-9;]*m', '', message)
 
                             # Parse and store packets in database
                             _parse_and_store_packet(message)
