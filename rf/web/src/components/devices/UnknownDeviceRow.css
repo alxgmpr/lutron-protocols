@@ -32,6 +32,16 @@
   gap: 8px;
 }
 
+.unknown-device-subnet {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-purple);
+  background: rgba(168, 85, 247, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
 .unknown-device-via {
   font-size: 10px;
   color: var(--text-muted);

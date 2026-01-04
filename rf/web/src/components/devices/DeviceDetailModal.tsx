@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common'
 import { DEVICE_TYPES } from '../../types'
+import { parseDeviceId } from '../../utils'
 import type { Device } from '../../types'
 import './DeviceDetailModal.css'
 
@@ -179,7 +180,33 @@ export function DeviceDetailModal({
           <div className="device-info-section">
             {!isLabeled && (
               <>
-                <div className="device-id-display">{device.id}</div>
+                <div className="device-id-display">
+                  {(() => {
+                    const parts = parseDeviceId(device.id)
+                    if (parts) {
+                      return (
+                        <div className="device-id-structured">
+                          <span className="device-id-full">{device.id}</span>
+                          <div className="device-id-parts">
+                            <div className="device-id-part">
+                              <span className="device-id-part-label">Subnet</span>
+                              <span className="device-id-part-value subnet-value">{parts.subnet}</span>
+                            </div>
+                            <div className="device-id-part">
+                              <span className="device-id-part-label">Zone</span>
+                              <span className="device-id-part-value">0x{parts.zoneId}</span>
+                            </div>
+                            <div className="device-id-part">
+                              <span className="device-id-part-label">Endpoint</span>
+                              <span className="device-id-part-value">0x{parts.endpoint}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return device.id
+                  })()}
+                </div>
                 <div className="device-inference">
                   <div className="inference-guess">
                     <span className="inference-label">Detected as:</span>
@@ -218,23 +245,31 @@ export function DeviceDetailModal({
               <div className="paired-devices-section">
                 <h3>Paired Device IDs ({allDevices.length})</h3>
                 <div className="paired-devices-list">
-                  {allDevices.map(([id, dev]) => (
-                    <div key={id} className="paired-device-item">
-                      <div className="paired-device-info">
-                        <span className="paired-device-id">{id}</span>
-                        {dev.info?.bridge_id && (
-                          <span className="paired-device-via">via {dev.info.bridge_id}</span>
-                        )}
-                        {dev.info?.level && (
-                          <span className="paired-device-level">{dev.info.level}</span>
-                        )}
+                  {allDevices.map(([id, dev]) => {
+                    const parts = parseDeviceId(id)
+                    return (
+                      <div key={id} className="paired-device-item">
+                        <div className="paired-device-info">
+                          <span className="paired-device-id">{id}</span>
+                          {parts && (
+                            <span className="paired-device-subnet" title="Subnet Address">
+                              {parts.subnet}
+                            </span>
+                          )}
+                          {dev.info?.bridge_id && (
+                            <span className="paired-device-via">via {dev.info.bridge_id}</span>
+                          )}
+                          {dev.info?.level && (
+                            <span className="paired-device-level">{dev.info.level}</span>
+                          )}
+                        </div>
+                        <div className="paired-device-actions">
+                          {renderControlButtons(dev)}
+                          <Button size="sm" variant="red" onClick={() => onDelete(id)}>×</Button>
+                        </div>
                       </div>
-                      <div className="paired-device-actions">
-                        {renderControlButtons(dev)}
-                        <Button size="sm" variant="red" onClick={() => onDelete(id)}>×</Button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </>

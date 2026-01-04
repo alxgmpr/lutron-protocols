@@ -4,11 +4,49 @@
 
 | Parameter | Value |
 |-----------|-------|
-| Frequency | 433.602844 MHz |
+| Frequency | 433.602844 MHz (default) |
+| RF Channel | 26 (default, as shown in Lutron Designer) |
 | Modulation | 2-FSK |
 | Data Rate | 62.5 kBaud |
 | Deviation | 41.2 kHz |
 | Encoding | Async serial N81 (start=0, 8 data LSB first, stop=1) |
+
+### RF Channel Table
+
+Lutron Designer allows selecting from 15 RF channels.
+
+**Formula:** `Frequency (MHz) = 431.0 + (channel × 0.1)`
+
+| Channel | Frequency (MHz) |
+|---------|-----------------|
+| 5 | 431.5 |
+| 14 | 432.4 |
+| 17 | 432.7 |
+| 20 | 433.0 |
+| 23 | 433.3 |
+| **26** | **433.6** (default) |
+| 29 | 433.9 |
+| 32 | 434.2 |
+| 38 | 434.8 |
+| 41 | 435.1 |
+| 44 | 435.4 |
+| 47 | 435.7 |
+| 50 | 436.0 |
+| 53 | 436.3 |
+| 56 | 436.6 |
+
+### Multi-Processor Channel Assignment
+
+When using two main repeaters (RadioRA 2) or two processors (RadioRA 3) in the same system:
+- Each processor operates on a **different RF channel** to avoid interference
+- The first processor activated retains the **default channel 26**
+- The second processor is assigned a different channel
+
+**Device types:**
+- **Two-way devices** (dimmers, switches) receive programming wirelessly and automatically switch to match their processor's RF channel
+- **One-Way Transmitters (OWTs)** like Picos and occupancy sensors only transmit - they cannot receive channel settings and must be **manually configured** to match their assigned processor's channel
+
+OWT channel change procedures involve putting the device into channel selection mode and cycling through channels until the processor acknowledges (beep in RR2, popup in RR3 Designer).
 
 ### CC1101 Register Configuration
 
@@ -146,6 +184,45 @@ In packets, they appear in big-endian byte order matching the printed label.
 Example:
 - Printed: `084b1ebb`
 - In packet: `08 4B 1E BB`
+
+### Device ID Structure
+
+Device IDs contain an embedded **Subnet Address** that identifies which processor/bridge owns the device:
+
+```
+Device ID: [Zone][SubnetLo][SubnetHi][Endpoint]
+           Byte0   Byte1     Byte2    Byte3
+```
+
+| Component | Size | Description |
+|-----------|------|-------------|
+| Zone | 1 byte | Device/zone number within subnet (0x00-0xFF) |
+| Subnet | 2 bytes | RF subnet address (little-endian in packet) |
+| Endpoint | 1 byte | Button/endpoint indicator |
+
+Example device ID `062C908C`:
+- Zone: 0x06
+- Subnet: 902C (displayed big-endian as in Lutron Designer)
+- Endpoint: 0x8C
+
+The subnet appears in Lutron Designer under CCA device configuration as "Subnet Address".
+
+### RF Subnets
+
+The RF subnet is **not** an IP network subnet - it's a wireless address space that determines which processor/bridge controls devices.
+
+Key facts from Lutron documentation:
+- Each Main Repeater/processor owns one "device link" with up to 100 devices
+- The subnet address identifies which repeater owns the device
+- Devices on different subnets cannot communicate directly via RF
+- Multiple repeaters in range must use different subnet addresses
+- Repeaters communicate with each other over LAN, not RF
+
+Common subnet patterns observed:
+- 902C - Caseta Pro bridge
+- 82D7 - RadioRA3 processor
+
+When devices appear with the same subnet but different Zone bytes, they belong to the same processor.
 
 ## Button Press Packet (24 bytes)
 

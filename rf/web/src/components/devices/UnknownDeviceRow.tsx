@@ -1,4 +1,5 @@
 import type { Device } from '../../types'
+import { extractSubnet } from '../../utils'
 import './UnknownDeviceRow.css'
 
 interface UnknownDeviceRowProps {
@@ -25,12 +26,14 @@ export function UnknownDeviceRow({ device, onClick, formatTime }: UnknownDeviceR
   const bridgeId = info.bridge_id || ''
   const lastSeen = formatTime ? formatTime(device.last_seen) : ''
   const hint = getDeviceHint(device)
+  const subnet = extractSubnet(device.id)
 
   return (
     <div className="unknown-device-row" onClick={onClick}>
       <div className="unknown-device-main">
         <div className="unknown-device-id">
           {device.id}
+          {subnet && <span className="unknown-device-subnet" title="Subnet Address">{subnet}</span>}
           {bridgeId && <span className="unknown-device-via">via {bridgeId}</span>}
         </div>
         <div className="unknown-device-hint">{hint}</div>

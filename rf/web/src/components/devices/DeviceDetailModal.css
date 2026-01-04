@@ -93,11 +93,55 @@
 }
 
 .device-id-display {
+  margin-bottom: 12px;
+}
+
+.device-id-structured {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.device-id-full {
   font-family: 'JetBrains Mono', monospace;
   font-size: 20px;
   font-weight: 600;
   color: var(--accent-cyan);
-  margin-bottom: 12px;
+}
+
+.device-id-parts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.device-id-part {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-id-part-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.device-id-part-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.device-id-part-value.subnet-value {
+  color: var(--accent-purple);
+  background: rgba(168, 85, 247, 0.15);
+  font-weight: 600;
 }
 
 .device-inference {
@@ -348,6 +392,16 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--accent-cyan);
+}
+
+.paired-device-subnet {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-purple);
+  background: rgba(168, 85, 247, 0.15);
+  padding: 2px 6px;
+  border-radius: 3px;
 }
 
 .paired-device-via {
