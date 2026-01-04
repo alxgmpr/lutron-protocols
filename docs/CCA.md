@@ -198,12 +198,24 @@ Device ID: [Zone][SubnetLo][SubnetHi][Endpoint]
 |-----------|------|-------------|
 | Zone | 1 byte | Device/zone number within subnet (0x00-0xFF) |
 | Subnet | 2 bytes | RF subnet address (little-endian in packet) |
-| Endpoint | 1 byte | Button/endpoint indicator |
+| Endpoint | 1 byte | Target endpoint indicator |
 
 Example device ID `062C908C`:
 - Zone: 0x06
 - Subnet: 902C (displayed big-endian as in Lutron Designer)
 - Endpoint: 0x8C
+
+### Endpoint Patterns
+
+The endpoint byte indicates the target/type of communication:
+
+| Endpoint | Meaning |
+|----------|---------|
+| 0x80 | Specific/unicast (e.g., bridge control endpoint) |
+| 0x8F | Broadcast/all listeners (0xF = all) |
+| 0x8C, 0x8D | Device-specific endpoints |
+
+Dimmers send state reports to both 0x80 (unicast) and 0x8F (broadcast) endpoints.
 
 The subnet appears in Lutron Designer under CCA device configuration as "Subnet Address".
 
@@ -316,10 +328,10 @@ Level encoding: 100% = 0xFEFF (not 0xFFFF which is reserved/invalid)
 
 ## Dimmer State Report (24 bytes)
 
-Dimmers broadcast their current level:
+Dimmers broadcast their current level using two endpoint addresses:
 
 ```
-Byte  0: Type (0x81-0x83)
+Byte  0: Type (0x81-0x83, cycles)
 Byte  1: Sequence
 Byte 2-5: Dimmer RF TX ID (little-endian)
 Byte  6: 0x00
@@ -331,10 +343,31 @@ Byte 11: Level (0x00-0xFE = 0-100%)
 Byte 12: 0x00
 Byte 13: 0x1B
 Byte 14: 0x92
-Byte 15: Level (duplicated)
+Byte 15: Unknown (observed: 0x03)
 Byte 16-21: 0xCC padding
 Byte 22-23: CRC-16
 ```
+
+### State Report Transmission Pattern
+
+When a dimmer's state changes, it sends reports to TWO different endpoint addresses:
+
+1. **First packet** - Specific endpoint (0x80): Unicast to bridge
+2. **Remaining packets** - Broadcast endpoint (0x8F): For all listeners
+
+Example observed sequence:
+```
+Seq 0:  222C9080  (endpoint 0x80 - unicast)
+Seq 5:  222C908F  (endpoint 0x8F - broadcast)
+Seq 12: 222C908F  (endpoint 0x8F - broadcast)
+...repeats with 0x8F...
+```
+
+The endpoint byte (byte 2 in little-endian storage) changes:
+- **0x80**: Specific/unicast address for the bridge
+- **0x8F**: Broadcast address (0xF = all listeners)
+
+This ensures the bridge receives the state update directly, while other paired devices (Picos displaying state, etc.) receive the broadcast.
 
 ## ID Relationships
 
