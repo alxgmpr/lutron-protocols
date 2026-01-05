@@ -344,7 +344,7 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_BUTTON_LONG_A: return "BTN_LONG_A";
     case PKT_BUTTON_SHORT_B: return "BTN_SHORT_B";
     case PKT_BUTTON_LONG_B: return "BTN_LONG_B";
-    case PKT_LEVEL: return "LEVEL";
+    case PKT_LEVEL: return "SET_LEVEL";
     case PKT_STATE_REPORT_81: return "STATE_RPT";
     case PKT_STATE_REPORT_82: return "STATE_RPT";
     case PKT_STATE_REPORT_83: return "STATE_RPT";

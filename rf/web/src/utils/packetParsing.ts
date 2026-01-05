@@ -109,10 +109,12 @@ export const ACTION_NAMES: Record<string, string> = {
 }
 
 export const PACKET_TYPE_NAMES: Record<string, string> = {
-  '81': 'STATE/LEVEL', '82': 'STATE/LEVEL', '83': 'STATE/LEVEL',
+  // STATE_RPT: Dimmer reporting its current level (format byte 0x08)
+  '81': 'STATE_RPT', '82': 'STATE_RPT', '83': 'STATE_RPT',
   '88': 'BTN_SHORT_A', '89': 'BTN_LONG_A', '8A': 'BTN_SHORT_B', '8B': 'BTN_LONG_B',
   '91': 'BEACON', '92': 'BEACON', '93': 'BEACON',
-  'A2': 'LEVEL',
+  // SET_LEVEL: Bridge commanding a dimmer to a level (format byte 0x0E)
+  'A2': 'SET_LEVEL',
   'B8': 'PAIR_B8', 'B9': 'PAIR_B9', 'BA': 'PAIR_BA', 'BB': 'PAIR_BB',
   // Virtual types (assigned by ESP32 based on format byte)
   'F0': 'UNPAIR', 'F1': 'UNPAIR_PREP',
@@ -121,7 +123,7 @@ export const PACKET_TYPE_NAMES: Record<string, string> = {
 /**
  * Get the appropriate field definitions for a packet type.
  */
-export function getFieldsForPacket(packetType: string, bytes: string[]): ByteField[] {
+export function getFieldsForPacket(packetType: string, _bytes: string[]): ByteField[] {
   // Pairing packets (53 bytes)
   if (packetType.startsWith('PAIR_')) {
     return PAIRING_FIELDS
@@ -138,18 +140,12 @@ export function getFieldsForPacket(packetType: string, bytes: string[]): ByteFie
   if (packetType === 'UNPAIR') {
     return UNPAIR_CMD_FIELDS
   }
-  // STATE_RPT vs LEVEL - distinguish by bytes 6-7
-  if (packetType === 'LEVEL' || packetType === 'STATE_RPT') {
-    // STATE_RPT: bytes 6-7 = 00 08
-    // LEVEL cmd: bytes 6-7 = 21 0E
-    // UNPAIR cmd: bytes 6-7 = 21 0C (but handled above by packetType)
-    if (bytes.length >= 8 && bytes[6] === '00' && bytes[7] === '08') {
-      return STATE_RPT_FIELDS
-    }
-    // Also check for UNPAIR format (0x0C) in case packet type wasn't set correctly
-    if (bytes.length >= 8 && bytes[7]?.toUpperCase() === '0C') {
-      return UNPAIR_CMD_FIELDS
-    }
+  // STATE_RPT: Dimmer reporting its level
+  if (packetType === 'STATE_RPT') {
+    return STATE_RPT_FIELDS
+  }
+  // SET_LEVEL: Bridge commanding a level
+  if (packetType === 'SET_LEVEL') {
     return LEVEL_CMD_FIELDS
   }
   return BUTTON_FIELDS  // fallback
