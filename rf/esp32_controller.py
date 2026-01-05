@@ -673,11 +673,10 @@ def _parse_and_store_packet(message: str):
             bytes_list = raw_hex.split()
             parsed = parse_packet_bytes(bytes_list)
 
-            # Register device for echo detection
+            # Register device for echo detection - only register device_id (target)
+            # Don't register source_id (bridge) because real bridge packets shouldn't be filtered
             if parsed['device_id']:
                 _register_tx_device(parsed['device_id'])
-            if parsed['source_id'] and parsed['source_id'] != parsed['device_id']:
-                _register_tx_device(parsed['source_id'])
 
             db.insert_decoded_packet(
                 direction='tx',
@@ -802,11 +801,10 @@ def _parse_and_store_packet(message: str):
             # Use the new parsing function
             parsed = parse_packet_bytes(bytes_list)
 
-            # Register device_id for echo detection
+            # Register device_id for echo detection - only register device_id (target)
+            # Don't register source_id (bridge) because real bridge packets shouldn't be filtered
             if parsed['device_id']:
                 _register_tx_device(parsed['device_id'])
-            if parsed['source_id'] and parsed['source_id'] != parsed['device_id']:
-                _register_tx_device(parsed['source_id'])
 
             db.insert_decoded_packet(
                 direction='tx',
