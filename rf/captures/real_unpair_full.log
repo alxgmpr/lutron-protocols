@@ -1,0 +1,57 @@
+INFO ESPHome 2025.12.1
+INFO Reading configuration ~/lutron-tools/rf/esphome/pico-proxy-cc1101.yaml...
+INFO Starting log output from pico-trigger.local using esphome API
+INFO Successfully resolved pico-trigger.local in 0.178s
+INFO Successfully connected to pico-trigger @ 10.1.4.59 in 0.008s
+INFO Successful handshake with pico-trigger @ 10.1.4.59 in 0.104s
+[23:06:53.673][I][app:194]: ESPHome version 2025.12.1 compiled on Jan  4 2026, 22:05:13
+[23:06:53.674][C][logger:261]: Logger:
+[23:06:53.674][C][logger:261]:   Max Level: DEBUG
+[23:06:53.674][C][logger:261]:   Initial Level: DEBUG
+[23:06:53.674][C][logger:267]:   Log Baud Rate: 115200
+[23:06:53.674][C][logger:267]:   Hardware UART: UART0
+[23:06:53.674][C][logger:274]:   Task Log Buffer Size: 768
+[23:06:53.674][C][spi:067]: SPI bus:
+[23:06:53.674][C][spi:068]:   CLK Pin: GPIO18
+[23:06:53.686][C][spi:069]:   SDI Pin: GPIO19
+[23:06:53.686][C][spi:070]:   SDO Pin: GPIO23
+[23:06:53.686][C][spi:075]:   Using HW SPI: SPI
+[23:06:53.711][C][template.switch:092]: Template Switch 'Beacon Mode'
+[23:06:53.711][C][template.switch:092]:   Restore Mode: always OFF
+[23:06:53.711][C][template.switch:100]:   Icon: 'mdi:broadcast'
+[23:06:53.711][C][template.switch:055]:   Optimistic: YES
+[23:06:53.712][C][lutron_cc1101:107]: Lutron CC1101:
+[23:06:53.713][C][lutron_cc1101:108]:   Status: OK
+[23:06:53.716][C][lutron_cc1101:109]:   RX Enabled: YES
+[23:06:53.724][C][lutron_cc1101:110]:   RX Auto: YES
+[23:06:53.767][C][wifi:1132]: WiFi:
+[23:06:53.767][C][wifi:1132]:   Connected: YES
+[23:06:53.767][C][wifi:897]:   Local MAC: 10:06:1C:F2:33:64
+[23:06:53.775][C][wifi:904]:   IP Address: 10.1.4.59
+[23:06:53.775][C][wifi:908]:   SSID: 'gompper-sage-iot'
+[23:06:53.775][C][wifi:908]:   BSSID: 9C:05:D6:56:EE:27
+[23:06:53.775][C][wifi:908]:   Hostname: 'pico-trigger'
+[23:06:53.775][C][wifi:908]:   Signal strength: -60 dB ▂▄▆█
+[23:06:53.775][C][wifi:908]:   Channel: 6
+[23:06:53.775][C][wifi:908]:   Subnet: 255.255.255.192
+[23:06:53.775][C][wifi:908]:   Gateway: 10.1.4.1
+[23:06:53.775][C][wifi:908]:   DNS1: 10.1.3.3
+[23:06:53.775][C][wifi:908]:   DNS2: 0.0.0.0
+[23:06:53.786][C][esphome.ota:092]: Over-The-Air updates:
+[23:06:53.786][C][esphome.ota:092]:   Address: pico-trigger.local:3232
+[23:06:53.786][C][esphome.ota:092]:   Version: 2
+[23:06:53.789][C][esphome.ota:099]:   Password configured
+[23:06:53.798][C][safe_mode:018]: Safe Mode:
+[23:06:53.798][C][safe_mode:018]:   Successful after: 60s
+[23:06:53.798][C][safe_mode:018]:   Invoke after: 10 attempts
+[23:06:53.798][C][safe_mode:018]:   Duration: 300s
+[23:06:53.812][C][api:211]: Server:
+[23:06:53.812][C][api:211]:   Address: pico-trigger.local:6053
+[23:06:53.812][C][api:211]:   Listen backlog: 4
+[23:06:53.812][C][api:211]:   Max connections: 8
+[23:06:53.812][C][api:218]:   Noise encryption: YES
+[23:06:53.822][C][mdns:177]: mDNS:
+[23:06:53.822][C][mdns:177]:   Hostname: pico-trigger
+[23:07:57.557][D][api.connection:264]: aioesphomeapi (10.1.1.121) disconnected
+[23:08:00.949][D][api:136]: Accept 10.1.1.121
+[23:08:01.023][D][api.connection:1398]: aioesphomeapi (10.1.1.121) connected
