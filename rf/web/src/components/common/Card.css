@@ -59,7 +59,7 @@
 }
 
 /* Collapsible card styles */
-.card-collapse-icon {
+.card-collapse-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -69,27 +69,22 @@
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg-elevated);
+  border: none;
   border-radius: 3px;
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
+  padding: 0;
+  font-family: inherit;
 }
 
-.card-collapse-icon:hover {
+.card-collapse-btn:hover {
   background: var(--border-accent);
   color: var(--text-primary);
 }
 
-.card-collapse-icon.collapsed {
+.card-collapse-btn.collapsed {
   color: var(--accent-cyan);
-}
-
-.card-header:has(.card-collapse-icon) {
-  cursor: pointer;
-}
-
-.card-header:has(.card-collapse-icon):hover {
-  background: var(--bg-elevated);
 }
 
 .card-collapsed {

@@ -26,16 +26,20 @@ export function Card({
 
   return (
     <div className={`card card-${variant} ${className} ${collapsed ? 'card-collapsed' : ''}`}>
-      <div className="card-header" onClick={collapsible ? () => setCollapsed(!collapsed) : undefined}>
+      <div className="card-header">
         <div className="card-header-left">
           {collapsible && (
-            <span className={`card-collapse-icon ${collapsed ? 'collapsed' : ''}`}>
+            <button
+              className={`card-collapse-btn ${collapsed ? 'collapsed' : ''}`}
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? 'Expand' : 'Collapse'}
+            >
               {collapsed ? '+' : '-'}
-            </span>
+            </button>
           )}
           <h2 className="card-title">{title}</h2>
           {badge && <span className="card-badge">{badge}</span>}
-          {collapsed && <span className="card-collapsed-hint">click to expand</span>}
+          {collapsed && <span className="card-collapsed-hint">click +/- to expand</span>}
         </div>
         {actions && !collapsed && <div className="card-actions">{actions}</div>}
       </div>

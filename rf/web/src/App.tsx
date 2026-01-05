@@ -13,6 +13,7 @@ import {
   SaveFavorite,
   BridgeLevel,
   BridgeBeacon,
+  BridgeUnpair,
   DeviceState,
   ResetPico
 } from './components/controls'
@@ -241,6 +242,7 @@ function App() {
           <SaveFavorite showStatus={showStatus} />
           <BridgeLevel showStatus={showStatus} />
           <BridgeBeacon showStatus={showStatus} />
+          <BridgeUnpair showStatus={showStatus} />
           <DeviceState showStatus={showStatus} />
           <ResetPico showStatus={showStatus} />
         </section>

@@ -146,6 +146,21 @@ const LEVEL_CMD_FIELDS: ByteField[] = [
   { name: 'CRC', start: 22, end: 24, format: 'hex' },
 ]
 
+// UNPAIR: Bridge removing a device from the network
+const UNPAIR_CMD_FIELDS: ByteField[] = [
+  { name: 'Type', start: 0, end: 1, format: 'hex' },
+  { name: 'Sequence', start: 1, end: 2, format: 'decimal' },
+  { name: 'Bridge Zone', start: 2, end: 6, format: 'device_id' },  // Little-endian
+  { name: 'Protocol', start: 6, end: 7, format: 'hex' },  // 21
+  { name: 'Format', start: 7, end: 8, format: 'hex' },  // 0C = UNPAIR
+  { name: 'Fixed', start: 8, end: 9, format: 'hex' },  // 00
+  { name: 'Broadcast', start: 9, end: 14, format: 'hex' },  // FF FF FF FF FF
+  { name: 'Command', start: 14, end: 16, format: 'hex' },  // 02 08 = unpair
+  { name: 'Target ID', start: 16, end: 20, format: 'device_id_be' },  // Big-endian
+  { name: 'Padding', start: 20, end: 22, format: 'hex' },
+  { name: 'CRC', start: 22, end: 24, format: 'hex' },
+]
+
 // BTN: Button press packets (short and long format)
 const BUTTON_FIELDS: ByteField[] = [
   { name: 'Type', start: 0, end: 1, format: 'hex' },
@@ -217,12 +232,21 @@ function getFieldsForPacket(packetType: string, bytes: string[]): ByteField[] {
   if (packetType.startsWith('BTN_')) {
     return BUTTON_FIELDS
   }
+  // UNPAIR packets
+  if (packetType === 'UNPAIR') {
+    return UNPAIR_CMD_FIELDS
+  }
   // STATE_RPT vs LEVEL - distinguish by bytes 6-7
   if (packetType === 'LEVEL' || packetType === 'STATE_RPT') {
     // STATE_RPT: bytes 6-7 = 00 08
     // LEVEL cmd: bytes 6-7 = 21 0E
+    // UNPAIR cmd: bytes 6-7 = 21 0C (but handled above by packetType)
     if (bytes.length >= 8 && bytes[6] === '00' && bytes[7] === '08') {
       return STATE_RPT_FIELDS
+    }
+    // Also check for UNPAIR format (0x0C) in case packet type wasn't set correctly
+    if (bytes.length >= 8 && bytes[7]?.toUpperCase() === '0C') {
+      return UNPAIR_CMD_FIELDS
     }
     return LEVEL_CMD_FIELDS
   }

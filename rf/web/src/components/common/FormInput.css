@@ -28,3 +28,37 @@
   margin: 0;
 }
 
+/* Prefixed input (e.g., 0x for hex values) */
+.form-input-with-prefix {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.form-input-with-prefix:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.2);
+}
+
+.form-input-prefix {
+  padding: 6px 0 6px 10px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  user-select: none;
+}
+
+.form-input-prefixed {
+  border: none;
+  padding-left: 2px;
+  background: transparent;
+}
+
+.form-input-prefixed:focus {
+  outline: none;
+  box-shadow: none;
+}
+

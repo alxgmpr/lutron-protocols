@@ -349,17 +349,31 @@ def _parse_and_store_packet(message: str):
             decoded_data = {}
 
             if pkt_type_byte in ('81', '82', '83'):
-                pkt_type = 'LEVEL'
-                if len(bytes_list) >= 13:
+                # Check format byte at [7] to distinguish LEVEL vs UNPAIR
+                # 0x0E = LEVEL command, 0x0C = UNPAIR command
+                format_byte = bytes_list[7].upper() if len(bytes_list) > 7 else '??'
+
+                if format_byte == '0C' and len(bytes_list) >= 20:
+                    # UNPAIR packet: bridge_zone at [2-5] (LE), target at [16-19] (BE)
+                    pkt_type = 'UNPAIR'
                     source_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-                    target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+                    target_id = f"{bytes_list[16]}{bytes_list[17]}{bytes_list[18]}{bytes_list[19]}".upper()
                     device_id = target_id
-                    decoded_data['source'] = source_id
+                    decoded_data['bridge'] = source_id
                     decoded_data['target'] = target_id
-                if len(bytes_list) >= 18:
-                    level_raw = int(bytes_list[16] + bytes_list[17], 16)
-                    level = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
-                    decoded_data['level'] = str(level)
+                else:
+                    # LEVEL packet: source at [2-5] (LE), target at [9-12]
+                    pkt_type = 'LEVEL'
+                    if len(bytes_list) >= 13:
+                        source_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+                        target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+                        device_id = target_id
+                        decoded_data['source'] = source_id
+                        decoded_data['target'] = target_id
+                    if len(bytes_list) >= 18:
+                        level_raw = int(bytes_list[16] + bytes_list[17], 16)
+                        level = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
+                        decoded_data['level'] = str(level)
             elif pkt_type_byte in ('B9', 'BA', 'BB', 'B8'):
                 pkt_type = f'PAIR_{pkt_type_byte}'
                 if len(bytes_list) >= 6:
@@ -422,6 +436,8 @@ def _parse_and_store_packet(message: str):
 def _infer_category_from_type(pkt_type: str, button: str = None) -> str:
     """Infer device category from packet type."""
     if pkt_type == 'LEVEL':
+        return 'bridge_controlled'
+    elif pkt_type == 'UNPAIR':
         return 'bridge_controlled'
     elif pkt_type == 'STATE_RPT':
         return 'dimmer_passive'
@@ -553,6 +569,12 @@ class ESP32Controller:
         await self.call_service('send_reset',
                                source_id=f"0x{source_id:08X}",
                                paired_id=f"0x{paired_id:08X}")
+
+    async def send_bridge_unpair(self, bridge_zone_id: int, target_device_id: int):
+        """Send bridge-style unpair command to remove a device from the network."""
+        await self.call_service('send_bridge_unpair',
+                               bridge_zone_id=f"0x{bridge_zone_id:08X}",
+                               target_device_id=f"0x{target_device_id:08X}")
 
     async def start_rx(self):
         """Start RX mode by pressing rx_on button."""
@@ -790,6 +812,15 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_reset(source_id, paired_id)
+        finally:
+            await controller.disconnect()
+
+    async def send_bridge_unpair_async(bridge_zone_id: int, target_device_id: int):
+        """Send bridge-style unpair command."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_bridge_unpair(bridge_zone_id, target_device_id)
         finally:
             await controller.disconnect()
 
@@ -1052,6 +1083,35 @@ def cmd_serve(args):
             return jsonify({
                 'status': 'ok',
                 'pico': f'0x{pico_id:08X}'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/unpair', methods=['POST'])
+    def api_unpair():
+        """Send bridge-style unpair command to remove a device from the network.
+
+        Captured from Caseta bridge removing device 06F4587E.
+        Uses 0x81-0x83 type with FF FF FF FF FF broadcast indicator.
+
+        Args:
+            bridge: Bridge zone ID (e.g., 0x002C90AD)
+            target: Device to unpair (e.g., 0x06F4587E)
+        """
+        try:
+            bridge = get_param('bridge', '')
+            target = get_param('target', '')
+            if not bridge or not target:
+                return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
+
+            bridge_id = parse_hex_int(bridge)
+            target_id = parse_hex_int(target)
+            asyncio.run(send_bridge_unpair_async(bridge_id, target_id))
+
+            return jsonify({
+                'status': 'ok',
+                'bridge': f'0x{bridge_id:08X}',
+                'target': f'0x{target_id:08X}'
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

@@ -37,10 +37,10 @@ export function BridgeLevel({ showStatus }: Props) {
       <p className="help-text">Set the level of a device that has paired to the bridge. Unlike pico commands, bridges can set specific levels to devices.</p>
       <div className="form-row">
         <FormGroup label="Bridge ID">
-          <FormInput value={bridgeId} onChange={setBridgeId} width={120} />
+          <FormInput value={bridgeId} onChange={setBridgeId} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Target ID">
-          <FormInput value={targetId} onChange={setTargetId} width={120} />
+          <FormInput value={targetId} onChange={setTargetId} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Level">
           <FormInput 

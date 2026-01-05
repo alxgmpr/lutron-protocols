@@ -209,6 +209,16 @@ class LutronCC1101 : public Component,
   void send_reset(uint32_t source_id, uint32_t paired_id);
 
   /**
+   * @brief Send bridge-style unpair command to remove a device from the network
+   * Captured from Caseta bridge removing device 06F4587E:
+   * 83 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 06 F4 58 7E CC CC [CRC]
+   *
+   * @param bridge_zone_id Bridge zone ID (e.g., 0x002C90AD), sent little-endian
+   * @param target_device_id Device to unpair (e.g., 0x06F4587E), sent big-endian
+   */
+  void send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id);
+
+  /**
    * @brief Transmit a raw packet (public for YAML lambda access)
    */
   void transmit_packet(const uint8_t *packet, size_t len);

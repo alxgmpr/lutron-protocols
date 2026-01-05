@@ -179,6 +179,19 @@ api:
             ESP_LOGI("service", "send_reset: source=0x%08X paired=0x%08X", src_id, pair_id);
             id(lutron_radio)->send_reset(src_id, pair_id);
 
+    # Bridge-style unpair - Remove a device from bridge network
+    # Captured from Caseta bridge removing device 06F4587E
+    - service: send_bridge_unpair
+      variables:
+        bridge_zone_id: string
+        target_device_id: string
+      then:
+        - lambda: |-
+            uint32_t bridge_id = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target_id = strtoul(target_device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_bridge_unpair: bridge=0x%08X target=0x%08X", bridge_id, target_id);
+            id(lutron_radio)->send_bridge_unpair(bridge_id, target_id);
+
 ota:
   platform: esphome
   password: "test"

@@ -55,7 +55,7 @@ export function BridgeBeacon({ showStatus }: Props) {
       </p>
       <div className="form-row">
         <FormGroup label="Bridge ID">
-          <FormInput value={bridgeId} onChange={setBridgeId} width={120} />
+          <FormInput value={bridgeId} onChange={setBridgeId} width={120} prefix="0x" />
         </FormGroup>
         <div className="beacon-toggle-container">
           <label className="beacon-toggle-label">Beacon</label>

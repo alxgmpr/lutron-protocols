@@ -10,6 +10,7 @@ interface FormInputProps {
   min?: number
   max?: number
   className?: string
+  prefix?: string
 }
 
 export function FormInput({
@@ -20,15 +21,38 @@ export function FormInput({
   width,
   min,
   max,
-  className = ''
+  className = '',
+  prefix
 }: FormInputProps) {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.value)
+    onChange(prefix ? prefix + e.target.value : e.target.value)
   }
 
-  const style = width !== undefined 
+  // Strip prefix from displayed value
+  const displayValue = prefix && typeof value === 'string' && value.startsWith(prefix)
+    ? value.slice(prefix.length)
+    : value
+
+  const style = width !== undefined
     ? { width: typeof width === 'number' ? `${width}px` : width }
     : undefined
+
+  if (prefix) {
+    return (
+      <div className="form-input-with-prefix" style={style}>
+        <span className="form-input-prefix">{prefix}</span>
+        <input
+          type={type}
+          value={displayValue}
+          onChange={handleChange}
+          placeholder={placeholder}
+          min={min}
+          max={max}
+          className={`form-input form-input-prefixed ${className}`}
+        />
+      </div>
+    )
+  }
 
   return (
     <input

@@ -30,10 +30,11 @@ export function ResetPico({ showStatus }: Props) {
       <p className="help-text">Broadcasts "forget" message to devices within earshot. Devices who have paired to this Pico will forget about it.</p>
       <div className="form-row">
         <FormGroup label="Pico ID" flex="auto">
-          <FormInput 
-            value={picoId} 
+          <FormInput
+            value={picoId}
             onChange={setPicoId}
             placeholder="Pico ID to reset"
+            prefix="0x"
           />
         </FormGroup>
         <Button variant="red" onClick={handleReset}>RESET</Button>

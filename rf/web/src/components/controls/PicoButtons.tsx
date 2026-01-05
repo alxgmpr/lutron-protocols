@@ -38,7 +38,7 @@ export function PicoButtons({ showStatus }: Props) {
           Send Pico remote button presses to any devices that have paired to this Pico. Choose a predefined button or specify a custom code to emulate different Pico remote actions.
         </p>
         <FormGroup label="Pico ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} />
+          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Button">
           <FormSelect value={button} onChange={setButton}>
@@ -58,7 +58,7 @@ export function PicoButtons({ showStatus }: Props) {
           </FormSelect>
         </FormGroup>
         <FormGroup label="Custom">
-          <FormInput value={customButton} onChange={setCustomButton} placeholder="0x00" width={60} />
+          <FormInput value={customButton} onChange={setCustomButton} placeholder="00" width={60} prefix="0x" />
         </FormGroup>
         <Button variant="primary" onClick={() => sendButton(button)}>SEND</Button>
         <Button variant="orange" onClick={() => customButton && sendButton(customButton)}>CUSTOM</Button>
