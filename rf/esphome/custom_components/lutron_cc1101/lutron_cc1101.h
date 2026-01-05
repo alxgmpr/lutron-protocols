@@ -201,6 +201,13 @@ class LutronCC1101 : public Component,
   void send_debug_pattern();
 
   /**
+   * @brief Test packet parsing with hex string input
+   * Parses hex bytes and logs result as JSON for test verification
+   * @param hex_bytes Space-separated hex string (e.g., "88 00 8D E6 95 05 ...")
+   */
+  void test_decode_packet(const std::string &hex_bytes);
+
+  /**
    * @brief Send Reset/Unpair packet to remove a Pico from a device
    * Uses 0x81 packet type with byte[7]=0x0C format indicator
    * @param source_id Source/RF transmit ID (e.g., ESP32's fake Pico ID)

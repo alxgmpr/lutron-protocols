@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, FormInput } from '../common'
+import { Card, Button, FormGroup, FormInput, AutocompleteInput } from '../common'
+import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,6 +10,7 @@ interface Props {
 
 export function DeviceState({ showStatus }: Props) {
   const { post } = useApi()
+  const { seen } = useDevices()
   const [deviceId, setDeviceId] = useState('0x8F902C08')
   const [level, setLevel] = useState(50)
 
@@ -33,7 +35,7 @@ export function DeviceState({ showStatus }: Props) {
       </p>
       <div className="form-row">
         <FormGroup label="Device ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
+          <AutocompleteInput value={deviceId} onChange={setDeviceId} suggestions={seen.dimmers} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Level">
           <FormInput 

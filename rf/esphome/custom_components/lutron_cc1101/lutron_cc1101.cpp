@@ -1269,6 +1269,70 @@ void LutronCC1101::send_debug_pattern() {
   ESP_LOGI(TAG, "=== DEBUG COMPLETE ===");
 }
 
+void LutronCC1101::test_decode_packet(const std::string &hex_bytes) {
+  ESP_LOGI(TAG, "=== TEST DECODE PACKET ===");
+  ESP_LOGI(TAG, "Input: %s", hex_bytes.c_str());
+
+  // Parse hex string to bytes
+  uint8_t bytes[56];
+  size_t byte_count = 0;
+
+  const char *ptr = hex_bytes.c_str();
+  while (*ptr && byte_count < sizeof(bytes)) {
+    // Skip whitespace and separators
+    while (*ptr && (*ptr == ' ' || *ptr == '\t' || *ptr == ',' || *ptr == ':')) {
+      ptr++;
+    }
+    if (!*ptr) break;
+
+    // Parse two hex characters
+    char hex[3] = {0, 0, 0};
+    if (ptr[0] && ptr[1]) {
+      hex[0] = ptr[0];
+      hex[1] = ptr[1];
+      char *end;
+      unsigned long val = strtoul(hex, &end, 16);
+      if (end != hex) {
+        bytes[byte_count++] = (uint8_t)val;
+        ptr += 2;
+      } else {
+        ptr++;  // Skip invalid character
+      }
+    } else {
+      break;
+    }
+  }
+
+  ESP_LOGI(TAG, "Parsed %d bytes", byte_count);
+
+  if (byte_count < 10) {
+    ESP_LOGE(TAG, "Too few bytes to parse (minimum 10)");
+    ESP_LOGI("TEST_RESULT", "{\"error\":\"too_few_bytes\",\"count\":%d}", byte_count);
+    return;
+  }
+
+  // Log raw bytes for verification
+  char hex_out[180];
+  int pos = 0;
+  for (size_t i = 0; i < byte_count && pos < 170; i++) {
+    pos += snprintf(hex_out + pos, sizeof(hex_out) - pos, "%02X ", bytes[i]);
+  }
+  ESP_LOGI(TAG, "Raw bytes: %s", hex_out);
+
+  // Parse the bytes
+  DecodedPacket pkt;
+  if (!this->decoder_.parse_bytes(bytes, byte_count, pkt)) {
+    ESP_LOGE(TAG, "Failed to parse packet");
+    ESP_LOGI("TEST_RESULT", "{\"error\":\"parse_failed\"}");
+    return;
+  }
+
+  // Log parsed result as JSON
+  this->decoder_.log_packet_json(pkt);
+
+  ESP_LOGI(TAG, "=== TEST DECODE COMPLETE ===");
+}
+
 void LutronCC1101::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
                                               int protocol_variant, int pico_type, int button_scheme) {
   if (this->pairing_) {

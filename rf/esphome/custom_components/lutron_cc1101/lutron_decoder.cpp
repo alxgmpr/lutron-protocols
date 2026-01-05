@@ -361,5 +361,158 @@ void LutronDecoder::format_device_id(uint32_t device_id, char *buffer) {
   snprintf(buffer, 9, "%08X", device_id);
 }
 
+bool LutronDecoder::parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket &packet) {
+  // Initialize packet
+  packet.valid = false;
+  packet.raw_len = 0;
+
+  if (len < 10) {  // Need at least some bytes to be useful
+    ESP_LOGD(TAG, "parse_bytes: too few bytes (%d)", len);
+    return false;
+  }
+
+  // Copy raw bytes
+  packet.raw_len = len;
+  for (size_t i = 0; i < len && i < sizeof(packet.raw); i++) {
+    packet.raw[i] = bytes[i];
+  }
+
+  // Parse packet structure (same logic as decode())
+  packet.type = bytes[PKT_OFFSET_TYPE];
+  packet.sequence = bytes[PKT_OFFSET_SEQ];
+
+  // Initialize optional fields
+  packet.button = 0;
+  packet.action = 0;
+  packet.level = 0;
+  packet.target_id = 0;
+
+  // Parse type-specific fields - device ID endianness depends on packet type
+  if (packet.type == PKT_BUTTON_SHORT_A || packet.type == PKT_BUTTON_LONG_A ||
+      packet.type == PKT_BUTTON_SHORT_B || packet.type == PKT_BUTTON_LONG_B) {
+    // Button press packets - stored LITTLE-endian (all source IDs are LE)
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+    packet.button = bytes[PKT_OFFSET_BUTTON];
+    packet.action = bytes[PKT_OFFSET_ACTION];
+  } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
+             packet.type == PKT_STATE_REPORT_83) {
+    // State reports use LITTLE-endian device IDs
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+    // Types 0x81/0x82/0x83 can be either:
+    // - State report: bytes 6-7 = 0x00 0x08, level at byte 11
+    // - Bridge level command: bytes 6-7 = 0x21 0x0E, level at bytes 16-17
+    // - Unpair command: bytes 6-7 = 0x21 0x0C
+    if (len >= 8 && bytes[6] == 0x21 && bytes[7] == 0x0E) {
+      // Bridge level command - reclassify as LEVEL type
+      packet.type = PKT_LEVEL;
+      // Level is 16-bit big-endian at bytes 16-17
+      if (len >= 18) {
+        uint16_t raw_level = (bytes[16] << 8) | bytes[17];
+        uint32_t calc = (uint32_t)raw_level * 100 + 32639;
+        uint8_t level = (uint8_t)(calc / 65279);
+        packet.level = (level > 100) ? 100 : level;
+      }
+      // Target device ID at bytes 9-12 (big-endian in bridge commands)
+      if (len >= 13) {
+        packet.target_id = (bytes[9] << 24) |
+                           (bytes[10] << 16) |
+                           (bytes[11] << 8) |
+                           bytes[12];
+      }
+    } else if (len >= 8 && bytes[7] == 0x0C) {
+      // Unpair command - keep original type but note it's unpair
+      // Target ID at bytes 16-19 (big-endian)
+      if (len >= 20) {
+        packet.target_id = (bytes[16] << 24) |
+                           (bytes[17] << 16) |
+                           (bytes[18] << 8) |
+                           bytes[19];
+      }
+    } else {
+      // True state report - level at byte 11 (0x00-0xFE = 0-100%)
+      if (len >= 12) {
+        uint8_t raw_level = bytes[PKT_OFFSET_LEVEL];
+        packet.level = (uint8_t)(((uint32_t)raw_level * 100 + 127) / 254);
+      }
+    }
+  } else if (packet.type == PKT_LEVEL) {
+    // Level commands use LITTLE-endian device IDs
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+    // Level command packets (0xA2) - different format, level at offset 9
+    if (len >= 10) {
+      packet.level = bytes[9];
+    }
+    // Target device ID at offset 10-13 (little-endian)
+    if (len >= 14) {
+      packet.target_id = bytes[10] |
+                         (bytes[11] << 8) |
+                         (bytes[12] << 16) |
+                         (bytes[13] << 24);
+    }
+  } else if (packet.type == PKT_PAIRING_B8 || packet.type == PKT_PAIRING_B9 ||
+             packet.type == PKT_PAIRING_BA || packet.type == PKT_PAIRING_BB ||
+             packet.type == PKT_PAIRING_B0) {
+    // Pairing packets - stored LITTLE-endian (source ID)
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+  } else if (packet.type == PKT_BEACON) {
+    // Beacon packets - LITTLE-endian load ID
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+  } else {
+    // All other packets - default to LITTLE-endian
+    packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
+                       (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
+  }
+
+  // CRC from packet (if we have enough bytes)
+  if (len >= 24) {
+    packet.crc = (bytes[PKT_OFFSET_CRC] << 8) | bytes[PKT_OFFSET_CRC + 1];
+    // Calculate CRC on first 22 bytes
+    uint16_t calc = this->calc_crc(bytes, 22);
+    packet.crc_valid = (calc == packet.crc);
+  } else {
+    packet.crc = 0;
+    packet.crc_valid = false;
+  }
+
+  packet.valid = true;
+  return true;
+}
+
+void LutronDecoder::log_packet_json(const DecodedPacket &packet) {
+  char device_id_str[9];
+  format_device_id(packet.device_id, device_id_str);
+
+  const char *type_name = packet_type_name(packet.type);
+  const char *btn_name = button_name(packet.button);
+
+  // Build JSON output - format suitable for parsing by test framework
+  // TEST_RESULT: prefix makes it easy to find in log stream
+  ESP_LOGI("TEST_RESULT", "{\"type\":\"%s\",\"type_byte\":\"0x%02X\",\"sequence\":%d,"
+           "\"device_id\":\"%s\",\"button\":\"%s\",\"button_code\":\"0x%02X\","
+           "\"action\":%d,\"level\":%d,\"target_id\":\"0x%08X\","
+           "\"crc\":\"0x%04X\",\"crc_valid\":%s,\"raw_len\":%d}",
+           type_name, packet.type, packet.sequence,
+           device_id_str, btn_name, packet.button,
+           packet.action, packet.level, packet.target_id,
+           packet.crc, packet.crc_valid ? "true" : "false", (int)packet.raw_len);
+}
+
 }  // namespace lutron_cc1101
 }  // namespace esphome

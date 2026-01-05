@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, FormInput } from '../common'
+import { Card, Button, FormGroup, AutocompleteInput } from '../common'
+import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,6 +10,7 @@ interface Props {
 
 export function ResetPico({ showStatus }: Props) {
   const { post } = useApi()
+  const { seen } = useDevices()
   const [picoId, setPicoId] = useState('0x05851117')
 
   const handleReset = async () => {
@@ -30,9 +32,10 @@ export function ResetPico({ showStatus }: Props) {
       <p className="help-text">Broadcasts "forget" message to devices within earshot. Devices who have paired to this Pico will forget about it.</p>
       <div className="form-row">
         <FormGroup label="Pico ID" flex="auto">
-          <FormInput
+          <AutocompleteInput
             value={picoId}
             onChange={setPicoId}
+            suggestions={seen.picos}
             placeholder="Pico ID to reset"
             prefix="0x"
           />

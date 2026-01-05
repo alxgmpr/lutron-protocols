@@ -162,10 +162,11 @@ const UNPAIR_CMD_FIELDS: ByteField[] = [
 ]
 
 // BTN: Button press packets (short and long format)
+// Device ID is stored little-endian (reversed from printed label)
 const BUTTON_FIELDS: ByteField[] = [
   { name: 'Type', start: 0, end: 1, format: 'hex' },
   { name: 'Sequence', start: 1, end: 2, format: 'decimal' },
-  { name: 'Device ID', start: 2, end: 6, format: 'device_id_be' },
+  { name: 'Device ID', start: 2, end: 6, format: 'device_id' },  // Little-endian
   { name: 'Protocol', start: 6, end: 8, format: 'hex' },  // 21 04/0E
   { name: 'Fixed', start: 8, end: 10, format: 'hex' },
   { name: 'Button', start: 10, end: 11, format: 'button' },

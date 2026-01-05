@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, FormInput, FormSelect, QuickButtons } from '../common'
+import { Card, Button, FormGroup, FormInput, FormSelect, QuickButtons, AutocompleteInput } from '../common'
+import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,6 +10,7 @@ interface Props {
 
 export function PicoButtons({ showStatus }: Props) {
   const { post } = useApi()
+  const { seen } = useDevices()
   const [deviceId, setDeviceId] = useState('0x05851117')
   const [button, setButton] = useState('0x02')
   const [customButton, setCustomButton] = useState('')
@@ -38,7 +40,7 @@ export function PicoButtons({ showStatus }: Props) {
           Send Pico remote button presses to any devices that have paired to this Pico. Choose a predefined button or specify a custom code to emulate different Pico remote actions.
         </p>
         <FormGroup label="Pico ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
+          <AutocompleteInput value={deviceId} onChange={setDeviceId} suggestions={seen.picos} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Button">
           <FormSelect value={button} onChange={setButton}>

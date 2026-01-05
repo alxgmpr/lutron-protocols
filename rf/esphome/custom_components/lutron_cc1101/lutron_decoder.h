@@ -126,6 +126,22 @@ class LutronDecoder {
    */
   uint16_t calc_crc(const uint8_t *data, size_t len);
 
+  /**
+   * @brief Parse already-decoded packet bytes (skip N81 decoding)
+   * Used for testing packet parsing without RF reception
+   * @param bytes Decoded packet bytes (24-53 bytes)
+   * @param len Number of bytes
+   * @param packet Output decoded packet
+   * @return true if valid packet structure
+   */
+  bool parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket &packet);
+
+  /**
+   * @brief Log packet as JSON for test verification
+   * Format: TEST_RESULT: {"type": "BTN_SHORT_A", "device_id": "0595E68D", ...}
+   */
+  void log_packet_json(const DecodedPacket &packet);
+
  private:
   uint16_t crc_table_[256];
 

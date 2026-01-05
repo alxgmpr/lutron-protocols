@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, FormInput, QuickButtons } from '../common'
+import { Card, Button, FormGroup, FormInput, QuickButtons, AutocompleteInput } from '../common'
+import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,6 +10,7 @@ interface Props {
 
 export function BridgeLevel({ showStatus }: Props) {
   const { post } = useApi()
+  const { seen } = useDevices()
   const [bridgeId, setBridgeId] = useState('0xAF902C00')
   const [targetId, setTargetId] = useState('0x06FDEFF4')
   const [level, setLevel] = useState(50)
@@ -37,10 +39,10 @@ export function BridgeLevel({ showStatus }: Props) {
       <p className="help-text">Set the level of a device that has paired to the bridge. Unlike pico commands, bridges can set specific levels to devices.</p>
       <div className="form-row">
         <FormGroup label="Bridge ID">
-          <FormInput value={bridgeId} onChange={setBridgeId} width={120} prefix="0x" />
+          <AutocompleteInput value={bridgeId} onChange={setBridgeId} suggestions={seen.bridgeZones} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Target ID">
-          <FormInput value={targetId} onChange={setTargetId} width={120} prefix="0x" />
+          <AutocompleteInput value={targetId} onChange={setTargetId} suggestions={seen.dimmers} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Level">
           <FormInput 

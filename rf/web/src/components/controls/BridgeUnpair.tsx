@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, FormInput } from '../common'
+import { Card, Button, FormGroup, AutocompleteInput } from '../common'
+import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,29 +10,25 @@ interface Props {
 
 export function BridgeUnpair({ showStatus }: Props) {
   const { post } = useApi()
-  const [zone1, setZone1] = useState('0x002C90AD')
-  const [zone2, setZone2] = useState('0x002C90AF')
+  const { seen } = useDevices()
+  const [bridgeSubnet, setBridgeSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('0x06F4587E')
-  const [dualMode, setDualMode] = useState(true)
 
   const handleUnpair = async () => {
-    const mode = dualMode && zone2 ? 'dual' : 'single'
-    showStatus(`Unpairing ${targetId} (${mode} zone mode)...`)
+    // Convert subnet to zone IDs (add 00 prefix and common suffixes)
+    const zone1 = `0x00${bridgeSubnet}AD`
+    const zone2 = `0x00${bridgeSubnet}AF`
+
+    showStatus(`Unpairing ${targetId} from bridge ${bridgeSubnet}...`)
     try {
-      const params: Record<string, string> = {
+      const params = {
         bridge: zone1,
-        target: targetId
-      }
-      if (dualMode && zone2) {
-        params.zone2 = zone2
+        target: targetId,
+        zone2: zone2
       }
       const result = await post('/api/unpair', params)
       if (result.status === 'ok') {
-        if (result.mode === 'dual') {
-          showStatus(`Unpair (dual): ${result.zone1} + ${result.zone2} -> ${result.target}`, 'success')
-        } else {
-          showStatus(`Unpair: ${result.bridge} -> ${result.target}`, 'success')
-        }
+        showStatus(`Unpair: ${bridgeSubnet} -> ${result.target}`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
       }
@@ -43,33 +40,26 @@ export function BridgeUnpair({ showStatus }: Props) {
   return (
     <Card title="Bridge Unpair Device" badge="REMOVE" variant="device">
       <p className="help-text">
-        Remove a device from bridge network. Dual-zone mode sends interleaved packets from both zones (like real bridge).
+        Remove a device from bridge network. Sends two-phase unpair (prepare + unpair flood).
       </p>
       <div className="form-row">
-        <FormGroup label="Zone 1">
-          <FormInput value={zone1} onChange={setZone1} width={120} prefix="0x" />
+        <FormGroup label="Bridge Subnet">
+          <AutocompleteInput
+            value={bridgeSubnet}
+            onChange={setBridgeSubnet}
+            suggestions={seen.bridgeSubnets}
+            width={100}
+            placeholder="2C90"
+          />
         </FormGroup>
-        <FormGroup label="Zone 2">
-          <FormInput
-            value={zone2}
-            onChange={setZone2}
+        <FormGroup label="Target Device">
+          <AutocompleteInput
+            value={targetId}
+            onChange={setTargetId}
+            suggestions={seen.dimmers}
             width={120}
             prefix="0x"
-            disabled={!dualMode}
           />
-        </FormGroup>
-        <FormGroup label="Dual">
-          <input
-            type="checkbox"
-            checked={dualMode}
-            onChange={e => setDualMode(e.target.checked)}
-            style={{ width: 20, height: 20, cursor: 'pointer' }}
-          />
-        </FormGroup>
-      </div>
-      <div className="form-row">
-        <FormGroup label="Target Device">
-          <FormInput value={targetId} onChange={setTargetId} width={120} prefix="0x" />
         </FormGroup>
         <Button variant="red" onClick={handleUnpair}>UNPAIR</Button>
       </div>

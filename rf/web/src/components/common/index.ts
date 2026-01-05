@@ -1,4 +1,5 @@
 // Common UI Components
+export { AutocompleteInput } from './AutocompleteInput'
 export { Button } from './Button'
 export { Card } from './Card'
 export { FormGroup } from './FormGroup'

@@ -891,6 +891,59 @@ def cmd_serve(args):
         except:
             return False
 
+    async def test_decode_async(hex_bytes: str):
+        """Test packet decoding on ESP32 and capture result.
+
+        Calls the test_decode service and waits for TEST_RESULT log message.
+        Returns the parsed JSON result.
+        """
+        result_holder = {'result': None}
+        result_event = asyncio.Event()
+
+        def log_callback(message):
+            """Callback for log messages - look for TEST_RESULT."""
+            msg_text = message.message
+            # Handle bytes (ESPHome API returns bytes)
+            if isinstance(msg_text, bytes):
+                msg_text = msg_text.decode('utf-8', errors='replace')
+            if 'TEST_RESULT' in msg_text:
+                # Extract JSON from log message
+                # Format: [I][TEST_RESULT:xxx]: {...json...}
+                try:
+                    # Find the JSON part
+                    json_start = msg_text.find('{')
+                    if json_start >= 0:
+                        json_str = msg_text[json_start:]
+                        # Remove ANSI escape codes
+                        json_str = re.sub(r'\x1b\[[0-9;]*m', '', json_str)
+                        result_holder['result'] = json.loads(json_str)
+                        result_event.set()
+                except json.JSONDecodeError:
+                    pass
+
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+
+            # Subscribe to logs (not awaitable)
+            controller.client.subscribe_logs(
+                log_callback,
+                log_level=aioesphomeapi.LogLevel.LOG_LEVEL_INFO
+            )
+
+            # Call the test_decode service
+            await controller.call_service('test_decode', hex_bytes=hex_bytes)
+
+            # Wait for result with timeout
+            try:
+                await asyncio.wait_for(result_event.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass
+
+            return result_holder['result']
+        finally:
+            await controller.disconnect()
+
     async def set_switch_async(switch_id: str, state: bool):
         """Set a switch on or off."""
         controller = ESP32Controller()
@@ -1013,6 +1066,36 @@ def cmd_serve(args):
                 'host': host,
                 'error': str(e)
             })
+
+    @app.route('/api/test/decode', methods=['POST'])
+    def api_test_decode():
+        """Test packet decoding on ESP32.
+
+        Sends hex bytes to ESP32 for parsing and returns the decoded result.
+        Used by test framework to verify ESP32 packet parsing logic.
+
+        Request body:
+            {"hex_bytes": "88 00 8D E6 95 05 21 04 03 00 02 00 ..."}
+
+        Response:
+            {"status": "ok", "result": {...parsed packet JSON...}}
+        """
+        try:
+            hex_bytes = request.json.get('hex_bytes', '') if request.is_json else ''
+            if not hex_bytes:
+                return jsonify({'status': 'error', 'error': 'Missing hex_bytes'}), 400
+
+            # Call the test_decode service and capture result from logs
+            result = asyncio.run(test_decode_async(hex_bytes))
+            if result is None:
+                return jsonify({'status': 'error', 'error': 'No result from ESP32'}), 500
+
+            return jsonify({
+                'status': 'ok',
+                'result': result
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
 
     def get_param(name, default=''):
         """Get parameter from JSON body or query args."""

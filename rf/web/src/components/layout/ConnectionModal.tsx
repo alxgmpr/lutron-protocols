@@ -93,14 +93,17 @@ export function ConnectionModal({ onClose }: ConnectionModalProps) {
 
   const handleReconnect = async () => {
     setReconnecting(true)
+    setTestResult({ success: true, message: 'Reconnecting...' })
     try {
       await fetch('/api/esp/reconnect', { method: 'POST' })
-      setTestResult({ success: true, message: 'Reconnecting...' })
-      // Give it a moment then refresh config
-      setTimeout(fetchConfig, 2000)
+      // Give it a moment then refresh config and update status
+      setTimeout(async () => {
+        await fetchConfig()
+        setTestResult({ success: true, message: 'Reconnected' })
+        setReconnecting(false)
+      }, 2000)
     } catch (e) {
       setTestResult({ success: false, message: 'Reconnect failed: ' + String(e) })
-    } finally {
       setReconnecting(false)
     }
   }

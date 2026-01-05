@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApi } from './hooks/useApi'
 import { useLogStream } from './hooks/useLogStream'
 import { usePacketStream } from './hooks/usePacketStream'
+import { DeviceProvider } from './context/DeviceContext'
 
 // Layout
 import { Header, StatusBar } from './components/layout'
@@ -227,6 +228,7 @@ function App() {
   }, [rxPackets, registerDevice])
 
   return (
+    <DeviceProvider devices={devices}>
     <div className="app">
       <Header connected={connected} />
 
@@ -312,6 +314,7 @@ function App() {
 
       <StatusBar message={status.message} type={status.type} />
     </div>
+    </DeviceProvider>
   )
 }
 
