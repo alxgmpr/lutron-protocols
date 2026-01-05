@@ -576,6 +576,13 @@ class ESP32Controller:
                                bridge_zone_id=f"0x{bridge_zone_id:08X}",
                                target_device_id=f"0x{target_device_id:08X}")
 
+    async def send_bridge_unpair_dual(self, zone_id_1: int, zone_id_2: int, target_device_id: int):
+        """Send bridge-style unpair from TWO zone IDs (interleaved like real bridge)."""
+        await self.call_service('send_bridge_unpair_dual',
+                               zone_id_1=f"0x{zone_id_1:08X}",
+                               zone_id_2=f"0x{zone_id_2:08X}",
+                               target_device_id=f"0x{target_device_id:08X}")
+
     async def start_rx(self):
         """Start RX mode by pressing rx_on button."""
         await self.press_button('rx_on')
@@ -821,6 +828,15 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_bridge_unpair(bridge_zone_id, target_device_id)
+        finally:
+            await controller.disconnect()
+
+    async def send_bridge_unpair_dual_async(zone_id_1: int, zone_id_2: int, target_device_id: int):
+        """Send bridge-style unpair from TWO zone IDs (interleaved like real bridge)."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_bridge_unpair_dual(zone_id_1, zone_id_2, target_device_id)
         finally:
             await controller.disconnect()
 
@@ -1091,28 +1107,41 @@ def cmd_serve(args):
     def api_unpair():
         """Send bridge-style unpair command to remove a device from the network.
 
-        Captured from Caseta bridge removing device 06F4587E.
-        Uses 0x81-0x83 type with FF FF FF FF FF broadcast indicator.
-
         Args:
-            bridge: Bridge zone ID (e.g., 0x002C90AD)
+            bridge: Primary bridge zone ID (e.g., 0x002C90AD)
+            zone2: Optional secondary zone ID for dual-zone mode (e.g., 0x002C90AF)
             target: Device to unpair (e.g., 0x06F4587E)
+
+        Dual-zone mode sends interleaved packets from both zones like the real bridge.
         """
         try:
             bridge = get_param('bridge', '')
+            zone2 = get_param('zone2', '')
             target = get_param('target', '')
             if not bridge or not target:
                 return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
 
             bridge_id = parse_hex_int(bridge)
             target_id = parse_hex_int(target)
-            asyncio.run(send_bridge_unpair_async(bridge_id, target_id))
 
-            return jsonify({
-                'status': 'ok',
-                'bridge': f'0x{bridge_id:08X}',
-                'target': f'0x{target_id:08X}'
-            })
+            if zone2:
+                zone2_id = parse_hex_int(zone2)
+                asyncio.run(send_bridge_unpair_dual_async(bridge_id, zone2_id, target_id))
+                return jsonify({
+                    'status': 'ok',
+                    'zone1': f'0x{bridge_id:08X}',
+                    'zone2': f'0x{zone2_id:08X}',
+                    'target': f'0x{target_id:08X}',
+                    'mode': 'dual'
+                })
+            else:
+                asyncio.run(send_bridge_unpair_async(bridge_id, target_id))
+                return jsonify({
+                    'status': 'ok',
+                    'bridge': f'0x{bridge_id:08X}',
+                    'target': f'0x{target_id:08X}',
+                    'mode': 'single'
+                })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 

@@ -1347,74 +1347,135 @@ void LutronCC1101::send_reset(uint32_t source_id, uint32_t paired_id) {
 }
 
 void LutronCC1101::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {
-  ESP_LOGI(TAG, "=== BRIDGE UNPAIR ===");
-  ESP_LOGI(TAG, "Bridge zone: %08X, Target device: %08X", bridge_zone_id, target_device_id);
+  // Call the two-zone version with alternate zone = 0 (disabled)
+  send_bridge_unpair_dual(bridge_zone_id, 0, target_device_id);
+}
 
-  // Captured from Caseta bridge removing device 06F4587E:
-  // 83 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 06 F4 58 7E CC CC C9 B3
+void LutronCC1101::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, uint32_t target_device_id) {
+  ESP_LOGI(TAG, "=== BRIDGE UNPAIR ===");
+  ESP_LOGI(TAG, "Zone 1: %08X, Zone 2: %08X, Target: %08X", zone_id_1, zone_id_2, target_device_id);
+
+  // Real bridge unpair sequence has TWO phases:
+  // Phase 1: Format 0x09 / cmd 02 02 - "prepare" packets to specific device
+  // Phase 2: Format 0x0C / cmd 02 08 - actual unpair flood with broadcast
   //
-  // Structure:
-  // [0]: Type 0x81-0x83 (rotates)
-  // [1]: Sequence
-  // [2-5]: Bridge zone ID (little-endian)
-  // [6]: 0x21 (protocol marker)
-  // [7]: 0x0C (format - unpair command)
-  // [8]: 0x00
-  // [9-13]: FF FF FF FF FF (broadcast indicator)
-  // [14-15]: 02 08 (unpair command code)
-  // [16-19]: Target device ID (big-endian)
-  // [20-21]: CC CC (padding)
-  // [22-23]: CRC
+  // Phase 1 packet structure (format 0x09):
+  // 81 01 AD 90 2C 00 21 09 00 07 01 6F CE FE 02 02 00 CC CC CC CC CC [CRC]
+  //       ^^^^^^^^^^^    ^^    ^^^^^^^^^^^    ^^^^^
+  //       Zone (LE)      09    Device (BE)    02 02
 
   uint8_t packet[24];
+  bool use_dual = (zone_id_2 != 0);
+  uint32_t zones[2] = {zone_id_1, use_dual ? zone_id_2 : zone_id_1};
+
+  // ========== PHASE 1: Format 0x09 / cmd 02 02 packets ==========
+  ESP_LOGI(TAG, "Phase 1: Sending prepare packets (format 0x09)");
+
   uint8_t seq = 0x01;
+  for (int i = 0; i < 4; i++) {
+    uint32_t zone = zones[i % 2];
 
-  // Send 20 packets like the bridge does for LEVEL commands
-  for (int rep = 0; rep < 20; rep++) {
     memset(packet, 0xCC, sizeof(packet));
-
-    packet[0] = 0x81 + (rep % 3);  // Rotate through 0x81, 0x82, 0x83
+    packet[0] = 0x81 + (i % 3);
     packet[1] = seq;
-
-    // Bridge zone ID in little-endian (same as LEVEL commands)
-    packet[2] = bridge_zone_id & 0xFF;
-    packet[3] = (bridge_zone_id >> 8) & 0xFF;
-    packet[4] = (bridge_zone_id >> 16) & 0xFF;
-    packet[5] = (bridge_zone_id >> 24) & 0xFF;
-
-    packet[6] = 0x21;  // Protocol marker
-    packet[7] = 0x0C;  // Format byte for UNPAIR (not 0x0E like LEVEL)
+    // Zone ID little-endian at [2-5]
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x09;  // Format 0x09 (prepare/query)
     packet[8] = 0x00;
-
-    // Broadcast indicator - 5 bytes of 0xFF
-    packet[9] = 0xFF;
-    packet[10] = 0xFF;
-    packet[11] = 0xFF;
-    packet[12] = 0xFF;
-    packet[13] = 0xFF;
-
-    // Unpair command code
+    // Target device ID big-endian at [9-12]
+    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
+    packet[13] = 0xFE;  // Value seen in captures
     packet[14] = 0x02;
-    packet[15] = 0x08;
-
-    // Target device ID in big-endian
-    packet[16] = (target_device_id >> 24) & 0xFF;
-    packet[17] = (target_device_id >> 16) & 0xFF;
-    packet[18] = (target_device_id >> 8) & 0xFF;
-    packet[19] = target_device_id & 0xFF;
-
-    // CC padding already set by memset
+    packet[15] = 0x02;  // Command 02 02
+    packet[16] = 0x00;
+    // [17-21] = CC padding (already set)
 
     uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
     this->transmit_packet(packet, 24);
+    seq = (seq + 12 + (i % 2) * 6) & 0xFF;  // Sequence pattern from capture
+    delay(100);
+  }
 
-    // Sequence increments by 5-6 like bridge
-    seq = (seq + 5 + (rep % 2)) & 0xFF;
+  // Gap between phases (~1 second like real bridge)
+  delay(800);
 
-    if (rep < 19) delay(60);
+  // ========== PHASE 2: Format 0x0C / cmd 02 08 packets ==========
+  ESP_LOGI(TAG, "Phase 2: Sending unpair packets (format 0x0C)");
+
+  // 3 full bursts like the real bridge
+  for (int burst = 0; burst < 3; burst++) {
+    // First packet of burst from zone 1
+    {
+      memset(packet, 0xCC, sizeof(packet));
+      packet[0] = 0x82;
+      packet[1] = 0x01;
+      packet[2] = zone_id_1 & 0xFF;
+      packet[3] = (zone_id_1 >> 8) & 0xFF;
+      packet[4] = (zone_id_1 >> 16) & 0xFF;
+      packet[5] = (zone_id_1 >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0C;  // Format 0x0C (unpair)
+      packet[8] = 0x00;
+      // Broadcast at [9-13]
+      packet[9] = 0xFF; packet[10] = 0xFF; packet[11] = 0xFF;
+      packet[12] = 0xFF; packet[13] = 0xFF;
+      packet[14] = 0x02;
+      packet[15] = 0x08;  // Command 02 08 (unpair)
+      // Target device ID big-endian at [16-19]
+      packet[16] = (target_device_id >> 24) & 0xFF;
+      packet[17] = (target_device_id >> 16) & 0xFF;
+      packet[18] = (target_device_id >> 8) & 0xFF;
+      packet[19] = target_device_id & 0xFF;
+
+      uint16_t crc = this->encoder_.calc_crc(packet, 22);
+      packet[22] = (crc >> 8) & 0xFF;
+      packet[23] = crc & 0xFF;
+      this->transmit_packet(packet, 24);
+      delay(60);
+    }
+
+    // Then ~10 packets from zone 2 (or zone 1 if no zone 2)
+    uint32_t zone = use_dual ? zone_id_2 : zone_id_1;
+    seq = 7 + burst;
+
+    for (int i = 0; i < 10; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      packet[0] = 0x82;
+      packet[1] = seq;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0C;
+      packet[8] = 0x00;
+      packet[9] = 0xFF; packet[10] = 0xFF; packet[11] = 0xFF;
+      packet[12] = 0xFF; packet[13] = 0xFF;
+      packet[14] = 0x02;
+      packet[15] = 0x08;
+      packet[16] = (target_device_id >> 24) & 0xFF;
+      packet[17] = (target_device_id >> 16) & 0xFF;
+      packet[18] = (target_device_id >> 8) & 0xFF;
+      packet[19] = target_device_id & 0xFF;
+
+      uint16_t crc = this->encoder_.calc_crc(packet, 22);
+      packet[22] = (crc >> 8) & 0xFF;
+      packet[23] = crc & 0xFF;
+      this->transmit_packet(packet, 24);
+
+      seq = (seq + 5 + (i % 2)) & 0xFF;
+      delay(60);
+    }
   }
 
   ESP_LOGI(TAG, "=== BRIDGE UNPAIR COMPLETE ===");

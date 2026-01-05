@@ -11,6 +11,7 @@ interface FormInputProps {
   max?: number
   className?: string
   prefix?: string
+  disabled?: boolean
 }
 
 export function FormInput({
@@ -22,7 +23,8 @@ export function FormInput({
   min,
   max,
   className = '',
-  prefix
+  prefix,
+  disabled = false
 }: FormInputProps) {
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     onChange(prefix ? prefix + e.target.value : e.target.value)
@@ -39,7 +41,7 @@ export function FormInput({
 
   if (prefix) {
     return (
-      <div className="form-input-with-prefix" style={style}>
+      <div className={`form-input-with-prefix ${disabled ? 'disabled' : ''}`} style={style}>
         <span className="form-input-prefix">{prefix}</span>
         <input
           type={type}
@@ -48,6 +50,7 @@ export function FormInput({
           placeholder={placeholder}
           min={min}
           max={max}
+          disabled={disabled}
           className={`form-input form-input-prefixed ${className}`}
         />
       </div>
@@ -62,6 +65,7 @@ export function FormInput({
       placeholder={placeholder}
       min={min}
       max={max}
+      disabled={disabled}
       style={style}
       className={`form-input ${className}`}
     />
