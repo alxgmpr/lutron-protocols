@@ -149,6 +149,7 @@ class CC1101Radio {
   bool initialized_{false};
   bool rx_active_{false};
   RxCallback rx_callback_{nullptr};
+  uint32_t overflow_count_{0};  // Track FIFO overflow events
 };
 
 /**

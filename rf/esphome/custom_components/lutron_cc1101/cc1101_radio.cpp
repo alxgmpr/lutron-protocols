@@ -258,16 +258,17 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Skip GDO0 check for now - just poll RXBYTES directly
-  // (GDO0 should assert when sync found, but let's verify FIFO state)
-
   // Read RXBYTES status register
   uint8_t rx_bytes_raw = this->read_status_register(CC1101_RXBYTES);
   bool overflow = (rx_bytes_raw & 0x80) != 0;
   uint8_t rx_bytes = rx_bytes_raw & 0x7F;
 
   if (overflow) {
-    ESP_LOGW(TAG, "RX FIFO overflow, flushing");
+    this->overflow_count_++;
+    // Only log occasionally to avoid flooding
+    if (this->overflow_count_ <= 3 || (this->overflow_count_ % 100) == 0) {
+      ESP_LOGW(TAG, "RX FIFO overflow #%u, flushing", this->overflow_count_);
+    }
     this->set_idle();
     this->flush_rx();
     this->strobe(CC1101_SRX);
@@ -278,16 +279,20 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Wait for enough data to decode
-  // Button packets: ~30 bytes, Pairing: ~66 bytes (gets truncated to 64)
-  // Use 48 as threshold - enough for button packets, not too long to wait
-  const uint8_t MIN_PACKET_LEN = 48;
+  // Lutron packets: 24-53 bytes raw (before Manchester encoding doubles it)
+  // Use lower threshold to process packets sooner and reduce FIFO pressure
+  // Minimum viable packet is ~24 bytes, but we need some margin for sync detection
+  const uint8_t MIN_PACKET_LEN = 28;
 
-  if (rx_bytes < MIN_PACKET_LEN) {
+  // If FIFO is getting close to full (>48 bytes), process immediately
+  // to prevent overflow, even if packet might be incomplete
+  bool fifo_pressure = rx_bytes > 48;
+
+  if (rx_bytes < MIN_PACKET_LEN && !fifo_pressure) {
     return false;
   }
 
-  // Read all available data (up to 64)
+  // Read all available data
   uint8_t buffer[64];
   uint8_t payload_length = (rx_bytes > 64) ? 64 : rx_bytes;
   this->read_burst(CC1101_RXFIFO, buffer, payload_length);
@@ -298,16 +303,18 @@ bool CC1101Radio::check_rx() {
   int8_t rssi = (rssi_raw >= 128) ? ((rssi_raw - 256) / 2 - 74) : (rssi_raw / 2 - 74);
   bool crc_ok = (lqi_raw & 0x80) != 0;
 
-  // Don't log here - let callback handle logging for valid packets only
-
   // Call callback if set
   if (this->rx_callback_ != nullptr) {
     this->rx_callback_(buffer, payload_length, rssi);
   }
 
-  // Return to RX mode
-  this->set_idle();
-  this->flush_rx();
+  // Only do full reset if FIFO might have more data or after overflow
+  // This reduces the time spent out of RX mode
+  uint8_t remaining = this->read_status_register(CC1101_RXBYTES) & 0x7F;
+  if (remaining > 0 || fifo_pressure) {
+    this->set_idle();
+    this->flush_rx();
+  }
   this->strobe(CC1101_SRX);
 
   return true;
