@@ -110,7 +110,7 @@ export const ACTION_NAMES: Record<string, string> = {
 
 export const PACKET_TYPE_NAMES: Record<string, string> = {
   // STATE_RPT: Dimmer reporting its current level (format byte 0x08)
-  '81': 'STATE_RPT', '82': 'STATE_RPT', '83': 'STATE_RPT',
+  '80': 'STATE_RPT', '81': 'STATE_RPT', '82': 'STATE_RPT', '83': 'STATE_RPT',
   '88': 'BTN_SHORT_A', '89': 'BTN_LONG_A', '8A': 'BTN_SHORT_B', '8B': 'BTN_LONG_B',
   '91': 'BEACON', '92': 'BEACON', '93': 'BEACON',
   // SET_LEVEL: Bridge commanding a dimmer to a level (format byte 0x0E)
@@ -147,6 +147,10 @@ export function getFieldsForPacket(packetType: string, bytes: string[]): ByteFie
   // STATE_RPT: Dimmer reporting its level
   if (packetType === 'STATE_RPT') {
     return STATE_RPT_FIELDS
+  }
+  // DIMMER_ACK: Dimmer acknowledgment during button handling
+  if (packetType === 'DIMMER_ACK') {
+    return STATE_RPT_FIELDS  // Similar structure to STATE_RPT
   }
   // Fallback: try to determine from raw bytes
   if (bytes.length >= 8) {

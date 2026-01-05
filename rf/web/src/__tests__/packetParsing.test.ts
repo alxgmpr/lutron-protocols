@@ -14,6 +14,7 @@ import {
   LEVEL_CMD_FIELDS,
   UNPAIR_CMD_FIELDS,
   BUTTON_NAMES,
+  PACKET_TYPE_NAMES,
 } from '../utils/packetParsing'
 
 // Import test fixtures
@@ -183,9 +184,10 @@ describe('getFieldsForPacket', () => {
     expect(fields).toBe(UNPAIR_CMD_FIELDS)
   })
 
-  it('returns STATE_RPT_FIELDS when format is 00 08', () => {
+  it('returns STATE_RPT_FIELDS when format is 00 08 (fallback)', () => {
     const bytes = ['81', '00', 'AD', '90', '2C', '00', '00', '08']
-    const fields = getFieldsForPacket('LEVEL', bytes)
+    // Use 'UNKNOWN' to trigger the fallback path that checks format bytes
+    const fields = getFieldsForPacket('UNKNOWN', bytes)
     expect(fields).toBe(STATE_RPT_FIELDS)
   })
 
@@ -195,9 +197,10 @@ describe('getFieldsForPacket', () => {
     expect(fields).toBe(LEVEL_CMD_FIELDS)
   })
 
-  it('returns UNPAIR_CMD_FIELDS when format byte is 0C', () => {
+  it('returns UNPAIR_CMD_FIELDS when format byte is 0C (fallback)', () => {
     const bytes = ['82', '07', 'AF', '90', '2C', '00', '21', '0C']
-    const fields = getFieldsForPacket('LEVEL', bytes)
+    // Use 'UNKNOWN' to trigger the fallback path that checks format bytes
+    const fields = getFieldsForPacket('UNKNOWN', bytes)
     expect(fields).toBe(UNPAIR_CMD_FIELDS)
   })
 })
@@ -256,5 +259,18 @@ describe('Endianness verification', () => {
     const field: ByteField = { name: 'Test', start: 0, end: 4, format: 'device_id_be' }
     const result = formatFieldValue(bytes, field)
     expect(result.decoded).toBe('07016FCE')
+  })
+})
+
+describe('DIMMER_ACK packet type', () => {
+  it('returns STATE_RPT_FIELDS for DIMMER_ACK packet type', () => {
+    const fields = getFieldsForPacket('DIMMER_ACK', [])
+    expect(fields).toBe(STATE_RPT_FIELDS)
+  })
+})
+
+describe('0x80 packet type support', () => {
+  it('0x80 type byte is recognized in PACKET_TYPE_NAMES', () => {
+    expect(PACKET_TYPE_NAMES['80']).toBe('STATE_RPT')
   })
 })

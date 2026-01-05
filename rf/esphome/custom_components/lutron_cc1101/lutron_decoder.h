@@ -70,6 +70,31 @@ static const uint8_t PKT_OFFSET_TARGET_ID = 10; // Target device ID for bridge c
 static const uint8_t PKT_OFFSET_CRC = 22;       // 2 bytes, big-endian
 
 static const size_t PKT_STANDARD_LEN = 24;
+static const size_t PKT_PAIRING_LEN = 53;
+
+// Packet length lookup - returns expected N81 byte count for a type byte
+// Returns 0 for unknown types
+inline size_t get_packet_length(uint8_t type_byte) {
+  // 0x80-0x8F: State reports, button packets - 24 bytes
+  if (type_byte >= 0x80 && type_byte <= 0x8F) return PKT_STANDARD_LEN;
+  // 0x90-0x9F: Beacons - 24 bytes
+  if (type_byte >= 0x90 && type_byte <= 0x9F) return PKT_STANDARD_LEN;
+  // 0xA0-0xAF: Level commands - 24 bytes
+  if (type_byte >= 0xA0 && type_byte <= 0xAF) return PKT_STANDARD_LEN;
+  // 0xB0-0xBF: Pairing announcements - 53 bytes
+  if (type_byte >= 0xB0 && type_byte <= 0xBF) return PKT_PAIRING_LEN;
+  // 0xC0-0xCF: Pairing responses - 24 bytes
+  if (type_byte >= 0xC0 && type_byte <= 0xCF) return PKT_STANDARD_LEN;
+  return 0;  // Unknown
+}
+
+// Minimum CC1101 bytes needed to decode a packet of given N81 length
+// Formula: (n81_bytes * 10 + 30) / 8, rounded up, plus margin
+inline size_t get_min_cc1101_bytes(size_t n81_len) {
+  // Each N81 byte = 10 bits, plus ~30 bits for sync prefix search
+  // Add margin for bit alignment search
+  return ((n81_len * 10 + 50) / 8) + 5;
+}
 
 // CRC polynomial
 static const uint16_t LUTRON_CRC_POLY = 0xCA0F;

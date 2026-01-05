@@ -68,16 +68,16 @@ export function PicoButtons({ showStatus }: Props) {
 
       <QuickButtons>
         <Button size="sm" variant="primary" onClick={() => quickSend(0x02)}>ON</Button>
-        <Button size="sm" variant="primary" onClick={() => quickSend(0x03)}>FAV</Button>
+        <Button size="sm" variant="primary" onClick={() => quickSend(0x03)}>FAV/STOP</Button>
         <Button size="sm" variant="red" onClick={() => quickSend(0x04)}>OFF</Button>
         <Button size="sm" variant="blue" onClick={() => quickSend(0x05)}>▲</Button>
         <Button size="sm" variant="blue" onClick={() => quickSend(0x06)}>▼</Button>
       </QuickButtons>
       <QuickButtons className="mt-2">
-        <Button size="sm" variant="orange" onClick={() => quickSend(0x08)}>BRIGHT</Button>
-        <Button size="sm" variant="orange" onClick={() => quickSend(0x09)}>ENTER</Button>
-        <Button size="sm" variant="orange" onClick={() => quickSend(0x0A)}>RELAX</Button>
-        <Button size="sm" variant="red" onClick={() => quickSend(0x0B)}>SC OFF</Button>
+        <Button size="sm" variant="orange" onClick={() => quickSend(0x08)}>SCENE1</Button>
+        <Button size="sm" variant="orange" onClick={() => quickSend(0x09)}>SCENE2</Button>
+        <Button size="sm" variant="orange" onClick={() => quickSend(0x0A)}>SCENE3</Button>
+        <Button size="sm" variant="red" onClick={() => quickSend(0x0B)}>SCENE4/OFF</Button>
       </QuickButtons>
     </Card>
   )

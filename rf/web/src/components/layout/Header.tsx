@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { ConnectionModal } from './ConnectionModal'
+import { ProtocolGuide, DeviceReference } from '../docs'
 import './Header.css'
 
 interface HeaderProps {
@@ -8,6 +9,8 @@ interface HeaderProps {
 
 export function Header({ connected }: HeaderProps) {
   const [showModal, setShowModal] = useState(false)
+  const [showProtocolGuide, setShowProtocolGuide] = useState(false)
+  const [showDeviceReference, setShowDeviceReference] = useState(false)
   const [espHost, setEspHost] = useState('...')
 
   useEffect(() => {
@@ -34,6 +37,14 @@ export function Header({ connected }: HeaderProps) {
           </h1>
           <span className="header-subtitle">Lutron Clear Connect Type A</span>
         </div>
+        <div className="header-center">
+          <button className="header-nav-btn" onClick={() => setShowProtocolGuide(true)}>
+            Protocol Guide
+          </button>
+          <button className="header-nav-btn" onClick={() => setShowDeviceReference(true)}>
+            Device Reference
+          </button>
+        </div>
         <div className="header-right" onClick={() => setShowModal(true)}>
           <span className={`status-indicator ${connected ? 'online' : 'offline'}`} />
           <span className="status-text">ESP32 @ {espHost}</span>
@@ -42,6 +53,32 @@ export function Header({ connected }: HeaderProps) {
 
       {showModal && (
         <ConnectionModal onClose={() => setShowModal(false)} />
+      )}
+
+      {showProtocolGuide && (
+        <div className="protocol-guide-modal" onClick={() => setShowProtocolGuide(false)}>
+          <div className="protocol-guide-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-close-bar">
+              <button className="modal-close-btn" onClick={() => setShowProtocolGuide(false)}>
+                Close
+              </button>
+            </div>
+            <ProtocolGuide />
+          </div>
+        </div>
+      )}
+
+      {showDeviceReference && (
+        <div className="protocol-guide-modal" onClick={() => setShowDeviceReference(false)}>
+          <div className="protocol-guide-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-close-bar">
+              <button className="modal-close-btn" onClick={() => setShowDeviceReference(false)}>
+                Close
+              </button>
+            </div>
+            <DeviceReference />
+          </div>
+        </div>
       )}
     </>
   )

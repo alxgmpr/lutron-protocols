@@ -33,6 +33,14 @@ export interface LogEntry {
   type?: string
 }
 
+export interface ParsedField {
+  name: string
+  start: number
+  end: number
+  raw: string
+  decoded: string | null
+}
+
 export interface Packet {
   time: string
   type: string        // e.g., "LEVEL", "BTN_SHORT_A", "BEACON", "PAIRING"
@@ -40,6 +48,7 @@ export interface Packet {
   details: string[]   // Additional info parts
   rawBytes?: string   // Hex bytes if available
   direction: 'tx' | 'rx'
+  fields?: ParsedField[]  // Backend-parsed field breakdown
 }
 
 export interface ApiResponse {

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { Card, Button } from '../common'
+import { getPacketTypeInfo, getCategoryColor } from '../docs'
 import type { Packet } from '../../types'
 import './PacketDisplay.css'
 
@@ -339,8 +340,11 @@ function PacketDetailModal({ packet, onClose }: PacketDetailModalProps) {
   }
 
   const bytes = packet.rawBytes?.split(/\s+/).filter(b => b.length > 0) || []
-  const fields = getFieldsForPacket(packet.type, bytes)
   const packetTypeName = bytes[0] ? (PACKET_TYPE_NAMES[bytes[0].toUpperCase()] || `0x${bytes[0]}`) : '-'
+
+  // Use backend-provided fields if available, otherwise fall back to local parsing
+  const hasBackendFields = packet.fields && packet.fields.length > 0
+  const localFields = hasBackendFields ? [] : getFieldsForPacket(packet.type, bytes)
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -368,7 +372,7 @@ function PacketDetailModal({ packet, onClose }: PacketDetailModalProps) {
             )}
           </div>
 
-          {/* Byte mapping table */}
+          {/* Byte mapping table - use backend fields if available */}
           {bytes.length > 0 && (
             <div className="packet-byte-mapping">
               <div className="packet-byte-mapping-header">
@@ -383,26 +387,47 @@ function PacketDetailModal({ packet, onClose }: PacketDetailModalProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {fields.map((field, i) => {
-                    if (field.start >= bytes.length) return null
-                    const { raw, decoded } = formatFieldValue(bytes, field)
-                    return (
+                  {hasBackendFields ? (
+                    // Render backend-provided fields directly
+                    packet.fields!.map((field, i) => (
                       <tr key={i}>
-                        <td className="byte-offset">{field.start}{field.end - field.start > 1 ? `-${Math.min(field.end, bytes.length) - 1}` : ''}</td>
+                        <td className="byte-offset">{field.start}{field.end - field.start > 1 ? `-${field.end - 1}` : ''}</td>
                         <td className="byte-field-name">{field.name}</td>
                         <td className="byte-value">
-                          {decoded ? (
+                          {field.decoded ? (
                             <>
-                              <span className="byte-decoded">{decoded}</span>
-                              <span className="byte-raw">{raw}</span>
+                              <span className="byte-decoded">{field.decoded}</span>
+                              <span className="byte-raw">{field.raw}</span>
                             </>
                           ) : (
-                            <span className="byte-raw">{raw}</span>
+                            <span className="byte-raw">{field.raw}</span>
                           )}
                         </td>
                       </tr>
-                    )
-                  })}
+                    ))
+                  ) : (
+                    // Fallback to local parsing
+                    localFields.map((field, i) => {
+                      if (field.start >= bytes.length) return null
+                      const { raw, decoded } = formatFieldValue(bytes, field)
+                      return (
+                        <tr key={i}>
+                          <td className="byte-offset">{field.start}{field.end - field.start > 1 ? `-${Math.min(field.end, bytes.length) - 1}` : ''}</td>
+                          <td className="byte-field-name">{field.name}</td>
+                          <td className="byte-value">
+                            {decoded ? (
+                              <>
+                                <span className="byte-decoded">{decoded}</span>
+                                <span className="byte-raw">{raw}</span>
+                              </>
+                            ) : (
+                              <span className="byte-raw">{raw}</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -418,6 +443,35 @@ function PacketDetailModal({ packet, onClose }: PacketDetailModalProps) {
               <pre className="packet-raw-bytes">{packet.rawBytes}</pre>
             </div>
           )}
+
+          {/* Protocol Guide Reference */}
+          {(() => {
+            const typeCode = bytes[0] ? parseInt(bytes[0], 16) : null
+            const protocolInfo = typeCode !== null ? getPacketTypeInfo(typeCode) : null
+            if (!protocolInfo) return null
+            return (
+              <div className="packet-protocol-info">
+                <div className="packet-protocol-header">
+                  <span
+                    className="packet-protocol-badge"
+                    style={{ backgroundColor: getCategoryColor(protocolInfo.category) }}
+                  >
+                    0x{protocolInfo.type.toString(16).toUpperCase().padStart(2, '0')}
+                  </span>
+                  <span className="packet-protocol-name">{protocolInfo.name}</span>
+                  <span className="packet-protocol-category">{protocolInfo.category}</span>
+                </div>
+                <p className="packet-protocol-desc">{protocolInfo.description}</p>
+                {protocolInfo.notes && protocolInfo.notes.length > 0 && (
+                  <ul className="packet-protocol-notes">
+                    {protocolInfo.notes.map((note, i) => (
+                      <li key={i}>{note}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })()}
         </div>
         <div className="modal-footer">
           <Button variant="default" size="sm" onClick={onClose}>Close</Button>

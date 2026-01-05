@@ -124,12 +124,17 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     uint8_t decoded_bytes[56];  // Expanded for pairing packets
     size_t decoded_count = 0;
 
-    // Determine max bytes based on packet type hint
-    // Pairing packets (B0-BF) can be up to 53 bytes
-    // Standard button packets are 24 bytes
-    size_t max_decode = 53;  // Decode as many as possible
+    // Decode first byte to get packet type, then determine expected length
+    uint8_t type_byte;
+    if (!decode_n81_byte(fifo_data, data_start, type_byte)) continue;
+    decoded_bytes[0] = type_byte;
+    decoded_count = 1;
 
-    for (size_t byte_idx = 0; byte_idx < max_decode; byte_idx++) {
+    // Use type byte to determine expected packet length
+    size_t expected_len = get_packet_length(type_byte);
+    size_t max_decode = (expected_len > 0) ? expected_len : 53;  // Default to max if unknown type
+
+    for (size_t byte_idx = 1; byte_idx < max_decode; byte_idx++) {
       size_t bp = data_start + byte_idx * 10;
       if (bp + 10 > total_bits) break;
 
@@ -138,11 +143,13 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
       decoded_bytes[decoded_count++] = bv;
     }
 
-    // Check if this looks like a valid Lutron packet
-    if (decoded_count >= 24) {
+    // Validate packet based on expected length
+    // For known types, we need at least the expected length (or close to it for partial pairing)
+    // For unknown types, need at least 24 bytes (standard packet size)
+    size_t min_required = (expected_len > 0) ? (expected_len < 30 ? expected_len : 24) : 24;
+    if (decoded_count >= min_required) {
       // Verify it looks like a Lutron packet (type byte in valid range)
-      uint8_t pkt_type = decoded_bytes[0];
-      if (pkt_type >= 0x80 && pkt_type <= 0xCF) {
+      if (type_byte >= 0x80 && type_byte <= 0xCF) {
         // This is likely a valid packet! (0x80-0xBF = standard, 0xC0-0xCF = pairing response)
         best_decoded = decoded_count;
         for (size_t i = 0; i < decoded_count; i++) {
@@ -180,7 +187,11 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
       decoded_bytes[1] = byte2;
       size_t decoded_count = 2;
 
-      for (size_t byte_idx = 2; byte_idx < 53; byte_idx++) {
+      // Use type byte to determine expected packet length
+      size_t expected_len = get_packet_length(byte1);
+      size_t max_decode = (expected_len > 0) ? expected_len : 53;
+
+      for (size_t byte_idx = 2; byte_idx < max_decode; byte_idx++) {
         size_t bp = bit_pos + byte_idx * 10;
         if (bp + 10 > total_bits) break;
         uint8_t bv;
@@ -188,7 +199,9 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
         decoded_bytes[decoded_count++] = bv;
       }
 
-      if (decoded_count >= 24) {
+      // Validate based on expected length
+      size_t min_required = (expected_len > 0) ? (expected_len < 30 ? expected_len : 24) : 24;
+      if (decoded_count >= min_required) {
         best_decoded = decoded_count;
         for (size_t i = 0; i < decoded_count; i++) {
           best_bytes[i] = decoded_bytes[i];

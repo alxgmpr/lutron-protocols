@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import type { Packet } from '../types'
+import type { Packet, ParsedField } from '../types'
 
 const MAX_PACKETS = 500
 
@@ -14,6 +14,7 @@ interface BackendPacket {
   details?: Record<string, string>
   raw_hex?: string
   rssi?: number
+  fields?: ParsedField[]  // Backend-parsed field breakdown
 }
 
 export function usePacketStream() {
@@ -101,7 +102,8 @@ export function usePacketStream() {
           summary: pkt.summary || pkt.device_id || '',
           details: formatDetails(pkt.details, pkt.rssi),
           rawBytes: pkt.raw_hex,
-          direction: pkt.direction
+          direction: pkt.direction,
+          fields: pkt.fields  // Pass through backend-parsed fields
         }
 
         if (pkt.direction === 'tx') {

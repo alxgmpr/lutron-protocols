@@ -52,11 +52,6 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     return;  // Silently ignore undecoded packets
   }
 
-  // Skip packets with bad CRC - they're likely noise or corrupted
-  if (!pkt.crc_valid) {
-    return;
-  }
-
   // Format raw bytes as hex string for JSON output
   // Backend will do all packet parsing (type, device ID, level, etc.)
   char hex[180];  // 56 bytes * 3 chars + margin
@@ -69,8 +64,10 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", pkt.raw[i]);
   }
 
-  // Log in simple JSON format - backend does all parsing
-  ESP_LOGI(TAG, "RX: {\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d}", hex, rssi, (int)pkt.raw_len);
+  // Log in simple JSON format - include CRC status for debugging
+  // Backend can decide whether to filter bad CRC packets
+  ESP_LOGI(TAG, "RX: {\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d,\"crc_ok\":%s}",
+           hex, rssi, (int)pkt.raw_len, pkt.crc_valid ? "true" : "false");
 }
 
 void LutronCC1101::dump_config() {
@@ -1652,20 +1649,21 @@ void LutronCC1101::stop_bridge_pairing(uint16_t subnet) {
 }
 
 void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
-  ESP_LOGI(TAG, "=== SEND PAIR ASSIGNMENT (B0) ===");
+  ESP_LOGI(TAG, "=== SEND PAIR ASSIGNMENT (B1) ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X, Factory ID: 0x%08X, Zone: 0x06%04X%02X",
            subnet, factory_id, subnet, zone_suffix);
 
-  // Real bridge pattern analysis from pairing_test.cu8:
-  // - Starts at seq=2 with A2 prefix (NOT seq=0 with A0!)
-  // - Pattern: seq=2,6,7,8,12,18,19,20,24,26,30,31,32,36,38,42,43,44,48,50,54,55,56,60,62,66,67,68
-  // - Sends bursts of 2-3 packets with seq+1, then gaps of +4 to +6
-  // - Prefix: A2 for first 2 packets, then stays AF
+  // Real bridge pattern analysis from real_bridge_repair_06fe43b1.cu8:
+  // - Uses B1 packet type (NOT B0!)
+  // - Starts at seq=0 with A0 prefix
+  // - Pattern: 0,2,6,7,8,0C,0E,12,13,14,18,1A,1E,1F,20,24,26,2A,2B,2C,30,32,36,37,38,3C,3E,42,43,44
+  // - Prefix: A0 for seq=0, A2 for seq=2,6, then AF for rest
 
-  // Real bridge sequence pattern (extracted from capture):
+  // Real bridge sequence pattern (extracted from successful pairing capture):
   static const uint8_t real_seqs[] = {
-    2, 6, 7, 8, 12, 18, 19, 20, 24, 26, 30, 31, 32, 36, 38, 42, 43, 44, 48, 50,
-    54, 55, 56, 60, 62, 66, 67, 68, 72, 74
+    0x00, 0x02, 0x06, 0x07, 0x08, 0x0C, 0x0E, 0x12, 0x13, 0x14,
+    0x18, 0x1A, 0x1E, 0x1F, 0x20, 0x24, 0x26, 0x2A, 0x2B, 0x2C,
+    0x30, 0x32, 0x36, 0x37, 0x38, 0x3C, 0x3E, 0x42, 0x43, 0x44
   };
   static const int num_seqs = sizeof(real_seqs) / sizeof(real_seqs[0]);
 
@@ -1674,12 +1672,16 @@ void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, ui
   for (int i = 0; i < num_seqs; i++) {
     memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0xB0;  // Pairing assignment type
-    packet[1] = real_seqs[i];  // Use exact sequence from real bridge
+    packet[0] = 0xB1;  // B1 pairing assignment (real bridge uses B1, not B0!)
+    packet[1] = real_seqs[i];
 
-    // Zone prefix: A2 for first 2 packets (seq 2, 6), then AF for rest
+    // Zone prefix pattern from real bridge:
+    // - A0 for seq=0x00
+    // - A2 for seq=0x02, 0x06
+    // - AF for all others
     uint8_t prefix;
-    if (i < 2) prefix = 0xA2;
+    if (real_seqs[i] == 0x00) prefix = 0xA0;
+    else if (real_seqs[i] == 0x02 || real_seqs[i] == 0x06) prefix = 0xA2;
     else prefix = 0xAF;
     packet[2] = prefix;
     packet[3] = subnet & 0xFF;          // Subnet low byte
@@ -1753,6 +1755,31 @@ void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, ui
   }
 
   ESP_LOGI(TAG, "Pair assignment packets sent (%d packets).", num_seqs);
+
+  // CRITICAL: After B0 assignment, device takes ~1.5-2 seconds to process and respond with B3
+  // We MUST stop all TX and listen during this time!
+  ESP_LOGI(TAG, "=== LISTENING FOR B3 RESPONSE (5 seconds - NO TX) ===");
+  ESP_LOGI(TAG, "Device should respond with B3 containing our assignment data");
+
+  // Put radio in RX mode and listen
+  this->radio_.start_rx();
+
+  uint32_t listen_start = millis();
+  int b3_count = 0;
+
+  while (millis() - listen_start < 5000) {  // Listen for 5 seconds
+    // Check for received packets
+    this->radio_.check_rx();
+    delay(5);
+
+    // Log progress every second
+    if ((millis() - listen_start) % 1000 < 10) {
+      ESP_LOGI(TAG, "  Listening... %d seconds (B3 responses: %d)",
+               (millis() - listen_start) / 1000, b3_count);
+    }
+  }
+
+  ESP_LOGI(TAG, "=== LISTEN PERIOD COMPLETE ===");
 }
 
 void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {

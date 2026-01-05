@@ -117,9 +117,9 @@ def register_device(device_id: str, device_type: str, info: Dict):
 
 
 # Regex patterns for parsing ESP32 logs (JSON format)
-# New format: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24}
+# New format: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
 # New format: TX: {"bytes":"81 00 01...","len":24}
-RX_JSON_PATTERN = re.compile(r'RX:\s*\{"bytes":"([^"]+)","rssi":(-?\d+),"len":(\d+)\}')
+RX_JSON_PATTERN = re.compile(r'RX:\s*\{"bytes":"([^"]+)","rssi":(-?\d+),"len":(\d+)(?:,"crc_ok":(true|false))?\}')
 TX_JSON_PATTERN = re.compile(r'TX:\s*\{"bytes":"([^"]+)","len":(\d+)\}')
 
 # Legacy patterns (for backwards compatibility during transition)
@@ -130,7 +130,7 @@ RSSI_PATTERN = re.compile(r'RSSI=(-?\d+)')
 
 # Packet type mappings (first byte -> type name)
 PACKET_TYPE_MAP = {
-    0x81: 'STATE_RPT', 0x82: 'STATE_RPT', 0x83: 'STATE_RPT',
+    0x80: 'STATE_RPT', 0x81: 'STATE_RPT', 0x82: 'STATE_RPT', 0x83: 'STATE_RPT',
     0x88: 'BTN_SHORT_A', 0x89: 'BTN_LONG_A', 0x8A: 'BTN_SHORT_B', 0x8B: 'BTN_LONG_B',
     0x91: 'BEACON', 0x92: 'BEACON', 0x93: 'BEACON',
     0xA2: 'SET_LEVEL',
@@ -143,6 +143,217 @@ BUTTON_NAMES = {
     0x02: 'ON', 0x03: 'FAV', 0x04: 'OFF', 0x05: 'RAISE', 0x06: 'LOWER',
     0x08: 'SCENE1', 0x09: 'SCENE2', 0x0A: 'SCENE3', 0x0B: 'SCENE4',
 }
+
+# Action names
+ACTION_NAMES = {
+    0x00: 'PRESS', 0x01: 'RELEASE', 0x03: 'SAVE'
+}
+
+# ============================================================================
+# PACKET FIELD DEFINITIONS
+# Each field has: name, start, end (exclusive), format
+# Formats: hex, decimal, device_id (LE), device_id_be (BE), level_byte, level_16bit, button, action
+# ============================================================================
+
+FIELD_DEFS = {
+    # STATE_RPT: Dimmer broadcasting its current level (format byte 0x08)
+    'STATE_RPT': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Device ID', 'start': 2, 'end': 6, 'format': 'device_id'},
+        {'name': 'Format', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 11, 'format': 'hex'},
+        {'name': 'Level', 'start': 11, 'end': 12, 'format': 'level_byte'},
+        {'name': 'Fixed', 'start': 12, 'end': 16, 'format': 'hex'},
+        {'name': 'Padding', 'start': 16, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # DIMMER_ACK: Dimmer acknowledgment during button handling
+    'DIMMER_ACK': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Device ID', 'start': 2, 'end': 6, 'format': 'device_id'},
+        {'name': 'Format', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Payload', 'start': 8, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # SET_LEVEL: Bridge sending level command to dimmer (format byte 0x0E)
+    'SET_LEVEL': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Source ID', 'start': 2, 'end': 6, 'format': 'device_id'},
+        {'name': 'Format', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 9, 'format': 'hex'},
+        {'name': 'Target ID', 'start': 9, 'end': 13, 'format': 'device_id_be'},
+        {'name': 'Fixed', 'start': 13, 'end': 16, 'format': 'hex'},
+        {'name': 'Level', 'start': 16, 'end': 18, 'format': 'level_16bit'},
+        {'name': 'Trailer', 'start': 18, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # UNPAIR: Bridge removing a device from the network (format byte 0x0C)
+    'UNPAIR': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Bridge Zone', 'start': 2, 'end': 6, 'format': 'device_id'},
+        {'name': 'Protocol', 'start': 6, 'end': 7, 'format': 'hex'},
+        {'name': 'Format', 'start': 7, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 9, 'format': 'hex'},
+        {'name': 'Broadcast', 'start': 9, 'end': 14, 'format': 'hex'},
+        {'name': 'Command', 'start': 14, 'end': 16, 'format': 'hex'},
+        {'name': 'Target ID', 'start': 16, 'end': 20, 'format': 'device_id_be'},
+        {'name': 'Padding', 'start': 20, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # UNPAIR_PREP: Unpair prepare phase (format byte 0x09)
+    'UNPAIR_PREP': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Bridge Zone', 'start': 2, 'end': 6, 'format': 'device_id'},
+        {'name': 'Protocol', 'start': 6, 'end': 7, 'format': 'hex'},
+        {'name': 'Format', 'start': 7, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 9, 'format': 'hex'},
+        {'name': 'Target ID', 'start': 9, 'end': 13, 'format': 'device_id_be'},
+        {'name': 'Marker', 'start': 13, 'end': 14, 'format': 'hex'},
+        {'name': 'Command', 'start': 14, 'end': 16, 'format': 'hex'},
+        {'name': 'Payload', 'start': 16, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # BTN_*: Button press packets
+    'BTN': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Device ID', 'start': 2, 'end': 6, 'format': 'device_id_be'},
+        {'name': 'Protocol', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 10, 'format': 'hex'},
+        {'name': 'Button', 'start': 10, 'end': 11, 'format': 'button'},
+        {'name': 'Action', 'start': 11, 'end': 12, 'format': 'action'},
+        {'name': 'Payload', 'start': 12, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # BEACON: Bridge pairing beacon
+    'BEACON': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Load ID', 'start': 2, 'end': 6, 'format': 'device_id_be'},
+        {'name': 'Format', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 9, 'format': 'hex'},
+        {'name': 'Broadcast', 'start': 9, 'end': 14, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 14, 'end': 20, 'format': 'hex'},
+        {'name': 'Padding', 'start': 20, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # PAIR_B*: Pico pairing packets (53 bytes)
+    'PAIR': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Device ID', 'start': 2, 'end': 6, 'format': 'device_id_be'},
+        {'name': 'Format', 'start': 6, 'end': 8, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 8, 'end': 10, 'format': 'hex'},
+        {'name': 'Btn Scheme', 'start': 10, 'end': 11, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 11, 'end': 13, 'format': 'hex'},
+        {'name': 'Broadcast', 'start': 13, 'end': 18, 'format': 'hex'},
+        {'name': 'Fixed', 'start': 18, 'end': 20, 'format': 'hex'},
+        {'name': 'Device ID 2', 'start': 20, 'end': 24, 'format': 'device_id_be'},
+        {'name': 'Device ID 3', 'start': 24, 'end': 28, 'format': 'device_id_be'},
+        {'name': 'Capabilities', 'start': 28, 'end': 41, 'format': 'hex'},
+        {'name': 'Broadcast 2', 'start': 41, 'end': 45, 'format': 'hex'},
+        {'name': 'Padding', 'start': 45, 'end': 51, 'format': 'hex'},
+        {'name': 'CRC', 'start': 51, 'end': 53, 'format': 'hex'},
+    ],
+    # PAIR_RESP: Pairing response
+    'PAIR_RESP': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Device ID', 'start': 2, 'end': 6, 'format': 'device_id_be'},
+        {'name': 'Payload', 'start': 6, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+    # Generic fallback for unknown packets
+    'UNKNOWN': [
+        {'name': 'Type', 'start': 0, 'end': 1, 'format': 'hex'},
+        {'name': 'Sequence', 'start': 1, 'end': 2, 'format': 'decimal'},
+        {'name': 'Payload', 'start': 2, 'end': 22, 'format': 'hex'},
+        {'name': 'CRC', 'start': 22, 'end': 24, 'format': 'hex'},
+    ],
+}
+
+
+def _format_field_value(bytes_list: List[str], field: Dict) -> Dict:
+    """Format a single field value from raw packet bytes.
+
+    Returns dict with: name, start, end, raw, decoded (or None)
+    """
+    start = field['start']
+    end = min(field['end'], len(bytes_list))
+    field_bytes = bytes_list[start:end]
+    raw = ' '.join(field_bytes)
+
+    if not field_bytes:
+        return {
+            'name': field['name'],
+            'start': start,
+            'end': end,
+            'raw': '-',
+            'decoded': None
+        }
+
+    fmt = field.get('format', 'hex')
+    decoded = None
+
+    if fmt == 'device_id' and len(field_bytes) >= 4:
+        # Little-endian device ID
+        decoded = f"{field_bytes[3]}{field_bytes[2]}{field_bytes[1]}{field_bytes[0]}".upper()
+    elif fmt == 'device_id_be' and len(field_bytes) >= 4:
+        # Big-endian device ID
+        decoded = f"{field_bytes[0]}{field_bytes[1]}{field_bytes[2]}{field_bytes[3]}".upper()
+    elif fmt == 'level_16bit' and len(field_bytes) >= 2:
+        # 16-bit level (0x0000-0xFEFF = 0-100%)
+        level_raw = int(field_bytes[0] + field_bytes[1], 16)
+        level = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
+        decoded = f"{level}%"
+    elif fmt == 'level_byte' and len(field_bytes) >= 1:
+        # Single byte level (0x00-0xFE = 0-100%)
+        level_byte = int(field_bytes[0], 16)
+        level = 0 if level_byte == 0 else round((level_byte * 100) / 254)
+        decoded = f"{level}%"
+    elif fmt == 'button' and len(field_bytes) >= 1:
+        btn_code = int(field_bytes[0], 16)
+        decoded = BUTTON_NAMES.get(btn_code, f"0x{btn_code:02X}")
+    elif fmt == 'action' and len(field_bytes) >= 1:
+        action_code = int(field_bytes[0], 16)
+        decoded = ACTION_NAMES.get(action_code, f"0x{action_code:02X}")
+    elif fmt == 'decimal' and len(field_bytes) >= 1:
+        decoded = str(int(field_bytes[0], 16))
+    # hex format: decoded stays None, just show raw
+
+    return {
+        'name': field['name'],
+        'start': start,
+        'end': end,
+        'raw': raw,
+        'decoded': decoded
+    }
+
+
+def _get_field_defs_for_type(packet_type: str) -> List[Dict]:
+    """Get field definitions for a packet type."""
+    if packet_type.startswith('BTN_'):
+        return FIELD_DEFS['BTN']
+    elif packet_type.startswith('PAIR_B'):
+        return FIELD_DEFS['PAIR']
+    elif packet_type.startswith('BRIDGE_'):
+        return FIELD_DEFS['UNKNOWN']
+    return FIELD_DEFS.get(packet_type, FIELD_DEFS['UNKNOWN'])
+
+
+def parse_packet_fields(bytes_list: List[str], packet_type: str) -> List[Dict]:
+    """Parse all fields from packet bytes based on packet type.
+
+    Returns list of field dicts: [{name, start, end, raw, decoded}, ...]
+    """
+    field_defs = _get_field_defs_for_type(packet_type)
+    return [_format_field_value(bytes_list, f) for f in field_defs if f['start'] < len(bytes_list)]
+
 
 def parse_packet_bytes(bytes_list: List[str]) -> Dict:
     """Parse raw packet bytes and extract structured data.
@@ -177,8 +388,8 @@ def parse_packet_bytes(bytes_list: List[str]) -> Dict:
         'decoded_data': {}
     }
 
-    # STATE_RPT/LEVEL: 0x81-0x83 packets - check format byte at [7] to distinguish
-    if type_byte in (0x81, 0x82, 0x83):
+    # STATE_RPT/LEVEL: 0x80-0x83 packets - check format byte at [7] to distinguish
+    if type_byte in (0x80, 0x81, 0x82, 0x83):
         # Device ID at [2-5] is little-endian (subnet format)
         if len(bytes_list) >= 6:
             device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
@@ -202,7 +413,7 @@ def parse_packet_bytes(bytes_list: List[str]) -> Dict:
             result['decoded_data']['source'] = result['source_id']
             result['decoded_data']['target'] = target_id
         elif format_byte == 0x0C and len(bytes_list) >= 20:
-            # UNPAIR command
+            # UNPAIR command (format 0x0C with cmd 02 08)
             result['packet_type'] = 'UNPAIR'
             # Target ID at [16-19] is big-endian
             target_id = f"{bytes_list[16]}{bytes_list[17]}{bytes_list[18]}{bytes_list[19]}".upper()
@@ -210,11 +421,23 @@ def parse_packet_bytes(bytes_list: List[str]) -> Dict:
             result['device_id'] = target_id
             result['decoded_data']['bridge'] = result['source_id']
             result['decoded_data']['target'] = target_id
-        elif format_byte == 0x09 and len(bytes_list) >= 13:
-            # UNPAIR_PREP
-            result['packet_type'] = 'UNPAIR_PREP'
-            target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
-            result['target_id'] = target_id
+        elif format_byte == 0x09 and len(bytes_list) >= 16:
+            # Format 0x09 can be UNPAIR_PREP or DIMMER_ACK
+            # UNPAIR_PREP has: byte[13]=0xFE and bytes[14:16]=0x02 0x02
+            is_unpair_prep = (len(bytes_list) >= 16 and
+                              bytes_list[13].upper() == 'FE' and
+                              bytes_list[14].upper() == '02' and
+                              bytes_list[15].upper() == '02')
+            if is_unpair_prep:
+                result['packet_type'] = 'UNPAIR_PREP'
+                target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+                result['target_id'] = target_id
+            else:
+                # This is a dimmer acknowledgment/response, not an unpair command
+                result['packet_type'] = 'DIMMER_ACK'
+        elif format_byte == 0x0B:
+            # Format 0x0B: Dimmer response during button press handling
+            result['packet_type'] = 'DIMMER_ACK'
         elif format_byte == 0x08:
             # STATE_RPT (dimmer reporting level)
             result['packet_type'] = 'STATE_RPT'
@@ -222,6 +445,9 @@ def parse_packet_bytes(bytes_list: List[str]) -> Dict:
                 level_byte = int(bytes_list[11], 16)
                 result['level'] = 0 if level_byte == 0 else round((level_byte * 100) / 254)
                 result['decoded_data']['level'] = str(result['level'])
+        else:
+            # Unknown format byte - mark as unclassified rather than assuming STATE_RPT
+            result['packet_type'] = f'BRIDGE_0x{format_byte:02X}'
 
     # Button packets: 0x88-0x8B
     elif type_byte in (0x88, 0x89, 0x8A, 0x8B):
@@ -314,6 +540,10 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
 
     pkt_data['raw_hex'] = raw_hex
 
+    # Parse field breakdown from raw bytes
+    bytes_list = raw_hex.split() if raw_hex else []
+    parsed_fields = parse_packet_fields(bytes_list, packet_type) if bytes_list else []
+
     # Calculate subnet and id_format BEFORE storing/streaming
     # This ensures the packet queue gets the correct data
     decoded_data = pkt_data.get('decoded_data', {})
@@ -365,6 +595,7 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
             'target_id': pkt_data.get('target_id'),
             'summary': f"{pkt_data.get('source_id')} -> {pkt_data.get('target_id')}" if pkt_data.get('source_id') and pkt_data.get('target_id') else device_id or '',
             'details': decoded_data,
+            'fields': parsed_fields,  # Full field breakdown for frontend display
             'raw_hex': raw_hex,
             'rssi': pkt_data.get('rssi')
         })
@@ -400,16 +631,22 @@ def _parse_and_store_packet(message: str):
 
         # ========== New JSON format ==========
 
-        # Parse RX JSON: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24}
+        # Parse RX JSON: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
         rx_json_match = RX_JSON_PATTERN.search(message)
         if rx_json_match:
             raw_hex = rx_json_match.group(1)
             rssi = int(rx_json_match.group(2))
             # pkt_len = int(rx_json_match.group(3))
+            crc_ok_str = rx_json_match.group(4)  # May be None for old format
+            crc_ok = crc_ok_str != 'false' if crc_ok_str else True  # Default to true for backwards compat
 
             # Parse packet from raw bytes
             bytes_list = raw_hex.split()
             parsed = parse_packet_bytes(bytes_list)
+
+            # Include CRC status in decoded data
+            decoded_data = parsed['decoded_data']
+            decoded_data['crc_ok'] = crc_ok
 
             pkt_data = {
                 'packet_type': parsed['packet_type'],
@@ -420,7 +657,7 @@ def _parse_and_store_packet(message: str):
                 'level': parsed['level'],
                 'button': parsed['button'],
                 'rssi': rssi,
-                'decoded_data': parsed['decoded_data']
+                'decoded_data': decoded_data
             }
 
             _store_rx_packet(pkt_data, raw_hex)
@@ -454,6 +691,9 @@ def _parse_and_store_packet(message: str):
                 decoded_data=parsed['decoded_data']
             )
 
+            # Parse fields for TX packets
+            tx_fields = parse_packet_fields(bytes_list, parsed['packet_type'])
+
             # Push to packet queue for SSE streaming
             try:
                 packet_queue.put_nowait({
@@ -465,6 +705,7 @@ def _parse_and_store_packet(message: str):
                     'target_id': parsed['target_id'],
                     'summary': f"{parsed['source_id']} -> {parsed['target_id']}" if parsed['source_id'] and parsed['target_id'] else parsed['device_id'] or '',
                     'details': parsed['decoded_data'],
+                    'fields': tx_fields,  # Backend-parsed field breakdown
                     'raw_hex': raw_hex,
                     'rssi': None
                 })
@@ -579,6 +820,9 @@ def _parse_and_store_packet(message: str):
                 decoded_data=parsed['decoded_data']
             )
 
+            # Parse fields for TX packets (legacy format)
+            legacy_tx_fields = parse_packet_fields(bytes_list, parsed['packet_type'])
+
             # Push to packet queue for SSE streaming
             try:
                 packet_queue.put_nowait({
@@ -590,6 +834,7 @@ def _parse_and_store_packet(message: str):
                     'target_id': parsed['target_id'],
                     'summary': f"{parsed['source_id']} -> {parsed['target_id']}" if parsed['source_id'] and parsed['target_id'] else parsed['device_id'] or '',
                     'details': parsed['decoded_data'],
+                    'fields': legacy_tx_fields,  # Backend-parsed field breakdown
                     'raw_hex': raw_hex,
                     'rssi': None
                 })
