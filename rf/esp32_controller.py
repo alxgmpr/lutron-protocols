@@ -583,6 +583,28 @@ class ESP32Controller:
                                zone_id_2=f"0x{zone_id_2:08X}",
                                target_device_id=f"0x{target_device_id:08X}")
 
+    async def start_pairing(self, subnet: int):
+        """Start bridge pairing mode - sends active beacons."""
+        await self.call_service('start_pairing', subnet=f"0x{subnet:04X}")
+
+    async def stop_pairing(self, subnet: int):
+        """Stop bridge pairing mode - sends stop beacons."""
+        await self.call_service('stop_pairing', subnet=f"0x{subnet:04X}")
+
+    async def pair_device(self, subnet: int, factory_id: int, zone_suffix: int):
+        """Complete bridge pairing sequence for a device."""
+        await self.call_service('pair_device',
+                               subnet=f"0x{subnet:04X}",
+                               factory_id=f"0x{factory_id:08X}",
+                               zone_suffix=f"0x{zone_suffix:02X}")
+
+    async def send_pair_assignment(self, subnet: int, factory_id: int, zone_suffix: int):
+        """Send B0 pairing assignment packets only."""
+        await self.call_service('send_pair_assignment',
+                               subnet=f"0x{subnet:04X}",
+                               factory_id=f"0x{factory_id:08X}",
+                               zone_suffix=f"0x{zone_suffix:02X}")
+
     async def start_rx(self):
         """Start RX mode by pressing rx_on button."""
         await self.press_button('rx_on')
@@ -1552,6 +1574,122 @@ def cmd_serve(args):
                 device_id = int(device_id, 16) if device_id.startswith('0x') else int(device_id)
             asyncio.run(set_beacon_device_async(device_id))
             return jsonify({'status': 'ok', 'device_id': f"0x{device_id:08X}"})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    # ========== Bridge Pairing API ==========
+
+    def parse_hex(value, default=0):
+        """Parse hex string to int."""
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            return int(value, 16) if value.startswith('0x') else int(value, 16)
+        return default
+
+    @app.route('/api/pairing/start', methods=['POST'])
+    def api_pairing_start():
+        """Start bridge pairing mode - sends active beacons."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+
+            async def do_start():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.start_pairing(subnet)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_start())
+            return jsonify({'status': 'ok', 'subnet': f"0x{subnet:04X}"})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/pairing/stop', methods=['POST'])
+    def api_pairing_stop():
+        """Stop bridge pairing mode - sends stop beacons."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+
+            async def do_stop():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.stop_pairing(subnet)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_stop())
+            return jsonify({'status': 'ok', 'subnet': f"0x{subnet:04X}"})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/pairing/pair', methods=['POST'])
+    def api_pairing_pair():
+        """Complete bridge pairing sequence for a device."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+            factory_id = parse_hex(data.get('factory_id', '0x0'))
+            zone_suffix = parse_hex(data.get('zone_suffix', '0x8F'))
+
+            async def do_pair():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.pair_device(subnet, factory_id, zone_suffix)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_pair())
+            return jsonify({
+                'status': 'ok',
+                'subnet': f"0x{subnet:04X}",
+                'factory_id': f"0x{factory_id:08X}",
+                'zone': f"0x06{subnet:04X}{zone_suffix:02X}"
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/pairing/assign', methods=['POST'])
+    def api_pairing_assign():
+        """Send B0 pairing assignment packets only."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+            factory_id = parse_hex(data.get('factory_id', '0x0'))
+            zone_suffix = parse_hex(data.get('zone_suffix', '0x8F'))
+
+            async def do_assign():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.send_pair_assignment(subnet, factory_id, zone_suffix)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_assign())
+            return jsonify({
+                'status': 'ok',
+                'subnet': f"0x{subnet:04X}",
+                'factory_id': f"0x{factory_id:08X}",
+                'zone': f"0x06{subnet:04X}{zone_suffix:02X}"
+            })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 

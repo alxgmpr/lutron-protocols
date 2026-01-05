@@ -536,3 +536,4 @@ The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete 
 | send_state_report | Fake dimmer state to bridge |
 | start_rx / stop_rx | Control RX mode |
 
+

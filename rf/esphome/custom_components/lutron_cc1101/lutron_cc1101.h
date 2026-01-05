@@ -222,6 +222,48 @@ class LutronCC1101 : public Component,
    */
   void send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id);
 
+  // ========== BRIDGE PAIRING (based on real RadioRA3 captures) ==========
+
+  /**
+   * @brief Start bridge pairing mode - sends active beacons that make devices flash
+   * Uses 0x92 packets with format=0x0C and mode=0x02 (active pairing)
+   * Call stop_bridge_pairing() when done
+   * @param subnet 16-bit subnet (e.g., 0x2C90)
+   */
+  void start_bridge_pairing(uint16_t subnet);
+
+  /**
+   * @brief Stop bridge pairing mode - sends stop beacon
+   * Uses 0x92 packets with format=0x0C and mode=0x04 (stop)
+   * @param subnet 16-bit subnet
+   */
+  void stop_bridge_pairing(uint16_t subnet);
+
+  /**
+   * @brief Send B0 pairing assignment to claim a device
+   * Based on real RadioRA3 captures - sends factory ID -> zone ID mapping
+   * @param subnet 16-bit subnet (e.g., 0x2C90)
+   * @param factory_id Device's factory ID from label (e.g., 0x0707DF6A)
+   * @param zone_suffix Zone suffix byte (e.g., 0x8F for zone 062C908F)
+   */
+  void send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix);
+
+  /**
+   * @brief Complete bridge pairing sequence for a device with known IDs
+   * 1. Sends active pairing beacon (10 packets)
+   * 2. Sends B0 assignment packets (30 packets)
+   * 3. Sends stop beacon (5 packets)
+   * @param subnet 16-bit subnet (e.g., 0x2C90)
+   * @param factory_id Device's factory ID (e.g., 0x0707DF6A)
+   * @param zone_suffix Zone suffix byte (e.g., 0x8F)
+   */
+  void pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix);
+
+  /**
+   * @brief Check if pairing mode is active
+   */
+  bool is_pairing_active() const { return pairing_active_; }
+
   /**
    * @brief Send bridge-style unpair from TWO zone IDs (interleaved like real bridge)
    * Real bridge sends from both zones (e.g., 002C90AD and 002C90AF) to ensure
@@ -250,7 +292,11 @@ class LutronCC1101 : public Component,
   bool type_alternate_{false};
   bool rx_enabled_{false};
   bool rx_auto_{true};  // Auto-resume RX after TX (default: on)
+  bool pairing_active_{false};
+  uint16_t pairing_subnet_{0};
+  uint8_t pairing_seq_{0};
   uint32_t last_rx_check_{0};
+  uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
 };
 
 }  // namespace lutron_cc1101

@@ -217,6 +217,55 @@ api:
             ESP_LOGI("service", "test_decode: %s", hex_bytes.c_str());
             id(lutron_radio)->test_decode_packet(hex_bytes);
 
+    # Bridge pairing - complete sequence
+    # Example: pair_device subnet=0x2C90 factory_id=0x0707DF6A zone_suffix=0x8F
+    - service: pair_device
+      variables:
+        subnet: string
+        factory_id: string
+        zone_suffix: string
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            uint32_t fid = strtoul(factory_id.c_str(), nullptr, 0);
+            uint8_t zone = strtoul(zone_suffix.c_str(), nullptr, 0);
+            ESP_LOGI("service", "pair_device: subnet=0x%04X factory=0x%08X zone=0x%02X", sub, fid, zone);
+            id(lutron_radio)->pair_device(sub, fid, zone);
+
+    # Start bridge pairing mode (just sends beacons)
+    - service: start_pairing
+      variables:
+        subnet: string
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            ESP_LOGI("service", "start_pairing: subnet=0x%04X", sub);
+            id(lutron_radio)->start_bridge_pairing(sub);
+
+    # Stop bridge pairing mode
+    - service: stop_pairing
+      variables:
+        subnet: string
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            ESP_LOGI("service", "stop_pairing: subnet=0x%04X", sub);
+            id(lutron_radio)->stop_bridge_pairing(sub);
+
+    # Send B0 pairing assignment (without beacon phase)
+    - service: send_pair_assignment
+      variables:
+        subnet: string
+        factory_id: string
+        zone_suffix: string
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            uint32_t fid = strtoul(factory_id.c_str(), nullptr, 0);
+            uint8_t zone = strtoul(zone_suffix.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_pair_assignment: subnet=0x%04X factory=0x%08X zone=0x%02X", sub, fid, zone);
+            id(lutron_radio)->send_pair_assignment(sub, fid, zone);
+
 ota:
   platform: esphome
   password: "test"

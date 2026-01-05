@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Card, FormGroup, FormInput } from '../common'
+import { useState, useEffect, useRef } from 'react'
+import { Card, FormGroup, FormInput, Button } from '../common'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
 
@@ -9,36 +9,134 @@ interface Props {
 
 export function BridgeBeacon({ showStatus }: Props) {
   const { postJson } = useApi()
-  const [bridgeId, setBridgeId] = useState('0xAF902C01')
+
+  // Subnet-based inputs (simpler than full bridge ID)
+  const [subnet, setSubnet] = useState('2C90')
+  const [factoryId, setFactoryId] = useState('0707DF6A')
+  const [zoneSuffix, setZoneSuffix] = useState('8F')
+
   const [beaconActive, setBeaconActive] = useState(false)
   const [loading, setLoading] = useState(false)
+  const beaconActiveRef = useRef(beaconActive)
 
-  const handleToggle = async () => {
-    const newState = !beaconActive
-    setLoading(true)
+  // Keep ref in sync
+  useEffect(() => {
+    beaconActiveRef.current = beaconActive
+  }, [beaconActive])
 
+  // Computed zone ID for display
+  const computedZone = `06${subnet}${zoneSuffix}`
+
+  const startBeacon = async () => {
     try {
-      // When turning ON, first set the device ID
-      if (newState) {
-        const deviceResult = await postJson('/api/beacon/device', {
-          device_id: bridgeId
-        })
-        if (deviceResult.status !== 'ok') {
-          showStatus(`Error setting device: ${deviceResult.error}`, 'error')
-          setLoading(false)
-          return
+      const result = await postJson('/api/pairing/start', {
+        subnet: `0x${subnet}`
+      })
+      if (result.status !== 'ok') {
+        showStatus(`Error: ${result.error}`, 'error')
+        return false
+      }
+      return true
+    } catch (e) {
+      showStatus(`Error: ${e}`, 'error')
+      return false
+    }
+  }
+
+  const stopBeacon = async () => {
+    try {
+      const result = await postJson('/api/pairing/stop', {
+        subnet: `0x${subnet}`
+      })
+      if (result.status !== 'ok') {
+        showStatus(`Error: ${result.error}`, 'error')
+        return false
+      }
+      return true
+    } catch (e) {
+      showStatus(`Error: ${e}`, 'error')
+      return false
+    }
+  }
+
+  const handleToggleBeacon = async () => {
+    setLoading(true)
+    try {
+      if (!beaconActive) {
+        const ok = await startBeacon()
+        if (ok) {
+          setBeaconActive(true)
+          showStatus('Pairing beacon started - devices should flash', 'success')
+        }
+      } else {
+        const ok = await stopBeacon()
+        if (ok) {
+          setBeaconActive(false)
+          showStatus('Pairing beacon stopped', 'success')
         }
       }
+    } finally {
+      setLoading(false)
+    }
+  }
 
-      const result = await postJson('/api/switch/beacon_mode', {
-        state: newState
+  const handlePairDevice = async () => {
+    setLoading(true)
+    try {
+      // Briefly stop beacon during assignment
+      const wasActive = beaconActiveRef.current
+      if (wasActive) {
+        await stopBeacon()
+      }
+
+      const result = await postJson('/api/pairing/pair', {
+        subnet: `0x${subnet}`,
+        factory_id: `0x${factoryId}`,
+        zone_suffix: `0x${zoneSuffix}`
       })
 
       if (result.status === 'ok') {
-        setBeaconActive(newState)
-        showStatus(newState ? 'Beacon mode ON' : 'Beacon mode OFF', 'success')
+        setBeaconActive(false)
+        showStatus(`Paired! Device should respond to zone 0x${computedZone}`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
+        // Resume beacon if it was active
+        if (wasActive) {
+          await startBeacon()
+          setBeaconActive(true)
+        }
+      }
+    } catch (e) {
+      showStatus(`Error: ${e}`, 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSendAssignment = async () => {
+    setLoading(true)
+    try {
+      // Briefly pause beacon during assignment
+      const wasActive = beaconActiveRef.current
+      if (wasActive) {
+        await stopBeacon()
+      }
+
+      const result = await postJson('/api/pairing/assign', {
+        subnet: `0x${subnet}`,
+        factory_id: `0x${factoryId}`,
+        zone_suffix: `0x${zoneSuffix}`
+      })
+
+      if (result.status === 'ok') {
+        showStatus('Assignment packets sent', 'success')
+      } else {
+        showStatus(`Error: ${result.error}`, 'error')
+      }
+
+      // Resume beacon if it was active
+      if (wasActive) {
+        await startBeacon()
       }
     } catch (e) {
       showStatus(`Error: ${e}`, 'error')
@@ -48,29 +146,65 @@ export function BridgeBeacon({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Beacon Mode" badge="BRIDGE PAIRING" variant="bridge">
+    <Card title="Bridge Pairing" badge="EXPERIMENTAL" variant="bridge">
       <p className="help-text">
-        Toggle beacon mode to put devices in pairing state. Devices within range will flash
-        indicating they're ready to pair. Hold OFF on dimmer for 10 seconds to pair.
+        Pair devices to our ESP32 as a bridge. Toggle beacon on, hold OFF on device for 10 seconds,
+        then click Pair Device. Zone: 0x{computedZone}
       </p>
+
       <div className="form-row">
-        <FormGroup label="Bridge ID">
-          <FormInput value={bridgeId} onChange={setBridgeId} width={120} prefix="0x" />
+        <FormGroup label="Subnet" hint="e.g. 2C90">
+          <FormInput value={subnet} onChange={setSubnet} width={80} />
         </FormGroup>
+        <FormGroup label="Factory ID" hint="from device label">
+          <FormInput value={factoryId} onChange={setFactoryId} width={100} />
+        </FormGroup>
+        <FormGroup label="Zone" hint={`-> 0x${computedZone}`}>
+          <FormInput value={zoneSuffix} onChange={setZoneSuffix} width={60} />
+        </FormGroup>
+      </div>
+
+      <div className="form-row" style={{ marginTop: '12px', alignItems: 'center' }}>
         <div className="beacon-toggle-container">
-          <label className="beacon-toggle-label">Beacon</label>
+          <span className="beacon-toggle-label">Pairing Beacon</span>
           <button
             className={`beacon-toggle ${beaconActive ? 'active' : ''} ${loading ? 'loading' : ''}`}
-            onClick={handleToggle}
+            onClick={handleToggleBeacon}
             disabled={loading}
           >
-            <span className="toggle-track">
-              <span className="toggle-thumb" />
-            </span>
+            <div className="toggle-track">
+              <div className="toggle-thumb" />
+            </div>
             <span className="toggle-text">{beaconActive ? 'ON' : 'OFF'}</span>
           </button>
         </div>
       </div>
+
+      <div className="form-row" style={{ marginTop: '12px' }}>
+        <Button
+          variant="primary"
+          onClick={handlePairDevice}
+          disabled={loading}
+          title="Complete sequence: beacon + assignment + stop"
+        >
+          Pair Device
+        </Button>
+        <Button
+          variant="blue"
+          onClick={handleSendAssignment}
+          disabled={loading}
+          title="Send B0 assignment packets only"
+        >
+          Send Assignment
+        </Button>
+      </div>
+
+      {beaconActive && (
+        <p className="status-text active" style={{ marginTop: '12px', color: 'var(--accent-green)' }}>
+          Beaconing active - hold OFF on device for 10 seconds, then click Pair Device
+        </p>
+      )}
     </Card>
   )
 }
+

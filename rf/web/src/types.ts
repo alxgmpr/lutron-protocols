@@ -78,3 +78,4 @@ export const DEVICE_TYPES: Record<string, { name: string; buttons: string | null
   'fan': { name: 'Fan', buttons: 'fan' }
 }
 
+

@@ -115,6 +115,27 @@ void LutronCC1101::loop() {
   if (this->rx_enabled_) {
     this->radio_.check_rx();
   }
+
+  // Continuous pairing beacon transmission
+  if (this->pairing_active_) {
+    uint32_t now = millis();
+    if (now - this->last_pairing_beacon_ >= 65) {  // ~65ms interval like working beacon
+      this->last_pairing_beacon_ = now;
+
+      // Construct device ID from subnet for send_beacon_single
+      // For subnet 0x2C90, we want packet bytes: AF 90 2C 00
+      // send_beacon_single sends big-endian, so device_id = 0xAF902C00
+      // Alternate between AF and AD zone suffixes
+      uint8_t zone_suffix = (this->pairing_seq_ % 2 == 0) ? 0xAF : 0xAD;
+      uint32_t device_id = ((uint32_t)zone_suffix << 24) |
+                           ((this->pairing_subnet_ & 0xFF) << 16) |
+                           ((this->pairing_subnet_ >> 8) << 8) |
+                           0x01;  // Zone number (use 01 like working beacon)
+
+      // Use the working send_beacon_single function
+      this->pairing_seq_ = this->send_beacon_single(device_id, this->pairing_seq_);
+    }
+  }
 }
 
 void LutronCC1101::start_rx() {
@@ -1543,6 +1564,179 @@ void LutronCC1101::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_
   }
 
   ESP_LOGI(TAG, "=== BRIDGE UNPAIR COMPLETE ===");
+}
+
+// ========== BRIDGE PAIRING (based on real RadioRA3 captures) ==========
+
+void LutronCC1101::start_bridge_pairing(uint16_t subnet) {
+  ESP_LOGI(TAG, "=== START BRIDGE PAIRING MODE ===");
+  ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
+
+  // Set up continuous beaconing - loop() handles the rest
+  this->pairing_active_ = true;
+  this->pairing_subnet_ = subnet;
+  this->pairing_seq_ = 1;
+  this->last_pairing_beacon_ = 0;  // Force immediate first beacon
+
+  ESP_LOGI(TAG, "Continuous pairing beacons started. Devices should flash.");
+  ESP_LOGI(TAG, ">>> HOLD OFF BUTTON ON DEVICE FOR 10 SECONDS <<<");
+}
+
+void LutronCC1101::stop_bridge_pairing(uint16_t subnet) {
+  ESP_LOGI(TAG, "=== STOP BRIDGE PAIRING MODE ===");
+
+  this->pairing_active_ = false;
+
+  // Send stop beacon burst
+  // Real bridge: 92 XX AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC [crc]
+  // Note: byte[15] = 0x04 (stop) instead of 0x02 (active)
+  uint8_t packet[24];
+  uint8_t seq = 1;
+
+  for (int i = 0; i < 10; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = 0x92;
+    packet[1] = seq;
+
+    packet[2] = (i % 2 == 0) ? 0xAF : 0xAD;
+    packet[3] = subnet & 0xFF;
+    packet[4] = (subnet >> 8) & 0xFF;
+    packet[5] = 0x00;
+
+    packet[6] = 0x21;
+    packet[7] = 0x0C;
+    packet[8] = 0x00;
+
+    packet[9] = 0xFF;
+    packet[10] = 0xFF;
+    packet[11] = 0xFF;
+    packet[12] = 0xFF;
+    packet[13] = 0xFF;
+
+    packet[14] = 0x08;
+    packet[15] = 0x04;  // Mode: 0x04 = STOP pairing
+
+    packet[16] = subnet & 0xFF;
+    packet[17] = (subnet >> 8) & 0xFF;
+    packet[18] = 0x1A;
+    packet[19] = 0x04;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+
+    seq = (seq + 6) & 0xFF;
+    delay(70);
+  }
+
+  ESP_LOGI(TAG, "Stop beacons sent. Devices should stop flashing.");
+}
+
+void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
+  ESP_LOGI(TAG, "=== SEND PAIR ASSIGNMENT (B0) ===");
+  ESP_LOGI(TAG, "Subnet: 0x%04X, Factory ID: 0x%08X, Zone: 0x06%04X%02X",
+           subnet, factory_id, subnet, zone_suffix);
+
+  // Real bridge captures:
+  // Switch (DVRF-5NS): B0 XX A2 90 2C 7F 21 17 00 FF..FF 08 05 07 07 DF 6A 04 64 01 01 FF 00 00 01 03 15 00
+  // Dimmer (DVRF-6L):  B0 XX A0 90 2C 7F 21 17 00 FF..FF 08 05 07 03 C3 C6 04 63 02 01 FF 00 00 01 03 15 00
+  // Key differences: byte 21-22 = 0x64/0x01 for switch, 0x63/0x02 for dimmer
+
+  uint8_t packet[48];
+  uint8_t seq = 0;
+
+  // Zone prefixes used by real bridge (alternating)
+  static const uint8_t zone_prefixes[] = {0xA0, 0xA2, 0xAF};
+
+  for (int i = 0; i < 30; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = 0xB0;  // Pairing assignment type
+    packet[1] = seq;
+
+    // Zone ID: Use alternating prefixes like real bridge (A0, A2, AF)
+    // Real bridge: A0 90 2C 7F, A2 90 2C 7F, AF 90 2C 7F
+    packet[2] = zone_prefixes[i % 3];
+    packet[3] = subnet & 0xFF;          // Subnet low byte
+    packet[4] = (subnet >> 8) & 0xFF;   // Subnet high byte
+    packet[5] = 0x7F;  // Special pairing suffix (always 7F in captures)
+
+    packet[6] = 0x21;
+    packet[7] = 0x17;  // Pairing format
+    packet[8] = 0x00;
+
+    // Broadcast address
+    packet[9] = 0xFF;
+    packet[10] = 0xFF;
+    packet[11] = 0xFF;
+    packet[12] = 0xFF;
+    packet[13] = 0xFF;
+
+    packet[14] = 0x08;
+    packet[15] = 0x05;
+
+    // Factory ID (big-endian, as printed on device label)
+    packet[16] = (factory_id >> 24) & 0xFF;
+    packet[17] = (factory_id >> 16) & 0xFF;
+    packet[18] = (factory_id >> 8) & 0xFF;
+    packet[19] = factory_id & 0xFF;
+
+    // Device type/configuration
+    // Dimmer (DVRF-6L): 0x63, 0x02
+    // Switch (DVRF-5NS): 0x64, 0x01
+    // Default to dimmer since it's more common
+    packet[20] = 0x04;
+    packet[21] = 0x63;  // Dimmer type
+    packet[22] = 0x02;  // Dimmer config
+    packet[23] = 0x01;
+    packet[24] = 0xFF;
+    packet[25] = 0x00;
+    packet[26] = 0x00;
+    packet[27] = 0x01;
+    packet[28] = 0x03;
+    packet[29] = 0x15;
+    packet[30] = 0x00;
+
+    // CRC at 31-32 (for 31-byte payload)
+    uint16_t crc = this->encoder_.calc_crc(packet, 31);
+    packet[31] = (crc >> 8) & 0xFF;
+    packet[32] = crc & 0xFF;
+
+    this->transmit_packet(packet, 33);
+
+    seq = (seq + 4) & 0xFF;
+    delay(50);
+  }
+
+  ESP_LOGI(TAG, "Pair assignment packets sent.");
+}
+
+void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
+  ESP_LOGI(TAG, "=== COMPLETE BRIDGE PAIRING SEQUENCE ===");
+  ESP_LOGI(TAG, "Subnet: 0x%04X, Factory: 0x%08X, Zone suffix: 0x%02X",
+           subnet, factory_id, zone_suffix);
+
+  // Step 1: Send active pairing beacons
+  ESP_LOGI(TAG, "Step 1: Sending active pairing beacons...");
+  this->start_bridge_pairing(subnet);
+
+  // Step 2: Brief pause for device to respond
+  delay(500);
+
+  // Step 3: Send B0 assignment packets
+  ESP_LOGI(TAG, "Step 2: Sending B0 pairing assignment packets...");
+  this->send_pair_assignment(subnet, factory_id, zone_suffix);
+
+  // Step 4: Send stop beacons
+  ESP_LOGI(TAG, "Step 3: Sending stop beacons...");
+  this->stop_bridge_pairing(subnet);
+
+  ESP_LOGI(TAG, "=== PAIRING SEQUENCE COMPLETE ===");
+  ESP_LOGI(TAG, "Device 0x%08X should now respond to zone 0x06%04X%02X",
+           factory_id, subnet, zone_suffix);
 }
 
 }  // namespace lutron_cc1101
