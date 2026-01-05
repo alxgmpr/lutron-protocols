@@ -116,11 +116,152 @@ def register_device(device_id: str, device_type: str, info: Dict):
     )
 
 
-# Regex patterns for parsing ESP32 logs
+# Regex patterns for parsing ESP32 logs (JSON format)
+# New format: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24}
+# New format: TX: {"bytes":"81 00 01...","len":24}
+RX_JSON_PATTERN = re.compile(r'RX:\s*\{"bytes":"([^"]+)","rssi":(-?\d+),"len":(\d+)\}')
+TX_JSON_PATTERN = re.compile(r'TX:\s*\{"bytes":"([^"]+)","len":(\d+)\}')
+
+# Legacy patterns (for backwards compatibility during transition)
 RX_PATTERN = re.compile(r'RX:\s+(\S+)\s+\|\s*(.+)')
 TX_PATTERN = re.compile(r'TX\s+(\d+)\s+bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)', re.IGNORECASE)
 BYTES_PATTERN = re.compile(r'Bytes:\s*([A-F0-9]{2}(?:\s+[A-F0-9]{2})+)', re.IGNORECASE)
 RSSI_PATTERN = re.compile(r'RSSI=(-?\d+)')
+
+# Packet type mappings (first byte -> type name)
+PACKET_TYPE_MAP = {
+    0x81: 'STATE_RPT', 0x82: 'STATE_RPT', 0x83: 'STATE_RPT',
+    0x88: 'BTN_SHORT_A', 0x89: 'BTN_LONG_A', 0x8A: 'BTN_SHORT_B', 0x8B: 'BTN_LONG_B',
+    0x91: 'BEACON', 0x92: 'BEACON', 0x93: 'BEACON',
+    0xA2: 'SET_LEVEL',
+    0xB0: 'PAIR_B0', 0xB8: 'PAIR_B8', 0xB9: 'PAIR_B9', 0xBA: 'PAIR_BA', 0xBB: 'PAIR_BB',
+    0xC0: 'PAIR_RESP', 0xC1: 'PAIR_RESP', 0xC2: 'PAIR_RESP', 0xC8: 'PAIR_RESP',
+}
+
+# Button names
+BUTTON_NAMES = {
+    0x02: 'ON', 0x03: 'FAV', 0x04: 'OFF', 0x05: 'RAISE', 0x06: 'LOWER',
+    0x08: 'SCENE1', 0x09: 'SCENE2', 0x0A: 'SCENE3', 0x0B: 'SCENE4',
+}
+
+def parse_packet_bytes(bytes_list: List[str]) -> Dict:
+    """Parse raw packet bytes and extract structured data.
+
+    This is the main packet parsing logic, moved from ESP32 to backend.
+    Handles all packet types: STATE_RPT, LEVEL, BTN_*, BEACON, PAIR_*, etc.
+
+    Args:
+        bytes_list: List of hex byte strings like ['83', '01', 'AF', ...]
+
+    Returns:
+        Dict with parsed fields: packet_type, device_id, source_id, target_id,
+        level, button, sequence, decoded_data, etc.
+    """
+    if len(bytes_list) < 6:
+        return {'packet_type': 'UNKNOWN', 'error': 'too_short'}
+
+    # First byte is packet type
+    type_byte = int(bytes_list[0], 16)
+    packet_type = PACKET_TYPE_MAP.get(type_byte, 'UNKNOWN')
+    sequence = int(bytes_list[1], 16) if len(bytes_list) > 1 else 0
+
+    result = {
+        'packet_type': packet_type,
+        'type_byte': f'0x{type_byte:02X}',
+        'sequence': sequence,
+        'device_id': None,
+        'source_id': None,
+        'target_id': None,
+        'level': None,
+        'button': None,
+        'decoded_data': {}
+    }
+
+    # STATE_RPT/LEVEL: 0x81-0x83 packets - check format byte at [7] to distinguish
+    if type_byte in (0x81, 0x82, 0x83):
+        # Device ID at [2-5] is little-endian (subnet format)
+        if len(bytes_list) >= 6:
+            device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+            result['device_id'] = device_id
+            result['source_id'] = device_id
+
+        # Check format byte at [7]
+        format_byte = int(bytes_list[7], 16) if len(bytes_list) > 7 else 0
+
+        if format_byte == 0x0E and len(bytes_list) >= 18:
+            # LEVEL command (bridge -> dimmer)
+            result['packet_type'] = 'SET_LEVEL'
+            # Target ID at [9-12] is big-endian
+            target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+            result['target_id'] = target_id
+            result['device_id'] = target_id  # Primary device is target
+            # Level at [16-17] is 16-bit big-endian (0x0000-0xFEFF = 0-100%)
+            level_raw = int(bytes_list[16] + bytes_list[17], 16)
+            result['level'] = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
+            result['decoded_data']['level'] = str(result['level'])
+            result['decoded_data']['source'] = result['source_id']
+            result['decoded_data']['target'] = target_id
+        elif format_byte == 0x0C and len(bytes_list) >= 20:
+            # UNPAIR command
+            result['packet_type'] = 'UNPAIR'
+            # Target ID at [16-19] is big-endian
+            target_id = f"{bytes_list[16]}{bytes_list[17]}{bytes_list[18]}{bytes_list[19]}".upper()
+            result['target_id'] = target_id
+            result['device_id'] = target_id
+            result['decoded_data']['bridge'] = result['source_id']
+            result['decoded_data']['target'] = target_id
+        elif format_byte == 0x09 and len(bytes_list) >= 13:
+            # UNPAIR_PREP
+            result['packet_type'] = 'UNPAIR_PREP'
+            target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
+            result['target_id'] = target_id
+        elif format_byte == 0x08:
+            # STATE_RPT (dimmer reporting level)
+            result['packet_type'] = 'STATE_RPT'
+            if len(bytes_list) >= 12:
+                level_byte = int(bytes_list[11], 16)
+                result['level'] = 0 if level_byte == 0 else round((level_byte * 100) / 254)
+                result['decoded_data']['level'] = str(result['level'])
+
+    # Button packets: 0x88-0x8B
+    elif type_byte in (0x88, 0x89, 0x8A, 0x8B):
+        # Device ID at [2-5] - big-endian (matches label on Pico)
+        if len(bytes_list) >= 6:
+            device_id = f"{bytes_list[2]}{bytes_list[3]}{bytes_list[4]}{bytes_list[5]}".upper()
+            result['device_id'] = device_id
+        # Button at [10], Action at [11]
+        if len(bytes_list) >= 12:
+            btn_code = int(bytes_list[10], 16)
+            action_code = int(bytes_list[11], 16)
+            btn_name = BUTTON_NAMES.get(btn_code, f'0x{btn_code:02X}')
+            result['button'] = btn_name
+            result['decoded_data']['button'] = btn_name
+            result['decoded_data']['action'] = 'RELEASE' if action_code == 1 else 'PRESS'
+
+    # Beacon packets: 0x91-0x93
+    elif type_byte in (0x91, 0x92, 0x93):
+        # Device/Zone ID at [2-5] - big-endian
+        if len(bytes_list) >= 6:
+            device_id = f"{bytes_list[2]}{bytes_list[3]}{bytes_list[4]}{bytes_list[5]}".upper()
+            result['device_id'] = device_id
+
+    # Pairing packets: 0xB0, 0xB8-0xBB
+    elif type_byte in (0xB0, 0xB8, 0xB9, 0xBA, 0xBB):
+        # Device ID at [2-5] - big-endian
+        if len(bytes_list) >= 6:
+            device_id = f"{bytes_list[2]}{bytes_list[3]}{bytes_list[4]}{bytes_list[5]}".upper()
+            result['device_id'] = device_id
+            result['decoded_data']['seq'] = str(sequence)
+
+    # Pairing response packets: 0xC0-0xCF
+    elif 0xC0 <= type_byte <= 0xCF:
+        result['packet_type'] = 'PAIR_RESP'
+        if len(bytes_list) >= 6:
+            device_id = f"{bytes_list[2]}{bytes_list[3]}{bytes_list[4]}{bytes_list[5]}".upper()
+            result['device_id'] = device_id
+
+    return result
+
 
 # Echo detection - track recent TX device IDs to filter from RX
 # Key: device_id (uppercase), Value: timestamp
@@ -244,16 +385,94 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
 def _parse_and_store_packet(message: str):
     """Parse a log message and store any packets in the database.
 
-    RX packets come in two log lines:
-      1. RX: TYPE | DEVICE_ID | ... | RSSI=X | CRC=ok
-      2.   Bytes: XX XX XX ...
+    New JSON format:
+      RX: {"bytes":"83 01 AF...","rssi":-43,"len":24}
+      TX: {"bytes":"81 00 01...","len":24}
 
-    TX packets come in one line:
+    Legacy format (for backwards compatibility):
+      RX: TYPE | DEVICE_ID | ... | RSSI=X | CRC=ok
+        Bytes: XX XX XX ...
       TX N bytes: XX XX XX ...
     """
     global pending_rx_packet
     try:
         timestamp = datetime.now().isoformat()
+
+        # ========== New JSON format ==========
+
+        # Parse RX JSON: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24}
+        rx_json_match = RX_JSON_PATTERN.search(message)
+        if rx_json_match:
+            raw_hex = rx_json_match.group(1)
+            rssi = int(rx_json_match.group(2))
+            # pkt_len = int(rx_json_match.group(3))
+
+            # Parse packet from raw bytes
+            bytes_list = raw_hex.split()
+            parsed = parse_packet_bytes(bytes_list)
+
+            pkt_data = {
+                'packet_type': parsed['packet_type'],
+                'timestamp': timestamp,
+                'device_id': parsed['device_id'],
+                'source_id': parsed['source_id'],
+                'target_id': parsed['target_id'],
+                'level': parsed['level'],
+                'button': parsed['button'],
+                'rssi': rssi,
+                'decoded_data': parsed['decoded_data']
+            }
+
+            _store_rx_packet(pkt_data, raw_hex)
+            return
+
+        # Parse TX JSON: TX: {"bytes":"81 00 01...","len":24}
+        tx_json_match = TX_JSON_PATTERN.search(message)
+        if tx_json_match:
+            raw_hex = tx_json_match.group(1)
+            # pkt_len = int(tx_json_match.group(2))
+
+            # Parse packet from raw bytes
+            bytes_list = raw_hex.split()
+            parsed = parse_packet_bytes(bytes_list)
+
+            # Register device for echo detection
+            if parsed['device_id']:
+                _register_tx_device(parsed['device_id'])
+            if parsed['source_id'] and parsed['source_id'] != parsed['device_id']:
+                _register_tx_device(parsed['source_id'])
+
+            db.insert_decoded_packet(
+                direction='tx',
+                packet_type=parsed['packet_type'],
+                timestamp=timestamp,
+                raw_hex=raw_hex,
+                device_id=parsed['device_id'],
+                source_id=parsed['source_id'],
+                target_id=parsed['target_id'],
+                level=parsed['level'],
+                decoded_data=parsed['decoded_data']
+            )
+
+            # Push to packet queue for SSE streaming
+            try:
+                packet_queue.put_nowait({
+                    'direction': 'tx',
+                    'type': parsed['packet_type'],
+                    'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
+                    'device_id': parsed['device_id'],
+                    'source_id': parsed['source_id'],
+                    'target_id': parsed['target_id'],
+                    'summary': f"{parsed['source_id']} -> {parsed['target_id']}" if parsed['source_id'] and parsed['target_id'] else parsed['device_id'] or '',
+                    'details': parsed['decoded_data'],
+                    'raw_hex': raw_hex,
+                    'rssi': None
+                })
+            except queue.Full:
+                pass
+            return
+
+        # ========== Legacy format (backwards compatibility) ==========
 
         # Check for Bytes line (follows RX line)
         bytes_match = BYTES_PATTERN.search(message)
@@ -266,7 +485,7 @@ def _parse_and_store_packet(message: str):
                     pending_rx_packet = None
             return
 
-        # Parse RX packets: "RX: LEVEL | AF902C00 -> 002C90AF | Level=50%"
+        # Parse legacy RX packets: "RX: LEVEL | AF902C00 -> 002C90AF | Level=50%"
         rx_match = RX_PATTERN.search(message)
         if rx_match:
             pkt_type = rx_match.group(1)
@@ -333,96 +552,44 @@ def _parse_and_store_packet(message: str):
                 }
             return
 
-        # Parse TX packets: "TX 23 bytes: 81 00 01 ..."
+        # Parse legacy TX packets: "TX 23 bytes: 81 00 01 ..."
         tx_match = TX_PATTERN.search(message)
         if tx_match:
             raw_hex = tx_match.group(2)
             bytes_list = raw_hex.split()
 
-            # Decode based on first byte
-            pkt_type_byte = bytes_list[0].upper() if bytes_list else '??'
-            pkt_type = 'TX'
-            device_id = None
-            source_id = None
-            target_id = None
-            level = None
-            decoded_data = {}
-
-            if pkt_type_byte in ('81', '82', '83'):
-                # Check format byte at [7] to distinguish LEVEL vs UNPAIR
-                # 0x0E = LEVEL command, 0x0C = UNPAIR command
-                format_byte = bytes_list[7].upper() if len(bytes_list) > 7 else '??'
-
-                if format_byte == '0C' and len(bytes_list) >= 20:
-                    # UNPAIR packet: bridge_zone at [2-5] (LE), target at [16-19] (BE)
-                    pkt_type = 'UNPAIR'
-                    source_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-                    target_id = f"{bytes_list[16]}{bytes_list[17]}{bytes_list[18]}{bytes_list[19]}".upper()
-                    device_id = target_id
-                    decoded_data['bridge'] = source_id
-                    decoded_data['target'] = target_id
-                else:
-                    # LEVEL packet: source at [2-5] (LE), target at [9-12]
-                    pkt_type = 'LEVEL'
-                    if len(bytes_list) >= 13:
-                        source_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-                        target_id = f"{bytes_list[9]}{bytes_list[10]}{bytes_list[11]}{bytes_list[12]}".upper()
-                        device_id = target_id
-                        decoded_data['source'] = source_id
-                        decoded_data['target'] = target_id
-                    if len(bytes_list) >= 18:
-                        level_raw = int(bytes_list[16] + bytes_list[17], 16)
-                        level = 0 if level_raw == 0 else round((level_raw * 100) / 65279)
-                        decoded_data['level'] = str(level)
-            elif pkt_type_byte in ('B9', 'BA', 'BB', 'B8'):
-                pkt_type = f'PAIR_{pkt_type_byte}'
-                if len(bytes_list) >= 6:
-                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-                    decoded_data['seq'] = str(int(bytes_list[1], 16))
-            elif pkt_type_byte in ('02', '03', '04', '05', '06'):
-                pkt_type = 'BUTTON'
-                btn_names = {'02': 'ON', '03': 'FAV', '04': 'OFF', '05': 'RAISE', '06': 'LOWER'}
-                if len(bytes_list) >= 6:
-                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-                    decoded_data['button'] = btn_names.get(pkt_type_byte, f'0x{pkt_type_byte}')
-            elif pkt_type_byte in ('91', '92', '93'):
-                pkt_type = 'BEACON'
-                if len(bytes_list) >= 6:
-                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
-            elif pkt_type_byte == '89':
-                pkt_type = 'RESET'
-                if len(bytes_list) >= 6:
-                    device_id = f"{bytes_list[5]}{bytes_list[4]}{bytes_list[3]}{bytes_list[2]}".upper()
+            # Use the new parsing function
+            parsed = parse_packet_bytes(bytes_list)
 
             # Register device_id for echo detection
-            if device_id:
-                _register_tx_device(device_id)
-            if source_id and source_id != device_id:
-                _register_tx_device(source_id)
+            if parsed['device_id']:
+                _register_tx_device(parsed['device_id'])
+            if parsed['source_id'] and parsed['source_id'] != parsed['device_id']:
+                _register_tx_device(parsed['source_id'])
 
             db.insert_decoded_packet(
                 direction='tx',
-                packet_type=pkt_type,
+                packet_type=parsed['packet_type'],
                 timestamp=timestamp,
                 raw_hex=raw_hex,
-                device_id=device_id,
-                source_id=source_id,
-                target_id=target_id,
-                level=level,
-                decoded_data=decoded_data
+                device_id=parsed['device_id'],
+                source_id=parsed['source_id'],
+                target_id=parsed['target_id'],
+                level=parsed['level'],
+                decoded_data=parsed['decoded_data']
             )
 
             # Push to packet queue for SSE streaming
             try:
                 packet_queue.put_nowait({
                     'direction': 'tx',
-                    'type': pkt_type,
+                    'type': parsed['packet_type'],
                     'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
-                    'device_id': device_id,
-                    'source_id': source_id,
-                    'target_id': target_id,
-                    'summary': f"{source_id} -> {target_id}" if source_id and target_id else device_id or '',
-                    'details': decoded_data,
+                    'device_id': parsed['device_id'],
+                    'source_id': parsed['source_id'],
+                    'target_id': parsed['target_id'],
+                    'summary': f"{parsed['source_id']} -> {parsed['target_id']}" if parsed['source_id'] and parsed['target_id'] else parsed['device_id'] or '',
+                    'details': parsed['decoded_data'],
                     'raw_hex': raw_hex,
                     'rssi': None
                 })

@@ -101,12 +101,12 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     // Check for 0xFF 0xFA 0xDE (sync + prefix)
     bool found_prefix = (byte1 == 0xFF && byte2 == 0xFA && byte3 == 0xDE);
 
-    // Check for 0xFA 0xDE + packet type
+    // Check for 0xFA 0xDE + packet type (0x80-0xCF range)
     bool found_prefix_short = (byte1 == 0xFA && byte2 == 0xDE &&
-                                byte3 >= 0x80 && byte3 <= 0xBF);
+                                byte3 >= 0x80 && byte3 <= 0xCF);
 
-    // Check for direct packet type start (0x88, 0x89, 0x8A, 0x8B, 0xB9, etc.)
-    bool found_packet = (byte1 >= 0x80 && byte1 <= 0xBF &&
+    // Check for direct packet type start (0x80-0xCF includes pairing responses)
+    bool found_packet = (byte1 >= 0x80 && byte1 <= 0xCF &&
                          (byte2 < 0x60));  // Sequence number is usually < 0x60
 
     size_t data_start;
@@ -142,8 +142,8 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     if (decoded_count >= 24) {
       // Verify it looks like a Lutron packet (type byte in valid range)
       uint8_t pkt_type = decoded_bytes[0];
-      if (pkt_type >= 0x80 && pkt_type <= 0xBF) {
-        // This is likely a valid packet!
+      if (pkt_type >= 0x80 && pkt_type <= 0xCF) {
+        // This is likely a valid packet! (0x80-0xBF = standard, 0xC0-0xCF = pairing response)
         best_decoded = decoded_count;
         for (size_t i = 0; i < decoded_count; i++) {
           best_bytes[i] = decoded_bytes[i];
@@ -167,8 +167,8 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
       uint8_t byte1;
       if (!decode_n81_byte(fifo_data, bit_pos, byte1)) continue;
 
-      // Quick filter: only continue if first byte looks like packet type
-      if (byte1 < 0x80 || byte1 > 0xBF) continue;
+      // Quick filter: only continue if first byte looks like packet type (0x80-0xCF)
+      if (byte1 < 0x80 || byte1 > 0xCF) continue;
 
       uint8_t byte2;
       if (!decode_n81_byte(fifo_data, bit_pos + 10, byte2)) continue;
@@ -314,6 +314,13 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 16) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 8) |
                        best_bytes[PKT_OFFSET_DEVICE_ID + 3];
+  } else if (packet.type >= 0xC0 && packet.type <= 0xCF) {
+    // Pairing response packets (from device during pairing handshake)
+    // Likely use BIG-endian like other pairing packets
+    packet.device_id = (best_bytes[PKT_OFFSET_DEVICE_ID] << 24) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 16) |
+                       (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 8) |
+                       best_bytes[PKT_OFFSET_DEVICE_ID + 3];
   } else {
     // All other packets - default to LITTLE-endian
     packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
@@ -356,7 +363,15 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_PAIRING_BB: return "PAIR_BB";
     case PKT_PAIRING_B0: return "PAIR_B0";
     case PKT_BEACON: return "BEACON";
-    default: return "UNKNOWN";
+    case PKT_BEACON_STOP: return "BEACON_STOP";
+    case PKT_PAIR_RESP_C0: return "PAIR_RESP_C0";
+    case PKT_PAIR_RESP_C1: return "PAIR_RESP_C1";
+    case PKT_PAIR_RESP_C2: return "PAIR_RESP_C2";
+    case PKT_PAIR_RESP_C8: return "PAIR_RESP_C8";
+    default:
+      // Handle any other 0xC0-0xCF as generic pairing response
+      if (type >= 0xC0 && type <= 0xCF) return "PAIR_RESP";
+      return "UNKNOWN";
   }
 }
 

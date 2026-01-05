@@ -115,15 +115,15 @@ export const PACKET_TYPE_NAMES: Record<string, string> = {
   '91': 'BEACON', '92': 'BEACON', '93': 'BEACON',
   // SET_LEVEL: Bridge commanding a dimmer to a level (format byte 0x0E)
   'A2': 'SET_LEVEL',
-  'B8': 'PAIR_B8', 'B9': 'PAIR_B9', 'BA': 'PAIR_BA', 'BB': 'PAIR_BB',
-  // Virtual types (assigned by ESP32 based on format byte)
-  'F0': 'UNPAIR', 'F1': 'UNPAIR_PREP',
+  'B0': 'PAIR_B0', 'B8': 'PAIR_B8', 'B9': 'PAIR_B9', 'BA': 'PAIR_BA', 'BB': 'PAIR_BB',
+  // Pairing response packets
+  'C0': 'PAIR_RESP', 'C1': 'PAIR_RESP', 'C2': 'PAIR_RESP', 'C8': 'PAIR_RESP',
 }
 
 /**
  * Get the appropriate field definitions for a packet type.
  */
-export function getFieldsForPacket(packetType: string, _bytes: string[]): ByteField[] {
+export function getFieldsForPacket(packetType: string, bytes: string[]): ByteField[] {
   // Pairing packets (53 bytes)
   if (packetType.startsWith('PAIR_')) {
     return PAIRING_FIELDS
@@ -137,16 +137,29 @@ export function getFieldsForPacket(packetType: string, _bytes: string[]): ByteFi
     return BUTTON_FIELDS
   }
   // UNPAIR packets
-  if (packetType === 'UNPAIR') {
+  if (packetType === 'UNPAIR' || packetType === 'UNPAIR_PREP') {
     return UNPAIR_CMD_FIELDS
+  }
+  // SET_LEVEL: Bridge commanding a level
+  if (packetType === 'SET_LEVEL' || packetType === 'LEVEL') {
+    return LEVEL_CMD_FIELDS
   }
   // STATE_RPT: Dimmer reporting its level
   if (packetType === 'STATE_RPT') {
     return STATE_RPT_FIELDS
   }
-  // SET_LEVEL: Bridge commanding a level
-  if (packetType === 'SET_LEVEL') {
-    return LEVEL_CMD_FIELDS
+  // Fallback: try to determine from raw bytes
+  if (bytes.length >= 8) {
+    const formatByte = bytes[7]?.toUpperCase()
+    if (formatByte === '08') {
+      return STATE_RPT_FIELDS  // STATE_RPT format
+    }
+    if (formatByte === '0E') {
+      return LEVEL_CMD_FIELDS  // SET_LEVEL format
+    }
+    if (formatByte === '0C') {
+      return UNPAIR_CMD_FIELDS  // UNPAIR format
+    }
   }
   return BUTTON_FIELDS  // fallback
 }

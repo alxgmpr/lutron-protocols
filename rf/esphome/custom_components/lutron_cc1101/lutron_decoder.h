@@ -29,6 +29,14 @@ static const uint8_t PKT_PAIRING_BA = 0xBA;  // Bridge-only (scene pico)
 static const uint8_t PKT_PAIRING_BB = 0xBB;  // Direct-pair capable
 static const uint8_t PKT_PAIRING_B0 = 0xB0;  // Unknown/legacy
 static const uint8_t PKT_BEACON = 0x91;
+static const uint8_t PKT_BEACON_STOP = 0x92;
+
+// Pairing response/acknowledgement packets from devices during pairing
+// Devices send these after receiving B0 assignment packets
+static const uint8_t PKT_PAIR_RESP_C0 = 0xC0;
+static const uint8_t PKT_PAIR_RESP_C1 = 0xC1;
+static const uint8_t PKT_PAIR_RESP_C2 = 0xC2;
+static const uint8_t PKT_PAIR_RESP_C8 = 0xC8;
 
 // Virtual packet types (assigned during decode, not actual wire types)
 // Used when format byte at [7] distinguishes packet subtype

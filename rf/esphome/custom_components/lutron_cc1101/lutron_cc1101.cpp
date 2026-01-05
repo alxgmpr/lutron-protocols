@@ -46,61 +46,31 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     return;  // Silently ignore noise
   }
 
-  // Try to decode the packet
+  // Try to decode the packet (N81 decoding only)
   DecodedPacket pkt;
   if (!this->decoder_.decode(data, len, pkt)) {
     return;  // Silently ignore undecoded packets
   }
 
-  // Echo filtering is handled by backend using raw byte matching
-  // ESP32 just logs all valid packets for simplicity
-
-  // Only log successfully decoded packets
-  char dev_id[9];
-  LutronDecoder::format_device_id(pkt.device_id, dev_id);
-  const char *type_name = LutronDecoder::packet_type_name(pkt.type);
-
-  // Log decoded packet info
-  if (pkt.type == PKT_BUTTON_SHORT_A || pkt.type == PKT_BUTTON_LONG_A ||
-      pkt.type == PKT_BUTTON_SHORT_B || pkt.type == PKT_BUTTON_LONG_B) {
-    // Button press packet
-    const char *btn_name = LutronDecoder::button_name(pkt.button);
-    const char *action = (pkt.action == ACTION_RELEASE) ? "RELEASE" : "PRESS";
-
-    ESP_LOGI(TAG, "RX: %s | %s | 0x%02X %s %s | Seq=%d | RSSI=%d | CRC=%s",
-             type_name, dev_id, pkt.button, btn_name, action, pkt.sequence, rssi,
-             pkt.crc_valid ? "OK" : "BAD");
-  } else if (pkt.type == PKT_STATE_REPORT_81 || pkt.type == PKT_STATE_REPORT_82 ||
-             pkt.type == PKT_STATE_REPORT_83) {
-    // State report from dimmer
-    ESP_LOGI(TAG, "RX: %s | %s | Level=%d%% | Seq=%d | RSSI=%d | CRC=%s",
-             type_name, dev_id, pkt.level, pkt.sequence, rssi,
-             pkt.crc_valid ? "OK" : "BAD");
-  } else if (pkt.type == PKT_LEVEL) {
-    // Level command to dimmer
-    char target_id[9];
-    LutronDecoder::format_device_id(pkt.target_id, target_id);
-    ESP_LOGI(TAG, "RX: %s | %s -> %s | Level=%d%% | Seq=%d | RSSI=%d | CRC=%s",
-             type_name, dev_id, target_id, pkt.level, pkt.sequence, rssi,
-             pkt.crc_valid ? "OK" : "BAD");
-  } else {
-    // Other packet types (pairing, beacon, etc.)
-    ESP_LOGI(TAG, "RX: %s | %s | Seq=%d | RSSI=%d | CRC=%s",
-             type_name, dev_id, pkt.sequence, rssi,
-             pkt.crc_valid ? "OK" : "BAD");
+  // Skip packets with bad CRC - they're likely noise or corrupted
+  if (!pkt.crc_valid) {
+    return;
   }
 
-  // Log raw decoded bytes for web UI packet display
-  if (pkt.raw_len > 0) {
-    char hex[180];  // 56 bytes * 3 chars + margin
-    int pos = 0;
-    // Show up to 53 bytes for pairing packets (capability bytes at 28-40)
-    size_t max_bytes = (pkt.type >= 0xB0 && pkt.type <= 0xBF) ? 53 : 24;
-    for (size_t i = 0; i < pkt.raw_len && i < max_bytes && pos < 170; i++) {
-      pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", pkt.raw[i]);
+  // Format raw bytes as hex string for JSON output
+  // Backend will do all packet parsing (type, device ID, level, etc.)
+  char hex[180];  // 56 bytes * 3 chars + margin
+  int pos = 0;
+  size_t max_bytes = (pkt.raw_len > 53) ? 53 : pkt.raw_len;
+  for (size_t i = 0; i < max_bytes && pos < 170; i++) {
+    if (i > 0) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, " ");
     }
-    ESP_LOGI(TAG, "  Bytes: %s", hex);
+    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", pkt.raw[i]);
   }
+
+  // Log in simple JSON format - backend does all parsing
+  ESP_LOGI(TAG, "RX: {\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d}", hex, rssi, (int)pkt.raw_len);
 }
 
 void LutronCC1101::dump_config() {
@@ -124,13 +94,13 @@ void LutronCC1101::loop() {
 
       // Construct device ID from subnet for send_beacon_single
       // For subnet 0x2C90, we want packet bytes: AF 90 2C 00
-      // send_beacon_single sends big-endian, so device_id = 0xAF902C00
+      // Real bridge capture shows: 92 XX AD/AF 90 2C 00 21 0C 00...
       // Alternate between AF and AD zone suffixes
       uint8_t zone_suffix = (this->pairing_seq_ % 2 == 0) ? 0xAF : 0xAD;
       uint32_t device_id = ((uint32_t)zone_suffix << 24) |
                            ((this->pairing_subnet_ & 0xFF) << 16) |
                            ((this->pairing_subnet_ >> 8) << 8) |
-                           0x01;  // Zone number (use 01 like working beacon)
+                           0x00;  // Byte 5 is 0x00 in real bridge captures
 
       // Use the working send_beacon_single function
       this->pairing_seq_ = this->send_beacon_single(device_id, this->pairing_seq_);
@@ -154,14 +124,17 @@ void LutronCC1101::stop_rx() {
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
-  // Log decoded packet bytes for backend echo detection
+  // Log packet bytes in JSON format for backend echo detection and parsing
   char hex[180];
   int pos = 0;
   size_t max_log = (len > 53) ? 53 : len;
   for (size_t i = 0; i < max_log && pos < 170; i++) {
-    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", packet[i]);
+    if (i > 0) {
+      pos += snprintf(hex + pos, sizeof(hex) - pos, " ");
+    }
+    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", packet[i]);
   }
-  ESP_LOGI(TAG, "TX %d bytes: %s", (int)len, hex);
+  ESP_LOGI(TAG, "TX: {\"bytes\":\"%s\",\"len\":%d}", hex, (int)len);
 
   uint8_t tx_buffer[128];
 
@@ -203,10 +176,6 @@ void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
     ESP_LOGE(TAG, "Failed to encode packet");
     return;
   }
-
-  // Debug: Log packet and encoded sizes
-  ESP_LOGD(TAG, "TX: %d data -> %d encoded (preamble=%d, FIFO=%s)",
-           len, encoded_len, preamble_bits, encoded_len > 64 ? "STREAM" : "DIRECT");
 
   this->radio_.transmit_raw(tx_buffer, encoded_len);
 
@@ -812,7 +781,6 @@ void LutronCC1101::send_test_packet(uint32_t device_id) {
 
   // Send 5 times with gaps
   for (int i = 0; i < 5; i++) {
-    ESP_LOGI(TAG, "TX %d/5", i + 1);
     this->transmit_packet(packet, 47);
     if (i < 4) delay(200);
   }
@@ -958,26 +926,56 @@ uint8_t LutronCC1101::send_beacon_single(uint32_t device_id, uint8_t seq) {
 }
 
 void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id) {
-  ESP_LOGI(TAG, "=== SENDING 0xB1 PAIRING ASSIGNMENT ===");
+  ESP_LOGI(TAG, "=== SENDING 0xB0 PAIRING ASSIGNMENT ===");
   ESP_LOGI(TAG, "Load ID: 0x%08X, Target: 0x%08X", load_id, target_factory_id);
 
-  uint8_t packet[24];
-  uint8_t seq = 1;
+  // Real bridge B0 packet is 31 bytes + 2 CRC = 33 bytes total
+  // B0 02 A2 90 2C 7F 21 17 00 FF FF FF FF FF 08 05 07 07 DF 6A 04 63 02 01 FF 00 00 01 03 15 00 [CRC CRC]
+  uint8_t packet[33];
+  uint8_t seq = 0;  // Start at 0 like real bridge
+
+  // Zone prefix rotation: A0 -> A2 -> AF (then stays AF)
+  static const uint8_t zone_prefixes[] = {0xA0, 0xA2, 0xAF};
+  int prefix_idx = 0;
 
   // Send multiple copies like real bridge does
   for (int rep = 0; rep < 30; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    // 0xB1 packet structure from real bridge capture:
-    // B1 07 AF 90 2C 7F 21 17 00 FF FF FF FF FF 08 05 06 FD EF F4 04 63 02 01
+    // Real bridge B0 structure (31 bytes before CRC):
+    // [0] B0 - packet type
+    // [1] seq
+    // [2] A0/A2/AF - zone prefix (rotates)
+    // [3-4] subnet (little-endian)
+    // [5] 7F - special suffix
+    // [6] 21 - protocol marker
+    // [7] 17 - pairing format
+    // [8] 00
+    // [9-13] FF FF FF FF FF - broadcast
+    // [14] 08
+    // [15] 05
+    // [16-19] factory ID (big-endian)
+    // [20] 04
+    // [21] 63 (dimmer) or 64 (switch) - device type
+    // [22] 02 (dimmer) or 01 (switch) - device subtype
+    // [23] 01
+    // [24] FF
+    // [25-26] 00 00
+    // [27] 01
+    // [28] 03
+    // [29] 15
+    // [30] 00
 
-    packet[0] = 0xB1;  // Pairing assignment type (B1, not B0!)
+    packet[0] = 0xB0;  // Pairing assignment type (B0, NOT B1!)
     packet[1] = seq;
 
-    // Load ID with 0x7F suffix (like af902c7f)
-    packet[2] = (load_id >> 24) & 0xFF;
-    packet[3] = (load_id >> 16) & 0xFF;
-    packet[4] = (load_id >> 8) & 0xFF;
+    // Zone prefix with rotation
+    packet[2] = zone_prefixes[prefix_idx];
+    if (prefix_idx < 2) prefix_idx++;  // A0 -> A2 -> AF (stay on AF)
+
+    // Subnet from load_id (bytes 3-4)
+    packet[3] = (load_id >> 16) & 0xFF;  // Subnet low
+    packet[4] = (load_id >> 8) & 0xFF;   // Subnet high
     packet[5] = 0x7F;  // Special suffix for B0 packets
 
     packet[6] = 0x21;  // Protocol marker
@@ -994,25 +992,37 @@ void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id)
     packet[14] = 0x08;
     packet[15] = 0x05;
 
-    // Target factory ID
+    // Target factory ID (big-endian)
     packet[16] = (target_factory_id >> 24) & 0xFF;
     packet[17] = (target_factory_id >> 16) & 0xFF;
     packet[18] = (target_factory_id >> 8) & 0xFF;
     packet[19] = target_factory_id & 0xFF;
 
-    // Unknown trailer (from capture)
+    // Device type info
     packet[20] = 0x04;
-    packet[21] = 0x63;
+    packet[21] = 0x63;  // Dimmer type (use 0x64 for switch)
+    packet[22] = 0x02;  // Dimmer subtype (use 0x01 for switch)
 
-    // Calculate CRC
-    uint16_t crc = this->encoder_.calc_crc(packet, 22);
-    packet[22] = (crc >> 8) & 0xFF;
-    packet[23] = crc & 0xFF;
+    // Critical trailer bytes (from real bridge capture)
+    packet[23] = 0x01;
+    packet[24] = 0xFF;
+    packet[25] = 0x00;
+    packet[26] = 0x00;
+    packet[27] = 0x01;
+    packet[28] = 0x03;
+    packet[29] = 0x15;
+    packet[30] = 0x00;
 
-    this->transmit_packet(packet, 24);
+    // Calculate CRC over 31 bytes
+    uint16_t crc = this->encoder_.calc_crc(packet, 31);
+    packet[31] = (crc >> 8) & 0xFF;
+    packet[32] = crc & 0xFF;
 
-    // Increment sequence
-    seq = (seq + 5) & 0xFF;
+    this->transmit_packet(packet, 33);
+
+    // Increment sequence by 2 (real bridge pattern: 00, 02, 06, 08, 0C...)
+    seq = (seq + 2) & 0xFF;
+    if (rep % 2 == 1) seq = (seq + 2) & 0xFF;  // Extra +2 every other packet
 
     delay(50);  // ~50ms between packets
   }
@@ -1629,7 +1639,13 @@ void LutronCC1101::stop_bridge_pairing(uint16_t subnet) {
     this->transmit_packet(packet, 24);
 
     seq = (seq + 6) & 0xFF;
-    delay(70);
+
+    // Poll RX during delay to catch any device responses
+    uint32_t delay_start = millis();
+    while (millis() - delay_start < 70) {
+      this->radio_.check_rx();
+      delay(1);
+    }
   }
 
   ESP_LOGI(TAG, "Stop beacons sent. Devices should stop flashing.");
@@ -1640,26 +1656,32 @@ void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, ui
   ESP_LOGI(TAG, "Subnet: 0x%04X, Factory ID: 0x%08X, Zone: 0x06%04X%02X",
            subnet, factory_id, subnet, zone_suffix);
 
-  // Real bridge captures:
-  // Switch (DVRF-5NS): B0 XX A2 90 2C 7F 21 17 00 FF..FF 08 05 07 07 DF 6A 04 64 01 01 FF 00 00 01 03 15 00
-  // Dimmer (DVRF-6L):  B0 XX A0 90 2C 7F 21 17 00 FF..FF 08 05 07 03 C3 C6 04 63 02 01 FF 00 00 01 03 15 00
-  // Key differences: byte 21-22 = 0x64/0x01 for switch, 0x63/0x02 for dimmer
+  // Real bridge pattern analysis from pairing_test.cu8:
+  // - Starts at seq=2 with A2 prefix (NOT seq=0 with A0!)
+  // - Pattern: seq=2,6,7,8,12,18,19,20,24,26,30,31,32,36,38,42,43,44,48,50,54,55,56,60,62,66,67,68
+  // - Sends bursts of 2-3 packets with seq+1, then gaps of +4 to +6
+  // - Prefix: A2 for first 2 packets, then stays AF
+
+  // Real bridge sequence pattern (extracted from capture):
+  static const uint8_t real_seqs[] = {
+    2, 6, 7, 8, 12, 18, 19, 20, 24, 26, 30, 31, 32, 36, 38, 42, 43, 44, 48, 50,
+    54, 55, 56, 60, 62, 66, 67, 68, 72, 74
+  };
+  static const int num_seqs = sizeof(real_seqs) / sizeof(real_seqs[0]);
 
   uint8_t packet[48];
-  uint8_t seq = 0;
 
-  // Zone prefixes used by real bridge (alternating)
-  static const uint8_t zone_prefixes[] = {0xA0, 0xA2, 0xAF};
-
-  for (int i = 0; i < 30; i++) {
+  for (int i = 0; i < num_seqs; i++) {
     memset(packet, 0xCC, sizeof(packet));
 
     packet[0] = 0xB0;  // Pairing assignment type
-    packet[1] = seq;
+    packet[1] = real_seqs[i];  // Use exact sequence from real bridge
 
-    // Zone ID: Use alternating prefixes like real bridge (A0, A2, AF)
-    // Real bridge: A0 90 2C 7F, A2 90 2C 7F, AF 90 2C 7F
-    packet[2] = zone_prefixes[i % 3];
+    // Zone prefix: A2 for first 2 packets (seq 2, 6), then AF for rest
+    uint8_t prefix;
+    if (i < 2) prefix = 0xA2;
+    else prefix = 0xAF;
+    packet[2] = prefix;
     packet[3] = subnet & 0xFF;          // Subnet low byte
     packet[4] = (subnet >> 8) & 0xFF;   // Subnet high byte
     packet[5] = 0x7F;  // Special pairing suffix (always 7F in captures)
@@ -1707,11 +1729,30 @@ void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, ui
 
     this->transmit_packet(packet, 33);
 
-    seq = (seq + 4) & 0xFF;
-    delay(50);
+    // Real bridge timing: bursts of packets with seq+1 are sent rapidly (~12ms apart)
+    // Larger gaps between bursts (~50ms)
+    // Detect if next packet is part of burst (seq difference of 1)
+    int delay_ms;
+    if (i + 1 < num_seqs) {
+      int seq_diff = real_seqs[i + 1] - real_seqs[i];
+      if (seq_diff == 1) {
+        delay_ms = 12;  // Fast burst timing
+      } else {
+        delay_ms = 50;  // Gap between bursts
+      }
+    } else {
+      delay_ms = 50;
+    }
+
+    // CRITICAL: Process RX during delays to avoid FIFO overflow
+    uint32_t delay_start = millis();
+    while (millis() - delay_start < delay_ms) {
+      this->radio_.check_rx();
+      delay(1);
+    }
   }
 
-  ESP_LOGI(TAG, "Pair assignment packets sent.");
+  ESP_LOGI(TAG, "Pair assignment packets sent (%d packets).", num_seqs);
 }
 
 void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
@@ -1723,8 +1764,13 @@ void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zon
   ESP_LOGI(TAG, "Step 1: Sending active pairing beacons...");
   this->start_bridge_pairing(subnet);
 
-  // Step 2: Brief pause for device to respond
-  delay(500);
+  // Step 2: Brief pause for device to respond - poll RX during this time
+  ESP_LOGI(TAG, "Waiting for device response (polling RX)...");
+  uint32_t pause_start = millis();
+  while (millis() - pause_start < 500) {
+    this->radio_.check_rx();
+    delay(1);
+  }
 
   // Step 3: Send B0 assignment packets
   ESP_LOGI(TAG, "Step 2: Sending B0 pairing assignment packets...");
@@ -1733,6 +1779,20 @@ void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zon
   // Step 4: Send stop beacons
   ESP_LOGI(TAG, "Step 3: Sending stop beacons...");
   this->stop_bridge_pairing(subnet);
+
+  // Step 5: Extended RX listening period
+  // RF analysis shows C responses (pairing ACKs) come 20+ seconds after B0 packets
+  // Continue polling RX to catch delayed device responses
+  ESP_LOGI(TAG, "Step 4: Extended RX listening for device response (30 seconds)...");
+  uint32_t listen_start = millis();
+  while (millis() - listen_start < 30000) {
+    this->radio_.check_rx();
+    delay(10);  // Poll every 10ms
+    // Log progress every 5 seconds
+    if ((millis() - listen_start) % 5000 < 15) {
+      ESP_LOGI(TAG, "  Listening... %d seconds elapsed", (millis() - listen_start) / 1000);
+    }
+  }
 
   ESP_LOGI(TAG, "=== PAIRING SEQUENCE COMPLETE ===");
   ESP_LOGI(TAG, "Device 0x%08X should now respond to zone 0x06%04X%02X",

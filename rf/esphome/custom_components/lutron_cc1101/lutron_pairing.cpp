@@ -104,11 +104,6 @@ void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
-    if (packet_count % 20 == 0) {
-      ESP_LOGD(TAG, "TX %s seq=0x%02X (%d packets)",
-               use_b9 ? "B9" : "BB", packet[1], packet_count);
-    }
-
     this->transmit_encoded(packet, 53);
     packet_count++;
     use_b9 = !use_b9;
@@ -250,11 +245,6 @@ void LutronPairing::send_pairing_experimental(uint32_t device_id, int ba_count, 
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
-    if (i % 20 == 0) {
-      ESP_LOGD(TAG, "TX %02X seq=0x%02X (%d/%d)",
-               packet[0], packet[1], i + 1, total_packets);
-    }
-
     this->transmit_encoded(packet, 53);
 
     // Flip-flop for next packet
@@ -357,11 +347,6 @@ void LutronPairing::send_pairing_5button(uint32_t device_id, int duration_second
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
 
-    if (packet_count % 20 == 0) {
-      ESP_LOGD(TAG, "TX %s seq=0x%02X (%d packets)",
-               use_b9 ? "B9" : "BB", packet[1], packet_count);
-    }
-
     this->transmit_encoded(packet, 53);
     packet_count++;
 
@@ -457,11 +442,6 @@ void LutronPairing::send_pairing_advanced(uint32_t device_id, int duration_secon
     uint16_t crc = this->encoder_.calc_crc(packet, 51);
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
-
-    if (packet_count % 20 == 0) {
-      ESP_LOGD(TAG, "TX %02X seq=0x%02X (%d packets)",
-               packet[0], packet[1], packet_count);
-    }
 
     this->transmit_encoded(packet, 53);
     packet_count++;

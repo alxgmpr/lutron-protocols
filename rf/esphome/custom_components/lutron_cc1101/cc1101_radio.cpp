@@ -326,24 +326,42 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     return false;
   }
 
+  // Full state reset before TX to handle RX->TX transition properly
   this->set_idle();
-  delay(2);
+
+  // Wait for radio to actually be in IDLE state
+  uint32_t start = millis();
+  while ((this->read_status_register(CC1101_MARCSTATE) & 0x1F) != 0x01) {
+    if (millis() - start > 10) {
+      ESP_LOGW(TAG, "Timeout waiting for IDLE state");
+      break;
+    }
+    delayMicroseconds(100);
+  }
+
+  // Flush BOTH FIFOs - RX FIFO can have garbage that affects state machine
+  this->flush_rx();
   this->flush_tx();
   delay(1);
 
   const size_t FIFO_SIZE = 64;
 
-  // Debug: Log first 16 bytes being sent
-  ESP_LOGD(TAG, "TX %d bytes: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
-           len,
-           len > 0 ? data[0] : 0, len > 1 ? data[1] : 0, len > 2 ? data[2] : 0, len > 3 ? data[3] : 0,
-           len > 4 ? data[4] : 0, len > 5 ? data[5] : 0, len > 6 ? data[6] : 0, len > 7 ? data[7] : 0,
-           len > 8 ? data[8] : 0, len > 9 ? data[9] : 0, len > 10 ? data[10] : 0, len > 11 ? data[11] : 0,
-           len > 12 ? data[12] : 0, len > 13 ? data[13] : 0, len > 14 ? data[14] : 0, len > 15 ? data[15] : 0);
-
   if (len <= FIFO_SIZE) {
+    // Set fixed length mode and packet length
+    this->write_register(CC1101_PKTCTRL0, 0x00);  // Fixed length mode
     this->write_register(CC1101_PKTLEN, len);
+
+    // Small delay for register writes to take effect
+    delayMicroseconds(500);
+
     this->write_burst(CC1101_TXFIFO, data, len);
+
+    // Verify FIFO was written correctly
+    uint8_t txbytes = this->read_status_register(CC1101_TXBYTES) & 0x7F;
+    if (txbytes != len) {
+      ESP_LOGW(TAG, "FIFO mismatch: wrote %d, FIFO has %d", len, txbytes);
+    }
+
     this->strobe(CC1101_STX);
   } else {
     // Large packet - use INFINITE mode and time-based completion
