@@ -114,6 +114,8 @@ export const PACKET_TYPE_NAMES: Record<string, string> = {
   '91': 'BEACON', '92': 'BEACON', '93': 'BEACON',
   'A2': 'LEVEL',
   'B8': 'PAIR_B8', 'B9': 'PAIR_B9', 'BA': 'PAIR_BA', 'BB': 'PAIR_BB',
+  // Virtual types (assigned by ESP32 based on format byte)
+  'F0': 'UNPAIR', 'F1': 'UNPAIR_PREP',
 }
 
 /**

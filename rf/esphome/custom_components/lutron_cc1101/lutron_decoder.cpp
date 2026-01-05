@@ -237,22 +237,24 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
     packet.action = best_bytes[PKT_OFFSET_ACTION];
   } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
              packet.type == PKT_STATE_REPORT_83) {
-    // State reports use LITTLE-endian device IDs
+    // Types 0x81/0x82/0x83 - check format byte at [7] to determine actual packet type:
+    // - Format 0x08 = STATE_RPT (dimmer reporting level)
+    // - Format 0x09 = UNPAIR_PREP (unpair phase 1)
+    // - Format 0x0C = UNPAIR (unpair phase 2 flood)
+    // - Format 0x0E = LEVEL (bridge setting level)
+    uint8_t format_byte = best_bytes[7];
+
+    // Source ID is always little-endian for 0x81-0x83 packets
     packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
-    // Types 0x81/0x82/0x83 can be either:
-    // - State report: bytes 6-7 = 0x00 0x08, level at byte 11
-    // - Bridge level command: bytes 6-7 = 0x21 0x0E, level at bytes 16-17
-    if (best_bytes[6] == 0x21 && best_bytes[7] == 0x0E) {
+
+    if (format_byte == 0x0E) {
       // Bridge level command - reclassify as LEVEL type
       packet.type = PKT_LEVEL;
       // Level is 16-bit big-endian at bytes 16-17
-      // Lutron uses 0x0000-0xFEFF (0-65279) for 0-100%
-      // Each 1% = 652.79 raw units
       uint16_t raw_level = (best_bytes[16] << 8) | best_bytes[17];
-      // Scale to 0-100 with proper rounding (add half of 65279)
       uint32_t calc = (uint32_t)raw_level * 100 + 32639;
       uint8_t level = (uint8_t)(calc / 65279);
       packet.level = (level > 100) ? 100 : level;
@@ -261,11 +263,33 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                          (best_bytes[10] << 16) |
                          (best_bytes[11] << 8) |
                          best_bytes[12];
-    } else {
+    } else if (format_byte == 0x0C) {
+      // UNPAIR flood packet - reclassify
+      packet.type = PKT_UNPAIR;
+      // Target device ID at bytes 16-19 (big-endian)
+      if (best_decoded >= 20) {
+        packet.target_id = (best_bytes[16] << 24) |
+                           (best_bytes[17] << 16) |
+                           (best_bytes[18] << 8) |
+                           best_bytes[19];
+      }
+    } else if (format_byte == 0x09) {
+      // UNPAIR prepare packet - reclassify
+      packet.type = PKT_UNPAIR_PREP;
+      // Target device ID at bytes 9-12 (big-endian)
+      if (best_decoded >= 13) {
+        packet.target_id = (best_bytes[9] << 24) |
+                           (best_bytes[10] << 16) |
+                           (best_bytes[11] << 8) |
+                           best_bytes[12];
+      }
+    } else if (format_byte == 0x08) {
       // True state report - level at byte 11 (0x00-0xFE = 0-100%)
-      // Add 127 (half of 254) before dividing for proper rounding
       uint8_t raw_level = best_bytes[PKT_OFFSET_LEVEL];
       packet.level = (uint8_t)(((uint32_t)raw_level * 100 + 127) / 254);
+    } else {
+      // Unknown format - leave as STATE_RPT but don't parse level
+      // This prevents garbage data from being interpreted
     }
   } else if (packet.type == PKT_LEVEL) {
     // Level commands use LITTLE-endian device IDs
@@ -324,6 +348,8 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_STATE_REPORT_81: return "STATE_RPT";
     case PKT_STATE_REPORT_82: return "STATE_RPT";
     case PKT_STATE_REPORT_83: return "STATE_RPT";
+    case PKT_UNPAIR: return "UNPAIR";
+    case PKT_UNPAIR_PREP: return "UNPAIR_PREP";
     case PKT_PAIRING_B8: return "PAIR_B8";
     case PKT_PAIRING_B9: return "PAIR_B9";
     case PKT_PAIRING_BA: return "PAIR_BA";
@@ -399,48 +425,60 @@ bool LutronDecoder::parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket 
     packet.action = bytes[PKT_OFFSET_ACTION];
   } else if (packet.type == PKT_STATE_REPORT_81 || packet.type == PKT_STATE_REPORT_82 ||
              packet.type == PKT_STATE_REPORT_83) {
-    // State reports use LITTLE-endian device IDs
+    // Types 0x81/0x82/0x83 - check format byte at [7] to determine actual packet type:
+    // - Format 0x08 = STATE_RPT (dimmer reporting level)
+    // - Format 0x09 = UNPAIR_PREP (unpair phase 1)
+    // - Format 0x0C = UNPAIR (unpair phase 2 flood)
+    // - Format 0x0E = LEVEL (bridge setting level)
+    uint8_t format_byte = (len >= 8) ? bytes[7] : 0;
+
+    // Source ID is always little-endian for 0x81-0x83 packets
     packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
                        (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
                        (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
                        (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
-    // Types 0x81/0x82/0x83 can be either:
-    // - State report: bytes 6-7 = 0x00 0x08, level at byte 11
-    // - Bridge level command: bytes 6-7 = 0x21 0x0E, level at bytes 16-17
-    // - Unpair command: bytes 6-7 = 0x21 0x0C
-    if (len >= 8 && bytes[6] == 0x21 && bytes[7] == 0x0E) {
+
+    if (format_byte == 0x0E) {
       // Bridge level command - reclassify as LEVEL type
       packet.type = PKT_LEVEL;
-      // Level is 16-bit big-endian at bytes 16-17
       if (len >= 18) {
         uint16_t raw_level = (bytes[16] << 8) | bytes[17];
         uint32_t calc = (uint32_t)raw_level * 100 + 32639;
         uint8_t level = (uint8_t)(calc / 65279);
         packet.level = (level > 100) ? 100 : level;
       }
-      // Target device ID at bytes 9-12 (big-endian in bridge commands)
       if (len >= 13) {
         packet.target_id = (bytes[9] << 24) |
                            (bytes[10] << 16) |
                            (bytes[11] << 8) |
                            bytes[12];
       }
-    } else if (len >= 8 && bytes[7] == 0x0C) {
-      // Unpair command - keep original type but note it's unpair
-      // Target ID at bytes 16-19 (big-endian)
+    } else if (format_byte == 0x0C) {
+      // UNPAIR flood packet - reclassify
+      packet.type = PKT_UNPAIR;
       if (len >= 20) {
         packet.target_id = (bytes[16] << 24) |
                            (bytes[17] << 16) |
                            (bytes[18] << 8) |
                            bytes[19];
       }
-    } else {
+    } else if (format_byte == 0x09) {
+      // UNPAIR prepare packet - reclassify
+      packet.type = PKT_UNPAIR_PREP;
+      if (len >= 13) {
+        packet.target_id = (bytes[9] << 24) |
+                           (bytes[10] << 16) |
+                           (bytes[11] << 8) |
+                           bytes[12];
+      }
+    } else if (format_byte == 0x08) {
       // True state report - level at byte 11 (0x00-0xFE = 0-100%)
       if (len >= 12) {
         uint8_t raw_level = bytes[PKT_OFFSET_LEVEL];
         packet.level = (uint8_t)(((uint32_t)raw_level * 100 + 127) / 254);
       }
     }
+    // else: Unknown format - leave as STATE_RPT but don't parse level
   } else if (packet.type == PKT_LEVEL) {
     // Level commands use LITTLE-endian device IDs
     packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |

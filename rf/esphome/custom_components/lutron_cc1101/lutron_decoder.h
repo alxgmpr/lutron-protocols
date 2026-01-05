@@ -30,6 +30,11 @@ static const uint8_t PKT_PAIRING_BB = 0xBB;  // Direct-pair capable
 static const uint8_t PKT_PAIRING_B0 = 0xB0;  // Unknown/legacy
 static const uint8_t PKT_BEACON = 0x91;
 
+// Virtual packet types (assigned during decode, not actual wire types)
+// Used when format byte at [7] distinguishes packet subtype
+static const uint8_t PKT_UNPAIR = 0xF0;       // Format 0x0C - bridge unpair command
+static const uint8_t PKT_UNPAIR_PREP = 0xF1;  // Format 0x09 - unpair prepare phase
+
 // Button codes - 5-button Pico
 static const uint8_t BTN_ON = 0x02;
 static const uint8_t BTN_FAVORITE = 0x03;
