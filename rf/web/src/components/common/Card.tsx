@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import './Card.css'
 
 interface CardProps {
@@ -8,21 +8,42 @@ interface CardProps {
   actions?: ReactNode
   children: ReactNode
   className?: string
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }
 
-export function Card({ title, badge, variant = 'default', actions, children, className = '' }: CardProps) {
+export function Card({
+  title,
+  badge,
+  variant = 'default',
+  actions,
+  children,
+  className = '',
+  collapsible = false,
+  defaultCollapsed = false
+}: CardProps) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+
   return (
-    <div className={`card card-${variant} ${className}`}>
-      <div className="card-header">
+    <div className={`card card-${variant} ${className} ${collapsed ? 'card-collapsed' : ''}`}>
+      <div className="card-header" onClick={collapsible ? () => setCollapsed(!collapsed) : undefined}>
         <div className="card-header-left">
+          {collapsible && (
+            <span className={`card-collapse-icon ${collapsed ? 'collapsed' : ''}`}>
+              {collapsed ? '+' : '-'}
+            </span>
+          )}
           <h2 className="card-title">{title}</h2>
           {badge && <span className="card-badge">{badge}</span>}
+          {collapsed && <span className="card-collapsed-hint">click to expand</span>}
         </div>
-        {actions && <div className="card-actions">{actions}</div>}
+        {actions && !collapsed && <div className="card-actions">{actions}</div>}
       </div>
-      <div className="card-body">
-        {children}
-      </div>
+      {!collapsed && (
+        <div className="card-body">
+          {children}
+        </div>
+      )}
     </div>
   )
 }

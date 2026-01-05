@@ -8,9 +8,18 @@ interface LogDisplayProps {
   onClear: () => void
   paused?: boolean
   onTogglePause?: () => void
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }
 
-export function LogDisplay({ logs, onClear, paused = false, onTogglePause }: LogDisplayProps) {
+export function LogDisplay({
+  logs,
+  onClear,
+  paused = false,
+  onTogglePause,
+  collapsible = false,
+  defaultCollapsed = false
+}: LogDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Only auto-scroll when not paused
@@ -34,6 +43,8 @@ export function LogDisplay({ logs, onClear, paused = false, onTogglePause }: Log
       variant="logs"
       className={`log-card ${paused ? 'paused' : ''}`}
       badge={paused ? 'paused' : undefined}
+      collapsible={collapsible}
+      defaultCollapsed={defaultCollapsed}
       actions={
         <>
           {onTogglePause && (

@@ -10,12 +10,45 @@
 
 .main-grid {
   display: grid;
-  grid-template-columns: 340px 1fr 400px;
-  gap: 1px;
+  /* Default columns, overridden by inline style for resizable widths */
+  grid-template-columns: 340px 4px 1fr 4px 400px;
+  gap: 0;
   flex: 1;
   min-height: 0;
   overflow: hidden;
   background: var(--border-primary);
+}
+
+/* Resize handles */
+.resize-handle {
+  width: 4px;
+  background: var(--border-primary);
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s ease;
+}
+
+.resize-handle:hover {
+  background: var(--accent-blue);
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.resize-handle:hover::after {
+  opacity: 0.6;
 }
 
 .panel {
@@ -112,29 +145,15 @@
   min-height: 0;
 }
 
-/* Responsive breakpoints */
-@media (min-width: 1600px) {
-  .main-grid {
-    grid-template-columns: 380px 1fr 450px;
-  }
-}
-
-@media (min-width: 1920px) {
-  .main-grid {
-    grid-template-columns: 420px 1fr 500px;
-  }
-}
-
-@media (max-width: 1200px) {
-  .main-grid {
-    grid-template-columns: 320px 1fr 360px;
-  }
-}
-
+/* Responsive breakpoints - hide resize handles on smaller screens */
 @media (max-width: 1000px) {
   .main-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr !important;
     grid-template-rows: 1fr 1fr;
+  }
+
+  .resize-handle {
+    display: none;
   }
 
   .left-panel {
@@ -155,7 +174,7 @@
 
 @media (max-width: 768px) {
   .main-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
     grid-template-rows: auto auto auto;
   }
 

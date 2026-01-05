@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApi } from './hooks/useApi'
 import { useLogStream } from './hooks/useLogStream'
 import { usePacketStream } from './hooks/usePacketStream'
@@ -48,6 +48,65 @@ function App() {
 
   const [devices, setDevices] = useState<Record<string, Device>>({})
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
+
+  // Resizable column widths (stored in localStorage)
+  const [leftWidth, setLeftWidth] = useState(() => {
+    const saved = localStorage.getItem('cca-left-width')
+    return saved ? parseInt(saved, 10) : 340
+  })
+  const [rightWidth, setRightWidth] = useState(() => {
+    const saved = localStorage.getItem('cca-right-width')
+    return saved ? parseInt(saved, 10) : 400
+  })
+  const resizingRef = useRef<'left' | 'right' | null>(null)
+  const startXRef = useRef(0)
+  const startWidthRef = useRef(0)
+
+  // Handle resize drag
+  const handleMouseDown = useCallback((side: 'left' | 'right', e: React.MouseEvent) => {
+    e.preventDefault()
+    resizingRef.current = side
+    startXRef.current = e.clientX
+    startWidthRef.current = side === 'left' ? leftWidth : rightWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [leftWidth, rightWidth])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return
+      const delta = e.clientX - startXRef.current
+      const newWidth = resizingRef.current === 'left'
+        ? Math.max(280, Math.min(600, startWidthRef.current + delta))
+        : Math.max(300, Math.min(700, startWidthRef.current - delta))
+      if (resizingRef.current === 'left') {
+        setLeftWidth(newWidth)
+      } else {
+        setRightWidth(newWidth)
+      }
+    }
+
+    const handleMouseUp = () => {
+      if (resizingRef.current) {
+        // Save to localStorage
+        if (resizingRef.current === 'left') {
+          localStorage.setItem('cca-left-width', leftWidth.toString())
+        } else {
+          localStorage.setItem('cca-right-width', rightWidth.toString())
+        }
+        resizingRef.current = null
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [leftWidth, rightWidth])
 
   const loadDevices = useCallback(async () => {
     try {
@@ -169,8 +228,13 @@ function App() {
   return (
     <div className="app">
       <Header connected={connected} />
-      
-      <main className="main-grid">
+
+      <main
+        className="main-grid"
+        style={{
+          gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`
+        }}
+      >
         <section className="panel left-panel">
           <PicoPairing showStatus={showStatus} />
           <PicoButtons showStatus={showStatus} />
@@ -180,6 +244,11 @@ function App() {
           <DeviceState showStatus={showStatus} />
           <ResetPico showStatus={showStatus} />
         </section>
+
+        <div
+          className="resize-handle resize-handle-left"
+          onMouseDown={(e) => handleMouseDown('left', e)}
+        />
 
         <section className="panel center-panel">
           <div className="center-panel-header">
@@ -201,6 +270,7 @@ function App() {
             variant="tx"
             paused={pausedTx}
             onTogglePause={togglePauseTx}
+            collapsible
           />
           <PacketDisplay
             title="RX Packets"
@@ -209,14 +279,22 @@ function App() {
             variant="rx"
             paused={pausedRx}
             onTogglePause={togglePauseRx}
+            collapsible
           />
           <LogDisplay
             logs={logs}
             onClear={clearLogs}
             paused={pausedLogs}
             onTogglePause={togglePauseLogs}
+            collapsible
+            defaultCollapsed
           />
         </section>
+
+        <div
+          className="resize-handle resize-handle-right"
+          onMouseDown={(e) => handleMouseDown('right', e)}
+        />
 
         <section className="panel right-panel">
           <DeviceList

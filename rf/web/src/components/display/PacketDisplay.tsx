@@ -10,9 +10,20 @@ interface PacketDisplayProps {
   variant: 'tx' | 'rx'
   paused?: boolean
   onTogglePause?: () => void
+  collapsible?: boolean
+  defaultCollapsed?: boolean
 }
 
-export function PacketDisplay({ title, packets, onClear, variant, paused = false, onTogglePause }: PacketDisplayProps) {
+export function PacketDisplay({
+  title,
+  packets,
+  onClear,
+  variant,
+  paused = false,
+  onTogglePause,
+  collapsible = false,
+  defaultCollapsed = false
+}: PacketDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null)
 
@@ -46,6 +57,8 @@ export function PacketDisplay({ title, packets, onClear, variant, paused = false
         variant={variant}
         className={`packet-card ${paused ? 'paused' : ''}`}
         badge={packets.length > 0 ? `${packets.length}${paused ? ' (paused)' : ''}` : undefined}
+        collapsible={collapsible}
+        defaultCollapsed={defaultCollapsed}
         actions={
           <>
             {onTogglePause && (
