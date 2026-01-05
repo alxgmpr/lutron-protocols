@@ -45,7 +45,7 @@ export function SaveFavorite({ showStatus }: Props) {
       </p>
       <div className="form-row">
         <FormGroup label="Pico ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} />
+          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Button">
           <FormSelect value={button} onChange={setButton}>

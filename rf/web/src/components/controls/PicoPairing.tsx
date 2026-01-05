@@ -59,7 +59,7 @@ export function PicoPairing({ showStatus }: Props) {
     <Card title="Pico Pairing" badge="PICO → DEVICE" variant="pairing">
       <div className="form-row">
         <FormGroup label="Pico ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} />
+          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
         </FormGroup>
         <FormGroup label="Preset" flex="auto">
           <FormSelect value={preset} onChange={handlePresetChange}>
