@@ -22,10 +22,9 @@ function getDeviceHint(device: Device): string {
 
 export function UnknownDeviceRow({ device, onClick, formatTime }: UnknownDeviceRowProps) {
   const info = device.info || {}
-  const bridgeId = info.bridge_id || ''
   const lastSeen = formatTime ? formatTime(device.last_seen) : ''
   const hint = getDeviceHint(device)
-  // Use stored subnet from backend (extracted from STATE_RPT/LEVEL packets)
+  // Use stored subnet from backend (extracted from bridge for LEVEL, device for STATE_RPT)
   const subnet = info.subnet
 
   return (
@@ -34,7 +33,6 @@ export function UnknownDeviceRow({ device, onClick, formatTime }: UnknownDeviceR
         <div className="unknown-device-id">
           {device.id}
           {subnet && <span className="unknown-device-subnet" title="Subnet Address">{subnet}</span>}
-          {bridgeId && <span className="unknown-device-via">via {bridgeId}</span>}
         </div>
         <div className="unknown-device-hint">{hint}{info.id_format === 'label' ? ' (Label ID)' : ''}</div>
       </div>

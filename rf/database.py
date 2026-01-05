@@ -254,10 +254,20 @@ def get_decoded_packets(
     direction: Optional[str] = None,
     packet_type: Optional[str] = None,
     device_id: Optional[str] = None,
+    subnet: Optional[str] = None,
     limit: int = 100,
     offset: int = 0
 ) -> List[Dict]:
-    """Query decoded packets with optional filters."""
+    """Query decoded packets with optional filters.
+
+    Args:
+        direction: 'rx' or 'tx'
+        packet_type: LEVEL, BTN_SHORT_A, STATE_RPT, etc.
+        device_id: Match device_id, source_id, or target_id
+        subnet: Match subnet in source_id (for LEVEL commands to a zone)
+        limit: Max results
+        offset: Pagination offset
+    """
     conditions = []
     params = []
 
@@ -270,6 +280,17 @@ def get_decoded_packets(
     if device_id:
         conditions.append("(device_id = ? OR source_id = ? OR target_id = ?)")
         params.extend([device_id, device_id, device_id])
+    if subnet:
+        # Subnet is stored in source_id bytes 1-2 (little-endian)
+        # e.g., subnet "902C" matches source_id "??2C90??" (bytes 1-2 reversed)
+        # Convert subnet to little-endian pattern for LIKE query
+        if len(subnet) == 4:
+            subnet_lo = subnet[2:4]
+            subnet_hi = subnet[0:2]
+            # Match source_id where bytes 1-2 are subnet_lo + subnet_hi
+            pattern = f"__{subnet_lo}{subnet_hi}__"
+            conditions.append("source_id LIKE ?")
+            params.append(pattern)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 

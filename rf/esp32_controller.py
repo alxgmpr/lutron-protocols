@@ -173,33 +173,57 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
 
     pkt_data['raw_hex'] = raw_hex
 
+    # Calculate subnet and id_format BEFORE storing/streaming
+    # This ensures the packet queue gets the correct data
+    decoded_data = pkt_data.get('decoded_data', {})
+    if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
+        # Determine ID format based on packet type:
+        # - STATE_RPT/LEVEL: little-endian, contains subnet
+        # - BTN_*/PAIRING: big-endian, matches printed label
+        id_format = 'subnet' if packet_type in ('STATE_RPT', 'LEVEL') else 'label'
+        decoded_data['id_format'] = id_format
+        decoded_data['packet_type'] = packet_type
+
+        # Extract subnet from the appropriate ID:
+        # - For LEVEL packets: extract from source_id (bridge), not target (device)
+        # - For STATE_RPT: extract from device_id (the dimmer reporting)
+        # Device ID format: [Zone][SubnetLo][SubnetHi][Endpoint]
+        # Subnet displayed big-endian (as in Lutron Designer): SubnetHi + SubnetLo
+        source_id = pkt_data.get('source_id')
+        subnet_source = source_id if packet_type == 'LEVEL' else device_id
+        if id_format == 'subnet' and subnet_source and len(subnet_source) == 8:
+            subnet_lo = subnet_source[2:4]  # bytes 1
+            subnet_hi = subnet_source[4:6]  # bytes 2
+            subnet = (subnet_hi + subnet_lo).upper()  # Big-endian for display
+            decoded_data['subnet'] = subnet
+
     # Store in database
     db.insert_decoded_packet(
         direction='rx',
-        packet_type=pkt_data.get('packet_type', 'UNKNOWN'),
+        packet_type=packet_type,
         timestamp=pkt_data.get('timestamp', datetime.now().isoformat()),
         raw_hex=raw_hex,
-        device_id=pkt_data.get('device_id'),
+        device_id=device_id,
         source_id=pkt_data.get('source_id'),
         target_id=pkt_data.get('target_id'),
         level=pkt_data.get('level'),
         button=pkt_data.get('button'),
         rssi=pkt_data.get('rssi'),
-        decoded_data=pkt_data.get('decoded_data')
+        decoded_data=decoded_data
     )
 
-    # Push to packet queue for SSE streaming
+    # Push to packet queue for SSE streaming (with subnet already calculated)
     try:
         timestamp = pkt_data.get('timestamp', '')
         packet_queue.put_nowait({
             'direction': 'rx',
-            'type': pkt_data.get('packet_type', 'UNKNOWN'),
+            'type': packet_type,
             'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
-            'device_id': pkt_data.get('device_id'),
+            'device_id': device_id,
             'source_id': pkt_data.get('source_id'),
             'target_id': pkt_data.get('target_id'),
-            'summary': f"{pkt_data.get('source_id')} -> {pkt_data.get('target_id')}" if pkt_data.get('source_id') and pkt_data.get('target_id') else pkt_data.get('device_id') or '',
-            'details': pkt_data.get('decoded_data', {}),
+            'summary': f"{pkt_data.get('source_id')} -> {pkt_data.get('target_id')}" if pkt_data.get('source_id') and pkt_data.get('target_id') else device_id or '',
+            'details': decoded_data,
             'raw_hex': raw_hex,
             'rssi': pkt_data.get('rssi')
         })
@@ -207,27 +231,8 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
         pass
 
     # Update device registry
-    device_id = pkt_data.get('device_id')
-    packet_type = pkt_data.get('packet_type', '')
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
         category = _infer_category_from_type(packet_type, pkt_data.get('button'))
-        # Determine ID format based on packet type:
-        # - STATE_RPT/LEVEL: little-endian, contains subnet
-        # - BTN_*/PAIRING: big-endian, matches printed label
-        id_format = 'subnet' if packet_type in ('STATE_RPT', 'LEVEL') else 'label'
-        decoded_data = pkt_data.get('decoded_data', {})
-        decoded_data['id_format'] = id_format
-        decoded_data['packet_type'] = packet_type
-
-        # Extract subnet from subnet-style device IDs
-        # Device ID format for subnet-style: [Zone][SubnetLo][SubnetHi][Endpoint]
-        # Subnet displayed big-endian (as in Lutron Designer): SubnetHi + SubnetLo
-        if id_format == 'subnet' and len(device_id) == 8:
-            subnet_lo = device_id[2:4]  # bytes 1
-            subnet_hi = device_id[4:6]  # bytes 2
-            subnet = (subnet_hi + subnet_lo).upper()  # Big-endian for display
-            decoded_data['subnet'] = subnet
-
         db.upsert_device(
             device_id=device_id,
             category=category,
@@ -1305,13 +1310,15 @@ def cmd_serve(args):
         Query params:
         - direction: 'rx' or 'tx'
         - type: packet type (LEVEL, BTN_SHORT_A, etc.)
-        - device: device ID to filter
+        - device: device ID to filter (matches device_id, source_id, or target_id)
+        - subnet: subnet address to filter (matches source_id for LEVEL commands)
         - limit: max results (default 100)
         - offset: pagination offset
         """
         direction = request.args.get('direction')
         packet_type = request.args.get('type')
         device_id = request.args.get('device')
+        subnet = request.args.get('subnet')
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
 
@@ -1319,6 +1326,7 @@ def cmd_serve(args):
             direction=direction,
             packet_type=packet_type,
             device_id=device_id,
+            subnet=subnet,
             limit=limit,
             offset=offset
         )

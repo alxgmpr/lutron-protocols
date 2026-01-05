@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common'
+import { PacketInspector } from '../display'
 import { DEVICE_TYPES } from '../../types'
 import type { Device } from '../../types'
 import './DeviceDetailModal.css'
@@ -17,25 +18,11 @@ interface DeviceDetailModalProps {
   getEffectiveType: (device: Device) => string
 }
 
-function extractBridgePairing(bridgeId: string): string {
-  try {
-    const idStr = bridgeId.replace(/^0x/i, '')
-    const idNum = parseInt(idStr, 16)
-    const pairingId = (idNum >> 8) & 0xFFFF
-    return pairingId.toString(16).toUpperCase().padStart(4, '0')
-  } catch {
-    return '????'
-  }
-}
-
 function inferDeviceInfo(device: Device): { guess: string; confidence: string; details: string[] } {
   const info = device.info || {}
   const category = info.category || ''
   const details: string[] = []
-  
-  if (info.bridge_id) {
-    details.push(`Controlled by bridge ${info.bridge_id}`)
-  }
+
   if (info.level) {
     details.push(`Last level: ${info.level}`)
   }
@@ -94,8 +81,23 @@ export function DeviceDetailModal({
   
   const { guess, confidence, details } = inferDeviceInfo(device)
   const effectiveType = getEffectiveType(device)
+  const [showPacketInspector, setShowPacketInspector] = useState(false)
 
   const allDevices = groupDevices || [[device.id, device] as [string, Device]]
+
+  // Determine how to query packets for this device
+  const getPacketQuery = useCallback(() => {
+    const info = device.info || {}
+    const category = info.category || ''
+
+    // For bridge-controlled devices, query by subnet (from the bridge's commands)
+    if (category === 'bridge_controlled' && info.subnet) {
+      return { subnet: info.subnet, title: `Packets for subnet ${info.subnet}` }
+    }
+
+    // For everything else (picos, passive dimmers), query by device ID
+    return { deviceId: device.id, title: `Packets for ${device.label || device.id}` }
+  }, [device])
 
   // Only STATE_RPT (level reports) can be assigned to existing devices
   // because the RF TX ID may differ from the hardware ID
@@ -218,12 +220,11 @@ export function DeviceDetailModal({
               <span>First: {new Date(device.first_seen).toLocaleString()}</span>
               <span>Last: {new Date(device.last_seen).toLocaleString()}</span>
             </div>
-            {device.info?.bridge_id && (
-              <div className="device-link-id">
-                <span className="link-id-label">Bridge Pairing:</span>
-                <span className="link-id-value">{extractBridgePairing(device.info.bridge_id)}</span>
-              </div>
-            )}
+            <div className="device-actions">
+              <Button size="sm" variant="purple" onClick={() => setShowPacketInspector(true)}>
+                View Packets
+              </Button>
+            </div>
           </div>
 
           {/* Paired Device IDs Section - for labeled devices */}
@@ -246,9 +247,6 @@ export function DeviceDetailModal({
                           )}
                           {devInfo.id_format === 'label' && (
                             <span className="paired-device-label-tag" title="Matches printed label">Label</span>
-                          )}
-                          {devInfo.bridge_id && (
-                            <span className="paired-device-via">via {devInfo.bridge_id}</span>
                           )}
                           {devInfo.level && (
                             <span className="paired-device-level">{devInfo.level}</span>
@@ -379,6 +377,18 @@ export function DeviceDetailModal({
           </div>
         </div>
       </div>
+
+      {showPacketInspector && (() => {
+        const query = getPacketQuery()
+        return (
+          <PacketInspector
+            deviceId={query.deviceId}
+            subnet={query.subnet}
+            title={query.title}
+            onClose={() => setShowPacketInspector(false)}
+          />
+        )
+      })()}
     </div>
   )
 }
