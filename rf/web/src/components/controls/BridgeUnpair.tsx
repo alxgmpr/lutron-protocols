@@ -14,12 +14,13 @@ export function BridgeUnpair({ showStatus }: Props) {
   const [bridgeSubnet, setBridgeSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('0x06F4587E')
 
-  const handleUnpair = async () => {
-    // Convert subnet to zone IDs (add 00 prefix and common suffixes)
-    const zone1 = `0x00${bridgeSubnet}AD`
-    const zone2 = `0x00${bridgeSubnet}AF`
+  // Compute zone IDs from subnet
+  const cleanSubnet = bridgeSubnet.replace(/^0x/i, '').toUpperCase().padStart(4, '0')
+  const zone1 = `0x00${cleanSubnet}AD`
+  const zone2 = `0x00${cleanSubnet}AF`
 
-    showStatus(`Unpairing ${targetId} from bridge ${bridgeSubnet}...`)
+  const handleUnpair = async () => {
+    showStatus(`Unpairing ${targetId} from bridge ${cleanSubnet}...`)
     try {
       const params = {
         bridge: zone1,
@@ -43,12 +44,12 @@ export function BridgeUnpair({ showStatus }: Props) {
         Remove a device from bridge network. Sends two-phase unpair (prepare + unpair flood).
       </p>
       <div className="form-row">
-        <FormGroup label="Bridge Subnet">
+        <FormGroup label="Subnet" hint={`Zones: ${zone1.slice(2)}, ${zone2.slice(2)}`}>
           <AutocompleteInput
             value={bridgeSubnet}
             onChange={setBridgeSubnet}
             suggestions={seen.bridgeSubnets}
-            width={100}
+            width={70}
             placeholder="2C90"
           />
         </FormGroup>

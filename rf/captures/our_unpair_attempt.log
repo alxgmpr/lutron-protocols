@@ -1,0 +1,161 @@
+INFO ESPHome 2025.12.1
+INFO Reading configuration ~/lutron-tools/rf/esphome/pico-proxy-cc1101.yaml...
+INFO Starting log output from pico-trigger.local using esphome API
+INFO Successfully resolved pico-trigger.local in 0.231s
+INFO Successfully connected to pico-trigger @ 10.1.4.59 in 0.010s
+INFO Successful handshake with pico-trigger @ 10.1.4.59 in 0.091s
+[23:35:05.652][I][app:194]: ESPHome version 2025.12.1 compiled on Jan  4 2026, 22:05:13
+[23:35:05.654][C][logger:261]: Logger:
+[23:35:05.654][C][logger:261]:   Max Level: DEBUG
+[23:35:05.654][C][logger:261]:   Initial Level: DEBUG
+[23:35:05.657][C][logger:267]:   Log Baud Rate: 115200
+[23:35:05.657][C][logger:267]:   Hardware UART: UART0
+[23:35:05.663][C][logger:274]:   Task Log Buffer Size: 768
+[23:35:05.669][C][spi:067]: SPI bus:
+[23:35:05.673][C][spi:068]:   CLK Pin: GPIO18
+[23:35:05.674][C][spi:069]:   SDI Pin: GPIO19
+[23:35:05.682][C][spi:070]:   SDO Pin: GPIO23
+[23:35:05.683][C][spi:075]:   Using HW SPI: SPI
+[23:35:05.705][C][template.switch:092]: Template Switch 'Beacon Mode'
+[23:35:05.705][C][template.switch:092]:   Restore Mode: always OFF
+[23:35:05.711][C][template.switch:100]:   Icon: 'mdi:broadcast'
+[23:35:05.720][C][template.switch:055]:   Optimistic: YES
+[23:35:05.720][C][lutron_cc1101:107]: Lutron CC1101:
+[23:35:05.721][C][lutron_cc1101:108]:   Status: OK
+[23:35:05.727][C][lutron_cc1101:109]:   RX Enabled: YES
+[23:35:05.729][C][lutron_cc1101:110]:   RX Auto: YES
+[23:35:05.771][C][wifi:1132]: WiFi:
+[23:35:05.771][C][wifi:1132]:   Connected: YES
+[23:35:05.776][C][wifi:897]:   Local MAC: 10:06:1C:F2:33:64
+[23:35:05.783][C][wifi:904]:   IP Address: 10.1.4.59
+[23:35:05.787][C][wifi:908]:   SSID: 'gompper-sage-iot'
+[23:35:05.787][C][wifi:908]:   BSSID: 9C:05:D6:56:EE:27
+[23:35:05.787][C][wifi:908]:   Hostname: 'pico-trigger'
+[23:35:05.787][C][wifi:908]:   Signal strength: -50 dB ▂▄▆█
+[23:35:05.787][C][wifi:908]:   Channel: 6
+[23:35:05.787][C][wifi:908]:   Subnet: 255.255.255.192
+[23:35:05.787][C][wifi:908]:   Gateway: 10.1.4.1
+[23:35:05.787][C][wifi:908]:   DNS1: 10.1.3.3
+[23:35:05.787][C][wifi:908]:   DNS2: 0.0.0.0
+[23:35:05.795][C][esphome.ota:092]: Over-The-Air updates:
+[23:35:05.795][C][esphome.ota:092]:   Address: pico-trigger.local:3232
+[23:35:05.795][C][esphome.ota:092]:   Version: 2
+[23:35:05.802][C][esphome.ota:099]:   Password configured
+[23:35:05.814][C][safe_mode:018]: Safe Mode:
+[23:35:05.814][C][safe_mode:018]:   Successful after: 60s
+[23:35:05.814][C][safe_mode:018]:   Invoke after: 10 attempts
+[23:35:05.814][C][safe_mode:018]:   Duration: 300s
+[23:35:05.821][C][api:211]: Server:
+[23:35:05.821][C][api:211]:   Address: pico-trigger.local:6053
+[23:35:05.821][C][api:211]:   Listen backlog: 4
+[23:35:05.821][C][api:211]:   Max connections: 8
+[23:35:05.832][C][api:218]:   Noise encryption: YES
+[23:35:05.846][C][mdns:177]: mDNS:
+[23:35:05.846][C][mdns:177]:   Hostname: pico-trigger
+[23:35:08.550][D][api:136]: Accept 10.1.1.121
+[23:35:08.605][D][api.connection:1398]: aioesphomeapi (10.1.1.121) connected
+[23:35:08.768][I][service:192]: send_bridge_unpair: bridge=0x002C90AF target=0x07016FCE
+[23:35:08.770][I][lutron_cc1101:1350]: === BRIDGE UNPAIR ===
+[23:35:08.770][I][lutron_cc1101:1351]: Bridge zone: 002C90AF, Target device: 07016FCE
+[23:35:08.770][I][lutron_cc1101:143]: TX 24 bytes: 81 01 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 03 2D 
+[23:35:08.770][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:08.793][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 40 5E B0 4C 69 00 50
+[23:35:08.793][I][cc1101_radio:185]: Starting RX mode...
+[23:35:08.793][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:08.858][I][lutron_cc1101:143]: TX 24 bytes: 82 06 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 94 E3 
+[23:35:08.859][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:08.867][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 30 5E B0 4C 69 00 50
+[23:35:08.875][I][cc1101_radio:185]: Starting RX mode...
+[23:35:08.881][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:08.944][I][lutron_cc1101:143]: TX 24 bytes: 83 0C AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 53 F6 
+[23:35:08.949][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:08.959][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 18 5E B0 4C 69 00 50
+[23:35:08.971][I][cc1101_radio:185]: Starting RX mode...
+[23:35:08.973][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.035][I][lutron_cc1101:143]: TX 24 bytes: 81 11 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 21 04 
+[23:35:09.042][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.051][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 44 5E B0 4C 69 00 50
+[23:35:09.061][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.065][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.130][I][lutron_cc1101:143]: TX 24 bytes: 82 17 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 74 0E 
+[23:35:09.132][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.140][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 74 5E B0 4C 69 00 50
+[23:35:09.151][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.157][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.223][I][lutron_cc1101:143]: TX 24 bytes: 83 1C AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 71 DF 
+[23:35:09.224][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.234][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 1C 5E B0 4C 69 00 50
+[23:35:09.246][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.250][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.315][I][lutron_cc1101:143]: TX 24 bytes: 81 22 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC CA 3C 
+[23:35:09.317][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.324][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 22 5E B0 4C 69 00 50
+[23:35:09.336][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.344][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.414][I][lutron_cc1101:143]: TX 24 bytes: 82 27 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 12 75 
+[23:35:09.414][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.420][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 72 5E B0 4C 69 00 50
+[23:35:09.431][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.436][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.509][I][lutron_cc1101:143]: TX 24 bytes: 83 2D AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC D5 60 
+[23:35:09.509][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.513][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 5A 5E B0 4C 69 00 50
+[23:35:09.522][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.530][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.594][I][lutron_cc1101:143]: TX 24 bytes: 81 32 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC E8 15 
+[23:35:09.601][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.612][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 26 5E B0 4C 69 00 50
+[23:35:09.629][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.629][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.691][I][lutron_cc1101:143]: TX 24 bytes: 82 38 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC D6 02 
+[23:35:09.692][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.701][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 0E 5E B0 4C 69 00 50
+[23:35:09.725][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.725][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.781][I][lutron_cc1101:143]: TX 24 bytes: 83 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC F7 49 
+[23:35:09.784][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.792][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 5E 5E B0 4C 69 00 50
+[23:35:09.803][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.818][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.874][I][lutron_cc1101:143]: TX 24 bytes: 81 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC C4 0E 
+[23:35:09.877][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.884][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 61 5E B0 4C 69 00 50
+[23:35:09.896][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.901][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:09.964][I][lutron_cc1101:143]: TX 24 bytes: 82 48 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 38 DD 
+[23:35:09.967][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:09.973][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 09 5E B0 4C 69 00 50
+[23:35:09.984][I][cc1101_radio:185]: Starting RX mode...
+[23:35:09.995][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.057][I][lutron_cc1101:143]: TX 24 bytes: 83 4E AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 94 D5 
+[23:35:10.061][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.068][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 39 5E B0 4C 69 00 50
+[23:35:10.083][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.089][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.149][I][lutron_cc1101:143]: TX 24 bytes: 81 53 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC E6 27 
+[23:35:10.155][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.160][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 65 5E B0 4C 69 00 50
+[23:35:10.172][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.181][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.242][I][lutron_cc1101:143]: TX 24 bytes: 82 59 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC D8 30 
+[23:35:10.242][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.252][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 4D 5E B0 4C 69 00 50
+[23:35:10.263][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.293][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.335][I][lutron_cc1101:143]: TX 24 bytes: 83 5E AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC B6 FC 
+[23:35:10.336][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.348][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 83 3D 5E B0 4C 69 00 50
+[23:35:10.357][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.364][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.430][I][lutron_cc1101:143]: TX 24 bytes: 81 64 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC 92 11 
+[23:35:10.438][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.440][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DD 03 13 5E B0 4C 69 00 50
+[23:35:10.452][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.459][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.533][I][lutron_cc1101:143]: TX 24 bytes: 82 69 AF 90 2C 00 21 0C 00 FF FF FF FF FF 02 08 07 01 6F CE CC CC BE 4B 
+[23:35:10.534][D][lutron_cc1101:187]: TX: 24 data -> 40 encoded (preamble=32, FIFO=DIRECT)
+[23:35:10.534][D][cc1101_radio:337]: TX 40 bytes: AA AA AA AA 7F CB F3 DC 83 4B 5E B0 4C 69 00 50
+[23:35:10.547][I][cc1101_radio:185]: Starting RX mode...
+[23:35:10.555][I][cc1101_radio:236]: RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)
+[23:35:10.556][I][lutron_cc1101:1420]: === BRIDGE UNPAIR COMPLETE ===
+[23:35:10.565][D][api.connection:264]: aioesphomeapi (10.1.1.121) disconnected
