@@ -65,7 +65,7 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
 
   // We have 'len' bytes = len*8 bits from CC1101
   size_t total_bits = len * 8;
-  if (total_bits < 240) {  // Need at least 24 bytes * 10 bits/byte
+  if (total_bits < 200) {  // Reduced from 240 to allow more decode attempts
     ESP_LOGD(TAG, "Not enough bits: %d", total_bits);
     return false;
   }

@@ -137,8 +137,16 @@ uint8_t CC1101Radio::read_status_register(uint8_t reg) {
 void CC1101Radio::write_burst(uint8_t reg, const uint8_t *data, size_t len) {
   this->spi_->spi_enable();
   this->spi_->spi_transfer(reg | CC1101_WRITE_BURST);
+
+  // Write in chunks with small delays to avoid overwhelming the FIFO
+  // This helps prevent corruption at the tail of longer packets
+  const size_t CHUNK_SIZE = 16;
   for (size_t i = 0; i < len; i++) {
     this->spi_->spi_transfer(data[i]);
+    // Add small delay every CHUNK_SIZE bytes
+    if ((i + 1) % CHUNK_SIZE == 0 && i + 1 < len) {
+      delayMicroseconds(10);  // Brief pause to let FIFO settle
+    }
   }
   this->spi_->spi_disable();
 }
@@ -279,10 +287,10 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // Lutron packets: 24-53 bytes raw (before Manchester encoding doubles it)
-  // Use lower threshold to process packets sooner and reduce FIFO pressure
-  // Minimum viable packet is ~24 bytes, but we need some margin for sync detection
-  const uint8_t MIN_PACKET_LEN = 28;
+  // Lutron N81 encoding: 10 bits per data byte
+  // Decoder search loop needs bit_pos + 270 < total_bits
+  // 35 bytes = 280 bits, provides margin for the 270-bit requirement
+  const uint8_t MIN_PACKET_LEN = 35;
 
   // If FIFO is getting close to full (>48 bytes), process immediately
   // to prevent overflow, even if packet might be incomplete
