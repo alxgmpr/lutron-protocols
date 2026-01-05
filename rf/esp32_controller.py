@@ -644,9 +644,9 @@ def _parse_and_store_packet(message: str):
             bytes_list = raw_hex.split()
             parsed = parse_packet_bytes(bytes_list)
 
-            # Include CRC status in decoded data
+            # Include CRC status in decoded data (as string for frontend compatibility)
             decoded_data = parsed['decoded_data']
-            decoded_data['crc_ok'] = crc_ok
+            decoded_data['crc_ok'] = 'true' if crc_ok else 'false'
 
             pkt_data = {
                 'packet_type': parsed['packet_type'],
