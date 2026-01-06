@@ -190,7 +190,7 @@ void CC1101Radio::start_rx() {
     return;
   }
 
-  ESP_LOGI(TAG, "Starting RX mode...");
+  ESP_LOGV(TAG, "Starting RX mode...");
 
   // Go to IDLE first
   this->set_idle();
@@ -374,7 +374,7 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
   } else {
     // Large packet - use INFINITE mode and time-based completion
     // This bypasses PKTLEN completely, which seems to not work correctly
-    ESP_LOGI(TAG, "Large packet (%d bytes), using INFINITE mode with timing", len);
+    ESP_LOGV(TAG, "Large packet (%d bytes), using INFINITE mode", len);
 
     // Set INFINITE packet mode (radio transmits until we stop it)
     this->write_register(CC1101_PKTCTRL0, 0x02);  // LENGTH_CONFIG = 10 (infinite)
@@ -384,7 +384,7 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     size_t bytes_written = FIFO_SIZE;
     size_t remaining = len - bytes_written;
 
-    ESP_LOGD(TAG, "Initial fill: %d bytes, remaining: %d", bytes_written, remaining);
+    ESP_LOGVV(TAG, "Initial fill: %d bytes, remaining: %d", bytes_written, remaining);
 
     // Start TX
     this->strobe(CC1101_STX);
@@ -416,8 +416,8 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
           bytes_written += to_write;
           remaining -= to_write;
           refill_count++;
-          ESP_LOGD(TAG, "Refill #%d: +%d (total %d/%d, FIFO was %d)",
-                   refill_count, to_write, bytes_written, len, txbytes);
+          ESP_LOGVV(TAG, "Refill #%d: +%d (total %d/%d, FIFO was %d)",
+                    refill_count, to_write, bytes_written, len, txbytes);
         }
       }
 
@@ -432,7 +432,7 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
       }
     }
 
-    ESP_LOGD(TAG, "All %d bytes written, waiting for FIFO to drain...", bytes_written);
+    ESP_LOGVV(TAG, "All %d bytes written, waiting for FIFO to drain...", bytes_written);
 
     // Wait for FIFO to drain and last byte to finish transmitting
     // In INFINITE mode, when TXBYTES=0, the last byte may still be in the shift register
@@ -455,8 +455,7 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     this->write_register(CC1101_PKTCTRL0, 0x00);
 
     uint32_t elapsed = millis() - start_time;
-    ESP_LOGI(TAG, "Transmitted %d bytes in %dms (%d refills, INFINITE mode)",
-             bytes_written, elapsed, refill_count);
+    ESP_LOGV(TAG, "Transmitted %d bytes in %dms (%d refills)", bytes_written, elapsed, refill_count);
   }
 
   int timeout = 200;

@@ -1,0 +1,560 @@
+INFO ESPHome 2025.12.1
+INFO Reading configuration ~/lutron-tools/rf/esphome/pico-proxy-cc1101.yaml...
+INFO Starting log output from pico-trigger.local using esphome API
+INFO Successfully resolved pico-trigger.local in 0.123s
+INFO Successfully connected to pico-trigger @ 10.1.4.59 in 0.053s
+INFO Successful handshake with pico-trigger @ 10.1.4.59 in 0.163s
+[15:14:07.035][I][app:194]: ESPHome version 2025.12.1 compiled on Jan  5 2026, 14:34:21
+[15:14:07.035][C][logger:261]: Logger:
+[15:14:07.035][C][logger:261]:   Max Level: DEBUG
+[15:14:07.035][C][logger:261]:   Initial Level: DEBUG
+[15:14:07.041][C][logger:267]:   Log Baud Rate: 115200
+[15:14:07.041][C][logger:267]:   Hardware UART: UART0
+[15:14:07.050][C][logger:274]:   Task Log Buffer Size: 768
+[15:14:07.101][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8","rssi":-51,"len":24}
+[15:14:07.102][C][spi:067]: SPI bus:
+[15:14:07.102][C][spi:068]:   CLK Pin: GPIO18
+[15:14:07.102][C][spi:069]:   SDI Pin: GPIO19
+[15:14:07.134][C][spi:070]:   SDO Pin: GPIO23
+[15:14:07.134][C][spi:075]:   Using HW SPI: SPI
+[15:14:07.134][C][template.switch:092]: Template Switch 'Beacon Mode'
+[15:14:07.134][C][template.switch:092]:   Restore Mode: always OFF
+[15:14:07.134][C][template.switch:100]:   Icon: 'mdi:broadcast'
+[15:14:07.134][C][template.switch:055]:   Optimistic: YES
+[15:14:07.134][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 62","rssi":-50,"len":24}
+[15:14:07.134][C][lutron_cc1101:077]: Lutron CC1101:
+[15:14:07.150][C][lutron_cc1101:078]:   Status: OK
+[15:14:07.150][C][lutron_cc1101:079]:   RX Enabled: YES
+[15:14:07.150][C][lutron_cc1101:080]:   RX Auto: YES
+[15:14:07.236][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC ED DF","rssi":-51,"len":24}
+[15:14:07.236][C][wifi:1132]: WiFi:
+[15:14:07.236][C][wifi:1132]:   Connected: YES
+[15:14:07.236][C][wifi:897]:   Local MAC: 10:06:1C:F2:33:64
+[15:14:07.236][C][wifi:904]:   IP Address: 10.1.4.59
+[15:14:07.236][C][wifi:908]:   SSID: 'gompper-sage-iot'
+[15:14:07.236][C][wifi:908]:   BSSID: 9C:05:D6:56:EE:27
+[15:14:07.236][C][wifi:908]:   Hostname: 'pico-trigger'
+[15:14:07.236][C][wifi:908]:   Signal strength: -38 dB ▂▄▆█
+[15:14:07.236][C][wifi:908]:   Channel: 6
+[15:14:07.236][C][wifi:908]:   Subnet: 255.255.255.192
+[15:14:07.236][C][wifi:908]:   Gateway: 10.1.4.1
+[15:14:07.236][C][wifi:908]:   DNS1: 10.1.3.3
+[15:14:07.236][C][wifi:908]:   DNS2: 0.0.0.0
+[15:14:07.236][C][esphome.ota:092]: Over-The-Air updates:
+[15:14:07.236][C][esphome.ota:092]:   Address: pico-trigger.local:3232
+[15:14:07.236][C][esphome.ota:092]:   Version: 2
+[15:14:07.237][C][esphome.ota:099]:   Password configured
+[15:14:07.244][C][safe_mode:018]: Safe Mode:
+[15:14:07.244][C][safe_mode:018]:   Successful after: 60s
+[15:14:07.244][C][safe_mode:018]:   Invoke after: 10 attempts
+[15:14:07.244][C][safe_mode:018]:   Duration: 300s
+[15:14:07.253][C][api:211]: Server:
+[15:14:07.253][C][api:211]:   Address: pico-trigger.local:6053
+[15:14:07.253][C][api:211]:   Listen backlog: 4
+[15:14:07.253][C][api:211]:   Max connections: 8
+[15:14:07.290][C][api:218]:   Noise encryption: YES
+[15:14:07.319][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 3D 56","rssi":-51,"len":24}
+[15:14:07.319][C][mdns:177]: mDNS:
+[15:14:07.319][C][mdns:177]:   Hostname: pico-trigger
+[15:14:07.366][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 86 C2","rssi":-51,"len":24}
+[15:14:07.424][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 4C 87 B0","rssi":-51,"len":25}
+[15:14:07.495][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 98 D1","rssi":-51,"len":24}
+[15:14:07.559][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5B 2D 77","rssi":-50,"len":25}
+[15:14:07.641][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E0 B9 7C","rssi":-50,"len":25}
+[15:14:07.718][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E6 0A","rssi":-50,"len":24}
+[15:14:07.793][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5D 9E 94","rssi":-51,"len":25}
+[15:14:07.862][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 17 78 1C","rssi":-50,"len":26}
+[15:14:07.935][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8","rssi":-51,"len":24}
+[15:14:08.018][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 62 11","rssi":-51,"len":25}
+[15:14:08.093][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC ED DF 48","rssi":-51,"len":25}
+[15:14:08.160][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 3D 56 8B","rssi":-51,"len":25}
+[15:14:08.268][I][lutron_cc1101:073]: RX: {"bytes":"93 3E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 0B 81","rssi":-51,"len":24}
+[15:14:08.319][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 4C 87","rssi":-50,"len":24}
+[15:14:08.449][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-51,"len":24}
+[15:14:08.527][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F","rssi":-51,"len":24}
+[15:14:08.634][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB","rssi":-51,"len":24}
+[15:14:08.678][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08","rssi":-51,"len":24}
+[15:14:08.797][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C","rssi":-51,"len":24}
+[15:14:08.832][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15 F8","rssi":-51,"len":25}
+[15:14:08.895][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:08.916][I][lutron_cc1101:073]: RX: {"bytes":"91 26 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 24 B9 3B","rssi":-49,"len":25}
+[15:14:08.976][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60 A0","rssi":-51,"len":25}
+[15:14:09.052][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD","rssi":-51,"len":24}
+[15:14:09.141][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54 3F","rssi":-50,"len":25}
+[15:14:09.219][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0","rssi":-50,"len":24}
+[15:14:09.274][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85 51 9D","rssi":-51,"len":26}
+[15:14:09.347][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3 9A 8E 50 10","rssi":-51,"len":28}
+[15:14:09.428][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F F8","rssi":-50,"len":25}
+[15:14:09.505][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB","rssi":-51,"len":24}
+[15:14:09.576][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08 F6","rssi":-51,"len":25}
+[15:14:09.673][I][lutron_cc1101:073]: RX: {"bytes":"91 1A AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 29 DF","rssi":-49,"len":24}
+[15:14:09.731][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15 9A 9C","rssi":-50,"len":26}
+[15:14:09.803][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA AA","rssi":-50,"len":25}
+[15:14:09.884][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60","rssi":-49,"len":24}
+[15:14:09.952][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD","rssi":-50,"len":24}
+[15:14:10.023][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-50,"len":24}
+[15:14:10.094][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:10.114][I][lutron_cc1101:073]: RX: {"bytes":"91 3E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F2 83 B9","rssi":-49,"len":25}
+[15:14:10.173][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85","rssi":-50,"len":24}
+[15:14:10.284][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-50,"len":24}
+[15:14:10.328][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F E1","rssi":-50,"len":25}
+[15:14:10.404][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB CC","rssi":-50,"len":25}
+[15:14:10.488][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08 31","rssi":-50,"len":25}
+[15:14:10.581][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C","rssi":-49,"len":24}
+[15:14:10.627][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15","rssi":-49,"len":24}
+[15:14:10.703][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA","rssi":-50,"len":24}
+[15:14:10.772][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60 45 46","rssi":-50,"len":26}
+[15:14:10.859][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD B1","rssi":-50,"len":25}
+[15:14:10.941][I][lutron_cc1101:073]: RX: {"bytes":"91 38 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 22 0A","rssi":-51,"len":24}
+[15:14:10.998][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0 7D","rssi":-50,"len":25}
+[15:14:11.079][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85 7B D0","rssi":-50,"len":26}
+[15:14:11.154][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-50,"len":24}
+[15:14:11.228][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F FD","rssi":-50,"len":25}
+[15:14:11.314][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB","rssi":-49,"len":24}
+[15:14:11.386][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08","rssi":-50,"len":24}
+[15:14:11.451][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C 78","rssi":-50,"len":25}
+[15:14:11.521][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15","rssi":-49,"len":24}
+[15:14:11.618][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA 74","rssi":-50,"len":25}
+[15:14:11.683][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60 FA","rssi":-49,"len":25}
+[15:14:11.759][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD F0","rssi":-49,"len":25}
+[15:14:11.823][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-49,"len":24}
+[15:14:11.910][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0 68 92 40","rssi":-50,"len":27}
+[15:14:11.974][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85","rssi":-50,"len":24}
+[15:14:12.057][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-50,"len":24}
+[15:14:12.126][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F B3 8E","rssi":-50,"len":26}
+[15:14:12.198][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB B5","rssi":-50,"len":25}
+[15:14:12.277][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08","rssi":-50,"len":24}
+[15:14:12.355][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C","rssi":-50,"len":24}
+[15:14:12.428][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15","rssi":-50,"len":24}
+[15:14:12.518][I][lutron_cc1101:073]: RX: {"bytes":"91 26 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 24 B9","rssi":-49,"len":24}
+[15:14:12.581][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60 98 20","rssi":-50,"len":26}
+[15:14:12.648][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD 15 48 EE","rssi":-50,"len":27}
+[15:14:12.732][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-50,"len":24}
+[15:14:12.807][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0","rssi":-50,"len":24}
+[15:14:12.877][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85 B9 80 72","rssi":-50,"len":27}
+[15:14:13.871][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 8A 01","rssi":-49,"len":26}
+[15:14:13.945][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC","rssi":-49,"len":24}
+[15:14:14.018][I][lutron_cc1101:073]: RX: {"bytes":"92 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9C 38 98 90 AD","rssi":-49,"len":27}
+[15:14:14.177][I][lutron_cc1101:073]: RX: {"bytes":"92 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 21 1F FE FF 9A","rssi":-49,"len":27}
+[15:14:14.248][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96 D4","rssi":-48,"len":25}
+[15:14:14.340][I][lutron_cc1101:073]: RX: {"bytes":"92 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 2C 79","rssi":-49,"len":24}
+[15:14:14.391][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3 82","rssi":-48,"len":25}
+[15:14:14.486][I][lutron_cc1101:073]: RX: {"bytes":"92 32 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1C 1D E1","rssi":-51,"len":25}
+[15:14:14.544][I][lutron_cc1101:073]: RX: {"bytes":"92 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 41 D7","rssi":-48,"len":24}
+[15:14:14.637][I][lutron_cc1101:073]: RX: {"bytes":"92 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC FA 43 BC","rssi":-49,"len":25}
+[15:14:14.711][I][lutron_cc1101:073]: RX: {"bytes":"92 44 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 22 4B","rssi":-51,"len":24}
+[15:14:14.773][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 48 01","rssi":-48,"len":26}
+[15:14:14.864][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC F1","rssi":-48,"len":25}
+[15:14:14.919][I][lutron_cc1101:073]: RX: {"bytes":"92 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9C 38 90","rssi":-49,"len":25}
+[15:14:15.013][I][lutron_cc1101:073]: RX: {"bytes":"92 14 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 88 C6","rssi":-52,"len":24}
+[15:14:15.081][I][lutron_cc1101:073]: RX: {"bytes":"92 1A AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC AC 5C 19 BB","rssi":-52,"len":26}
+[15:14:15.148][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96 70","rssi":-48,"len":25}
+[15:14:15.215][I][lutron_cc1101:073]: RX: {"bytes":"92 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 2C 79 9F","rssi":-48,"len":25}
+[15:14:15.293][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3","rssi":-49,"len":24}
+[15:14:15.369][I][lutron_cc1101:073]: RX: {"bytes":"92 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 91 5E","rssi":-49,"len":24}
+[15:14:15.455][I][lutron_cc1101:073]: RX: {"bytes":"92 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 41 D7 F2","rssi":-49,"len":25}
+[15:14:15.528][I][lutron_cc1101:073]: RX: {"bytes":"92 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC FA 43","rssi":-49,"len":24}
+[15:14:15.611][I][lutron_cc1101:073]: RX: {"bytes":"92 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 30 06 D1","rssi":-49,"len":25}
+[15:14:15.669][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50","rssi":-49,"len":24}
+[15:14:15.743][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC","rssi":-48,"len":24}
+[15:14:15.818][I][lutron_cc1101:073]: RX: {"bytes":"92 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9C 38 C4","rssi":-49,"len":25}
+[15:14:15.902][I][lutron_cc1101:073]: RX: {"bytes":"92 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9A 8B 10","rssi":-49,"len":25}
+[15:14:15.978][I][lutron_cc1101:073]: RX: {"bytes":"92 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 21 1F EF","rssi":-49,"len":25}
+[15:14:16.043][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96 9C 88","rssi":-49,"len":26}
+[15:14:16.120][I][lutron_cc1101:073]: RX: {"bytes":"92 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 2C 79","rssi":-49,"len":24}
+[15:14:16.201][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3","rssi":-49,"len":24}
+[15:14:16.273][I][lutron_cc1101:073]: RX: {"bytes":"92 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 91 5E","rssi":-49,"len":24}
+[15:14:16.343][I][lutron_cc1101:073]: RX: {"bytes":"92 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 41 D7","rssi":-49,"len":24}
+[15:14:16.418][I][lutron_cc1101:073]: RX: {"bytes":"92 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC FA 43","rssi":-49,"len":24}
+[15:14:16.508][I][lutron_cc1101:073]: RX: {"bytes":"92 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 30 06 9C","rssi":-49,"len":25}
+[15:14:16.573][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 F7 6C","rssi":-49,"len":26}
+[15:14:16.648][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC D7","rssi":-49,"len":25}
+[15:14:16.732][I][lutron_cc1101:073]: RX: {"bytes":"92 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9C 38 2D","rssi":-50,"len":25}
+[15:14:16.813][I][lutron_cc1101:073]: RX: {"bytes":"92 14 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 88 C6 7D","rssi":-52,"len":25}
+[15:14:16.869][I][lutron_cc1101:073]: RX: {"bytes":"92 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 21 1F D7","rssi":-49,"len":25}
+[15:14:16.942][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96 41","rssi":-49,"len":25}
+[15:14:17.029][I][lutron_cc1101:073]: RX: {"bytes":"92 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 2C 79","rssi":-49,"len":24}
+[15:14:17.092][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3","rssi":-49,"len":24}
+[15:14:17.166][I][lutron_cc1101:073]: RX: {"bytes":"92 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 91 5E B0","rssi":-49,"len":25}
+[15:14:17.245][I][lutron_cc1101:073]: RX: {"bytes":"92 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 41 D7","rssi":-49,"len":24}
+[15:14:17.327][I][lutron_cc1101:073]: RX: {"bytes":"92 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC FA 43","rssi":-49,"len":24}
+[15:14:17.402][I][lutron_cc1101:073]: RX: {"bytes":"92 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 30 06","rssi":-50,"len":24}
+[15:14:17.468][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 29 C1","rssi":-50,"len":26}
+[15:14:17.556][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC F8 45 50","rssi":-50,"len":27}
+[15:14:17.638][I][lutron_cc1101:073]: RX: {"bytes":"92 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 11 7B 70","rssi":-51,"len":25}
+[15:14:17.695][I][lutron_cc1101:073]: RX: {"bytes":"92 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9A 8B EE","rssi":-49,"len":25}
+[15:14:17.771][I][lutron_cc1101:073]: RX: {"bytes":"92 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 21 1F D8","rssi":-49,"len":25}
+[15:14:17.844][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96","rssi":-49,"len":24}
+[15:14:17.927][I][lutron_cc1101:073]: RX: {"bytes":"92 26 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A1 3A","rssi":-51,"len":24}
+[15:14:17.993][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3","rssi":-50,"len":24}
+[15:14:18.161][I][lutron_cc1101:073]: RX: {"bytes":"92 38 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A7 89 B0","rssi":-51,"len":25}
+[15:14:18.233][I][lutron_cc1101:073]: RX: {"bytes":"92 3E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 77 00","rssi":-51,"len":24}
+[15:14:18.297][I][lutron_cc1101:073]: RX: {"bytes":"92 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 30 06 4C","rssi":-49,"len":25}
+[15:14:19.287][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 98 D1 AC","rssi":-49,"len":25}
+[15:14:19.360][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5B 2D","rssi":-49,"len":24}
+[15:14:19.438][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E0 B9","rssi":-50,"len":24}
+[15:14:19.533][I][lutron_cc1101:073]: RX: {"bytes":"93 14 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F4 47 C9","rssi":-51,"len":25}
+[15:14:19.597][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5D 9E 0C","rssi":-50,"len":25}
+[15:14:19.664][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 17 E5","rssi":-50,"len":25}
+[15:14:19.748][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8","rssi":-50,"len":24}
+[15:14:19.828][I][lutron_cc1101:073]: RX: {"bytes":"93 2C AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 66 2F F1","rssi":-51,"len":25}
+[15:14:19.894][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC ED DF F9","rssi":-50,"len":25}
+[15:14:19.969][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 3D 56 31 5C","rssi":-50,"len":26}
+[15:14:20.057][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 86 C2 E8","rssi":-50,"len":25}
+[15:14:20.121][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 4C 87 CF","rssi":-50,"len":25}
+[15:14:20.192][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 98 D1 95","rssi":-50,"len":25}
+[15:14:20.261][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5B 2D","rssi":-50,"len":24}
+[15:14:20.352][I][lutron_cc1101:073]: RX: {"bytes":"93 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 6D FA","rssi":-52,"len":24}
+[15:14:20.416][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E6 0A 8A","rssi":-50,"len":25}
+[15:14:20.502][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5D 9E 89","rssi":-50,"len":25}
+[15:14:20.570][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 17 F8","rssi":-50,"len":25}
+[15:14:20.641][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8 C4","rssi":-50,"len":25}
+[15:14:20.724][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 62 90","rssi":-50,"len":25}
+[15:14:20.792][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC ED DF","rssi":-50,"len":24}
+[15:14:20.872][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 3D 56 5E","rssi":-50,"len":25}
+[15:14:20.986][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 86 C2 E5","rssi":-50,"len":25}
+[15:14:21.023][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 4C 87 59","rssi":-49,"len":25}
+[15:14:21.119][I][lutron_cc1101:073]: RX: {"bytes":"93 02 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 06 E7","rssi":-52,"len":24}
+[15:14:21.161][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5B 2D","rssi":-50,"len":24}
+[15:14:21.242][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E0 B9 7D","rssi":-50,"len":25}
+[15:14:21.324][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E6 0A 3C","rssi":-50,"len":25}
+[15:14:21.394][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5D 9E","rssi":-50,"len":24}
+[15:14:21.473][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 17","rssi":-50,"len":24}
+[15:14:21.537][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8 12","rssi":-50,"len":25}
+[15:14:21.627][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 62","rssi":-50,"len":24}
+[15:14:21.703][I][lutron_cc1101:073]: RX: {"bytes":"93 32 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 60 9C","rssi":-52,"len":24}
+[15:14:21.840][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 86 C2","rssi":-50,"len":24}
+[15:14:21.918][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 4C 87","rssi":-49,"len":24}
+[15:14:21.987][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 98 D1","rssi":-49,"len":24}
+[15:14:22.074][I][lutron_cc1101:073]: RX: {"bytes":"93 08 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC BD 73 78 5A","rssi":-52,"len":26}
+[15:14:22.143][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E0 B9","rssi":-50,"len":24}
+[15:14:22.244][I][lutron_cc1101:073]: RX: {"bytes":"93 14 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F4 47 D0","rssi":-52,"len":25}
+[15:14:22.292][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 5D 9E 50","rssi":-50,"len":25}
+[15:14:22.365][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 17 AF","rssi":-50,"len":25}
+[15:14:22.452][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 50 F8 85","rssi":-50,"len":25}
+[15:14:22.521][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 62","rssi":-50,"len":24}
+[15:14:22.836][I][lutron_cc1101:073]: RX: {"bytes":"93 C3 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 97 C0","rssi":-50,"len":24}
+[15:14:22.844][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:24.705][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3 21 49","rssi":-48,"len":26}
+[15:14:24.788][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F D1","rssi":-48,"len":25}
+[15:14:24.860][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB 26","rssi":-48,"len":25}
+[15:14:24.938][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08 69","rssi":-48,"len":25}
+[15:14:25.033][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C","rssi":-48,"len":24}
+[15:14:25.168][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15","rssi":-48,"len":24}
+[15:14:25.168][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA B8 0D","rssi":-48,"len":26}
+[15:14:25.251][I][lutron_cc1101:073]: RX: {"bytes":"91 2C AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9F 2D 53","rssi":-50,"len":25}
+[15:14:25.319][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD 70","rssi":-48,"len":25}
+[15:14:25.380][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-48,"len":24}
+[15:14:25.484][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0","rssi":-48,"len":24}
+[15:14:25.554][I][lutron_cc1101:073]: RX: {"bytes":"91 44 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A7 C8","rssi":-50,"len":24}
+[15:14:25.604][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-48,"len":24}
+[15:14:25.683][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F","rssi":-48,"len":24}
+[15:14:25.772][I][lutron_cc1101:073]: RX: {"bytes":"91 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 94 F8 58","rssi":-50,"len":25}
+[15:14:25.833][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08","rssi":-48,"len":24}
+[15:14:25.915][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C BF","rssi":-48,"len":25}
+[15:14:25.984][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15","rssi":-49,"len":24}
+[15:14:26.054][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA","rssi":-49,"len":24}
+[15:14:26.147][I][lutron_cc1101:073]: RX: {"bytes":"91 2C AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9F 2D","rssi":-50,"len":24}
+[15:14:26.207][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD","rssi":-48,"len":24}
+[15:14:26.303][I][lutron_cc1101:073]: RX: {"bytes":"91 38 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 22 0A","rssi":-51,"len":24}
+[15:14:26.372][I][lutron_cc1101:073]: RX: {"bytes":"91 3E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F2 83 70","rssi":-51,"len":25}
+[15:14:26.435][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85","rssi":-48,"len":24}
+[15:14:26.507][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3","rssi":-48,"len":24}
+[15:14:26.580][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F","rssi":-48,"len":24}
+[15:14:26.681][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB 90","rssi":-48,"len":25}
+[15:14:26.748][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08 E1","rssi":-49,"len":25}
+[15:14:26.815][I][lutron_cc1101:073]: RX: {"bytes":"91 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A4 9C 78","rssi":-49,"len":25}
+[15:14:26.882][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15 D0 3B B0 0B","rssi":-49,"len":28}
+[15:14:26.959][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA 61","rssi":-48,"len":25}
+[15:14:27.047][I][lutron_cc1101:073]: RX: {"bytes":"91 2C AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9F 2D","rssi":-51,"len":24}
+[15:14:27.107][I][lutron_cc1101:073]: RX: {"bytes":"91 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 14 DD F1","rssi":-48,"len":25}
+[15:14:27.185][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-49,"len":24}
+[15:14:27.258][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0","rssi":-48,"len":24}
+[15:14:27.329][I][lutron_cc1101:073]: RX: {"bytes":"91 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC B5 85 FC","rssi":-48,"len":25}
+[15:14:27.407][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3 77 9F","rssi":-48,"len":26}
+[15:14:27.493][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F A1","rssi":-48,"len":25}
+[15:14:27.566][I][lutron_cc1101:073]: RX: {"bytes":"91 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 19 BB","rssi":-48,"len":24}
+[15:14:27.638][I][lutron_cc1101:073]: RX: {"bytes":"91 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 1F 08","rssi":-49,"len":24}
+[15:14:27.721][I][lutron_cc1101:073]: RX: {"bytes":"91 1A AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 29 DF","rssi":-51,"len":24}
+[15:14:27.786][I][lutron_cc1101:073]: RX: {"bytes":"91 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 74 15 90 AE","rssi":-49,"len":26}
+[15:14:27.855][I][lutron_cc1101:073]: RX: {"bytes":"91 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A9 FA","rssi":-49,"len":24}
+[15:14:27.929][I][lutron_cc1101:073]: RX: {"bytes":"91 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 8D 60","rssi":-49,"len":24}
+[15:14:28.017][I][lutron_cc1101:073]: RX: {"bytes":"91 32 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 99 9E 61","rssi":-51,"len":25}
+[15:14:28.083][I][lutron_cc1101:073]: RX: {"bytes":"91 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC C4 54","rssi":-48,"len":24}
+[15:14:28.167][I][lutron_cc1101:073]: RX: {"bytes":"91 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 7F C0","rssi":-49,"len":24}
+[15:14:28.251][I][lutron_cc1101:073]: RX: {"bytes":"91 44 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A7 C8","rssi":-52,"len":24}
+[15:14:28.306][I][lutron_cc1101:073]: RX: {"bytes":"91 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 61 D3 B8","rssi":-49,"len":25}
+[15:14:28.397][I][lutron_cc1101:073]: RX: {"bytes":"91 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A2 2F","rssi":-48,"len":24}
+[15:14:28.473][I][lutron_cc1101:073]: RX: {"bytes":"91 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 94 F8 AA","rssi":-51,"len":25}
+[15:14:28.535][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0D 00 06 FE 43 B1 FE 08 06 90 2C 1A 04 06 CC 8E A5","rssi":-49,"len":24}
+[15:14:28.908][I][lutron_cc1101:073]: RX: {"bytes":"92 9F AF 90 2C 00 21 0D 00 06 FE 43 B1 FE 08 06 90 2C 1A 04 06 CC 40 24 58","rssi":-48,"len":25}
+[15:14:29.137][I][lutron_cc1101:073]: RX: {"bytes":"92 B1 AF 90 2C 00 21 0D 00 06 FE 43 B1 FE 08 06 90 2C 1A 04 06 CC 20 EC","rssi":-48,"len":24}
+[15:14:29.644][I][lutron_cc1101:073]: RX: {"bytes":"81 01 AD 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC 78 D5","rssi":-48,"len":24}
+[15:14:29.863][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:29.938][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:29.968][I][lutron_cc1101:073]: RX: {"bytes":"81 9A AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC EB 9E","rssi":-49,"len":24}
+[15:14:30.092][I][lutron_cc1101:073]: RX: {"bytes":"81 A5 AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC 6B BB","rssi":-48,"len":24}
+[15:14:30.184][I][lutron_cc1101:073]: RX: {"bytes":"81 AB AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC 4F 21 70","rssi":-48,"len":25}
+[15:14:30.238][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:30.399][I][lutron_cc1101:073]: RX: {"bytes":"81 BD AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC BD 81","rssi":-48,"len":24}
+[15:14:30.472][I][lutron_cc1101:073]: RX: {"bytes":"81 C3 AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC 77 C4 5A","rssi":-49,"len":25}
+[15:14:31.478][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50","rssi":-49,"len":24}
+[15:14:31.571][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC 69","rssi":-49,"len":25}
+[15:14:31.628][I][lutron_cc1101:073]: RX: {"bytes":"92 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 11 7B","rssi":-49,"len":24}
+[15:14:31.682][I][lutron_cc1101:073]: RX: {"bytes":"92 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9A 8B","rssi":-49,"len":24}
+[15:14:31.776][I][lutron_cc1101:073]: RX: {"bytes":"92 1A AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC AC 5C","rssi":-49,"len":24}
+[15:14:31.855][I][lutron_cc1101:073]: RX: {"bytes":"92 20 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 71 B3 98 5B","rssi":-48,"len":26}
+[15:14:31.912][I][lutron_cc1101:073]: RX: {"bytes":"92 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 2C 79 69","rssi":-50,"len":25}
+[15:14:31.991][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3","rssi":-49,"len":24}
+[15:14:32.064][I][lutron_cc1101:073]: RX: {"bytes":"92 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 91 5E E9","rssi":-50,"len":25}
+[15:14:32.142][I][lutron_cc1101:073]: RX: {"bytes":"92 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 41 D7 16","rssi":-50,"len":25}
+[15:14:32.224][I][lutron_cc1101:073]: RX: {"bytes":"92 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC FA 43","rssi":-50,"len":24}
+[15:14:32.286][I][lutron_cc1101:073]: RX: {"bytes":"92 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 30 06","rssi":-50,"len":24}
+[15:14:32.327][I][lutron_cc1101:073]: RX: {"bytes":"88 00 05 74 9E CC 21 04 03 00 02 00 CC CC CC CC CC CC CC CC CC CC 94 87","rssi":-51,"len":24}
+[15:14:32.366][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 E8","rssi":-50,"len":25}
+[15:14:32.407][I][lutron_cc1101:073]: RX: {"bytes":"88 06 05 74 9E CC 21 04 03 00 02 00 CC CC CC CC CC CC CC CC CC CC 44 0E A0 42","rssi":-54,"len":26}
+[15:14:32.478][I][lutron_cc1101:073]: RX: {"bytes":"88 0C 05 74 9E CC 21 04 03 00 02 00 CC CC CC CC CC CC CC CC CC CC FF 9A 70 0F","rssi":-56,"len":26}
+[15:14:32.505][I][lutron_cc1101:073]: RX: {"bytes":"88 0E 05 74 9E CC 21 04 03 00 02 00 CC CC CC CC CC CC CC CC CC CC B0 1D C8","rssi":-48,"len":25}
+[15:14:32.556][I][lutron_cc1101:073]: RX: {"bytes":"89 00 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 30 D3","rssi":-55,"len":24}
+[15:14:32.576][I][lutron_cc1101:073]: RX: {"bytes":"89 82 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 A4 13","rssi":-48,"len":24}
+[15:14:32.632][I][lutron_cc1101:073]: RX: {"bytes":"89 06 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 E0 5A D8","rssi":-54,"len":25}
+[15:14:32.693][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:32.717][I][lutron_cc1101:073]: RX: {"bytes":"89 8D 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 42 4D F4","rssi":-50,"len":25}
+[15:14:32.773][I][lutron_cc1101:073]: RX: {"bytes":"89 12 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 5D 7D D8","rssi":-53,"len":25}
+[15:14:32.857][I][lutron_cc1101:073]: RX: {"bytes":"89 18 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 E6 E9 10","rssi":-52,"len":25}
+[15:14:32.876][I][lutron_cc1101:073]: RX: {"bytes":"89 9A 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 72 29 70","rssi":-49,"len":25}
+[15:14:32.933][I][lutron_cc1101:073]: RX: {"bytes":"89 1E 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 36 60 00","rssi":-52,"len":25}
+[15:14:33.004][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:33.009][I][lutron_cc1101:073]: RX: {"bytes":"89 A5 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 F2 0C","rssi":-49,"len":24}
+[15:14:33.088][I][lutron_cc1101:073]: RX: {"bytes":"89 2A 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 CF 15 B0 86","rssi":-53,"len":26}
+[15:14:33.101][I][lutron_cc1101:073]: RX: {"bytes":"89 AC 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 C4 DB 90","rssi":-48,"len":25}
+[15:14:33.150][I][lutron_cc1101:073]: RX: {"bytes":"89 30 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 56 A8 A0","rssi":-53,"len":25}
+[15:14:33.223][I][lutron_cc1101:073]: RX: {"bytes":"89 36 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 86 21 F0","rssi":-53,"len":25}
+[15:14:33.248][I][lutron_cc1101:073]: RX: {"bytes":"89 B8 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 79 FC 70","rssi":-48,"len":25}
+[15:14:33.309][I][lutron_cc1101:073]: RX: {"bytes":"89 3C 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 3D B5","rssi":-53,"len":24}
+[15:14:33.371][I][lutron_cc1101:073]: RX: {"bytes":"89 42 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 F7 F0 B0","rssi":-53,"len":25}
+[15:14:33.400][I][lutron_cc1101:073]: RX: {"bytes":"89 C4 05 74 9E CC 21 0E 03 00 02 01 05 74 9E CC 00 40 00 20 00 00 FC 3E","rssi":-48,"len":24}
+[15:14:33.741][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:34.039][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:34.183][I][lutron_cc1101:073]: RX: {"bytes":"81 87 AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC 32 95 1A","rssi":-50,"len":25}
+[15:14:34.261][I][lutron_cc1101:073]: RX: {"bytes":"81 8D AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC 89 01 F0 06","rssi":-50,"len":26}
+[15:14:34.409][I][lutron_cc1101:073]: RX: {"bytes":"81 99 AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC 34 26","rssi":-50,"len":24}
+[15:14:34.558][I][lutron_cc1101:073]: RX: {"bytes":"81 A5 AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC 39 40","rssi":-50,"len":24}
+[15:14:34.738][I][lutron_cc1101:073]: RX: {"bytes":"81 B2 AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC 09 24 88","rssi":-49,"len":25}
+[15:14:34.860][I][lutron_cc1101:073]: RX: {"bytes":"81 BD AF 90 2C 00 21 0B 00 06 FE 43 B1 FE 06 52 00 02 01 CC CC CC EF 7A","rssi":-50,"len":24}
+[15:14:35.090][I][lutron_cc1101:073]: RX: {"bytes":"80 00 80 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 58 BB","rssi":-45,"len":24}
+[15:14:35.127][I][lutron_cc1101:073]: RX: {"bytes":"80 02 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 83 CA A3 AE","rssi":-49,"len":26}
+[15:14:35.160][I][lutron_cc1101:073]: RX: {"bytes":"80 05 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 91 87","rssi":-45,"len":24}
+[15:14:35.188][I][lutron_cc1101:073]: RX: {"bytes":"80 07 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC DE 00","rssi":-49,"len":24}
+[15:14:35.217][I][lutron_cc1101:073]: RX: {"bytes":"80 0A 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 77 D9","rssi":-45,"len":24}
+[15:14:35.246][I][lutron_cc1101:073]: RX: {"bytes":"80 0C 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC A7 50","rssi":-49,"len":24}
+[15:14:35.281][I][lutron_cc1101:073]: RX: {"bytes":"80 0F 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 2A 13","rssi":-45,"len":24}
+[15:14:35.311][I][lutron_cc1101:073]: RX: {"bytes":"80 11 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 2C A0 B0 04","rssi":-49,"len":26}
+[15:14:35.354][I][lutron_cc1101:073]: RX: {"bytes":"80 14 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 71 6A","rssi":-45,"len":24}
+[15:14:35.376][I][lutron_cc1101:073]: RX: {"bytes":"80 16 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 3E ED","rssi":-49,"len":24}
+[15:14:35.419][I][lutron_cc1101:073]: RX: {"bytes":"80 1A 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 55 F0","rssi":-50,"len":24}
+[15:14:35.481][I][lutron_cc1101:073]: RX: {"bytes":"80 1F 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 08 3A E1","rssi":-50,"len":25}
+[15:14:35.540][I][lutron_cc1101:073]: RX: {"bytes":"80 24 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 17 11 4D 17 0A","rssi":-50,"len":27}
+[15:14:35.607][I][lutron_cc1101:073]: RX: {"bytes":"80 29 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC BE C8","rssi":-50,"len":24}
+[15:14:35.670][I][lutron_cc1101:073]: RX: {"bytes":"80 2E 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC AC 85 D0","rssi":-50,"len":25}
+[15:14:35.742][I][lutron_cc1101:073]: RX: {"bytes":"80 33 8F 90 2C 06 00 08 00 1B 01 FE 00 1B 92 1E CC CC CC CC CC CC 27 75","rssi":-50,"len":24}
+[15:14:37.243][I][lutron_cc1101:073]: RX: {"bytes":"92 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC E4 50 DB","rssi":-49,"len":25}
+[15:14:37.340][I][lutron_cc1101:073]: RX: {"bytes":"92 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 27 AC 78 6D","rssi":-49,"len":26}
+[15:14:37.430][I][lutron_cc1101:073]: RX: {"bytes":"92 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9C 38","rssi":-50,"len":24}
+[15:14:37.445][I][lutron_cc1101:073]: RX: {"bytes":"92 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 9A 8B","rssi":-49,"len":24}
+[15:14:37.548][I][lutron_cc1101:073]: RX: {"bytes":"92 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 21 1F 68","rssi":-49,"len":25}
+[15:14:37.613][I][lutron_cc1101:073]: RX: {"bytes":"92 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC F1 96","rssi":-48,"len":24}
+[15:14:37.690][I][lutron_cc1101:073]: RX: {"bytes":"92 26 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC A1 3A","rssi":-49,"len":24}
+[15:14:37.781][I][lutron_cc1101:073]: RX: {"bytes":"92 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 02 90 2C 1A 04 CC CC 08 E3 51","rssi":-48,"len":25}
+[15:14:37.889][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:39.540][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:39.686][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 22 3D B2","rssi":-50,"len":25}
+[15:14:39.768][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E1 C1","rssi":-51,"len":24}
+[15:14:39.843][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5A 55","rssi":-51,"len":24}
+[15:14:39.922][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5C E6","rssi":-50,"len":24}
+[15:14:39.986][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E7 72","rssi":-51,"len":24}
+[15:14:40.072][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 37 FB 9B AD","rssi":-51,"len":26}
+[15:14:40.145][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC EA 14","rssi":-51,"len":24}
+[15:14:40.217][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC CE 8E","rssi":-51,"len":24}
+[15:14:40.290][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 57 33","rssi":-51,"len":24}
+[15:14:40.364][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 87 BA","rssi":-51,"len":24}
+[15:14:40.452][I][lutron_cc1101:073]: RX: {"bytes":"93 3E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC B1 6D","rssi":-50,"len":24}
+[15:14:40.512][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC F6 6B B8","rssi":-51,"len":25}
+[15:14:40.593][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 22 3D C7","rssi":-51,"len":25}
+[15:14:40.663][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E1 C1","rssi":-51,"len":24}
+[15:14:40.750][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:40.772][I][lutron_cc1101:073]: RX: {"bytes":"93 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC D7 16 27","rssi":-50,"len":25}
+[15:14:40.817][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5C E6 F1","rssi":-51,"len":25}
+[15:14:40.890][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E7 72","rssi":-51,"len":24}
+[15:14:40.969][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 37 FB","rssi":-51,"len":24}
+[15:14:41.040][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC EA 14 C1","rssi":-51,"len":25}
+[15:14:41.118][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC CE 8E 38","rssi":-51,"len":25}
+[15:14:41.191][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 57 33 78","rssi":-51,"len":25}
+[15:14:41.265][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 87 BA","rssi":-51,"len":24}
+[15:14:41.342][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 3C 2E EC","rssi":-51,"len":25}
+[15:14:41.418][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC F6 6B 3F","rssi":-51,"len":25}
+[15:14:41.499][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 22 3D","rssi":-51,"len":24}
+[15:14:41.572][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E1 C1 42","rssi":-51,"len":25}
+[15:14:41.636][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5A 55","rssi":-51,"len":24}
+[15:14:41.713][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:41.726][I][lutron_cc1101:073]: RX: {"bytes":"93 14 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 4E AB 30","rssi":-50,"len":25}
+[15:14:41.788][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E7 72 BB","rssi":-50,"len":25}
+[15:14:41.869][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 37 FB D0","rssi":-51,"len":25}
+[15:14:41.935][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC EA 14","rssi":-50,"len":24}
+[15:14:42.017][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC CE 8E","rssi":-51,"len":24}
+[15:14:42.097][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 57 33 37","rssi":-51,"len":25}
+[15:14:42.175][I][lutron_cc1101:073]: RX: {"bytes":"93 38 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 61 E4","rssi":-49,"len":24}
+[15:14:42.237][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 3C 2E 4A","rssi":-51,"len":25}
+[15:14:42.321][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC F6 6B 16 0D","rssi":-51,"len":26}
+[15:14:42.397][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 22 3D 97","rssi":-51,"len":25}
+[15:14:42.464][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E1 C1","rssi":-50,"len":24}
+[15:14:42.539][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:42.563][I][lutron_cc1101:073]: RX: {"bytes":"93 0E AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC D7 16","rssi":-50,"len":24}
+[15:14:42.623][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5C E6","rssi":-51,"len":24}
+[15:14:42.682][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:42.707][I][lutron_cc1101:073]: RX: {"bytes":"93 1A AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 6A 31 61","rssi":-50,"len":25}
+[15:14:42.770][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 37 FB","rssi":-51,"len":24}
+[15:14:42.846][I][lutron_cc1101:073]: RX: {"bytes":"93 25 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC EA 14","rssi":-51,"len":24}
+[15:14:42.958][I][lutron_cc1101:073]: RX: {"bytes":"93 2C AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC DC C3","rssi":-50,"len":24}
+[15:14:42.994][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 57 33","rssi":-50,"len":24}
+[15:14:43.079][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 87 BA","rssi":-51,"len":24}
+[15:14:43.160][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 3C 2E","rssi":-51,"len":24}
+[15:14:43.218][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC F6 6B","rssi":-50,"len":24}
+[15:14:43.293][I][lutron_cc1101:073]: RX: {"bytes":"93 01 AD 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 22 3D","rssi":-50,"len":24}
+[15:14:43.385][I][lutron_cc1101:073]: RX: {"bytes":"93 07 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E1 C1","rssi":-51,"len":24}
+[15:14:43.475][I][lutron_cc1101:073]: RX: {"bytes":"93 0D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5A 55","rssi":-51,"len":24}
+[15:14:43.575][I][lutron_cc1101:073]: RX: {"bytes":"93 13 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 5C E6","rssi":-51,"len":24}
+[15:14:43.596][I][lutron_cc1101:073]: RX: {"bytes":"93 19 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC E7 72 9C","rssi":-50,"len":25}
+[15:14:43.675][I][lutron_cc1101:073]: RX: {"bytes":"93 1F AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 37 FB","rssi":-51,"len":24}
+[15:14:43.746][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:43.762][I][lutron_cc1101:073]: RX: {"bytes":"93 26 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 67 57","rssi":-50,"len":24}
+[15:14:43.815][I][lutron_cc1101:073]: RX: {"bytes":"93 2B AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC CE 8E 58","rssi":-51,"len":25}
+[15:14:43.885][I][lutron_cc1101:073]: RX: {"bytes":"93 31 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 57 33","rssi":-50,"len":24}
+[15:14:43.967][I][lutron_cc1101:073]: RX: {"bytes":"93 37 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 87 BA 65","rssi":-51,"len":25}
+[15:14:44.052][I][lutron_cc1101:073]: RX: {"bytes":"93 3D AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC 3C 2E","rssi":-50,"len":24}
+[15:14:44.120][I][lutron_cc1101:073]: RX: {"bytes":"93 43 AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC F6 6B 5D","rssi":-51,"len":25}
+[15:14:44.423][I][lutron_cc1101:073]: RX: {"bytes":"81 8E AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 8E AA","rssi":-50,"len":24}
+[15:14:44.478][I][lutron_cc1101:073]: RX: {"bytes":"81 93 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 05 5A F0","rssi":-51,"len":25}
+[15:14:44.628][I][lutron_cc1101:073]: RX: {"bytes":"81 9F AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 6E 47","rssi":-50,"len":24}
+[15:14:44.854][I][lutron_cc1101:073]: RX: {"bytes":"81 B1 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 0E 8F","rssi":-50,"len":24}
+[15:14:45.082][I][lutron_cc1101:073]: RX: {"bytes":"81 C3 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC AF D7","rssi":-50,"len":24}
+[15:14:45.153][I][lutron_cc1101:073]: RX: {"bytes":"C1 20 90 2C 62 70 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 00 9E EA 80","rssi":-50,"len":25}
+[15:14:45.234][I][lutron_cc1101:073]: RX: {"bytes":"C7 20 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE F2 2E","rssi":-50,"len":24}
+[15:14:45.317][I][lutron_cc1101:073]: RX: {"bytes":"CE 25 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE A3 73 F0","rssi":-50,"len":25}
+[15:14:45.384][I][lutron_cc1101:073]: RX: {"bytes":"D3 20 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 2A 09","rssi":-50,"len":24}
+[15:14:45.454][I][lutron_cc1101:073]: RX: {"bytes":"D9 20 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE A3 1D","rssi":-50,"len":24}
+[15:14:45.610][I][lutron_cc1101:073]: RX: {"bytes":"C1 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 55 35","rssi":-50,"len":24}
+[15:14:45.685][I][lutron_cc1101:073]: RX: {"bytes":"C7 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 94 3C","rssi":-50,"len":24}
+[15:14:45.758][I][lutron_cc1101:073]: RX: {"bytes":"CD 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 1D 28 F8","rssi":-50,"len":25}
+[15:14:46.141][I][lutron_cc1101:073]: RX: {"bytes":"C8 65 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 33 70","rssi":-50,"len":25}
+[15:14:46.207][I][lutron_cc1101:073]: RX: {"bytes":"CD 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 C3 73 F7","rssi":-50,"len":25}
+[15:14:46.278][I][lutron_cc1101:073]: RX: {"bytes":"D3 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 92 40","rssi":-50,"len":24}
+[15:14:46.426][I][lutron_cc1101:073]: RX: {"bytes":"DF 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 5D","rssi":-50,"len":24}
+[15:14:46.602][I][lutron_cc1101:073]: RX: {"bytes":"C8 85 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 04 85 FA","rssi":-50,"len":25}
+[15:14:46.657][I][lutron_cc1101:073]: RX: {"bytes":"CD 80 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 1D C5 F7 9B","rssi":-50,"len":26}
+[15:14:46.741][I][lutron_cc1101:073]: RX: {"bytes":"D3 80 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 4C F6","rssi":-51,"len":24}
+[15:14:47.127][I][lutron_cc1101:073]: RX: {"bytes":"CE A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F 97 3C","rssi":-51,"len":25}
+[15:14:47.326][I][lutron_cc1101:073]: RX: {"bytes":"DF A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 8E F0","rssi":-50,"len":24}
+[15:14:47.408][I][lutron_cc1101:073]: RX: {"bytes":"C1 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 13 35","rssi":-50,"len":24}
+[15:14:47.634][I][lutron_cc1101:073]: RX: {"bytes":"D3 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0A 1B","rssi":-51,"len":24}
+[15:14:47.705][I][lutron_cc1101:073]: RX: {"bytes":"D9 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 83 0F","rssi":-50,"len":24}
+[15:14:47.927][I][lutron_cc1101:073]: RX: {"bytes":"C7 E0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 96 6E","rssi":-51,"len":24}
+[15:14:48.035][I][lutron_cc1101:073]: RX: {"bytes":"CE E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 C7 33 F1","rssi":-51,"len":25}
+[15:14:48.080][I][lutron_cc1101:073]: RX: {"bytes":"D3 E0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4E 49 4D 0A","rssi":-50,"len":26}
+[15:14:48.251][I][lutron_cc1101:073]: RX: {"bytes":"E0 E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 7C 7B","rssi":-51,"len":24}
+[15:14:48.462][I][lutron_cc1101:073]: RX: {"bytes":"81 01 AD 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC A0 C6 F0","rssi":-51,"len":25}
+[15:14:48.495][D][lutron_decoder:069]: Not enough bits: 224
+[15:14:48.751][I][lutron_cc1101:073]: RX: {"bytes":"81 9A AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 33 8D E1","rssi":-51,"len":25}
+[15:14:49.000][I][lutron_cc1101:073]: RX: {"bytes":"81 AC AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 85 7F","rssi":-51,"len":24}
+[15:14:49.064][I][lutron_cc1101:073]: RX: {"bytes":"81 B2 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 83 CC","rssi":-51,"len":24}
+[15:14:49.137][I][lutron_cc1101:073]: RX: {"bytes":"81 B8 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 38 58","rssi":-51,"len":24}
+[15:14:49.205][I][lutron_cc1101:073]: RX: {"bytes":"81 BD AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 65 92 17","rssi":-50,"len":25}
+[15:14:49.329][I][lutron_cc1101:073]: RX: {"bytes":"C1 20 90 2C 62 70 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 00 4E 5E 91","rssi":-51,"len":25}
+[15:14:49.417][I][lutron_cc1101:073]: RX: {"bytes":"C7 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 22 9A F0","rssi":-51,"len":25}
+[15:14:49.503][I][lutron_cc1101:073]: RX: {"bytes":"CD 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE AB 8E","rssi":-51,"len":24}
+[15:14:49.566][I][lutron_cc1101:073]: RX: {"bytes":"D3 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE FA BD","rssi":-50,"len":24}
+[15:14:49.780][I][lutron_cc1101:073]: RX: {"bytes":"C1 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 55 35","rssi":-50,"len":24}
+[15:14:49.870][I][lutron_cc1101:073]: RX: {"bytes":"C8 45 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 04 68","rssi":-50,"len":24}
+[15:14:49.926][I][lutron_cc1101:073]: RX: {"bytes":"CD 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 1D 28","rssi":-51,"len":24}
+[15:14:50.023][I][lutron_cc1101:073]: RX: {"bytes":"D4 45 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 AC 59 79","rssi":-51,"len":25}
+[15:14:50.158][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:50.313][I][lutron_cc1101:073]: RX: {"bytes":"C7 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 4A 67","rssi":-51,"len":24}
+[15:14:50.376][I][lutron_cc1101:073]: RX: {"bytes":"CD 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 C3 73","rssi":-50,"len":24}
+[15:14:50.449][I][lutron_cc1101:073]: RX: {"bytes":"D3 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 92 40","rssi":-50,"len":24}
+[15:14:50.606][I][lutron_cc1101:073]: RX: {"bytes":"DF 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 5D 69","rssi":-50,"len":25}
+[15:14:50.690][I][lutron_cc1101:073]: RX: {"bytes":"C2 85 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 3F 41","rssi":-51,"len":24}
+[15:14:50.899][I][lutron_cc1101:073]: RX: {"bytes":"D3 80 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 FE 26","rssi":-50,"len":24}
+[15:14:51.067][I][lutron_cc1101:073]: RX: {"bytes":"E0 85 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 CC 14","rssi":-50,"len":24}
+[15:14:51.206][I][lutron_cc1101:073]: RX: {"bytes":"C7 A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1E CA F9","rssi":-51,"len":25}
+[15:14:51.289][I][lutron_cc1101:073]: RX: {"bytes":"CE A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F 97","rssi":-50,"len":24}
+[15:14:51.351][I][lutron_cc1101:073]: RX: {"bytes":"D3 A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 C6 ED","rssi":-50,"len":24}
+[15:14:51.432][I][lutron_cc1101:073]: RX: {"bytes":"D9 A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F F9 89","rssi":-51,"len":25}
+[15:14:51.663][I][lutron_cc1101:073]: RX: {"bytes":"C8 C5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 42 68 B8","rssi":-50,"len":25}
+[15:14:51.804][I][lutron_cc1101:073]: RX: {"bytes":"D3 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0A 1B","rssi":-50,"len":24}
+[15:14:51.953][I][lutron_cc1101:073]: RX: {"bytes":"DF C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 42 06","rssi":-50,"len":24}
+[15:14:52.044][I][lutron_cc1101:073]: RX: {"bytes":"C2 E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 8F 2E 99","rssi":-51,"len":25}
+[15:14:52.262][I][lutron_cc1101:073]: RX: {"bytes":"D4 E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 AE 0B","rssi":-50,"len":24}
+[15:14:52.354][I][lutron_cc1101:073]: RX: {"bytes":"DA E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 14","rssi":-51,"len":24}
+[15:14:52.666][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:52.675][I][lutron_cc1101:073]: RX: {"bytes":"81 02 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 3E F0","rssi":-51,"len":24}
+[15:14:52.829][I][lutron_cc1101:073]: RX: {"bytes":"81 8E AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 8E AA","rssi":-51,"len":24}
+[15:14:53.050][I][lutron_cc1101:073]: RX: {"bytes":"81 A0 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC EE 62 BF","rssi":-50,"len":25}
+[15:14:53.218][I][lutron_cc1101:073]: RX: {"bytes":"81 AC AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 85 7F C1","rssi":-51,"len":25}
+[15:14:53.423][I][lutron_cc1101:073]: RX: {"bytes":"81 BE AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC E8 D1 12","rssi":-50,"len":25}
+[15:14:53.569][I][lutron_cc1101:073]: RX: {"bytes":"C1 20 90 2C 62 70 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 00 9E EA","rssi":-50,"len":24}
+[15:14:53.641][I][lutron_cc1101:073]: RX: {"bytes":"C7 20 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE F2 2E","rssi":-50,"len":24}
+[15:14:53.719][I][lutron_cc1101:073]: RX: {"bytes":"CD 20 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 7B 3A","rssi":-50,"len":24}
+[15:14:53.867][D][lutron_decoder:069]: Not enough bits: 232
+[15:14:53.890][I][lutron_cc1101:073]: RX: {"bytes":"DA 25 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 7B 54","rssi":-51,"len":24}
+[15:14:53.952][I][lutron_cc1101:073]: RX: {"bytes":"E0 25 90 2C 62 F0 06 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 18 3B 30","rssi":-51,"len":25}
+[15:14:54.011][I][lutron_cc1101:073]: RX: {"bytes":"C1 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 55 35","rssi":-50,"len":24}
+[15:14:54.096][I][lutron_cc1101:073]: RX: {"bytes":"C7 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 94 3C","rssi":-50,"len":24}
+[15:14:54.175][I][lutron_cc1101:073]: RX: {"bytes":"CD 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 1D 28 E0","rssi":-50,"len":25}
+[15:14:54.553][I][lutron_cc1101:073]: RX: {"bytes":"C8 65 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 33","rssi":-51,"len":24}
+[15:14:54.695][I][lutron_cc1101:073]: RX: {"bytes":"D3 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 92 40","rssi":-50,"len":24}
+[15:14:54.766][I][lutron_cc1101:073]: RX: {"bytes":"D9 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 1B 54 F1","rssi":-51,"len":25}
+[15:14:54.835][I][lutron_cc1101:073]: RX: {"bytes":"DF 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 5D","rssi":-50,"len":24}
+[15:14:55.067][I][lutron_cc1101:073]: RX: {"bytes":"C8 85 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 04 85","rssi":-51,"len":24}
+[15:14:55.084][I][lutron_cc1101:073]: RX: {"bytes":"CE 85 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 C5 8C","rssi":-51,"len":24}
+[15:14:55.137][I][lutron_cc1101:073]: RX: {"bytes":"D3 80 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 4C F6","rssi":-51,"len":24}
+[15:14:55.230][I][lutron_cc1101:073]: RX: {"bytes":"D9 80 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 C5 E2 93 2E 44","rssi":-51,"len":27}
+[15:14:55.290][I][lutron_cc1101:073]: RX: {"bytes":"DF 80 90 2C 0A 0E 00 FE 00 00 00 00 00 00 00 5E 01 1E 00 00 00 00 04 EB","rssi":-51,"len":24}
+[15:14:55.531][I][lutron_cc1101:073]: RX: {"bytes":"CE A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F 97","rssi":-50,"len":24}
+[15:14:55.665][I][lutron_cc1101:073]: RX: {"bytes":"D9 A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F F9","rssi":-51,"len":24}
+[15:14:55.735][I][lutron_cc1101:073]: RX: {"bytes":"DF A0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 8E F0 FC","rssi":-51,"len":25}
+[15:14:56.040][I][lutron_cc1101:073]: RX: {"bytes":"D3 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0A 1B 57","rssi":-51,"len":25}
+[15:14:56.133][I][lutron_cc1101:073]: RX: {"bytes":"DA C5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 5B 46","rssi":-50,"len":24}
+[15:14:56.191][I][lutron_cc1101:073]: RX: {"bytes":"DF C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 42 06 B8","rssi":-51,"len":25}
+[15:14:56.268][I][lutron_cc1101:073]: RX: {"bytes":"C1 E0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 57 67 E3","rssi":-51,"len":25}
+[15:14:56.357][I][lutron_cc1101:073]: RX: {"bytes":"C8 E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 06 3A 90","rssi":-50,"len":25}
+[15:14:56.511][I][lutron_cc1101:073]: RX: {"bytes":"D4 E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 AE 0B 7E 54","rssi":-51,"len":26}
+[15:14:56.917][I][lutron_cc1101:073]: RX: {"bytes":"81 02 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 3E F0 F2 55","rssi":-50,"len":26}
+[15:14:57.294][I][lutron_cc1101:073]: RX: {"bytes":"81 A0 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC EE 62 B3","rssi":-50,"len":25}
+[15:14:57.658][I][lutron_cc1101:073]: RX: {"bytes":"81 BD AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 65 92 F9","rssi":-51,"len":25}
+[15:14:57.801][I][lutron_cc1101:073]: RX: {"bytes":"C1 20 90 2C 62 70 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 00 4E 5E","rssi":-52,"len":24}
+[15:14:57.889][I][lutron_cc1101:073]: RX: {"bytes":"C7 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 22 9A A4","rssi":-51,"len":25}
+[15:14:57.955][I][lutron_cc1101:073]: RX: {"bytes":"CD 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE AB 8E 1F","rssi":-52,"len":25}
+[15:14:58.042][I][lutron_cc1101:073]: RX: {"bytes":"D4 25 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 1A FF","rssi":-50,"len":24}
+[15:14:58.101][I][lutron_cc1101:073]: RX: {"bytes":"D9 20 90 2C 62 F0 D0 FE 00 00 00 00 FE 00 00 00 00 00 00 00 00 FE 73 A9","rssi":-52,"len":24}
+[15:14:58.258][I][lutron_cc1101:073]: RX: {"bytes":"C1 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 55 35 51","rssi":-51,"len":25}
+[15:14:58.344][I][lutron_cc1101:073]: RX: {"bytes":"C7 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 94 3C DA","rssi":-51,"len":25}
+[15:14:58.474][I][lutron_cc1101:073]: RX: {"bytes":"D3 40 90 2C 10 8C 00 00 00 00 00 00 00 00 00 00 01 00 00 00 00 00 4C 1B 6B","rssi":-52,"len":25}
+[15:14:58.716][I][lutron_cc1101:073]: RX: {"bytes":"C2 65 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 53 27","rssi":-50,"len":24}
+[15:14:59.010][I][lutron_cc1101:073]: RX: {"bytes":"DA 65 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 C3 1D","rssi":-50,"len":24}
+[15:14:59.079][I][lutron_cc1101:073]: RX: {"bytes":"DF 60 90 2C 9F 3B 00 00 E6 FE FE 00 00 00 31 54 00 FE FE 01 00 00 DA 5D C0","rssi":-51,"len":25}
+[15:14:59.151][I][lutron_cc1101:073]: RX: {"bytes":"C1 80 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 E7 08 E2 23","rssi":-51,"len":26}
+[15:14:59.230][I][lutron_cc1101:073]: RX: {"bytes":"C7 80 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 26 01","rssi":-51,"len":24}
+[15:14:59.527][I][lutron_cc1101:073]: RX: {"bytes":"DF 80 90 2C 0A 0E 00 FE 00 00 00 FF 00 00 00 5E 01 1E 00 00 00 00 B6 3B","rssi":-51,"len":24}
+[15:14:59.688][I][lutron_cc1101:073]: RX: {"bytes":"C8 A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 8E 9E 81","rssi":-50,"len":25}
+[15:14:59.762][I][lutron_cc1101:073]: RX: {"bytes":"CE A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4F 97 C9","rssi":-48,"len":25}
+[15:14:59.918][I][lutron_cc1101:073]: RX: {"bytes":"DA A5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 97 B0 B0","rssi":-49,"len":25}
+[15:15:00.049][I][lutron_cc1101:073]: RX: {"bytes":"C1 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 13 35 78","rssi":-51,"len":25}
+[15:15:00.148][I][lutron_cc1101:073]: RX: {"bytes":"C8 C5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 42 68","rssi":-49,"len":24}
+[15:15:00.274][I][lutron_cc1101:073]: RX: {"bytes":"D3 C0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0A 1B","rssi":-50,"len":24}
+[15:15:00.365][I][lutron_cc1101:073]: RX: {"bytes":"DA C5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 5B 46 30 18 1B 84","rssi":-50,"len":28}
+[15:15:00.520][I][lutron_cc1101:073]: RX: {"bytes":"C1 E0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 57 67","rssi":-51,"len":24}
+[15:15:00.828][I][lutron_cc1101:073]: RX: {"bytes":"DA E5 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 1F 14 F1","rssi":-50,"len":25}
+[15:15:00.880][I][lutron_cc1101:073]: RX: {"bytes":"DF E0 90 2C 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 06 54","rssi":-51,"len":24}
+[15:15:04.505][D][lutron_decoder:069]: Not enough bits: 232
+[15:15:04.734][D][lutron_decoder:069]: Not enough bits: 232
+[15:15:05.113][D][lutron_decoder:069]: Not enough bits: 232

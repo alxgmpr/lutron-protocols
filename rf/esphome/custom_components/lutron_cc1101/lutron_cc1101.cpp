@@ -30,11 +30,11 @@ void LutronCC1101::setup() {
 
   // Auto-start RX mode if enabled (default: on)
   if (this->rx_auto_) {
-    ESP_LOGI(TAG, "Auto-starting RX mode...");
+    ESP_LOGV(TAG, "Auto-starting RX mode...");
     this->start_rx();
   }
 
-  ESP_LOGI(TAG, "Lutron CC1101 ready");
+  ESP_LOGV(TAG, "Lutron CC1101 ready");
 }
 
 // Echo detection moved to backend - ESP32 just streams all valid packets
