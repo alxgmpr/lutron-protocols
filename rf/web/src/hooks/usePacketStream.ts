@@ -114,6 +114,10 @@ export function usePacketStream() {
         if (pkt.direction === 'tx') {
           setTxPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
         } else {
+          // Filter out bad CRC packets - they're likely corrupted
+          if (packet.crcOk === false) {
+            return
+          }
           setRxPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
         }
       }

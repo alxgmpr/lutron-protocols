@@ -130,7 +130,8 @@ CRC is calculated over payload bytes (excluding CRC) and stored big-endian.
 | 0x8B | BTN_LONG_B | 24 | Button press, long format, group B |
 | 0x81-0x83 | LEVEL | 24 | Level command or dimmer state report |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
-| 0xB0 | PAIR_HANDSHAKE | 24 | Bridge pairing handshake |
+| 0xA1-0xA7 | CONFIG | 24+ | Configuration/extended commands |
+| 0xB0 | DEVICE_ANNOUNCE | 46 | Device announcement during bridge pairing |
 | 0xB8 | PAIR_B8 | 53 | Bridge-only pairing (scene pico) |
 | 0xB9 | PAIR_B9 | 53 | Direct-pair capable |
 | 0xBA | PAIR_BA | 53 | Bridge-only pairing (scene pico) |
@@ -398,9 +399,166 @@ Byte 20-21: 0xCC padding
 Byte 22-23: CRC-16
 ```
 
-## Beacon Packet (24 bytes)
+## Bridge Pairing Protocol
 
-Bridge broadcasts when in pairing mode:
+Bridge pairing (Caseta, RadioRA 2/3) differs from direct Pico pairing. The bridge/processor
+beacons to invite devices into pairing mode, then completes a handshake sequence.
+
+### Pairing Command (cmd=0x08) Subtypes
+
+| Subtype | Name | Direction | Description |
+|---------|------|-----------|-------------|
+| 0x01 | BEACON_INIT | Bridge->Broadcast | Initial "ready to pair" beacon |
+| 0x02 | BEACON_SLOT | Bridge->Broadcast | Advertises link ID slot |
+| 0x04 | CONFIRM | Bridge->Broadcast | Confirms pairing succeeded |
+| 0x05 | ANNOUNCE | Device->Bridge | Device announces itself (long packet) |
+| 0x06 | ACK | Bridge->Device | Acknowledges device, assigns link ID |
+
+### Bridge Pairing Sequence
+
+Observed from RadioRA 3 processor pairing a lamp dimmer:
+
+**Phase 1: Initial Beacon (08 01)** ~4 seconds
+```
+91 01 A1 82 D7 00 21 08 00 FF FF FF FF FF 08 01 CC CC CC CC CC CC [CRC]
+     |___________|                         |_____|
+     Processor ID                          Cmd=08 Sub=01
+```
+- Bridge broadcasts "I'm in pairing mode"
+- Target: FF FF FF FF FF (broadcast)
+- Payload: CC padding
+
+**Phase 2: Device Slot Beacon (08 02)** ~8 seconds
+```
+92 01 A1 82 D7 00 21 0C 00 FF FF FF FF FF 08 02 82 D7 1A 01 CC CC [CRC]
+                 |_____|                   |_____|___________|
+                 Length=12                 Cmd=08 Sub=02 + Link ID
+```
+- Bridge advertises the link ID to assign: `82 D7 1A 01`
+- Link ID format: `[SubnetHi][SubnetLo][Zone][Type?]`
+- This becomes the device's address in the system
+
+**Phase 3: Device Announcement (08 05)** - Long Packet (0xB0 protocol)
+```
+B0 01 A1 82 D7 7F 21 13 00 FF FF FF FF FF 08 05 01 D4 F2 1B 04 14 02 01 FF 00 00 CC...
+|__|    |_____|_____|                     |_____|___________|_____________|
+Proto   Source Flag=7F                    Cmd    Device ID   Type Info
+0xB0    (46 bytes)                        08 05  (dimmer)
+```
+- Device responds with its serial number: `01 D4 F2 1B`
+- Flag byte 0x7F indicates extended packet mode
+- Device type info bytes: `04 14 02 01 FF 00 00`
+  - 0x04 = Device class (dimmer)
+  - 0x14 = Subtype (lamp dimmer)
+  - 0x02 0x01 = Firmware version?
+  - 0xFF 0x00 0x00 = Capabilities/reserved
+
+**Phase 4: Pairing Acknowledgment (08 06)**
+```
+93 01 A1 82 D7 00 21 0D 00 01 D4 F2 1B FE 08 06 82 D7 1A 01 0D CC [CRC]
+                          |_____________|      |___________|
+                          Target: Dimmer       Link ID + Zone
+```
+- Bridge targets device directly by its serial number
+- Assigns the link ID `82 D7 1A 01`
+- Byte 0x0D may indicate zone/group assignment
+
+**Phase 5: Confirmation Beacon (08 04)**
+```
+92 01 A1 82 D7 00 21 0C 00 FF FF FF FF FF 08 04 82 D7 1A 01 CC CC [CRC]
+```
+- Bridge broadcasts that pairing succeeded
+- Contains the assigned link ID
+
+**Phase 6: Final Handshake (02 02)**
+```
+83 01 A1 82 D7 00 21 09 00 01 D4 F2 1B FE 02 02 01 CC CC CC CC CC [CRC]
+                          |_____________|    |____|
+                          Target: Dimmer     Cmd=02 Sub=02 + "01"
+```
+- Direct message to dimmer confirming link established
+- Cmd 0x02 subtype 0x02 = "You are paired"
+
+### Post-Pairing Configuration
+
+After pairing, the bridge sends configuration commands:
+
+**State Request (06 50)**
+```
+A1 01 A1 82 D7 00 21 15 00 01 D4 F2 1B FE 06 50 00 02 08 01 19 29 03 0B
+```
+- Cmd 0x06 subtype 0x50 = configuration/query
+- Contains device settings (LED, dimmer type, etc.)
+
+**State Report (06 00)**
+```
+81 01 21 82 D7 00 21 0E 00 FF FF FF FF FF 06 00 00 60 06 00 00 D2 [CRC]
+```
+- Dimmer broadcasts its current state
+- Level byte 0x60 = 96 decimal
+
+### Device IDs in Bridge Pairing
+
+Three different IDs are involved:
+
+| ID | Example | Description |
+|----|---------|-------------|
+| Processor ID | A1 82 D7 00 | Bridge/processor source address |
+| Device Serial | 01 D4 F2 1B | Factory-assigned device ID (on label) |
+| Link ID | 82 D7 1A 01 | Assigned by bridge during pairing |
+
+The Link ID format appears to embed the subnet:
+- `82 D7` matches the processor's subnet (from A1 **82 D7** 00)
+- `1A 01` is the zone/device slot assignment
+
+### Device Announcement Packet (46 bytes) - 0xB0 Protocol
+
+When a device responds to bridge pairing beacons, it sends a long-format announcement:
+
+```
+Byte  0: 0xB0 (device announcement protocol)
+Byte  1: Sequence
+Byte 2-5: Bridge source ID (echoed from beacon)
+Byte  6: 0x7F (extended packet flag)
+Byte  7: 0x13 (length = 19 bytes payload)
+Byte  8: 0x00
+Byte 9-13: FF FF FF FF FF (broadcast target)
+Byte 14: 0x08 (pairing command)
+Byte 15: 0x05 (announce subtype)
+Byte 16-19: Device serial number (factory ID)
+Byte 20: Device class (0x04 = dimmer)
+Byte 21: Device subtype (0x14 = lamp dimmer, 0x20 = wall dimmer, etc.)
+Byte 22: Firmware major version
+Byte 23: Firmware minor version
+Byte 24: 0xFF (capabilities byte 1)
+Byte 25-26: 0x00 0x00 (reserved)
+Byte 27-43: 0xCC padding
+Byte 44-45: CRC-16
+```
+
+**Device Class Codes (byte 20):**
+
+| Class | Device Type |
+|-------|-------------|
+| 0x04 | Dimmer |
+| 0x05 | Switch |
+| 0x06 | Fan controller |
+| 0x0A | Shade |
+
+**Device Subtype Codes (byte 21) - for Dimmers:**
+
+| Subtype | Description |
+|---------|-------------|
+| 0x14 | Lamp dimmer (plug-in) |
+| 0x20 | In-wall dimmer |
+| 0x22 | ELV dimmer |
+
+The flag byte 0x7F (vs standard 0x21) indicates extended packet mode with
+larger payload. RX systems must handle variable packet lengths.
+
+### Beacon Packet (24 bytes) - Legacy Format
+
+Simple beacon format (also used by Caseta):
 
 ```
 Byte  0: Type (0x91-0x93)
@@ -535,5 +693,6 @@ The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete 
 | send_reset | Unpair/reset device |
 | send_state_report | Fake dimmer state to bridge |
 | start_rx / stop_rx | Control RX mode |
+
 
 

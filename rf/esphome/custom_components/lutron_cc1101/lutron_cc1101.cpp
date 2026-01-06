@@ -1438,6 +1438,260 @@ void LutronCC1101::send_reset(uint32_t source_id, uint32_t paired_id) {
   ESP_LOGI(TAG, "=== RESET COMPLETE (12 packets) ===");
 }
 
+// ========== DEVICE CONFIGURATION (from CCA Playground captures) ==========
+
+void LutronCC1101::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t mode) {
+  ESP_LOGI(TAG, "=== LED CONFIG ===");
+  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, Mode: %d", bridge_zone_id, target_device_id, mode);
+
+  // LED modes from capture analysis:
+  // Mode 0 (Both Off):       Type A3, byte[23]=0x00
+  // Mode 1 (Both On):        Type A1, byte[23]=0xFF
+  // Mode 2 (On when load on): Type A2, byte[23]=0xFF
+  // Mode 3 (On when load off): Type A3, byte[23]=0x00
+  // Note: Modes 0 and 3 have same wire encoding but different semantic meaning
+
+  uint8_t type_byte;
+  uint8_t led_value;
+  switch (mode) {
+    case 0:  // Both Off
+      type_byte = 0xA3;
+      led_value = 0x00;
+      break;
+    case 1:  // Both On
+      type_byte = 0xA1;
+      led_value = 0xFF;
+      break;
+    case 2:  // On when load on
+      type_byte = 0xA2;
+      led_value = 0xFF;
+      break;
+    case 3:  // On when load off
+    default:
+      type_byte = 0xA3;
+      led_value = 0x00;
+      break;
+  }
+
+  // Captured packet structure (format 0x11):
+  // A1 01 AD 90 2C 00 21 11 00 06 FE 80 06 FE 06 50 00 04 06 00 00 00 00 FF
+  // [0]     Type (A1/A2/A3)
+  // [1]     Sequence
+  // [2-5]   Bridge zone ID (little-endian)
+  // [6]     0x21 protocol marker
+  // [7]     0x11 format (LED config)
+  // [8]     0x00
+  // [9-12]  Target device ID (big-endian)
+  // [13]    0xFE (part of target? or separator)
+  // [14-22] Static bytes from capture
+  // [23]    LED value (0x00 or 0xFF)
+
+  uint8_t packet[24];
+  uint8_t seq = 0x01;
+
+  // Send ~20 packets like bridge does
+  for (int rep = 0; rep < 20; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = type_byte;
+    packet[1] = seq;
+
+    // Bridge zone ID little-endian
+    packet[2] = bridge_zone_id & 0xFF;
+    packet[3] = (bridge_zone_id >> 8) & 0xFF;
+    packet[4] = (bridge_zone_id >> 16) & 0xFF;
+    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+    packet[6] = 0x21;
+    packet[7] = 0x11;  // LED config format
+    packet[8] = 0x00;
+
+    // Target device ID big-endian
+    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
+
+    // Static bytes from capture (06 FE 06 50 00 04 06 00 00 00 00)
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x50;
+    packet[16] = 0x00;
+    packet[17] = 0x04;
+    packet[18] = 0x06;
+    packet[19] = 0x00;
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    // CRC placeholder (will be overwritten)
+    // Note: Config packets don't seem to use standard CRC
+    // Real bridge packets have crc_ok=false but devices still respond
+    packet[22] = 0x00;
+
+    // LED value
+    packet[23] = led_value;
+
+    this->transmit_packet(packet, 24);
+
+    seq = (seq + 6) & 0xFF;
+    if (rep < 19) delay(60);
+  }
+
+  ESP_LOGI(TAG, "=== LED CONFIG COMPLETE ===");
+}
+
+void LutronCC1101::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
+                                     uint8_t fade_on_qs, uint8_t fade_off_qs) {
+  ESP_LOGI(TAG, "=== FADE CONFIG ===");
+  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, FadeOn: %d qs (%.2fs), FadeOff: %d qs (%.2fs)",
+           bridge_zone_id, target_device_id,
+           fade_on_qs, fade_on_qs / 4.0f,
+           fade_off_qs, fade_off_qs / 4.0f);
+
+  // Captured packet structure (format 0x1C):
+  // A1 01 AD 90 2C 00 21 1C 00 06 FE 80 06 FE 06 50 00 03 11 80 FF 31 00 3C
+  // [0]     Type (A1/A2/A3 rotating)
+  // [1]     Sequence
+  // [2-5]   Bridge zone ID (little-endian)
+  // [6]     0x21 protocol marker
+  // [7]     0x1C format (Fade config)
+  // [8]     0x00
+  // [9-12]  Target device ID (big-endian)
+  // [13-22] Static bytes
+  // [23]    Fade-on value (quarter-seconds)
+  // [24]    Fade-off value (quarter-seconds) - packet extends to 25 bytes
+
+  uint8_t packet[26];  // 24 data + 2 for extended fade bytes
+  uint8_t seq = 0x01;
+
+  for (int rep = 0; rep < 20; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    // Rotate through A1, A2, A3
+    packet[0] = 0xA1 + (rep % 3);
+    packet[1] = seq;
+
+    // Bridge zone ID little-endian
+    packet[2] = bridge_zone_id & 0xFF;
+    packet[3] = (bridge_zone_id >> 8) & 0xFF;
+    packet[4] = (bridge_zone_id >> 16) & 0xFF;
+    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+    packet[6] = 0x21;
+    packet[7] = 0x1C;  // Fade config format
+    packet[8] = 0x00;
+
+    // Target device ID big-endian
+    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
+
+    // Static bytes from capture (FE 06 50 00 03 11 80 FF 31 00)
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x50;
+    packet[16] = 0x00;
+    packet[17] = 0x03;
+    packet[18] = 0x11;
+    packet[19] = 0x80;
+    packet[20] = 0xFF;
+    packet[21] = 0x31;
+    packet[22] = 0x00;
+
+    // Fade values
+    packet[23] = fade_on_qs;
+    packet[24] = fade_off_qs;
+
+    // Note: Using 25 bytes - CRC not appended as config packets don't use standard CRC
+    this->transmit_packet(packet, 25);
+
+    seq = (seq + 6) & 0xFF;
+    if (rep < 19) delay(60);
+  }
+
+  ESP_LOGI(TAG, "=== FADE CONFIG COMPLETE ===");
+}
+
+void LutronCC1101::send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
+                                      uint8_t high_trim, uint8_t low_trim, bool phase_reverse) {
+  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG ===");
+  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X", bridge_zone_id, target_device_id);
+  ESP_LOGI(TAG, "HighTrim: %d%%, LowTrim: %d%%, Phase: %s",
+           high_trim, low_trim, phase_reverse ? "Reverse" : "Forward");
+
+  // Convert percentages to byte values (% * 254 / 100)
+  uint8_t high_byte = (high_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)high_trim * 254 / 100);
+  uint8_t low_byte = (low_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)low_trim * 254 / 100);
+
+  // Phase encoding: Forward = 0x03, Reverse = 0x23 (bit 5 set)
+  uint8_t phase_byte = phase_reverse ? 0x23 : 0x03;
+
+  // Captured packet structure (format 0x15 / STATE_RPT):
+  // A3 01 AD 90 2C 00 21 15 00 06 FE 80 06 FE 06 50 00 02 08 13 FE 03 03 0B
+  // [0]     Type (A1/A2/A3 rotating)
+  // [1]     Sequence
+  // [2-5]   Bridge zone ID (little-endian)
+  // [6]     0x21 protocol marker
+  // [7]     0x15 format (STATE_RPT / device state)
+  // [8]     0x00
+  // [9-12]  Target device ID (big-endian)
+  // [13-19] Static bytes
+  // [20]    High-end trim value
+  // [21]    Low-end trim value
+  // [22]    Phase mode (0x03=Forward, 0x23=Reverse)
+  // [23]    0x0B (constant)
+
+  uint8_t packet[24];
+  uint8_t seq = 0x01;
+
+  for (int rep = 0; rep < 20; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    // Rotate through A1, A2, A3
+    packet[0] = 0xA1 + (rep % 3);
+    packet[1] = seq;
+
+    // Bridge zone ID little-endian
+    packet[2] = bridge_zone_id & 0xFF;
+    packet[3] = (bridge_zone_id >> 8) & 0xFF;
+    packet[4] = (bridge_zone_id >> 16) & 0xFF;
+    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+    packet[6] = 0x21;
+    packet[7] = 0x15;  // STATE_RPT / device state format
+    packet[8] = 0x00;
+
+    // Target device ID big-endian
+    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
+
+    // Static bytes from capture (FE 06 50 00 02 08 13)
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x50;
+    packet[16] = 0x00;
+    packet[17] = 0x02;
+    packet[18] = 0x08;
+    packet[19] = 0x13;
+
+    // Trim and phase values
+    packet[20] = high_byte;
+    packet[21] = low_byte;
+    packet[22] = phase_byte;
+    packet[23] = 0x0B;  // Constant from captures
+
+    this->transmit_packet(packet, 24);
+
+    seq = (seq + 6) & 0xFF;
+    if (rep < 19) delay(60);
+  }
+
+  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG COMPLETE ===");
+}
+
 void LutronCC1101::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {
   // Call the two-zone version with alternate zone = 0 (disabled)
   send_bridge_unpair_dual(bridge_zone_id, 0, target_device_id);

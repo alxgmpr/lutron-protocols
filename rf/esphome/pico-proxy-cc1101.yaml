@@ -217,6 +217,56 @@ api:
             ESP_LOGI("service", "test_decode: %s", hex_bytes.c_str());
             id(lutron_radio)->test_decode_packet(hex_bytes);
 
+    # ========== DEVICE CONFIGURATION ==========
+
+    # LED config - change status LED behavior
+    # mode: 0=Both Off, 1=Both On, 2=On when load on, 3=On when load off
+    - service: send_led_config
+      variables:
+        bridge_zone_id: string
+        target_device_id: string
+        mode: int
+      then:
+        - lambda: |-
+            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_led_config: bridge=0x%08X target=0x%08X mode=%d", bridge, target, mode);
+            id(lutron_radio)->send_led_config(bridge, target, mode);
+
+    # Fade config - set fade on/off rates
+    # Values in quarter-seconds: 1=0.25s, 3=0.75s, 10=2.5s, 12=3s, 20=5s, 60=15s
+    - service: send_fade_config
+      variables:
+        bridge_zone_id: string
+        target_device_id: string
+        fade_on_qs: int
+        fade_off_qs: int
+      then:
+        - lambda: |-
+            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_fade_config: bridge=0x%08X target=0x%08X fade_on=%d fade_off=%d",
+                     bridge, target, fade_on_qs, fade_off_qs);
+            id(lutron_radio)->send_fade_config(bridge, target, fade_on_qs, fade_off_qs);
+
+    # Device state config - set trim and phase
+    # high_trim/low_trim: 0-100 (percentage)
+    # phase_reverse: 0=Forward, 1=Reverse
+    - service: send_device_state
+      variables:
+        bridge_zone_id: string
+        target_device_id: string
+        high_trim: int
+        low_trim: int
+        phase_reverse: int
+      then:
+        - lambda: |-
+            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_device_state: bridge=0x%08X target=0x%08X high=%d low=%d phase=%s",
+                     bridge, target, high_trim, low_trim, phase_reverse ? "Reverse" : "Forward");
+            id(lutron_radio)->send_device_state(bridge, target, high_trim, low_trim, phase_reverse != 0);
+
     # Bridge pairing - complete sequence
     # Example: pair_device subnet=0x2C90 factory_id=0x0707DF6A zone_suffix=0x8F
     - service: pair_device

@@ -118,6 +118,18 @@
   color: #00bcd4 !important;
 }
 
+.packet-type-led-config,
+.packet-type-unpair,
+.packet-type-unpair-prep {
+  background: rgba(255, 87, 34, 0.2) !important;
+  color: #ff5722 !important;
+}
+
+.packet-type-set-level {
+  background: rgba(76, 175, 80, 0.2) !important;
+  color: #4caf50 !important;
+}
+
 /* Bad CRC indicator */
 .packet-crc-warning {
   display: inline-flex;

@@ -1017,6 +1017,41 @@ class ESP32Controller:
                                factory_id=f"0x{factory_id:08X}",
                                zone_suffix=f"0x{zone_suffix:02X}")
 
+    # ========== DEVICE CONFIGURATION ==========
+
+    async def send_led_config(self, bridge_zone_id: int, target_device_id: int, mode: int):
+        """Send LED config command.
+        mode: 0=Both Off, 1=Both On, 2=On when load on, 3=On when load off
+        """
+        await self.call_service('send_led_config',
+                               bridge_zone_id=f"0x{bridge_zone_id:08X}",
+                               target_device_id=f"0x{target_device_id:08X}",
+                               mode=mode)
+
+    async def send_fade_config(self, bridge_zone_id: int, target_device_id: int,
+                               fade_on_qs: int, fade_off_qs: int):
+        """Send fade rate config command.
+        Values in quarter-seconds: 1=0.25s, 3=0.75s, 10=2.5s, 12=3s, 20=5s, 60=15s
+        """
+        await self.call_service('send_fade_config',
+                               bridge_zone_id=f"0x{bridge_zone_id:08X}",
+                               target_device_id=f"0x{target_device_id:08X}",
+                               fade_on_qs=fade_on_qs,
+                               fade_off_qs=fade_off_qs)
+
+    async def send_device_state(self, bridge_zone_id: int, target_device_id: int,
+                                high_trim: int, low_trim: int, phase_reverse: bool):
+        """Send device state config (trim and phase settings).
+        high_trim/low_trim: 0-100 (percentage)
+        phase_reverse: True for reverse, False for forward
+        """
+        await self.call_service('send_device_state',
+                               bridge_zone_id=f"0x{bridge_zone_id:08X}",
+                               target_device_id=f"0x{target_device_id:08X}",
+                               high_trim=high_trim,
+                               low_trim=low_trim,
+                               phase_reverse=1 if phase_reverse else 0)
+
     async def start_rx(self):
         """Start RX mode by pressing rx_on button."""
         await self.press_button('rx_on')
@@ -1271,6 +1306,38 @@ def cmd_serve(args):
         try:
             await controller.connect()
             await controller.send_bridge_unpair_dual(zone_id_1, zone_id_2, target_device_id)
+        finally:
+            await controller.disconnect()
+
+    # ========== DEVICE CONFIGURATION ==========
+
+    async def send_led_config_async(bridge_zone_id: int, target_device_id: int, mode: int):
+        """Send LED config command."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_led_config(bridge_zone_id, target_device_id, mode)
+        finally:
+            await controller.disconnect()
+
+    async def send_fade_config_async(bridge_zone_id: int, target_device_id: int,
+                                     fade_on_qs: int, fade_off_qs: int):
+        """Send fade rate config command."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_fade_config(bridge_zone_id, target_device_id, fade_on_qs, fade_off_qs)
+        finally:
+            await controller.disconnect()
+
+    async def send_device_state_async(bridge_zone_id: int, target_device_id: int,
+                                      high_trim: int, low_trim: int, phase_reverse: bool):
+        """Send device state config (trim and phase)."""
+        controller = ESP32Controller()
+        try:
+            await controller.connect()
+            await controller.send_device_state(bridge_zone_id, target_device_id,
+                                               high_trim, low_trim, phase_reverse)
         finally:
             await controller.disconnect()
 
@@ -1597,6 +1664,148 @@ def cmd_serve(args):
                 'status': 'ok',
                 'device': f'0x{device_id:08X}',
                 'level': level
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    # ========== DEVICE CONFIGURATION ENDPOINTS ==========
+
+    @app.route('/api/config/led', methods=['POST'])
+    def api_config_led():
+        """Set status LED behavior.
+        Args:
+            bridge: Bridge zone ID (e.g., 0x002C90AD)
+            target: Target device ID (e.g., 0x06FE8006)
+            mode: 0=Both Off, 1=Both On, 2=On when load on, 3=On when load off
+        """
+        try:
+            bridge = get_param('bridge', '')
+            target = get_param('target', '')
+            mode = int(get_param('mode', '0'))
+            if not bridge or not target:
+                return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
+            if mode < 0 or mode > 3:
+                return jsonify({'status': 'error', 'error': 'Mode must be 0-3'}), 400
+
+            bridge_id = parse_hex_int(bridge)
+            target_id = parse_hex_int(target)
+            asyncio.run(send_led_config_async(bridge_id, target_id, mode))
+
+            mode_names = ['Both Off', 'Both On', 'On when load on', 'On when load off']
+            return jsonify({
+                'status': 'ok',
+                'bridge': f'0x{bridge_id:08X}',
+                'target': f'0x{target_id:08X}',
+                'mode': mode,
+                'mode_name': mode_names[mode]
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/config/fade', methods=['POST'])
+    def api_config_fade():
+        """Set fade on/off rates.
+        Args:
+            bridge: Bridge zone ID
+            target: Target device ID
+            fade_on: Fade-on time in seconds (0.25, 0.75, 2.5, 3, 5, 15)
+            fade_off: Fade-off time in seconds
+        """
+        try:
+            bridge = get_param('bridge', '')
+            target = get_param('target', '')
+            fade_on = float(get_param('fade_on', '0'))
+            fade_off = float(get_param('fade_off', '0'))
+            if not bridge or not target:
+                return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
+
+            bridge_id = parse_hex_int(bridge)
+            target_id = parse_hex_int(target)
+            # Convert seconds to quarter-seconds
+            fade_on_qs = int(fade_on * 4)
+            fade_off_qs = int(fade_off * 4)
+            asyncio.run(send_fade_config_async(bridge_id, target_id, fade_on_qs, fade_off_qs))
+
+            return jsonify({
+                'status': 'ok',
+                'bridge': f'0x{bridge_id:08X}',
+                'target': f'0x{target_id:08X}',
+                'fade_on': fade_on,
+                'fade_off': fade_off,
+                'fade_on_qs': fade_on_qs,
+                'fade_off_qs': fade_off_qs
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/config/trim', methods=['POST'])
+    def api_config_trim():
+        """Set trim levels (low-end and high-end).
+        Args:
+            bridge: Bridge zone ID
+            target: Target device ID
+            high: High-end trim 0-100%
+            low: Low-end trim 0-100%
+            phase: Optional - 'forward' or 'reverse' (default: forward)
+        """
+        try:
+            bridge = get_param('bridge', '')
+            target = get_param('target', '')
+            high_trim = int(get_param('high', '100'))
+            low_trim = int(get_param('low', '1'))
+            phase = get_param('phase', 'forward').lower()
+            if not bridge or not target:
+                return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
+
+            bridge_id = parse_hex_int(bridge)
+            target_id = parse_hex_int(target)
+            phase_reverse = (phase == 'reverse')
+            asyncio.run(send_device_state_async(bridge_id, target_id, high_trim, low_trim, phase_reverse))
+
+            return jsonify({
+                'status': 'ok',
+                'bridge': f'0x{bridge_id:08X}',
+                'target': f'0x{target_id:08X}',
+                'high_trim': high_trim,
+                'low_trim': low_trim,
+                'phase': 'reverse' if phase_reverse else 'forward'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/config/phase', methods=['POST'])
+    def api_config_phase():
+        """Set phase mode (forward or reverse).
+        Args:
+            bridge: Bridge zone ID
+            target: Target device ID
+            phase: 'forward' or 'reverse'
+            high: Optional high-end trim (default: 100)
+            low: Optional low-end trim (default: 1)
+        """
+        try:
+            bridge = get_param('bridge', '')
+            target = get_param('target', '')
+            phase = get_param('phase', 'forward').lower()
+            high_trim = int(get_param('high', '100'))
+            low_trim = int(get_param('low', '1'))
+            if not bridge or not target:
+                return jsonify({'status': 'error', 'error': 'Missing bridge or target'}), 400
+            if phase not in ('forward', 'reverse'):
+                return jsonify({'status': 'error', 'error': 'Phase must be forward or reverse'}), 400
+
+            bridge_id = parse_hex_int(bridge)
+            target_id = parse_hex_int(target)
+            phase_reverse = (phase == 'reverse')
+            asyncio.run(send_device_state_async(bridge_id, target_id, high_trim, low_trim, phase_reverse))
+
+            return jsonify({
+                'status': 'ok',
+                'bridge': f'0x{bridge_id:08X}',
+                'target': f'0x{target_id:08X}',
+                'phase': phase,
+                'high_trim': high_trim,
+                'low_trim': low_trim
             })
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500

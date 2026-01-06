@@ -16,6 +16,7 @@ import {
   BridgeBeacon,
   BridgeUnpair,
   DeviceState,
+  DeviceConfig,
   ResetPico
 } from './components/controls'
 
@@ -246,6 +247,7 @@ function App() {
           <PicoButtons showStatus={showStatus} />
           <SaveFavorite showStatus={showStatus} />
           <BridgeLevel showStatus={showStatus} />
+          <DeviceConfig showStatus={showStatus} />
           <BridgeBeacon showStatus={showStatus} />
           <BridgeUnpair showStatus={showStatus} />
           <DeviceState showStatus={showStatus} />

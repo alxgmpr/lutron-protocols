@@ -36,6 +36,7 @@ proxy/out.txt
 *.raw
 *.cu8
 *.pcapng
+*.log
 
 # Lutron project files (in case any escape data/)
 *.ra3

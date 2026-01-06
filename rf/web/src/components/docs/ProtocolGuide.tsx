@@ -580,6 +580,129 @@ export const PACKET_TYPES: Record<number, PacketTypeInfo> = {
       { offset: 0, length: 1, name: 'type', description: 'Packet type (0xE0)' },
     ],
   },
+
+  // ========== 0xFx: Virtual Packet Types (Decoded Subtypes) ==========
+  // These are not actual wire types - they are assigned by the decoder
+  // when the format byte at [7] distinguishes the packet subtype
+  0xF0: {
+    type: 0xF0,
+    name: 'Unpair Command',
+    shortName: 'UNPAIR',
+    category: 'config',
+    direction: 'bridge_to_device',
+    typicalLength: 24,
+    description: 'Bridge unpair command (format 0x0C). Floods network to remove device association. Wire type is 0x81-0x83.',
+    fields: [
+      { offset: 0, length: 1, name: 'type', description: 'Wire type (0x81-0x83)' },
+      { offset: 1, length: 1, name: 'seq', description: 'Sequence number' },
+      { offset: 2, length: 4, name: 'source_id', description: 'Bridge zone ID', format: 'little_endian' },
+      { offset: 7, length: 1, name: 'format', description: 'Format byte (0x0C)' },
+      { offset: 16, length: 4, name: 'target_id', description: 'Target device factory ID', format: 'big_endian' },
+    ],
+    notes: [
+      'Reclassified from 0x81-0x83 based on format byte 0x0C',
+      'Target ID at bytes 16-19',
+    ]
+  },
+  0xF1: {
+    type: 0xF1,
+    name: 'Unpair Prepare',
+    shortName: 'UNPAIR_PREP',
+    category: 'config',
+    direction: 'bridge_to_device',
+    typicalLength: 24,
+    description: 'Unpair preparation phase (format 0x09). Sent before UNPAIR flood. Wire type is 0x81-0x83.',
+    fields: [
+      { offset: 0, length: 1, name: 'type', description: 'Wire type (0x81-0x83)' },
+      { offset: 1, length: 1, name: 'seq', description: 'Sequence number' },
+      { offset: 2, length: 4, name: 'source_id', description: 'Bridge zone ID', format: 'little_endian' },
+      { offset: 7, length: 1, name: 'format', description: 'Format byte (0x09)' },
+      { offset: 9, length: 4, name: 'target_id', description: 'Target device factory ID', format: 'big_endian' },
+    ],
+    notes: [
+      'Reclassified from 0x81-0x83 based on format byte 0x09',
+      'Precedes the UNPAIR flood packets',
+    ]
+  },
+  0xF2: {
+    type: 0xF2,
+    name: 'LED Config',
+    shortName: 'LED_CONFIG',
+    category: 'config',
+    direction: 'bridge_to_device',
+    typicalLength: 24,
+    description: 'Device LED configuration command (format 0x11). Controls Status LED behavior on dimmers/switches. Wire type is 0xA1, 0xA2, or 0xA3.',
+    fields: [
+      { offset: 0, length: 1, name: 'type', description: 'Wire type (0xA1/0xA2/0xA3)' },
+      { offset: 1, length: 1, name: 'seq', description: 'Sequence number' },
+      { offset: 2, length: 4, name: 'source_id', description: 'Bridge zone ID', format: 'little_endian' },
+      { offset: 6, length: 1, name: 'protocol', description: 'Protocol marker (0x21)' },
+      { offset: 7, length: 1, name: 'format', description: 'Format byte (0x11)' },
+      { offset: 9, length: 4, name: 'target_id', description: 'Target device factory ID', format: 'big_endian' },
+      { offset: 23, length: 1, name: 'led_state', description: 'LED state (0x00=off, 0xFF=on)' },
+    ],
+    notes: [
+      'Reclassified from 0xA1/0xA2/0xA3 based on format byte 0x11',
+      'LED modes: 0=Both Off (A3+0x00), 1=Both On (A1+0xFF), 2=On when load on (A2+0xFF), 3=On when load off (A3+0x00)',
+      'CRC validation may fail (crc_ok=false) but packets still work',
+    ]
+  },
+  0xF3: {
+    type: 0xF3,
+    name: 'Fade Config',
+    shortName: 'FADE_CONFIG',
+    category: 'config',
+    direction: 'bridge_to_device',
+    typicalLength: 25,
+    description: 'Fade rate configuration command (format 0x1C). Sets fade-on and fade-off transition times. Wire type is 0xA1, 0xA2, or 0xA3.',
+    fields: [
+      { offset: 0, length: 1, name: 'type', description: 'Wire type (0xA1/0xA2/0xA3)' },
+      { offset: 1, length: 1, name: 'seq', description: 'Sequence number' },
+      { offset: 2, length: 4, name: 'source_id', description: 'Bridge zone ID', format: 'little_endian' },
+      { offset: 6, length: 1, name: 'protocol', description: 'Protocol marker (0x21)' },
+      { offset: 7, length: 1, name: 'format', description: 'Format byte (0x1C)' },
+      { offset: 9, length: 4, name: 'target_id', description: 'Target device factory ID', format: 'big_endian' },
+      { offset: 23, length: 1, name: 'fade_on', description: 'Fade-on time in quarter-seconds' },
+      { offset: 24, length: 1, name: 'fade_off', description: 'Fade-off time in quarter-seconds' },
+    ],
+    notes: [
+      'Reclassified from 0xA1/0xA2/0xA3 based on format byte 0x1C',
+      'Fade rates encoded in quarter-seconds: 1=0.25s, 3=0.75s, 10=2.5s, 12=3s, 20=5s, 60=15s',
+      'Packet is 25 bytes (includes both fade values)',
+    ],
+    examples: [
+      'A1 01 AD 90 2C 00 21 1C 00 06 FE 80 06 FE 06 50 00 03 11 80 FF 31 00 3C 01',
+    ]
+  },
+  0xF4: {
+    type: 0xF4,
+    name: 'Device State Config',
+    shortName: 'STATE_CONFIG',
+    category: 'config',
+    direction: 'bridge_to_device',
+    typicalLength: 24,
+    description: 'Device state configuration command (format 0x15). Sets trim levels and phase mode. Wire type is 0xA1, 0xA2, or 0xA3. Same format as STATE_RPT but sent by bridge.',
+    fields: [
+      { offset: 0, length: 1, name: 'type', description: 'Wire type (0xA1/0xA2/0xA3)' },
+      { offset: 1, length: 1, name: 'seq', description: 'Sequence number' },
+      { offset: 2, length: 4, name: 'source_id', description: 'Bridge zone ID', format: 'little_endian' },
+      { offset: 6, length: 1, name: 'protocol', description: 'Protocol marker (0x21)' },
+      { offset: 7, length: 1, name: 'format', description: 'Format byte (0x15)' },
+      { offset: 9, length: 4, name: 'target_id', description: 'Target device factory ID', format: 'big_endian' },
+      { offset: 20, length: 1, name: 'high_trim', description: 'High-end trim (0-0xFE = 0-100%)' },
+      { offset: 21, length: 1, name: 'low_trim', description: 'Low-end trim (0-0xFE = 0-100%)' },
+      { offset: 22, length: 1, name: 'phase', description: 'Phase mode (0x03=Forward, 0x23=Reverse)' },
+    ],
+    notes: [
+      'Uses same format byte (0x15) as STATE_RPT but is bridge->device',
+      'Trim values encoded as: byte_value = percentage * 254 / 100',
+      'Phase mode: 0x03=Forward, 0x23=Reverse (bit 5 controls phase)',
+      'High trim at byte 20, Low trim at byte 21, Phase at byte 22',
+    ],
+    examples: [
+      'A3 01 AD 90 2C 00 21 15 00 06 FE 80 06 FE 06 50 00 02 08 13 FE 03 03 0B',
+    ]
+  },
 }
 
 // Helper to get packet info

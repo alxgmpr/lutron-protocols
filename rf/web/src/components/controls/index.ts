@@ -6,6 +6,8 @@ export { BridgeLevel } from './BridgeLevel'
 export { BridgeBeacon } from './BridgeBeacon'
 export { BridgeUnpair } from './BridgeUnpair'
 export { DeviceState } from './DeviceState'
+export { DeviceConfig } from './DeviceConfig'
 export { ResetPico } from './ResetPico'
+
 
 

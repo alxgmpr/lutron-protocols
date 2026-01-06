@@ -12,6 +12,7 @@ static const uint8_t PKT_BUTTON_LONG_A = 0x89;
 static const uint8_t PKT_BUTTON_SHORT_B = 0x8A;
 static const uint8_t PKT_BUTTON_LONG_B = 0x8B;
 static const uint8_t PKT_LEVEL = 0xA2;
+static const uint8_t PKT_CONFIG_A3 = 0xA3;  // Device config command variant
 static const uint8_t PKT_STATE_REPORT_81 = 0x81;
 static const uint8_t PKT_STATE_REPORT_82 = 0x82;
 static const uint8_t PKT_STATE_REPORT_83 = 0x83;
@@ -42,6 +43,7 @@ static const uint8_t PKT_PAIR_RESP_C8 = 0xC8;
 // Used when format byte at [7] distinguishes packet subtype
 static const uint8_t PKT_UNPAIR = 0xF0;       // Format 0x0C - bridge unpair command
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;  // Format 0x09 - unpair prepare phase
+static const uint8_t PKT_LED_CONFIG = 0xF2;   // Format 0x11 - LED config command (A2/A3)
 
 // Button codes - 5-button Pico
 static const uint8_t BTN_ON = 0x02;

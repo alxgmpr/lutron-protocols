@@ -215,6 +215,40 @@ class LutronCC1101 : public Component,
    */
   void send_reset(uint32_t source_id, uint32_t paired_id);
 
+  // ========== DEVICE CONFIGURATION (from CCA Playground captures) ==========
+
+  /**
+   * @brief Send LED config command to change status LED behavior
+   * Uses format 0x11 with A1/A2/A3 type bytes
+   * @param bridge_zone_id Bridge zone ID (e.g., 0x002C90AD), sent little-endian
+   * @param target_device_id Target dimmer ID (e.g., 0x06FE8006), sent big-endian
+   * @param mode LED mode: 0=Both Off, 1=Both On, 2=On when load on, 3=On when load off
+   */
+  void send_led_config(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t mode);
+
+  /**
+   * @brief Send fade rate config command
+   * Uses format 0x1C with A1/A2/A3 type bytes
+   * @param bridge_zone_id Bridge zone ID, sent little-endian
+   * @param target_device_id Target dimmer ID, sent big-endian
+   * @param fade_on_qs Fade-on time in quarter-seconds (e.g., 60 = 15 seconds)
+   * @param fade_off_qs Fade-off time in quarter-seconds
+   */
+  void send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
+                        uint8_t fade_on_qs, uint8_t fade_off_qs);
+
+  /**
+   * @brief Send device state/config command (trim and phase settings)
+   * Uses format 0x15 with A1/A2/A3 type bytes
+   * @param bridge_zone_id Bridge zone ID, sent little-endian
+   * @param target_device_id Target dimmer ID, sent big-endian
+   * @param high_trim High-end trim 0-100% (encoded as % * 2.54)
+   * @param low_trim Low-end trim 0-100% (encoded as % * 2.54)
+   * @param phase_reverse true for reverse phase, false for forward
+   */
+  void send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
+                         uint8_t high_trim, uint8_t low_trim, bool phase_reverse);
+
   /**
    * @brief Send bridge-style unpair command to remove a device from the network
    * @param bridge_zone_id Bridge zone ID (e.g., 0x002C90AD), sent little-endian

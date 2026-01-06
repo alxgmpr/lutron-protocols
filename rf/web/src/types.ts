@@ -89,3 +89,4 @@ export const DEVICE_TYPES: Record<string, { name: string; buttons: string | null
 }
 
 
+

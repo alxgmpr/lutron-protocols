@@ -228,3 +228,83 @@ For direct Pico pairing without a bridge:
 - **Packets:** 12 BA + 6 BB minimum
 - **Protocol:** New (0x25)
 - **Button codes:** 0x02-0x06 (ON/FAV/OFF/RAISE/LOWER)
+
+---
+
+## Bridge Pairing Protocol Analysis (2026-01-06)
+
+### RadioRA 3 Lamp Dimmer Pairing Capture
+
+Captured RR3 processor pairing a lamp dimmer to understand bridge pairing flow.
+
+**Key Device IDs:**
+- RR3 Processor: `A1 82 D7 00`
+- Lamp Dimmer Serial: `01 D4 F2 1B`
+- Assigned Link ID: `82 D7 1A 01`
+
+### Bridge Pairing Sequence (cmd=0x08)
+
+| Phase | Subtype | Direction | Packet Structure |
+|-------|---------|-----------|------------------|
+| 1 | 0x01 | Bridge->Broadcast | Initial beacon, CC padding |
+| 2 | 0x02 | Bridge->Broadcast | Beacon with link ID slot |
+| 3 | 0x05 | Device->Broadcast | Device announcement (0xB0 protocol, 46 bytes) |
+| 4 | 0x06 | Bridge->Device | Acknowledgment with link ID assignment |
+| 5 | 0x04 | Bridge->Broadcast | Confirmation beacon |
+| 6 | 0x02/0x02 | Bridge->Device | Final handshake (cmd=0x02 sub=0x02) |
+
+### Device Announcement Packet (0xB0 Protocol)
+
+The device responds with a long 46-byte packet:
+```
+B0 01 A1 82 D7 7F 21 13 00 FF FF FF FF FF 08 05 01 D4 F2 1B 04 14 02 01 FF 00 00
+                                               |_____|___________|_____________|
+                                               Cmd    Device ID   Type Info
+```
+
+**Device Type Info Bytes:**
+- Byte 20: Device class (0x04 = dimmer)
+- Byte 21: Subtype (0x14 = lamp dimmer)
+- Byte 22-23: Firmware version (0x02 0x01)
+- Byte 24-26: Capabilities (0xFF 0x00 0x00)
+
+**Flag Byte 0x7F:**
+The flag byte changes from 0x21 (standard) to 0x7F for extended packet mode.
+This indicates the receiver should expect a larger payload.
+
+### RR3 vs Caseta Comparison
+
+Both systems use identical cmd=0x08 subtypes:
+- 0x01, 0x02 for beacons
+- 0x04 for confirmation
+- 0x05 for device announcement
+- 0x06 for acknowledgment
+
+**Caseta Smart Bridge source IDs:** `AD 90 2C 00`, `AF 90 2C 00`
+**RR3 Processor source ID:** `A1 82 D7 00`
+
+### Link ID Structure
+
+The assigned link ID `82 D7 1A 01` appears to encode:
+- `82 D7` - Subnet (matches processor's A1 **82 D7** 00)
+- `1A` - Zone assignment
+- `01` - Device type or endpoint
+
+### Implementation Requirements for Bridge Emulation
+
+1. **TX: Beacon Generation**
+   - Send 08 01 for ~4 seconds (initial beacon)
+   - Send 08 02 with chosen link ID for ~8 seconds
+
+2. **RX: Handle 0xB0 Packets**
+   - Must receive 46-byte device announcements
+   - Parse device serial, class, subtype, firmware
+
+3. **TX: Complete Handshake**
+   - Send 08 06 targeting device by serial, with link ID
+   - Send 08 04 broadcast confirmation
+   - Send 02 02 direct to device
+
+4. **Post-Pairing**
+   - Send configuration via 06 50 commands
+   - Handle 06 00 state reports from device

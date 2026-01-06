@@ -304,20 +304,46 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
       // Unknown format - leave as STATE_RPT but don't parse level
       // This prevents garbage data from being interpreted
     }
-  } else if (packet.type == PKT_LEVEL) {
-    // Level commands use LITTLE-endian device IDs
+  } else if (packet.type == PKT_LEVEL || packet.type == PKT_CONFIG_A3) {
+    // A2/A3 packets - check format byte at [7] to determine actual type:
+    // - Format 0x0E = LEVEL (bridge setting level) - original A2 type
+    // - Format 0x11 = LED_CONFIG (device configuration)
+    uint8_t format_byte = best_bytes[7];
+
+    // Device ID is little-endian for A2/A3 packets
     packet.device_id = best_bytes[PKT_OFFSET_DEVICE_ID] |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
-    // Level command packets (0xA2) - different format, level at offset 9
-    packet.level = best_bytes[9];
-    // Target device ID at offset 10-13 (little-endian)
-    if (best_decoded >= 14) {
-      packet.target_id = best_bytes[10] |
-                         (best_bytes[11] << 8) |
-                         (best_bytes[12] << 16) |
-                         (best_bytes[13] << 24);
+
+    if (format_byte == 0x11) {
+      // LED config command - reclassify
+      packet.type = PKT_LED_CONFIG;
+      // Config data is in remaining bytes, LED state typically at byte 23
+      if (best_decoded >= 24) {
+        packet.level = best_bytes[23];  // Reuse level field for LED state (0x00=off, 0xFF=on)
+      }
+      // Target device at bytes 9-12 (big-endian, like LEVEL target)
+      if (best_decoded >= 13) {
+        packet.target_id = (best_bytes[9] << 24) |
+                           (best_bytes[10] << 16) |
+                           (best_bytes[11] << 8) |
+                           best_bytes[12];
+      }
+    } else {
+      // Standard level command (format 0x0E or other)
+      packet.type = PKT_LEVEL;  // Ensure type is LEVEL
+      // Level command packets - level at offset 9
+      if (best_decoded >= 10) {
+        packet.level = best_bytes[9];
+      }
+      // Target device ID at offset 10-13 (little-endian)
+      if (best_decoded >= 14) {
+        packet.target_id = best_bytes[10] |
+                           (best_bytes[11] << 8) |
+                           (best_bytes[12] << 16) |
+                           (best_bytes[13] << 24);
+      }
     }
   } else if (packet.type == PKT_PAIRING_B8 || packet.type == PKT_PAIRING_B9 ||
              packet.type == PKT_PAIRING_BA || packet.type == PKT_PAIRING_BB ||
@@ -342,31 +368,67 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
   }
 
-  // CRC validation - offset depends on packet length
+  // CRC validation - offset depends on packet type
   // Standard packets (24 bytes): CRC at 22-23, covers 0-21
   // Pairing packets (53 bytes): CRC at 51-52, covers 0-50
-  size_t expected_len = get_packet_length(packet.type);
-  size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
-  size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+  // LED_CONFIG (format 0x11): CRC location unknown, try scan-based detection
 
-  if (best_decoded >= crc_offset + 2) {
-    // Have enough bytes for CRC
-    packet.crc = (best_bytes[crc_offset] << 8) | best_bytes[crc_offset + 1];
-    uint16_t calc = this->calc_crc(best_bytes, crc_data_len);
-    packet.crc_valid = (calc == packet.crc);
-  } else if (expected_len == PKT_PAIRING_LEN && best_decoded >= 24) {
-    // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
-    // This happens due to CC1101 FIFO size limitations
-    packet.crc = 0;
-    packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
-  } else if (best_decoded >= 24) {
-    // Standard packet with enough bytes
-    packet.crc = (best_bytes[22] << 8) | best_bytes[23];
-    uint16_t calc = this->calc_crc(best_bytes, 22);
-    packet.crc_valid = (calc == packet.crc);
-  } else {
+  if (packet.type == PKT_LED_CONFIG) {
+    // LED config packets: CRC location is uncertain
+    // Try standard location first, then scan for valid CRC
     packet.crc = 0;
     packet.crc_valid = false;
+
+    if (best_decoded >= 24) {
+      // Try standard CRC at 22-23
+      uint16_t pkt_crc = (best_bytes[22] << 8) | best_bytes[23];
+      uint16_t calc_crc = this->calc_crc(best_bytes, 22);
+      if (calc_crc == pkt_crc) {
+        packet.crc = pkt_crc;
+        packet.crc_valid = true;
+      } else {
+        // Try CRC at bytes 16-17 (16 bytes of data, LE) - seen in some config packets
+        if (best_decoded >= 18) {
+          pkt_crc = best_bytes[16] | (best_bytes[17] << 8);  // LE
+          calc_crc = this->calc_crc(best_bytes, 16);
+          if (calc_crc == pkt_crc) {
+            packet.crc = pkt_crc;
+            packet.crc_valid = true;
+          }
+        }
+        // If still no match, mark as unknown (not failed)
+        // This allows the packet to be displayed for analysis
+        if (!packet.crc_valid) {
+          packet.crc = (best_bytes[22] << 8) | best_bytes[23];
+          // Leave crc_valid = false to show warning, but packet is still "valid"
+        }
+      }
+    }
+  } else {
+    // Standard CRC handling for known packet types
+    size_t expected_len = get_packet_length(packet.type);
+    size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+    size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+
+    if (best_decoded >= crc_offset + 2) {
+      // Have enough bytes for CRC
+      packet.crc = (best_bytes[crc_offset] << 8) | best_bytes[crc_offset + 1];
+      uint16_t calc = this->calc_crc(best_bytes, crc_data_len);
+      packet.crc_valid = (calc == packet.crc);
+    } else if (expected_len == PKT_PAIRING_LEN && best_decoded >= 24) {
+      // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
+      // This happens due to CC1101 FIFO size limitations
+      packet.crc = 0;
+      packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
+    } else if (best_decoded >= 24) {
+      // Standard packet with enough bytes
+      packet.crc = (best_bytes[22] << 8) | best_bytes[23];
+      uint16_t calc = this->calc_crc(best_bytes, 22);
+      packet.crc_valid = (calc == packet.crc);
+    } else {
+      packet.crc = 0;
+      packet.crc_valid = false;
+    }
   }
 
   packet.valid = true;
@@ -385,6 +447,7 @@ const char *LutronDecoder::packet_type_name(uint8_t type) {
     case PKT_STATE_REPORT_83: return "STATE_RPT";
     case PKT_UNPAIR: return "UNPAIR";
     case PKT_UNPAIR_PREP: return "UNPAIR_PREP";
+    case PKT_LED_CONFIG: return "LED_CONFIG";
     case PKT_PAIRING_B8: return "PAIR_B8";
     case PKT_PAIRING_B9: return "PAIR_B9";
     case PKT_PAIRING_BA: return "PAIR_BA";
@@ -522,22 +585,42 @@ bool LutronDecoder::parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket 
       }
     }
     // else: Unknown format - leave as STATE_RPT but don't parse level
-  } else if (packet.type == PKT_LEVEL) {
-    // Level commands use LITTLE-endian device IDs
+  } else if (packet.type == PKT_LEVEL || packet.type == PKT_CONFIG_A3) {
+    // A2/A3 packets - check format byte at [7] to determine actual type:
+    // - Format 0x0E = LEVEL (bridge setting level)
+    // - Format 0x11 = LED_CONFIG (device configuration)
+    uint8_t format_byte = (len >= 8) ? bytes[7] : 0;
+
+    // Device ID is little-endian for A2/A3 packets
     packet.device_id = bytes[PKT_OFFSET_DEVICE_ID] |
                        (bytes[PKT_OFFSET_DEVICE_ID + 1] << 8) |
                        (bytes[PKT_OFFSET_DEVICE_ID + 2] << 16) |
                        (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
-    // Level command packets (0xA2) - different format, level at offset 9
-    if (len >= 10) {
-      packet.level = bytes[9];
-    }
-    // Target device ID at offset 10-13 (little-endian)
-    if (len >= 14) {
-      packet.target_id = bytes[10] |
-                         (bytes[11] << 8) |
-                         (bytes[12] << 16) |
-                         (bytes[13] << 24);
+
+    if (format_byte == 0x11) {
+      // LED config command - reclassify
+      packet.type = PKT_LED_CONFIG;
+      if (len >= 24) {
+        packet.level = bytes[23];  // LED state at byte 23
+      }
+      if (len >= 13) {
+        packet.target_id = (bytes[9] << 24) |
+                           (bytes[10] << 16) |
+                           (bytes[11] << 8) |
+                           bytes[12];
+      }
+    } else {
+      // Standard level command
+      packet.type = PKT_LEVEL;
+      if (len >= 10) {
+        packet.level = bytes[9];
+      }
+      if (len >= 14) {
+        packet.target_id = bytes[10] |
+                           (bytes[11] << 8) |
+                           (bytes[12] << 16) |
+                           (bytes[13] << 24);
+      }
     }
   } else if (packet.type == PKT_PAIRING_B8 || packet.type == PKT_PAIRING_B9 ||
              packet.type == PKT_PAIRING_BA || packet.type == PKT_PAIRING_BB ||
@@ -561,30 +644,61 @@ bool LutronDecoder::parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket 
                        (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
   }
 
-  // CRC validation - offset depends on packet length
+  // CRC validation - offset depends on packet type
   // Standard packets (24 bytes): CRC at 22-23, covers 0-21
   // Pairing packets (53 bytes): CRC at 51-52, covers 0-50
-  size_t expected_len = get_packet_length(packet.type);
-  size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
-  size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+  // LED_CONFIG (format 0x11): CRC location unknown, try scan-based detection
 
-  if (len >= crc_offset + 2) {
-    // Have enough bytes for CRC
-    packet.crc = (bytes[crc_offset] << 8) | bytes[crc_offset + 1];
-    uint16_t calc = this->calc_crc(bytes, crc_data_len);
-    packet.crc_valid = (calc == packet.crc);
-  } else if (expected_len == PKT_PAIRING_LEN && len >= 24) {
-    // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
-    packet.crc = 0;
-    packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
-  } else if (len >= 24) {
-    // Standard packet with enough bytes
-    packet.crc = (bytes[22] << 8) | bytes[23];
-    uint16_t calc = this->calc_crc(bytes, 22);
-    packet.crc_valid = (calc == packet.crc);
-  } else {
+  if (packet.type == PKT_LED_CONFIG) {
+    // LED config packets: CRC location is uncertain
     packet.crc = 0;
     packet.crc_valid = false;
+
+    if (len >= 24) {
+      // Try standard CRC at 22-23
+      uint16_t pkt_crc = (bytes[22] << 8) | bytes[23];
+      uint16_t calc_crc = this->calc_crc(bytes, 22);
+      if (calc_crc == pkt_crc) {
+        packet.crc = pkt_crc;
+        packet.crc_valid = true;
+      } else {
+        // Try CRC at bytes 16-17 (16 bytes of data, LE)
+        if (len >= 18) {
+          pkt_crc = bytes[16] | (bytes[17] << 8);  // LE
+          calc_crc = this->calc_crc(bytes, 16);
+          if (calc_crc == pkt_crc) {
+            packet.crc = pkt_crc;
+            packet.crc_valid = true;
+          }
+        }
+        if (!packet.crc_valid) {
+          packet.crc = (bytes[22] << 8) | bytes[23];
+        }
+      }
+    }
+  } else {
+    size_t expected_len = get_packet_length(packet.type);
+    size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+    size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+
+    if (len >= crc_offset + 2) {
+      // Have enough bytes for CRC
+      packet.crc = (bytes[crc_offset] << 8) | bytes[crc_offset + 1];
+      uint16_t calc = this->calc_crc(bytes, crc_data_len);
+      packet.crc_valid = (calc == packet.crc);
+    } else if (expected_len == PKT_PAIRING_LEN && len >= 24) {
+      // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
+      packet.crc = 0;
+      packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
+    } else if (len >= 24) {
+      // Standard packet with enough bytes
+      packet.crc = (bytes[22] << 8) | bytes[23];
+      uint16_t calc = this->calc_crc(bytes, 22);
+      packet.crc_valid = (calc == packet.crc);
+    } else {
+      packet.crc = 0;
+      packet.crc_valid = false;
+    }
   }
 
   packet.valid = true;
