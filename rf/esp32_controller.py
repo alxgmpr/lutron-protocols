@@ -2347,9 +2347,38 @@ def cmd_serve(args):
         Unlike /api/logs/stream which streams raw logs, this streams
         already-parsed packets with type, device_id, summary, details, and raw_hex.
         """
+        global log_subscription_started, log_thread_heartbeat
+
         def generate():
+            global log_subscription_started, log_thread_heartbeat
+
             # Initial connection
             yield f"data: {json.dumps({'type': 'connected', 'time': datetime.now().isoformat()})}\n\n"
+
+            # Start log subscription thread if needed (same logic as /api/logs/stream)
+            with log_subscription_lock:
+                now = time.time()
+                thread_is_stale = (now - log_thread_heartbeat) > LOG_THREAD_TIMEOUT
+
+                if not log_subscription_started or thread_is_stale:
+                    if thread_is_stale and log_subscription_started:
+                        print(f"[PACKET STREAM] Log thread appears dead (no heartbeat for {now - log_thread_heartbeat:.0f}s), restarting...", flush=True)
+                        # Clear the queues of stale messages
+                        while not log_queue.empty():
+                            try:
+                                log_queue.get_nowait()
+                            except queue.Empty:
+                                break
+                        while not packet_queue.empty():
+                            try:
+                                packet_queue.get_nowait()
+                            except queue.Empty:
+                                break
+
+                    log_subscription_started = True
+                    log_thread_heartbeat = now
+                    log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
+                    log_thread.start()
 
             while True:
                 try:
