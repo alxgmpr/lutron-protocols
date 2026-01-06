@@ -63,7 +63,13 @@ void CC1101Radio::init(CC1101SPI *spi, GPIOPin *gdo0_pin) {
   this->write_register(CC1101_FSCTRL1, 0x06);
   this->write_register(CC1101_FSCTRL0, 0x00);
 
-  // Auto-calibrate
+  // Main Radio Control State Machine
+  // MCSM1: Auto-RX after TX for fast turnaround
+  //   Bits 5:4 = CCA_MODE: 00 (Always clear)
+  //   Bits 3:2 = RXOFF_MODE: 00 (IDLE after RX)
+  //   Bits 1:0 = TXOFF_MODE: 11 (RX after TX)
+  this->write_register(CC1101_MCSM1, 0x03);
+  // MCSM0: Auto-calibrate when going from IDLE to RX/TX
   this->write_register(CC1101_MCSM0, 0x18);
 
   // AGC
@@ -458,18 +464,22 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     ESP_LOGV(TAG, "Transmitted %d bytes in %dms (%d refills)", bytes_written, elapsed, refill_count);
   }
 
+  // Wait for TX to complete
+  // With MCSM1 TXOFF_MODE=11, radio auto-transitions to RX (0x0D) after TX
+  // Also accept IDLE (0x01) for backwards compatibility
   int timeout = 200;
   while (timeout-- > 0) {
     uint8_t state = this->get_state();
-    if (state == 0x01) break;
-    if (state == 0x16) {
+    if (state == 0x01 || state == 0x0D || state == 0x0E) break;  // IDLE, RX, or FSTXON
+    if (state == 0x16) {  // TX_UNDERFLOW
       this->flush_tx();
       return false;
     }
     delay(1);
   }
 
-  this->set_idle();
+  // Don't force IDLE - let auto-RX take effect if configured
+  // The caller (lutron_cc1101.cpp) will call start_rx() if needed
   return true;
 }
 
