@@ -342,11 +342,26 @@ bool LutronDecoder::decode(const uint8_t *fifo_data, size_t len, DecodedPacket &
                        (best_bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
   }
 
-  // CRC from packet (if we have enough bytes)
-  if (best_decoded >= 24) {
-    packet.crc = (best_bytes[PKT_OFFSET_CRC] << 8) | best_bytes[PKT_OFFSET_CRC + 1];
+  // CRC validation - offset depends on packet length
+  // Standard packets (24 bytes): CRC at 22-23, covers 0-21
+  // Pairing packets (53 bytes): CRC at 51-52, covers 0-50
+  size_t expected_len = get_packet_length(packet.type);
+  size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+  size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
 
-    // Calculate CRC on first 22 bytes
+  if (best_decoded >= crc_offset + 2) {
+    // Have enough bytes for CRC
+    packet.crc = (best_bytes[crc_offset] << 8) | best_bytes[crc_offset + 1];
+    uint16_t calc = this->calc_crc(best_bytes, crc_data_len);
+    packet.crc_valid = (calc == packet.crc);
+  } else if (expected_len == PKT_PAIRING_LEN && best_decoded >= 24) {
+    // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
+    // This happens due to CC1101 FIFO size limitations
+    packet.crc = 0;
+    packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
+  } else if (best_decoded >= 24) {
+    // Standard packet with enough bytes
+    packet.crc = (best_bytes[22] << 8) | best_bytes[23];
     uint16_t calc = this->calc_crc(best_bytes, 22);
     packet.crc_valid = (calc == packet.crc);
   } else {
@@ -546,10 +561,25 @@ bool LutronDecoder::parse_bytes(const uint8_t *bytes, size_t len, DecodedPacket 
                        (bytes[PKT_OFFSET_DEVICE_ID + 3] << 24);
   }
 
-  // CRC from packet (if we have enough bytes)
-  if (len >= 24) {
-    packet.crc = (bytes[PKT_OFFSET_CRC] << 8) | bytes[PKT_OFFSET_CRC + 1];
-    // Calculate CRC on first 22 bytes
+  // CRC validation - offset depends on packet length
+  // Standard packets (24 bytes): CRC at 22-23, covers 0-21
+  // Pairing packets (53 bytes): CRC at 51-52, covers 0-50
+  size_t expected_len = get_packet_length(packet.type);
+  size_t crc_offset = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+  size_t crc_data_len = (expected_len == PKT_PAIRING_LEN) ? 51 : 22;
+
+  if (len >= crc_offset + 2) {
+    // Have enough bytes for CRC
+    packet.crc = (bytes[crc_offset] << 8) | bytes[crc_offset + 1];
+    uint16_t calc = this->calc_crc(bytes, crc_data_len);
+    packet.crc_valid = (calc == packet.crc);
+  } else if (expected_len == PKT_PAIRING_LEN && len >= 24) {
+    // Pairing packet but truncated before CRC - mark as incomplete, not CRC fail
+    packet.crc = 0;
+    packet.crc_valid = true;  // Don't mark as bad CRC for incomplete pairing packets
+  } else if (len >= 24) {
+    // Standard packet with enough bytes
+    packet.crc = (bytes[22] << 8) | bytes[23];
     uint16_t calc = this->calc_crc(bytes, 22);
     packet.crc_valid = (calc == packet.crc);
   } else {

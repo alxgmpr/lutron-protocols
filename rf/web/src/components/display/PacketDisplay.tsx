@@ -79,13 +79,16 @@ export function PacketDisplay({
             packets.map((packet, index) => (
               <div
                 key={index}
-                className={`packet-entry packet-entry-${variant}`}
+                className={`packet-entry packet-entry-${variant}${packet.crcOk === false ? ' packet-bad-crc' : ''}`}
                 onClick={() => handlePacketClick(packet)}
               >
                 <span className="packet-time">{packet.time}</span>
                 <span className={`packet-type packet-type-${packet.type.toLowerCase().replace(/_/g, '-')}`}>
                   {packet.type}
                 </span>
+                {packet.crcOk === false && (
+                  <span className="packet-crc-warning" title="Bad CRC - packet may be corrupted">!</span>
+                )}
                 <span className="packet-summary">{packet.summary}</span>
                 {packet.details.length > 0 && (
                   <span className="packet-details">

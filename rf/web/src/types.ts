@@ -49,6 +49,7 @@ export interface Packet {
   rawBytes?: string   // Hex bytes if available
   direction: 'tx' | 'rx'
   fields?: ParsedField[]  // Backend-parsed field breakdown
+  crcOk?: boolean     // CRC validation status (RX packets only, undefined = ok/unknown)
 }
 
 export interface ApiResponse {

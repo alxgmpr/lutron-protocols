@@ -167,6 +167,9 @@ function App() {
   // Uses new Packet interface with type, summary, details
   useEffect(() => {
     rxPackets.slice(-1).forEach(packet => {
+      // Skip packets with bad CRC - they may have corrupted device IDs
+      if (packet.crcOk === false) return
+
       const pktType = packet.type
 
       // Only process known packet types

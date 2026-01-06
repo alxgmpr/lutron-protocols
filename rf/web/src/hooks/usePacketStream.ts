@@ -11,7 +11,7 @@ interface BackendPacket {
   source_id?: string
   target_id?: string
   summary?: string
-  details?: Record<string, string>
+  details?: Record<string, string | boolean>  // crc_ok can be boolean
   raw_hex?: string
   rssi?: number
   fields?: ParsedField[]  // Backend-parsed field breakdown
@@ -96,6 +96,10 @@ export function usePacketStream() {
         const pkt = data as BackendPacket
 
         // Convert backend packet to frontend Packet format
+        // Extract crc_ok before formatting details (it's sent as string from backend)
+        const crcOk = pkt.details?.crc_ok === undefined ? undefined :
+                      pkt.details.crc_ok === 'true' || pkt.details.crc_ok === true
+
         const packet: Packet = {
           time: pkt.time,
           type: pkt.type,
@@ -103,7 +107,8 @@ export function usePacketStream() {
           details: formatDetails(pkt.details, pkt.rssi),
           rawBytes: pkt.raw_hex,
           direction: pkt.direction,
-          fields: pkt.fields  // Pass through backend-parsed fields
+          fields: pkt.fields,  // Pass through backend-parsed fields
+          crcOk  // CRC validation status for RX packets
         }
 
         if (pkt.direction === 'tx') {
@@ -145,13 +150,16 @@ export function usePacketStream() {
   }
 }
 
-function formatDetails(details?: Record<string, string>, rssi?: number): string[] {
+function formatDetails(details?: Record<string, string | boolean>, rssi?: number): string[] {
   const result: string[] = []
 
   if (details) {
     for (const [key, value] of Object.entries(details)) {
+      // Skip crc_ok - it's shown as an icon, not in details
+      if (key === 'crc_ok') continue
+
       if (key === 'button') {
-        result.push(value)
+        result.push(String(value))
       } else if (key === 'level') {
         result.push(`Level=${value}%`)
       } else if (key === 'seq') {
