@@ -130,11 +130,6 @@ function App() {
     setStatus({ message, type })
   }, [])
 
-  const registerDevice = useCallback(async (deviceId: string, type: string, info: Record<string, unknown>) => {
-    await postJson('/api/devices', { device_id: deviceId, type, info })
-    loadDevices()
-  }, [postJson, loadDevices])
-
   const deleteDevice = useCallback(async (deviceId: string) => {
     await del(`/api/devices/${deviceId}`)
     loadDevices()
@@ -164,72 +159,9 @@ function App() {
     showStatus(`Cleared ${unlabeledIds.length} unlabeled device(s)`, 'success')
   }, [devices, del, loadDevices, showStatus])
 
-  // Auto-register devices from RX packets
-  // Uses new Packet interface with type, summary, details
-  useEffect(() => {
-    rxPackets.slice(-1).forEach(packet => {
-      // Skip packets with bad CRC - they may have corrupted device IDs
-      if (packet.crcOk === false) return
-
-      const pktType = packet.type
-
-      // Only process known packet types
-      const validTypes = ['BTN_SHORT_A', 'BTN_LONG_A', 'BTN_SHORT_B', 'BTN_LONG_B',
-                          'LEVEL', 'STATE_RPT', 'PAIR_B8', 'PAIR_B9', 'PAIR_BA', 'PAIR_BB', 'BEACON']
-      if (!validTypes.some(t => pktType.startsWith(t))) return
-
-      let deviceId: string | null = null
-      const info: Record<string, unknown> = { type: pktType }
-
-      // Parse summary which contains device ID(s)
-      const summary = packet.summary
-
-      if (pktType === 'LEVEL' && summary.includes('->')) {
-        const ids = summary.split('->').map(s => s.trim())
-        deviceId = ids[1]
-        info.bridge_id = ids[0]
-        info.factory_id = ids[1]
-        info.category = 'bridge_controlled'
-        info.controllable = true
-      } else if (pktType === 'STATE_RPT') {
-        deviceId = summary.trim()
-        info.rf_tx_id = deviceId
-        info.category = 'dimmer_passive'
-        info.controllable = false
-        // Extract bridge pairing from device ID (middle 16 bits)
-        // This helps identify which bridge controls this device
-        if (deviceId && /^[0-9A-Fa-f]{8}$/.test(deviceId)) {
-          const idNum = parseInt(deviceId, 16)
-          const bridgePairing = (idNum >> 8) & 0xFFFF
-          info.bridge_pairing = bridgePairing.toString(16).toUpperCase().padStart(4, '0')
-        }
-      } else if (pktType.startsWith('BTN_')) {
-        deviceId = summary.trim()
-        info.factory_id = deviceId
-        info.controllable = true
-      } else {
-        deviceId = summary.trim()
-      }
-
-      // Parse details array
-      for (const detail of packet.details) {
-        if (detail.startsWith('SCENE')) {
-          info.button = detail
-          info.category = 'scene_pico'
-        } else if (detail.match(/^(ON|OFF|RAISE|LOWER|FAV)/)) {
-          info.button = detail
-          info.category = 'pico'
-        } else if (detail.startsWith('Level=')) {
-          info.level = detail.replace('Level=', '')
-        }
-      }
-
-      // Device ID must be exactly 8 hex characters
-      if (deviceId && /^[0-9A-Fa-f]{8}$/.test(deviceId)) {
-        registerDevice(deviceId, pktType, info)
-      }
-    })
-  }, [rxPackets, registerDevice])
+  // Device registration is now handled by polling only
+  // The backend stores devices when packets are received via the API
+  // Frontend just refreshes the device list periodically (every 10s)
 
   return (
     <DeviceProvider devices={devices}>

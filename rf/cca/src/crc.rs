@@ -2,6 +2,9 @@
 //!
 //! Uses non-standard polynomial 0xCA0F
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// CRC-16 polynomial used by Lutron (non-standard)
 pub const CRC_POLY: u16 = 0xCA0F;
 

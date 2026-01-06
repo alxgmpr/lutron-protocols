@@ -9,6 +9,11 @@
 //! - **N81 Encoding**: Async serial N81 bitstream format
 //! - **Packet Parsing**: Full packet structure parsing with type detection
 //!
+//! # no_std Support
+//!
+//! The core library (crc, n81, packet) supports `no_std` for embedded use.
+//! Disable the `std` feature for ESP32/embedded builds.
+//!
 //! # Example
 //!
 //! ```rust
@@ -24,13 +29,28 @@
 //! }
 //! ```
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+// Embedded support (panic handler, allocator) for bare metal builds
+#[cfg(feature = "embedded")]
+mod embedded;
+
+// Core modules (no_std compatible)
 pub mod crc;
 pub mod n81;
 pub mod packet;
-pub mod decode;
-pub mod ffi;
-pub mod live;
 pub mod error;
+pub mod ffi;
+
+// std-only modules
+#[cfg(feature = "std")]
+pub mod decode;
+#[cfg(feature = "std")]
+pub mod live;
+#[cfg(feature = "std")]
 pub mod serve;
 
 // Re-exports for convenience

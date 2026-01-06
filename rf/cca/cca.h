@@ -166,6 +166,10 @@ typedef struct CcaPacket {
     uintptr_t raw_len;
 } CcaPacket;
 
+extern void *malloc(uintptr_t size);
+
+extern void free(void *ptr);
+
 /**
  * Create a new CCA decoder instance
  *

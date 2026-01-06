@@ -1103,14 +1103,14 @@ class ESP32Controller:
 def cmd_serve(args):
     """Start local web server with CCA Playground API."""
     try:
-        from flask import Flask, jsonify, request, Response, send_from_directory
+        from flask import Flask, jsonify, request, Response
     except ImportError:
         print("Error: Flask not installed. Run: pip install flask")
         sys.exit(1)
 
-    app = Flask(__name__, static_folder='web/dist', static_url_path='')
+    app = Flask(__name__)
 
-    # CORS headers for development (Vite dev server runs on different port)
+    # CORS headers for proxied requests
     @app.after_request
     def add_cors_headers(response):
         response.headers['Access-Control-Allow-Origin'] = '*'
@@ -1122,32 +1122,14 @@ def cmd_serve(args):
     def health():
         return jsonify({'status': 'ok'})
 
-    # Serve React app (production build)
+    # Frontend is served by `cca serve` - this is API-only
     @app.route('/')
     def index():
-        web_dist = os.path.join(os.path.dirname(__file__), 'web', 'dist')
-        if os.path.exists(os.path.join(web_dist, 'index.html')):
-            return send_from_directory(web_dist, 'index.html')
-        return '''<!DOCTYPE html>
-<html>
-<head><title>CCA Playground</title></head>
-<body style="background:#0a0c10;color:#e6edf3;font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;">
-<div style="text-align:center;">
-<h1 style="color:#3b82f6;">CCA Playground API Server</h1>
-<p style="color:#9ca3af;">Frontend not built. Run:</p>
-<pre style="background:#12161c;padding:20px;border-radius:8px;margin-top:20px;color:#22c55e;">cd rf/web && npm install && npm run build</pre>
-<p style="color:#9ca3af;margin-top:20px;">Or for development:</p>
-<pre style="background:#12161c;padding:20px;border-radius:8px;margin-top:10px;color:#22c55e;">cd rf/web && npm install && npm run dev</pre>
-<p style="color:#6b7280;margin-top:10px;font-size:14px;">Then open http://localhost:5173</p>
-</div>
-</body>
-</html>'''
-
-    # Serve static assets from Vite build
-    @app.route('/assets/<path:filename>')
-    def serve_assets(filename):
-        web_dist = os.path.join(os.path.dirname(__file__), 'web', 'dist', 'assets')
-        return send_from_directory(web_dist, filename)
+        return jsonify({
+            'service': 'CCA Playground API',
+            'usage': 'Run `cca serve` for the full web UI',
+            'endpoints': '/api/*'
+        })
 
     # ═══════════════════════════════════════════════════════════════════════════
     # API ENDPOINTS

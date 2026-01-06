@@ -11,6 +11,11 @@
 //!                 ^   ^-----------------------^   ^
 //!               start      data (LSB first)    stop
 
+#[cfg(not(feature = "std"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 /// Get a single bit from packed bytes (MSB-first byte order)
 #[inline]
 fn get_bit(data: &[u8], bit_index: usize) -> bool {

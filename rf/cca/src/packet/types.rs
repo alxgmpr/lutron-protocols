@@ -1,5 +1,12 @@
 //! Packet type definitions for Lutron CCA protocol
 
+#[cfg(not(feature = "std"))]
+use alloc::string::String;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::format;
+
 use serde::{Deserialize, Serialize};
 
 /// Packet type byte values

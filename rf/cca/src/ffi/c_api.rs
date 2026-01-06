@@ -3,8 +3,16 @@
 //! This module provides a stable C ABI for use with ESPHome and other C/C++ projects.
 //! All functions are `extern "C"` and use `#[no_mangle]` for symbol visibility.
 
-use std::os::raw::c_char;
-use std::ptr;
+use core::ffi::c_char;
+use core::ptr;
+use core::slice;
+
+#[cfg(not(feature = "std"))]
+use alloc::boxed::Box;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::format;
 
 use crate::crc;
 use crate::n81;
@@ -130,7 +138,7 @@ pub unsafe extern "C" fn cca_decode_fifo(
     }
 
     let decoder = &*decoder;
-    let data = std::slice::from_raw_parts(fifo_data, len);
+    let data = slice::from_raw_parts(fifo_data, len);
     let out = &mut *packet;
 
     *out = CcaPacket::default();
@@ -171,7 +179,7 @@ pub unsafe extern "C" fn cca_parse_bytes(
     }
 
     let decoder = &*decoder;
-    let data = std::slice::from_raw_parts(bytes, len);
+    let data = slice::from_raw_parts(bytes, len);
     let out = &mut *packet;
 
     *out = CcaPacket::default();
@@ -202,8 +210,8 @@ pub extern "C" fn cca_calc_crc(data: *const u8, len: usize) -> u16 {
     if data.is_null() || len == 0 {
         return 0;
     }
-    let slice = unsafe { std::slice::from_raw_parts(data, len) };
-    crc::calc_crc(slice)
+    let s = unsafe { slice::from_raw_parts(data, len) };
+    crc::calc_crc(s)
 }
 
 /// Verify CRC of a complete packet
@@ -219,8 +227,8 @@ pub extern "C" fn cca_verify_crc(packet: *const u8, len: usize) -> bool {
     if packet.is_null() || len < 24 {
         return false;
     }
-    let slice = unsafe { std::slice::from_raw_parts(packet, len) };
-    crc::verify_crc(slice)
+    let s = unsafe { slice::from_raw_parts(packet, len) };
+    crc::verify_crc(s)
 }
 
 // ============================================================================
@@ -247,7 +255,7 @@ pub unsafe extern "C" fn cca_decode_n81_byte(
         return false;
     }
 
-    let data = std::slice::from_raw_parts(bits, bits_len);
+    let data = slice::from_raw_parts(bits, bits_len);
     match n81::decode_n81_byte(data, bit_offset) {
         Some(b) => {
             *byte_out = b;
@@ -447,7 +455,7 @@ mod tests {
     #[test]
     fn test_packet_type_name() {
         let name = cca_packet_type_name(0x88);
-        let s = unsafe { std::ffi::CStr::from_ptr(name) };
+        let s = unsafe { core::ffi::CStr::from_ptr(name) };
         assert_eq!(s.to_str().unwrap(), "BTN_SHORT_A");
     }
 }

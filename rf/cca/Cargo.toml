@@ -6,20 +6,34 @@ description = "Lutron Clear Connect Type A protocol encoder/decoder"
 license = "MIT"
 
 [lib]
+# lib = rlib (default Rust library)
+# cdylib = C-compatible dynamic library (for Python bindings)
+# staticlib = C-compatible static library (for embedded/FFI)
+# Note: staticlib for embedded requires -Zbuild-std and external panic_handler/allocator
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [[bin]]
 name = "cca"
 path = "src/bin/cca.rs"
+required-features = ["std"]
+
+[features]
+default = ["std"]
+std = ["thiserror/std", "serde/std", "hex/std", "dep:serde_json", "dep:regex"]
+python = ["std", "dep:pyo3"]
+embedded = []  # For ESP32 builds - minimal no_std
 
 [dependencies]
-thiserror = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-regex = "1.10"
-hex = "0.4"
+# Core dependencies (no_std compatible)
+thiserror = { version = "2.0", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
 
-# CLI dependencies (only for non-embedded targets)
+# std-only dependencies
+serde_json = { version = "1.0", optional = true }
+regex = { version = "1.10", optional = true }
+
+# CLI dependencies (only for non-embedded targets with std)
 [target.'cfg(not(target_arch = "xtensa"))'.dependencies]
 clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
@@ -32,10 +46,6 @@ reqwest = { version = "0.12", features = ["stream"] }
 version = "0.23"
 optional = true
 features = ["extension-module", "abi3-py38"]
-
-[features]
-default = []
-python = ["pyo3"]
 
 [build-dependencies]
 cbindgen = "0.26"

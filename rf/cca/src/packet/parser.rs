@@ -2,6 +2,9 @@
 //!
 //! Decodes raw CC1101 FIFO data or already-decoded packet bytes.
 
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
+
 use crate::crc;
 use crate::n81;
 use super::types::*;
