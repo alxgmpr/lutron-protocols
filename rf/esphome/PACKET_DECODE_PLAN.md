@@ -247,14 +247,14 @@ ESP32                          Python Backend
 ## Implementation Phases
 
 ### Phase 1: Safe Threshold Adjustments (Do First)
-- [ ] Increase MIN_PACKET_LEN to 35
-- [ ] Reduce decoder early-exit threshold to 200 bits
-- [ ] Test thoroughly before proceeding
+- [x] Increase MIN_PACKET_LEN to 35
+- [x] Reduce decoder early-exit threshold to 200 bits (Rust decoder handles this)
+- [x] Test thoroughly before proceeding
 
 ### Phase 2: Variable Length Detection
-- [ ] Add packet type -> length mapping
-- [ ] Implement two-pass decode
-- [ ] Handle 53-byte pairing packets properly
+- [x] Add packet type -> length mapping (Rust: get_packet_length())
+- [x] Implement two-pass decode (Rust decoder handles variable lengths)
+- [x] Handle 53-byte pairing packets properly
 
 ### Phase 3: Circular Buffer RX
 - [ ] Implement RxBuffer class
@@ -263,11 +263,11 @@ ESP32                          Python Backend
 
 ### Phase 4: Hardware Optimization
 - [ ] Configure GDO pins for sync detection
-- [ ] Implement auto-RX after TX (MCSM1)
+- [x] Implement auto-RX after TX (MCSM1) - configured TXOFF_MODE=11
 - [ ] Profile and optimize hot paths
 
 ### Phase 5: Unknown Packet Discovery
-- [ ] Log all 0xFA 0xDE packets regardless of type byte
+- [x] Log all 0xFA 0xDE packets regardless of type byte
 - [ ] Capture unknown formats during bridge configuration
 - [ ] Analyze and document new packet types
 
