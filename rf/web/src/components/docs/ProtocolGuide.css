@@ -139,12 +139,6 @@
   font-weight: 500;
 }
 
-.packet-detail {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-}
-
 .detail-empty {
   display: flex;
   align-items: center;
