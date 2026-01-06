@@ -1,6 +1,6 @@
 # Lutron Tools
 
-Tools for hacking Lutron lighting systems: database extraction/modification for RadioRA3 and Homeworks project files, Clear Connect Type A RF transmission via ESP32+CC1101, and a proxy to unlock Homeworks Programming in Lutron Designer.
+Tools for hacking Lutron lighting systems: database extraction/modification for RadioRA3 and Homeworks project files, Clear Connect Type A RF transmission via ESPHome+CC1101, and a proxy to unlock Homeworks Programming in Lutron Designer.
 
 ## What's Here
 
