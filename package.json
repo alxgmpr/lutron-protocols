@@ -1,0 +1,20 @@
+{
+  "name": "lutron-tools",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "npm@11.6.1",
+  "workspaces": [
+    "rf/web",
+    "proxy"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2"
+  }
+}

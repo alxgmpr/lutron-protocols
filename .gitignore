@@ -18,9 +18,10 @@ rf/esphome/**/.piolibdeps/
 # External tools (not part of this repo)
 rtl_433/
 
-# Proxy dependencies
-proxy/node_modules/
-proxy/out.txt
+# Node.js / Turborepo
+node_modules/
+.turbo/
+*.tsbuildinfo
 
 # macOS
 .DS_Store

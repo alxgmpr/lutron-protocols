@@ -1,5 +1,5 @@
 {
-  "name": "cca-playground",
+  "name": "@lutron-tools/web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
