@@ -5,7 +5,7 @@
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Button commands (ON/OFF/RAISE/LOWER/FAVORITE) | Working | Direct-paired 5-button Pico |
-| Scene Pico buttons | Partial | ~70% reliability |
+| Scene Pico buttons | Working | All 4-button variants |
 | Level commands (0-100%) | Working | Bridge-paired devices |
 | Fake state reports | Working | Spoof dimmer level to bridge |
 | Beacon mode | Working | Use AF902C01 as load ID |
@@ -13,36 +13,37 @@
 | Pairing as 5-button Pico | Working | Direct pair to dimmers |
 | Pairing as 2-button paddle | Working | FAV acts as ON |
 | Pairing as 4-button R/L | Working | Direct pair |
-| Pairing as 4-button scene | Not working | See below |
+| Pairing as 4-button scene | Working | Direct pair |
+| **Bridge pairing** | **Not working** | See below |
 
 ## Open Issues
 
-### Scene Pico Pairing
+### ESP32 as Load Device (Dimmer/Switch)
 
-Pairing as a 4-button scene Pico does not work. The dimmer does not accept the pairing even though packets match captured real Pico data.
+ESP32 cannot pair to a real bridge as a load device (dimmer/switch) to receive commands.
 
-Working configs:
-- 5-button: B9/BB, byte10=0x04, bytes37-38=0x02-0x06
-- 2-button paddle: B9/BB, byte10=0x04, byte31=0x08, bytes37-38=0x01-0x01
-- 4-button R/L: B9/BB, byte10=0x0B, byte30=0x02, bytes37-38=0x02-0x21
+**Goal:** Bridge sends level commands, ESP32 responds as if it were a dimmer.
 
-Not working:
-- 4-button scene standard: B8/BA, byte10=0x0B, byte30=0x04, bytes37-38=0x02-0x27
-- 4-button scene custom: B9/BB, byte10=0x0B, byte30=0x04, bytes37-38=0x02-0x28
+**Challenge:** Likely requires responding to bridge pairing queries with correct handshake/crypto.
 
-### Scene Pico Commands Intermittent
+**Investigation needed:**
+- Capture bridge <-> dimmer pairing sequence
+- Identify what responses the bridge expects from a dimmer during pairing
+- Check for challenge/response or certificate exchange
 
-Scene Pico button emulation works ~70% of time. Some presses are ignored by the bridge.
+### ESP32 as Bridge
 
-Workaround: Press multiple times.
+ESP32 cannot act as a bridge that real dimmers pair to.
 
-The 4-button Raise/Lower Pico works flawlessly, suggesting the issue is bridge pairing config rather than RF transmission.
+**Goal:** Real Lutron dimmers pair to our ESP32, which can then control them.
 
-### RX Decode Failures with 4-Button Picos
+**Challenge:** Need to emit correct beacon/pairing packets that dimmers recognize and respond to.
 
-When receiving from 4-button picos, decoder sometimes fails. Raw FIFO shows garbage instead of proper N81-encoded data. Happens on every 4-button press (at least one failure per burst). Does not happen with 5-button picos.
-
-Impact: Low - most packets decode correctly.
+**Investigation needed:**
+- Capture real bridge beacon sequence during pairing mode
+- Capture dimmer's response to bridge pairing
+- Identify the full handshake sequence
+- Check if dimmers validate bridge identity
 
 ## Button Codes Reference
 
