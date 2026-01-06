@@ -13,8 +13,8 @@ import {
   PicoButtons,
   SaveFavorite,
   BridgeLevel,
-  BridgeBeacon,
   BridgeUnpair,
+  BridgePairing,
   DeviceState,
   DeviceConfig,
   ResetPico
@@ -146,7 +146,7 @@ function App() {
     const unlabeledIds = Object.entries(devices)
       .filter(([, device]) => !device.label)
       .map(([id]) => id)
-    
+
     if (unlabeledIds.length === 0) {
       showStatus('No unlabeled devices to clear', '')
       return
@@ -158,6 +158,19 @@ function App() {
     loadDevices()
     showStatus(`Cleared ${unlabeledIds.length} unlabeled device(s)`, 'success')
   }, [devices, del, loadDevices, showStatus])
+
+  const dumpLogs = useCallback(async () => {
+    try {
+      const result = await postJson('/api/logs/dump', {}) as { status: string; filepath?: string; log_count?: number; error?: string }
+      if (result.status === 'ok' && result.filepath) {
+        showStatus(`Logs saved: ${result.filepath} (${result.log_count} entries)`, 'success')
+      } else {
+        showStatus(result.error || 'Failed to dump logs', 'error')
+      }
+    } catch (err) {
+      showStatus(`Failed to dump logs: ${err}`, 'error')
+    }
+  }, [postJson, showStatus])
 
   // Device registration is now handled by polling only
   // The backend stores devices when packets are received via the API
@@ -180,8 +193,8 @@ function App() {
           <SaveFavorite showStatus={showStatus} />
           <BridgeLevel showStatus={showStatus} />
           <DeviceConfig showStatus={showStatus} />
-          <BridgeBeacon showStatus={showStatus} />
           <BridgeUnpair showStatus={showStatus} />
+          <BridgePairing showStatus={showStatus} />
           <DeviceState showStatus={showStatus} />
           <ResetPico showStatus={showStatus} />
         </section>
@@ -201,6 +214,7 @@ function App() {
               >
                 {allPacketsPaused && pausedLogs ? 'Resume All' : 'Pause All'}
               </button>
+              <button className="dump-logs-btn" onClick={dumpLogs}>Dump Logs</button>
               <button className="clear-all-btn" onClick={() => { clearAllPackets(); clearLogs(); }}>Clear All</button>
             </div>
           </div>

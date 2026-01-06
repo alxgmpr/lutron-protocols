@@ -93,7 +93,8 @@
 }
 
 .pause-all-btn,
-.clear-all-btn {
+.clear-all-btn,
+.dump-logs-btn {
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
@@ -125,6 +126,12 @@
 .clear-all-btn:hover {
   background: #ef5350;
   border-color: #ef5350;
+  color: white;
+}
+
+.dump-logs-btn:hover {
+  background: #2196f3;
+  border-color: #2196f3;
   color: white;
 }
 

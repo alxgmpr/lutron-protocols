@@ -64,10 +64,10 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", pkt.raw[i]);
   }
 
-  // Log in simple JSON format - include CRC status for debugging
+  // Log in simple JSON format with timestamp - include CRC status for debugging
   // Backend can decide whether to filter bad CRC packets
-  ESP_LOGI(TAG, "RX: {\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d,\"crc_ok\":%s}",
-           hex, rssi, (int)pkt.raw_len, pkt.crc_valid ? "true" : "false");
+  ESP_LOGI(TAG, "RX: {\"t\":%lu,\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d,\"crc_ok\":%s}",
+           millis(), hex, rssi, (int)pkt.raw_len, pkt.crc_valid ? "true" : "false");
 }
 
 void LutronCC1101::dump_config() {
@@ -83,11 +83,23 @@ void LutronCC1101::loop() {
     this->radio_.check_rx();
   }
 
-  // Continuous pairing beacon transmission
+  // Continuous pairing beacon transmission with RX gaps
   if (this->pairing_active_) {
     uint32_t now = millis();
+
+    // RX gap: after every 8 beacons, pause for 200ms to listen for B0 discovery
+    if (this->pairing_beacon_count_ >= 8) {
+      if (now - this->last_pairing_beacon_ >= 200) {  // 200ms RX gap
+        this->pairing_beacon_count_ = 0;  // Reset counter, resume beaconing
+        ESP_LOGD(TAG, "RX gap complete, resuming beacons");
+      }
+      // During RX gap, just poll RX (already done above)
+      return;
+    }
+
     if (now - this->last_pairing_beacon_ >= 65) {  // ~65ms interval like working beacon
       this->last_pairing_beacon_ = now;
+      this->pairing_beacon_count_++;
 
       // Construct device ID from subnet for send_beacon_single
       // For subnet 0x2C90, we want packet bytes: AF 90 2C 00
@@ -131,7 +143,7 @@ void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
     }
     pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", packet[i]);
   }
-  ESP_LOGI(TAG, "TX: {\"bytes\":\"%s\",\"len\":%d}", hex, (int)len);
+  ESP_LOGI(TAG, "TX: {\"t\":%lu,\"bytes\":\"%s\",\"len\":%d}", millis(), hex, (int)len);
 
   uint8_t tx_buffer[128];
 
@@ -1837,6 +1849,7 @@ void LutronCC1101::start_bridge_pairing(uint16_t subnet) {
   this->pairing_active_ = true;
   this->pairing_subnet_ = subnet;
   this->pairing_seq_ = 1;
+  this->pairing_beacon_count_ = 0;
   this->last_pairing_beacon_ = 0;  // Force immediate first beacon
 
   ESP_LOGI(TAG, "Continuous pairing beacons started. Devices should flash.");
@@ -2078,6 +2091,428 @@ void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zon
   ESP_LOGI(TAG, "=== PAIRING SEQUENCE COMPLETE ===");
   ESP_LOGI(TAG, "Device 0x%08X should now respond to zone 0x06%04X%02X",
            factory_id, subnet, zone_suffix);
+}
+
+// ========== BRIDGE PAIRING PROTOCOL IMPLEMENTATIONS ==========
+
+void LutronCC1101::send_config_packet(uint8_t type, uint32_t bridge_zone_id,
+                                       uint32_t target_hw_id, uint32_t assigned_load_id) {
+  ESP_LOGI(TAG, "=== CONFIG PACKET 0x%02X ===", type);
+  ESP_LOGI(TAG, "Bridge zone: 0x%08X, Target: 0x%08X, Load ID: 0x%08X",
+           bridge_zone_id, target_hw_id, assigned_load_id);
+
+  // Validate type
+  if (type != 0xA1 && type != 0xA2 && type != 0xA3) {
+    ESP_LOGW(TAG, "Invalid config type 0x%02X, using 0xA1", type);
+    type = 0xA1;
+  }
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // Real bridge captures show different formats for A1 vs A2/A3:
+  // A1: 0x70 format with device link
+  // A2: 0x50 format with config params: 05 04 01 01 00 03
+  // A3: 0x50 format with config params: 0C 04 3B 92 00 03
+  packet[0] = type;
+  packet[1] = this->pairing_seq_;
+
+  // Bridge zone ID - little-endian
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x0F;  // Config format
+  packet[8] = 0x00;
+
+  // Target device ID - big-endian
+  packet[9] = (target_hw_id >> 24) & 0xFF;
+  packet[10] = (target_hw_id >> 16) & 0xFF;
+  packet[11] = (target_hw_id >> 8) & 0xFF;
+  packet[12] = target_hw_id & 0xFF;
+
+  packet[13] = 0xFE;
+  packet[14] = 0x06;
+
+  if (type == 0xA1) {
+    // A1: Device link format (0x70)
+    // From capture: A1 01 AD 90 2C 00 21 0F 00 06 FE 43 B1 FE 06 70 01 08 51 24 C9 00 00 CC
+    packet[15] = 0x70;
+    packet[16] = 0x01;
+    // Link to assigned load ID (or bridge zone as controller)
+    packet[17] = (assigned_load_id >> 24) & 0xFF;
+    packet[18] = (assigned_load_id >> 16) & 0xFF;
+    packet[19] = (assigned_load_id >> 8) & 0xFF;
+    packet[20] = assigned_load_id & 0xFF;
+    packet[21] = 0x00;
+    packet[22] = 0x00;  // 0x70 format ends with 00 00 CC
+    packet[23] = 0xCC;
+  } else if (type == 0xA2) {
+    // A2: Config parameters format (0x50)
+    // From capture: A2 01 AD 90 2C 00 21 0F 00 06 FE 43 B1 FE 06 50 00 05 04 01 01 00 03 CC
+    packet[15] = 0x50;
+    packet[16] = 0x00;
+    packet[17] = 0x05;
+    packet[18] = 0x04;
+    packet[19] = 0x01;
+    packet[20] = 0x01;
+    packet[21] = 0x00;
+    packet[22] = 0x03;  // 0x50 format ends with 00 03 CC
+    packet[23] = 0xCC;
+  } else {  // A3
+    // A3: Config parameters format (0x50)
+    // From capture: A3 01 AD 90 2C 00 21 0F 00 06 FE 43 B1 FE 06 50 00 0C 04 3B 92 00 03 CC
+    packet[15] = 0x50;
+    packet[16] = 0x00;
+    packet[17] = 0x0C;
+    packet[18] = 0x04;
+    packet[19] = 0x3B;
+    packet[20] = 0x92;
+    packet[21] = 0x00;
+    packet[22] = 0x03;  // 0x50 format ends with 00 03 CC
+    packet[23] = 0xCC;
+  }
+
+  // NOTE: Config packets don't use CRC - they use fixed endings
+  // 0x70 format: 00 00 CC
+  // 0x50 format: 00 03 CC
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence by 6 (standard CCA pattern)
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+void LutronCC1101::send_device_link(uint8_t type, uint32_t bridge_zone_id,
+                                     uint32_t target_hw_id, uint32_t linked_device_id,
+                                     uint8_t slot) {
+  ESP_LOGI(TAG, "=== DEVICE LINK 0x%02X (slot %d) ===", type, slot);
+  ESP_LOGI(TAG, "Bridge zone: 0x%08X, Target: 0x%08X, Link to: 0x%08X",
+           bridge_zone_id, target_hw_id, linked_device_id);
+
+  // Validate type (only A1 and A3 can have device link format)
+  if (type != 0xA1 && type != 0xA3) {
+    ESP_LOGW(TAG, "Invalid device link type 0x%02X, must be A1 or A3", type);
+    return;
+  }
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // Device link format (0x70)
+  // From capture: A3 01 AD 90 2C 00 21 0F 00 06 FE 43 B1 FE 06 70 00 04 D0 B5 91 00 00 CC
+  packet[0] = type;
+  packet[1] = this->pairing_seq_;
+
+  // Bridge zone ID - little-endian
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x0F;  // Config format
+  packet[8] = 0x00;
+
+  // Target device ID - big-endian
+  packet[9] = (target_hw_id >> 24) & 0xFF;
+  packet[10] = (target_hw_id >> 16) & 0xFF;
+  packet[11] = (target_hw_id >> 8) & 0xFF;
+  packet[12] = target_hw_id & 0xFF;
+
+  packet[13] = 0xFE;
+  packet[14] = 0x06;
+  packet[15] = 0x70;  // Device link format
+  packet[16] = slot;  // Link slot (0 or 1)
+
+  // Linked device ID - big-endian
+  packet[17] = (linked_device_id >> 24) & 0xFF;
+  packet[18] = (linked_device_id >> 16) & 0xFF;
+  packet[19] = (linked_device_id >> 8) & 0xFF;
+  packet[20] = linked_device_id & 0xFF;
+
+  packet[21] = 0x00;
+  packet[22] = 0x00;  // 0x70 format ends with 00 00 CC
+  packet[23] = 0xCC;
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence by 6 (standard CCA pattern)
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+void LutronCC1101::send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t target_hw_id, uint16_t subnet) {
+  ESP_LOGI(TAG, "=== TARGETED BEACON 0x93 (format 0x0D) ===");
+  ESP_LOGI(TAG, "Zone: 0x%08X, Target: 0x%08X, Subnet: 0x%04X", bridge_zone_id, target_hw_id, subnet);
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // From REAL RadioRA3 capture: 93 01 AD 90 2C 00 21 0D 00 06 FE 43 B1 FE 08 06 90 2C 1A 04 06 CC
+  // This targeted beacon acknowledges the discovered device
+  packet[0] = 0x93;
+  packet[1] = this->pairing_seq_;
+
+  // Bridge zone ID - little-endian
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x0D;  // TARGETED format (not 0x0C broadcast)
+  packet[8] = 0x00;
+
+  // Target device ID - big-endian
+  packet[9] = (target_hw_id >> 24) & 0xFF;
+  packet[10] = (target_hw_id >> 16) & 0xFF;
+  packet[11] = (target_hw_id >> 8) & 0xFF;
+  packet[12] = target_hw_id & 0xFF;
+
+  packet[13] = 0xFE;
+  packet[14] = 0x08;  // Different from broadcast 0x02
+  packet[15] = 0x06;  // Device type (dimmer)
+
+  // Subnet - big-endian
+  packet[16] = (subnet >> 8) & 0xFF;
+  packet[17] = subnet & 0xFF;
+
+  packet[18] = 0x1A;
+  packet[19] = 0x04;
+  packet[20] = 0x06;  // Device type again
+  packet[21] = 0xCC;
+
+  // CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+void LutronCC1101::send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t target_hw_id) {
+  ESP_LOGI(TAG, "=== ZONE ASSIGNMENT 0x82 ===");
+  ESP_LOGI(TAG, "Zone: 0x%08X, Target: 0x%08X", bridge_zone_id, target_hw_id);
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // From REAL RadioRA3 capture: 82 C3 AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01 CC CC CC CC CC F2 47
+  // This is the targeted zone assignment that makes the dimmer flash!
+  packet[0] = 0x82;
+  packet[1] = this->pairing_seq_;
+
+  // Bridge zone ID - little-endian
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x09;  // Targeted state format (NOT 0x0A broadcast)
+  packet[8] = 0x00;
+
+  // Target device ID - big-endian (the dimmer we're assigning)
+  packet[9] = (target_hw_id >> 24) & 0xFF;
+  packet[10] = (target_hw_id >> 16) & 0xFF;
+  packet[11] = (target_hw_id >> 8) & 0xFF;
+  packet[12] = target_hw_id & 0xFF;
+
+  packet[13] = 0xFE;
+
+  // State bytes from capture: 02 02 01
+  packet[14] = 0x02;
+  packet[15] = 0x02;
+  packet[16] = 0x01;
+
+  // Rest is CC padding, CRC at end
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+void LutronCC1101::send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id) {
+  ESP_LOGI(TAG, "=== STATE REPORT 0x83 ===");
+  ESP_LOGI(TAG, "From zone: 0x%08X, To device: 0x%08X", bridge_zone_id, target_hw_id);
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // From REAL bridge capture: 83 01 AD 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 59 C4
+  // Format 0x0A with BROADCAST target (FF FF FF FF FF)
+  packet[0] = 0x83;
+  packet[1] = this->pairing_seq_;
+
+  // Bridge zone ID - little-endian
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+
+  packet[6] = 0x21;  // Protocol marker
+  packet[7] = 0x0A;  // Broadcast state report format (NOT 0x09)
+  packet[8] = 0x00;
+
+  // BROADCAST target - FF FF FF FF FF (not specific device)
+  packet[9] = 0xFF;
+  packet[10] = 0xFF;
+  packet[11] = 0xFF;
+  packet[12] = 0xFF;
+  packet[13] = 0xFF;
+
+  // State bytes from capture
+  packet[14] = 0x09;
+  packet[15] = 0x06;
+  packet[16] = 0x00;
+  packet[17] = 0x00;
+
+  // Calculate CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence by 6
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+void LutronCC1101::send_handshake_response(uint8_t dimmer_type, uint16_t subnet) {
+  // Validate dimmer sent odd type (C1, C7, CD, D3, D9, DF)
+  if ((dimmer_type & 0x01) == 0) {
+    ESP_LOGW(TAG, "Expected odd handshake type, got 0x%02X", dimmer_type);
+    return;
+  }
+
+  // Bridge responds with dimmer_type + 1 (even type)
+  uint8_t response_type = dimmer_type + 1;
+
+  ESP_LOGI(TAG, "=== HANDSHAKE RESPONSE 0x%02X ===", response_type);
+  ESP_LOGI(TAG, "Responding to dimmer 0x%02X with 0x%02X", dimmer_type, response_type);
+
+  uint8_t packet[24];
+  memset(packet, 0x00, sizeof(packet));
+
+  // From capture: C2 26 90 2C 62 70 D0 FE 00 00 00 FE FE 00 00 00 00 00 FE 19 FE 00 XX XX
+  packet[0] = response_type;
+  packet[1] = this->pairing_seq_;
+
+  // Subnet - little-endian in first two bytes of device ID field
+  packet[2] = subnet & 0xFF;
+  packet[3] = (subnet >> 8) & 0xFF;
+
+  // Handshake payload pattern from captures
+  packet[4] = 0x62;
+  packet[5] = 0x70;
+  packet[6] = 0xD0;
+  packet[7] = 0xFE;
+  packet[8] = 0x00;
+  packet[9] = 0x00;
+  packet[10] = 0x00;
+  packet[11] = 0xFE;
+  packet[12] = 0xFE;
+  packet[13] = 0x00;
+  packet[14] = 0x00;
+  packet[15] = 0x00;
+  packet[16] = 0x00;
+  packet[17] = 0x00;
+  packet[18] = 0xFE;
+  packet[19] = 0x19;
+  packet[20] = 0xFE;
+  packet[21] = 0x00;
+
+  // Calculate CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+
+  // Increment sequence by 6
+  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+}
+
+uint8_t LutronCC1101::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq) {
+  ESP_LOGD(TAG, "Beacon 0x%02X, subnet 0x%04X, seq 0x%02X", beacon_type, subnet, seq);
+
+  // Validate beacon type
+  if (beacon_type != 0x91 && beacon_type != 0x92 && beacon_type != 0x93) {
+    ESP_LOGW(TAG, "Invalid beacon type 0x%02X, using 0x92", beacon_type);
+    beacon_type = 0x92;
+  }
+
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  // From capture: 93 XX AF 90 2C 00 21 08 00 FF FF FF FF FF 08 01 CC CC CC CC CC CC XX XX
+  packet[0] = beacon_type;
+  packet[1] = seq;
+
+  // Zone ID with alternating suffix (AF/AD)
+  static bool zone_toggle = false;
+  packet[2] = zone_toggle ? 0xAD : 0xAF;
+  zone_toggle = !zone_toggle;
+
+  // Subnet - little-endian
+  packet[3] = subnet & 0xFF;
+  packet[4] = (subnet >> 8) & 0xFF;
+  packet[5] = 0x00;
+
+  packet[6] = 0x21;  // Protocol marker
+
+  // Format byte differs by beacon type
+  if (beacon_type == 0x93) {
+    packet[7] = 0x08;  // Initial beacon format
+  } else {
+    packet[7] = 0x0C;  // Active beacon format (0x91, 0x92)
+  }
+  packet[8] = 0x00;
+
+  // Broadcast address
+  packet[9] = 0xFF;
+  packet[10] = 0xFF;
+  packet[11] = 0xFF;
+  packet[12] = 0xFF;
+  packet[13] = 0xFF;
+
+  packet[14] = 0x08;
+
+  // Mode byte differs by beacon type
+  if (beacon_type == 0x93) {
+    packet[15] = 0x01;  // Initial
+  } else if (beacon_type == 0x91) {
+    packet[15] = 0x02;  // Active pairing
+  } else {
+    packet[15] = 0x02;  // 0x92 active or 0x04 for stop
+  }
+
+  // Additional zone info for 0x91/0x92
+  if (beacon_type != 0x93) {
+    packet[16] = subnet & 0xFF;
+    packet[17] = (subnet >> 8) & 0xFF;
+    packet[18] = 0x1A;
+    packet[19] = 0x04;
+  }
+
+  // Calculate CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+
+  // Return next sequence (increment by 6)
+  return (seq + 6) % 0x48;
 }
 
 }  // namespace lutron_cc1101

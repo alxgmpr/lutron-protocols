@@ -167,8 +167,13 @@ impl PacketParser {
             PacketType::PairingBA | PacketType::PairingBB | PacketType::PairingB0 => {
                 self.parse_pairing_packet(packet, bytes);
             }
-            PacketType::PairRespC0 | PacketType::PairRespC1 |
-            PacketType::PairRespC2 | PacketType::PairRespC8 => {
+            PacketType::PairRespC0 |
+            PacketType::HandshakeC1 | PacketType::HandshakeC2 |
+            PacketType::HandshakeC7 | PacketType::HandshakeC8 |
+            PacketType::HandshakeCD | PacketType::HandshakeCE |
+            PacketType::HandshakeD3 | PacketType::HandshakeD4 |
+            PacketType::HandshakeD9 | PacketType::HandshakeDA |
+            PacketType::HandshakeDF | PacketType::HandshakeE0 => {
                 self.parse_pairing_response(packet, bytes);
             }
             _ => {

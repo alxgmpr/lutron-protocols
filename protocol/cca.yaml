@@ -7,6 +7,28 @@ meta:
   version: "1.0.0"
   description: "RF protocol for RadioRA3, Homeworks QSX, Caseta Pro"
 
+# Device ID Structure
+#
+# Device IDs are 32-bit values with specific structure depending on device type:
+#
+# Pico remotes (button packets):
+#   - Use big-endian format
+#   - Hardware ID printed on label (e.g., 0x0595E68D)
+#
+# Bridge zones:
+#   - Use little-endian format
+#   - Structure: 0x00 | zone_bytes | suffix
+#   - Example: 0x002C90AD = bridge zone in zone 902C, suffix AD
+#
+# Dimmer load IDs (after pairing):
+#   - Use little-endian format
+#   - Structure: 0x06 | zone_bytes | suffix
+#   - Example: 0x062C9080 = dimmer in zone 902C, suffix 80
+#   - Dimmer reports using assigned load ID, not hardware ID
+#
+# The zone_bytes portion (e.g., 2C 90 = 902C big-endian) is shared between
+# the bridge and all devices paired to that zone.
+
 # RF Physical Layer
 rf:
   frequency_hz: 433602844
@@ -212,6 +234,38 @@ packet_types:
     device_id_endian: little
     inherits: STATE_RPT_81
 
+  # Dimmer state report during pairing (24 bytes)
+  STATE_80:
+    value: 0x80
+    length: 24
+    category: STATE
+    description: "Dimmer state report (pairing phase)"
+    device_id_endian: little
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: zone_id,   offset: 3,  size: 2, format: hex }
+      - { name: protocol,  offset: 5,  size: 1, format: hex }
+      - { name: fixed,     offset: 6,  size: 2, format: hex }
+      - { name: state,     offset: 8,  size: 14, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  # Configuration packets (24 bytes)
+  CONFIG_A1:
+    value: 0xA1
+    length: 24
+    category: CONFIG
+    description: "Configuration packet (pairing)"
+    device_id_endian: little
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: device_id, offset: 2,  size: 4, format: device_id }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex }
+      - { name: data,      offset: 8,  size: 14, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
   # Set level command (24 bytes, special format)
   SET_LEVEL:
     value: 0xA2
@@ -233,7 +287,7 @@ packet_types:
       - { name: crc,       offset: 22, size: 2, format: hex }
 
   # Beacon packets (24 bytes)
-  BEACON:
+  BEACON_91:
     value: 0x91
     length: 24
     category: BEACON
@@ -255,31 +309,40 @@ packet_types:
     category: BEACON
     description: "Beacon stop"
     device_id_endian: big
-    inherits: BEACON
+    inherits: BEACON_91
 
   BEACON_93:
     value: 0x93
     length: 24
     category: BEACON
-    description: "Beacon variant"
+    description: "Initial pairing beacon"
     device_id_endian: big
-    inherits: BEACON
+    inherits: BEACON_91
 
   # Pairing packets (53 bytes)
+  # DIMMER_DISCOVERY (0xB0) - Dimmer announces itself during bridge pairing
   PAIR_B0:
     value: 0xB0
     length: 53
     category: PAIRING
-    description: "Device announcement"
+    description: "Dimmer discovery (announces hardware ID to bridge)"
     device_id_endian: big
     fields:
-      - { name: type,       offset: 0,  size: 1, format: hex }
-      - { name: sequence,   offset: 1,  size: 1, format: decimal }
-      - { name: device_id,  offset: 2,  size: 4, format: device_id_be }
-      - { name: protocol,   offset: 6,  size: 1, format: hex }
-      - { name: format,     offset: 7,  size: 1, format: hex }
-      - { name: data,       offset: 8,  size: 43, format: hex }
-      - { name: crc,        offset: 51, size: 2, format: hex }
+      - { name: type,        offset: 0,  size: 1, format: hex }
+      - { name: sequence,    offset: 1,  size: 1, format: decimal }
+      - { name: flags,       offset: 2,  size: 1, format: hex }
+      - { name: zone_id,     offset: 3,  size: 2, format: hex, description: "Bridge zone ID" }
+      - { name: pair_flag,   offset: 5,  size: 1, format: hex, description: "0x7F during pairing" }
+      - { name: protocol,    offset: 6,  size: 1, format: hex }
+      - { name: format,      offset: 7,  size: 1, format: hex }
+      - { name: reserved,    offset: 8,  size: 1, format: hex }
+      - { name: broadcast,   offset: 9,  size: 5, format: hex, description: "FF FF FF FF FF" }
+      - { name: fixed,       offset: 14, size: 2, format: hex }
+      - { name: hardware_id, offset: 16, size: 4, format: device_id_be, description: "Dimmer hardware ID" }
+      - { name: device_type, offset: 20, size: 1, format: hex, description: "0x04=dimmer" }
+      - { name: caps,        offset: 21, size: 10, format: hex, description: "Device capabilities" }
+      - { name: padding,     offset: 31, size: 20, format: hex }
+      - { name: crc,         offset: 51, size: 2, format: hex }
 
   PAIR_B8:
     value: 0xB8
@@ -347,27 +410,109 @@ packet_types:
       - { name: data,      offset: 8,  size: 14, format: hex }
       - { name: crc,       offset: 22, size: 2, format: hex }
 
-  PAIR_RESP_C1:
+  # Handshake packets - 6-round exchange between dimmer and bridge
+  # Dimmer sends odd types (C1, C7, CD, D3, D9, DF), bridge sends even (C2, C8, CE, D4, DA, E0)
+  # Each side increments by 6 (same as sequence byte increment)
+
+  # Round 1
+  HS_C1:
     value: 0xC1
     length: 24
     category: HANDSHAKE
-    description: "Pairing response phase 1"
+    description: "Handshake round 1 (dimmer)"
     device_id_endian: big
     inherits: PAIR_RESP_C0
 
-  PAIR_RESP_C2:
+  HS_C2:
     value: 0xC2
     length: 24
     category: HANDSHAKE
-    description: "Pairing response phase 2"
+    description: "Handshake round 1 (bridge)"
     device_id_endian: big
     inherits: PAIR_RESP_C0
 
-  PAIR_RESP_C8:
+  # Round 2
+  HS_C7:
+    value: 0xC7
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 2 (dimmer)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  HS_C8:
     value: 0xC8
     length: 24
     category: HANDSHAKE
-    description: "Pairing acknowledgment"
+    description: "Handshake round 2 (bridge)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  # Round 3
+  HS_CD:
+    value: 0xCD
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 3 (dimmer)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  HS_CE:
+    value: 0xCE
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 3 (bridge)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  # Round 4
+  HS_D3:
+    value: 0xD3
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 4 (dimmer)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  HS_D4:
+    value: 0xD4
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 4 (bridge)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  # Round 5
+  HS_D9:
+    value: 0xD9
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 5 (dimmer)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  HS_DA:
+    value: 0xDA
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 5 (bridge)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  # Round 6
+  HS_DF:
+    value: 0xDF
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 6 (dimmer)"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  HS_E0:
+    value: 0xE0
+    length: 24
+    category: HANDSHAKE
+    description: "Handshake round 6 (bridge)"
     device_id_endian: big
     inherits: PAIR_RESP_C0
 
@@ -451,7 +596,7 @@ sequences:
     params:
       - { name: subnet, type: u16 }
     steps:
-      - { packet: BEACON, count: null, interval_ms: 65 }  # Repeat for duration
+      - { packet: BEACON_91, count: null, interval_ms: 65 }  # Repeat for duration
 
   pico_pairing:
     description: "Pico pairing announcement"

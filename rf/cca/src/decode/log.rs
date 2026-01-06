@@ -4,7 +4,9 @@ use std::path::Path;
 use std::io::{BufRead, BufReader};
 use std::fs::File;
 use regex::Regex;
+use serde::Deserialize;
 use crate::error::Result;
+use crate::packet::PacketType;
 
 /// Parsed log entry
 #[derive(Debug, Clone)]
@@ -17,7 +19,80 @@ pub struct LogEntry {
     pub sequence: u8,
     pub rssi: i8,
     pub crc_ok: bool,
+    pub raw_bytes: Vec<u8>,
     pub raw_line: String,
+}
+
+/// JSON format from ESP32 RX logs
+#[derive(Debug, Deserialize)]
+struct JsonRxPacket {
+    bytes: String,
+    rssi: i8,
+    len: usize,
+    crc_ok: bool,
+}
+
+/// Parse hex string like "93 01 AD 90 2C 00" into bytes
+fn parse_hex_bytes(s: &str) -> Vec<u8> {
+    s.split_whitespace()
+        .filter_map(|hex| u8::from_str_radix(hex, 16).ok())
+        .collect()
+}
+
+/// Extract packet info from raw bytes
+fn extract_packet_info(bytes: &[u8]) -> (String, String, Option<String>, Option<u8>, u8) {
+    if bytes.is_empty() {
+        return (String::new(), String::new(), None, None, 0);
+    }
+
+    let type_byte = bytes[0];
+    let pkt_type = PacketType::from_byte(type_byte);
+    let packet_type = if pkt_type != PacketType::Unknown {
+        pkt_type.name().to_string()
+    } else {
+        format!("0x{:02X}", type_byte)
+    };
+
+    let sequence = bytes.get(1).copied().unwrap_or(0);
+
+    // Extract device ID based on packet type
+    let device_id = match type_byte {
+        // Beacon types - zone ID at bytes 3-4
+        0x91 | 0x92 | 0x93 => {
+            if bytes.len() > 4 {
+                format!("{:02X}{:02X}", bytes[3], bytes[4])
+            } else {
+                String::new()
+            }
+        }
+        // B0 - dimmer discovery: hardware ID at bytes 16-19
+        0xB0 => {
+            if bytes.len() > 19 {
+                format!("{:02X}{:02X}{:02X}{:02X}", bytes[16], bytes[17], bytes[18], bytes[19])
+            } else {
+                String::new()
+            }
+        }
+        // 0x80-0x8F, 0xA0-0xAF - standard packets: device ID at bytes 3-6
+        _ => {
+            if bytes.len() > 6 {
+                format!("{:02X}{:02X}{:02X}{:02X}", bytes[3], bytes[4], bytes[5], bytes[6])
+            } else {
+                String::new()
+            }
+        }
+    };
+
+    // Extract level if present (for STATE_RPT, SET_LEVEL)
+    let level = match type_byte {
+        0x81 | 0x82 | 0x83 | 0xA2 => {
+            // Level usually at byte 10 for state reports
+            bytes.get(10).map(|&b| ((b as u16) * 100 / 255) as u8)
+        }
+        _ => None,
+    };
+
+    (packet_type, device_id, None, level, sequence)
 }
 
 /// Decode an ESPHome log file and extract packet entries
@@ -25,12 +100,16 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
-    // Regex patterns for different packet types
+    // Regex for parsed format:
     // RX: STATE_RPT | 002C90AF | Level=100% | Seq=61 | RSSI=-44 | CRC=OK
-    // RX: SET_LEVEL | 002C90AD -> FE6ADF07 | Level=7% | Seq=1 | RSSI=-59 | CRC=BAD
-    // RX: BTN_SHORT_A | 0595E68D | ON PRESS | Seq=6 | RSSI=-45 | CRC=OK
-    let rx_pattern = Regex::new(
-        r"\[(\d{2}:\d{2}:\d{2}\.\d{3})\].*RX: (\w+) \| ([0-9A-F]{8})(?:\s*->\s*([0-9A-F]{8}))?(?: \| (?:Level=(\d+)%|(\w+)\s+(\w+)))? \| Seq=(\d+) \| RSSI=(-?\d+) \| CRC=(\w+)"
+    let rx_parsed = Regex::new(
+        r"\[(\d{2}:\d{2}:\d{2}(?:\.\d{3})?)\].*RX: (\w+) \| ([0-9A-F]{8})(?:\s*->\s*([0-9A-F]{8}))?(?: \| (?:Level=(\d+)%|(\w+)\s+(\w+)))? \| Seq=(\d+) \| RSSI=(-?\d+) \| CRC=(\w+)"
+    ).unwrap();
+
+    // Regex for JSON format:
+    // RX: {"bytes":"93 01 AD ...","rssi":-59,"len":24,"crc_ok":true}
+    let rx_json = Regex::new(
+        r"\[(\d{2}:\d{2}:\d{2}(?:\.\d{3})?)\].*RX: (\{.+\})"
     ).unwrap();
 
     let mut entries = Vec::new();
@@ -38,7 +117,33 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
     for line in reader.lines() {
         let line = line?;
 
-        if let Some(caps) = rx_pattern.captures(&line) {
+        // Try JSON format first (newer)
+        if let Some(caps) = rx_json.captures(&line) {
+            let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let json_str = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+            if let Ok(pkt) = serde_json::from_str::<JsonRxPacket>(json_str) {
+                let bytes = parse_hex_bytes(&pkt.bytes);
+                let (packet_type, device_id, target_id, level, sequence) = extract_packet_info(&bytes);
+
+                entries.push(LogEntry {
+                    timestamp,
+                    packet_type,
+                    device_id,
+                    target_id,
+                    level,
+                    sequence,
+                    rssi: pkt.rssi,
+                    crc_ok: pkt.crc_ok,
+                    raw_bytes: bytes,
+                    raw_line: line,
+                });
+            }
+            continue;
+        }
+
+        // Fall back to parsed format
+        if let Some(caps) = rx_parsed.captures(&line) {
             let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             let packet_type = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
             let device_id = caps.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
@@ -57,6 +162,7 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
                 sequence,
                 rssi,
                 crc_ok,
+                raw_bytes: Vec::new(),
                 raw_line: line,
             });
         }

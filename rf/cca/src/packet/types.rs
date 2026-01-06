@@ -20,17 +20,20 @@ pub enum PacketType {
     ButtonLongB = 0x8B,
 
     // State report packets (24 bytes) - format byte determines actual type
+    StateReport80 = 0x80,  // Dimmer state report during pairing
     StateReport81 = 0x81,
     StateReport82 = 0x82,
     StateReport83 = 0x83,
 
     // Level/config commands (24 bytes)
+    ConfigA1 = 0xA1,  // Configuration packet (pairing)
     Level = 0xA2,
     ConfigA3 = 0xA3,
 
     // Beacon packets (24 bytes)
-    Beacon = 0x91,
+    Beacon91 = 0x91,
     BeaconStop = 0x92,
+    Beacon93 = 0x93,  // Initial pairing beacon
 
     // Pairing announcements (53 bytes)
     // B9/BB: Direct-pair capable (5-button, 2-button, raise/lower)
@@ -43,9 +46,21 @@ pub enum PacketType {
 
     // Pairing responses from devices (24 bytes)
     PairRespC0 = 0xC0,
-    PairRespC1 = 0xC1,
-    PairRespC2 = 0xC2,
-    PairRespC8 = 0xC8,
+
+    // Handshake packets - dimmer sends odd (C1, C7, CD, D3, D9, DF), bridge sends even (C2, C8, CE, D4, DA, E0)
+    // Each side increments by 6 (same as sequence byte increment)
+    HandshakeC1 = 0xC1,  // Dimmer round 1
+    HandshakeC2 = 0xC2,  // Bridge round 1
+    HandshakeC7 = 0xC7,  // Dimmer round 2
+    HandshakeC8 = 0xC8,  // Bridge round 2
+    HandshakeCD = 0xCD,  // Dimmer round 3
+    HandshakeCE = 0xCE,  // Bridge round 3
+    HandshakeD3 = 0xD3,  // Dimmer round 4
+    HandshakeD4 = 0xD4,  // Bridge round 4
+    HandshakeD9 = 0xD9,  // Dimmer round 5
+    HandshakeDA = 0xDA,  // Bridge round 5
+    HandshakeDF = 0xDF,  // Dimmer round 6
+    HandshakeE0 = 0xE0,  // Bridge round 6
 
     // Virtual types (assigned during decode based on format byte)
     Unpair = 0xF0,
@@ -60,26 +75,38 @@ impl PacketType {
     /// Parse type byte to PacketType enum
     pub fn from_byte(byte: u8) -> Self {
         match byte {
+            0x80 => Self::StateReport80,
+            0x81 => Self::StateReport81,
+            0x82 => Self::StateReport82,
+            0x83 => Self::StateReport83,
             0x88 => Self::ButtonShortA,
             0x89 => Self::ButtonLongA,
             0x8A => Self::ButtonShortB,
             0x8B => Self::ButtonLongB,
-            0x81 => Self::StateReport81,
-            0x82 => Self::StateReport82,
-            0x83 => Self::StateReport83,
+            0x91 => Self::Beacon91,
+            0x92 => Self::BeaconStop,
+            0x93 => Self::Beacon93,
+            0xA1 => Self::ConfigA1,
             0xA2 => Self::Level,
             0xA3 => Self::ConfigA3,
-            0x91 => Self::Beacon,
-            0x92 => Self::BeaconStop,
+            0xB0 => Self::PairingB0,
             0xB8 => Self::PairingB8,
             0xB9 => Self::PairingB9,
             0xBA => Self::PairingBA,
             0xBB => Self::PairingBB,
-            0xB0 => Self::PairingB0,
             0xC0 => Self::PairRespC0,
-            0xC1 => Self::PairRespC1,
-            0xC2 => Self::PairRespC2,
-            0xC8 => Self::PairRespC8,
+            0xC1 => Self::HandshakeC1,
+            0xC2 => Self::HandshakeC2,
+            0xC7 => Self::HandshakeC7,
+            0xC8 => Self::HandshakeC8,
+            0xCD => Self::HandshakeCD,
+            0xCE => Self::HandshakeCE,
+            0xD3 => Self::HandshakeD3,
+            0xD4 => Self::HandshakeD4,
+            0xD9 => Self::HandshakeD9,
+            0xDA => Self::HandshakeDA,
+            0xDF => Self::HandshakeDF,
+            0xE0 => Self::HandshakeE0,
             0xF0 => Self::Unpair,
             0xF1 => Self::UnpairPrep,
             0xF2 => Self::LedConfig,
@@ -94,20 +121,32 @@ impl PacketType {
             Self::ButtonLongA => "BTN_LONG_A",
             Self::ButtonShortB => "BTN_SHORT_B",
             Self::ButtonLongB => "BTN_LONG_B",
+            Self::StateReport80 => "STATE_80",
             Self::StateReport81 | Self::StateReport82 | Self::StateReport83 => "STATE_RPT",
+            Self::ConfigA1 => "CONFIG_A1",
             Self::Level => "SET_LEVEL",
             Self::ConfigA3 => "CONFIG_A3",
-            Self::Beacon => "BEACON",
+            Self::Beacon91 => "BEACON_91",
             Self::BeaconStop => "BEACON_STOP",
+            Self::Beacon93 => "BEACON_93",
+            Self::PairingB0 => "DIMMER_DISC",
             Self::PairingB8 => "PAIR_B8",
             Self::PairingB9 => "PAIR_B9",
             Self::PairingBA => "PAIR_BA",
             Self::PairingBB => "PAIR_BB",
-            Self::PairingB0 => "PAIR_B0",
             Self::PairRespC0 => "PAIR_RESP_C0",
-            Self::PairRespC1 => "PAIR_RESP_C1",
-            Self::PairRespC2 => "PAIR_RESP_C2",
-            Self::PairRespC8 => "PAIR_RESP_C8",
+            Self::HandshakeC1 => "HS_C1",  // Dimmer handshake round 1
+            Self::HandshakeC2 => "HS_C2",  // Bridge handshake round 1
+            Self::HandshakeC7 => "HS_C7",  // Dimmer handshake round 2
+            Self::HandshakeC8 => "HS_C8",  // Bridge handshake round 2
+            Self::HandshakeCD => "HS_CD",  // Dimmer handshake round 3
+            Self::HandshakeCE => "HS_CE",  // Bridge handshake round 3
+            Self::HandshakeD3 => "HS_D3",  // Dimmer handshake round 4
+            Self::HandshakeD4 => "HS_D4",  // Bridge handshake round 4
+            Self::HandshakeD9 => "HS_D9",  // Dimmer handshake round 5
+            Self::HandshakeDA => "HS_DA",  // Bridge handshake round 5
+            Self::HandshakeDF => "HS_DF",  // Dimmer handshake round 6
+            Self::HandshakeE0 => "HS_E0",  // Bridge handshake round 6
             Self::Unpair => "UNPAIR",
             Self::UnpairPrep => "UNPAIR_PREP",
             Self::LedConfig => "LED_CONFIG",
@@ -135,7 +174,34 @@ impl PacketType {
 
     /// Check if this type uses big-endian device ID
     pub fn uses_big_endian_device_id(&self) -> bool {
-        self.is_button() || self.is_pairing() || matches!(self, Self::PairRespC0 | Self::PairRespC1 | Self::PairRespC2 | Self::PairRespC8)
+        self.is_button() || self.is_pairing() || self.is_handshake() || matches!(self, Self::PairRespC0)
+    }
+
+    /// Check if this is a handshake packet type
+    pub fn is_handshake(&self) -> bool {
+        matches!(self,
+            Self::HandshakeC1 | Self::HandshakeC2 | Self::HandshakeC7 | Self::HandshakeC8 |
+            Self::HandshakeCD | Self::HandshakeCE | Self::HandshakeD3 | Self::HandshakeD4 |
+            Self::HandshakeD9 | Self::HandshakeDA | Self::HandshakeDF | Self::HandshakeE0)
+    }
+
+    /// Check if this is a dimmer handshake packet (odd types: C1, C7, CD, D3, D9, DF)
+    pub fn is_dimmer_handshake(&self) -> bool {
+        matches!(self,
+            Self::HandshakeC1 | Self::HandshakeC7 | Self::HandshakeCD |
+            Self::HandshakeD3 | Self::HandshakeD9 | Self::HandshakeDF)
+    }
+
+    /// Check if this is a bridge handshake packet (even types: C2, C8, CE, D4, DA, E0)
+    pub fn is_bridge_handshake(&self) -> bool {
+        matches!(self,
+            Self::HandshakeC2 | Self::HandshakeC8 | Self::HandshakeCE |
+            Self::HandshakeD4 | Self::HandshakeDA | Self::HandshakeE0)
+    }
+
+    /// Check if this is a beacon type
+    pub fn is_beacon(&self) -> bool {
+        matches!(self, Self::Beacon91 | Self::BeaconStop | Self::Beacon93)
     }
 }
 

@@ -309,6 +309,78 @@ class LutronCC1101 : public Component,
    */
   void send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, uint32_t target_device_id);
 
+  // ========== BRIDGE PAIRING PROTOCOL (complete handshake) ==========
+
+  /**
+   * @brief Send A1/A2/A3 config packet during bridge pairing
+   * Used in Phase 3 to assign load ID to a discovered dimmer
+   * @param type Packet type (0xA1, 0xA2, or 0xA3)
+   * @param bridge_zone_id Bridge zone ID (e.g., 0x002C90AD), sent little-endian
+   * @param target_hw_id Target dimmer's hardware ID (e.g., 0x06FE43B1), sent big-endian
+   * @param assigned_load_id Load ID to assign (e.g., 0x085124C9), sent big-endian
+   */
+  void send_config_packet(uint8_t type, uint32_t bridge_zone_id, uint32_t target_hw_id, uint32_t assigned_load_id);
+
+  /**
+   * @brief Send A1/A3 device link packet with 0x70 format
+   * Used to link a dimmer to a controller device (pico, bridge zone, etc)
+   * Real bridge sends A3 with slot 0 first, then A1 with slot 1
+   * @param type Packet type (0xA1 or 0xA3)
+   * @param bridge_zone_id Bridge zone ID (source, little-endian)
+   * @param target_hw_id Target dimmer HW ID (bytes 9-12, big-endian)
+   * @param linked_device_id Device to link (bytes 17-20, big-endian)
+   * @param slot Link slot number (byte 16: 0x00 or 0x01)
+   */
+  void send_device_link(uint8_t type, uint32_t bridge_zone_id, uint32_t target_hw_id,
+                        uint32_t linked_device_id, uint8_t slot);
+
+  /**
+   * @brief Send 0x93 targeted beacon to acknowledge discovered device
+   * This is sent after B0 discovery, BEFORE the 0x82 zone assignment.
+   * From capture: 93 01 AD 90 2C 00 21 0D 00 06 FE 43 B1 FE 08 06 90 2C 1A 04 06 CC
+   * @param bridge_zone_id Bridge zone ID (little-endian in packet)
+   * @param target_hw_id Target dimmer's hardware ID (big-endian in packet)
+   * @param subnet 16-bit subnet ID
+   */
+  void send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t target_hw_id, uint16_t subnet);
+
+  /**
+   * @brief Send 0x82 zone assignment packet (makes dimmer flash!)
+   * This targeted packet tells the dimmer it's being assigned to a zone.
+   * From capture: 82 C3 AF 90 2C 00 21 09 00 06 FE 43 B1 FE 02 02 01
+   * @param bridge_zone_id Bridge zone ID (little-endian in packet)
+   * @param target_hw_id Target dimmer's hardware ID (big-endian in packet)
+   */
+  void send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t target_hw_id);
+
+  /**
+   * @brief Send 0x83 state report during pairing finalization (Phase 4)
+   * Sent from bridge zone to dimmer to confirm zone assignment
+   * @param bridge_zone_id Bridge zone ID (e.g., 0x002C90AD or 0x002C90AF)
+   * @param target_hw_id Target dimmer's hardware ID
+   */
+  void send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id);
+
+  /**
+   * @brief Send handshake response packet during Phase 5
+   * Bridge responds to dimmer's Cx packet with Cx+1
+   * Dimmer sends: C1, C7, CD, D3, D9, DF (odd types)
+   * Bridge responds: C2, C8, CE, D4, DA, E0 (even types)
+   * @param dimmer_type The packet type received from dimmer
+   * @param subnet 16-bit subnet ID
+   */
+  void send_handshake_response(uint8_t dimmer_type, uint16_t subnet);
+
+  /**
+   * @brief Send beacon with specific type for pairing phases
+   * Phase 1a: 0x93 (initial), Phase 1b: 0x91, Phase 1c: 0x92
+   * @param beacon_type 0x93, 0x91, or 0x92
+   * @param subnet 16-bit subnet
+   * @param seq Sequence number (will be updated)
+   * @return Next sequence number
+   */
+  uint8_t send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq);
+
   /**
    * @brief Transmit a raw packet (public for YAML lambda access)
    */
@@ -329,6 +401,7 @@ class LutronCC1101 : public Component,
   bool pairing_active_{false};
   uint16_t pairing_subnet_{0};
   uint8_t pairing_seq_{0};
+  uint8_t pairing_beacon_count_{0};  // Counter for RX gap timing
   uint32_t last_rx_check_{0};
   uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
 };

@@ -78,6 +78,11 @@ log_last_received = 0  # Timestamp of last actual log received from ESP32
 LOG_THREAD_TIMEOUT = 30  # Consider thread dead if no heartbeat for this many seconds
 LOG_STALE_TIMEOUT = 60  # Consider connection stale if no logs for this long
 
+# Log history buffer for dump functionality (max 10000 entries)
+log_history = []
+log_history_lock = threading.Lock()
+LOG_HISTORY_MAX = 10000
+
 # Device database - now uses SQLite via database module
 import os
 
@@ -117,10 +122,10 @@ def register_device(device_id: str, device_type: str, info: Dict):
 
 
 # Regex patterns for parsing ESP32 logs (JSON format)
-# New format: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
-# New format: TX: {"bytes":"81 00 01...","len":24}
-RX_JSON_PATTERN = re.compile(r'RX:\s*\{"bytes":"([^"]+)","rssi":(-?\d+),"len":(\d+)(?:,"crc_ok":(true|false))?\}')
-TX_JSON_PATTERN = re.compile(r'TX:\s*\{"bytes":"([^"]+)","len":(\d+)\}')
+# Format: RX: {"t":12345,"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
+# Format: TX: {"t":12345,"bytes":"81 00 01...","len":24}
+RX_JSON_PATTERN = re.compile(r'RX:\s*\{"t":(\d+),"bytes":"([^"]+)","rssi":(-?\d+),"len":(\d+)(?:,"crc_ok":(true|false))?\}')
+TX_JSON_PATTERN = re.compile(r'TX:\s*\{"t":(\d+),"bytes":"([^"]+)","len":(\d+)\}')
 
 # Legacy patterns (for backwards compatibility during transition)
 RX_PATTERN = re.compile(r'RX:\s+(\S+)\s+\|\s*(.+)')
@@ -544,16 +549,13 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
     bytes_list = raw_hex.split() if raw_hex else []
     parsed_fields = parse_packet_fields(bytes_list, packet_type) if bytes_list else []
 
-    # Calculate subnet and id_format BEFORE storing/streaming
+    # Calculate subnet BEFORE storing/streaming
     # This ensures the packet queue gets the correct data
     decoded_data = pkt_data.get('decoded_data', {})
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
-        # Determine ID format based on packet type:
-        # - STATE_RPT/LEVEL: little-endian, contains subnet
-        # - BTN_*/PAIRING: big-endian, matches printed label
-        id_format = 'subnet' if packet_type in ('STATE_RPT', 'LEVEL') else 'label'
-        decoded_data['id_format'] = id_format
-        decoded_data['packet_type'] = packet_type
+        # Determine if this packet type uses subnet-style IDs (little-endian, contains subnet)
+        # vs label-style IDs (big-endian, matches printed label)
+        is_subnet_style = packet_type in ('STATE_RPT', 'LEVEL')
 
         # Extract subnet from the appropriate ID:
         # - For LEVEL packets: extract from source_id (bridge), not target (device)
@@ -562,7 +564,7 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
         # Subnet displayed big-endian (as in Lutron Designer): SubnetHi + SubnetLo
         source_id = pkt_data.get('source_id')
         subnet_source = source_id if packet_type == 'LEVEL' else device_id
-        if id_format == 'subnet' and subnet_source and len(subnet_source) == 8:
+        if is_subnet_style and subnet_source and len(subnet_source) == 8:
             subnet_lo = subnet_source[2:4]  # bytes 1
             subnet_hi = subnet_source[4:6]  # bytes 2
             subnet = (subnet_hi + subnet_lo).upper()  # Big-endian for display
@@ -597,10 +599,23 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
             'details': decoded_data,
             'fields': parsed_fields,  # Full field breakdown for frontend display
             'raw_hex': raw_hex,
-            'rssi': pkt_data.get('rssi')
+            'rssi': pkt_data.get('rssi'),
+            'esp_t': decoded_data.get('esp_t')
         })
     except queue.Full:
         pass
+
+    # Route to bridge pairing orchestrator if active
+    if _bridge_pairing and _bridge_pairing.state not in ('IDLE', 'COMPLETE', 'ERROR'):
+        try:
+            # Convert raw_hex to bytes for orchestrator
+            if raw_hex:
+                raw_bytes = bytes(int(b, 16) for b in raw_hex.split())
+                pkt_type_byte = raw_bytes[0] if raw_bytes else 0
+                rssi = pkt_data.get('rssi')
+                _bridge_pairing.on_rx_packet(pkt_type_byte, raw_bytes, rssi)
+        except Exception as e:
+            print(f"Error routing packet to pairing orchestrator: {e}")
 
     # Update device registry
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
@@ -631,22 +646,28 @@ def _parse_and_store_packet(message: str):
 
         # ========== New JSON format ==========
 
-        # Parse RX JSON: RX: {"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
+        # Parse RX JSON: RX: {"t":12345,"bytes":"83 01 AF...","rssi":-43,"len":24,"crc_ok":true}
         rx_json_match = RX_JSON_PATTERN.search(message)
         if rx_json_match:
-            raw_hex = rx_json_match.group(1)
-            rssi = int(rx_json_match.group(2))
-            # pkt_len = int(rx_json_match.group(3))
-            crc_ok_str = rx_json_match.group(4)  # May be None for old format
+            esp_time = int(rx_json_match.group(1))  # ESP32 millis()
+            raw_hex = rx_json_match.group(2)
+            rssi = int(rx_json_match.group(3))
+            # pkt_len = int(rx_json_match.group(4))
+            crc_ok_str = rx_json_match.group(5)  # May be None for old format
             crc_ok = crc_ok_str != 'false' if crc_ok_str else True  # Default to true for backwards compat
 
             # Parse packet from raw bytes
             bytes_list = raw_hex.split()
             parsed = parse_packet_bytes(bytes_list)
 
-            # Include CRC status in decoded data
+            # Get packet type byte for hex display
+            pkt_type_byte = int(bytes_list[0], 16) if bytes_list else 0
+
+            # Include CRC status and ESP time in decoded data
             decoded_data = parsed['decoded_data']
             decoded_data['crc_ok'] = crc_ok
+            decoded_data['esp_t'] = esp_time
+            decoded_data['type_hex'] = f'0x{pkt_type_byte:02X}'
 
             pkt_data = {
                 'packet_type': parsed['packet_type'],
@@ -663,15 +684,24 @@ def _parse_and_store_packet(message: str):
             _store_rx_packet(pkt_data, raw_hex)
             return
 
-        # Parse TX JSON: TX: {"bytes":"81 00 01...","len":24}
+        # Parse TX JSON: TX: {"t":12345,"bytes":"81 00 01...","len":24}
         tx_json_match = TX_JSON_PATTERN.search(message)
         if tx_json_match:
-            raw_hex = tx_json_match.group(1)
-            # pkt_len = int(tx_json_match.group(2))
+            esp_time = int(tx_json_match.group(1))  # ESP32 millis()
+            raw_hex = tx_json_match.group(2)
+            # pkt_len = int(tx_json_match.group(3))
 
             # Parse packet from raw bytes
             bytes_list = raw_hex.split()
             parsed = parse_packet_bytes(bytes_list)
+
+            # Get packet type byte for hex display
+            pkt_type_byte = int(bytes_list[0], 16) if bytes_list else 0
+
+            # Add ESP time and type hex to decoded data
+            decoded_data = parsed['decoded_data']
+            decoded_data['esp_t'] = esp_time
+            decoded_data['type_hex'] = f'0x{pkt_type_byte:02X}'
 
             # Register device for echo detection
             if parsed['device_id']:
@@ -688,7 +718,7 @@ def _parse_and_store_packet(message: str):
                 source_id=parsed['source_id'],
                 target_id=parsed['target_id'],
                 level=parsed['level'],
-                decoded_data=parsed['decoded_data']
+                decoded_data=decoded_data
             )
 
             # Parse fields for TX packets
@@ -704,10 +734,11 @@ def _parse_and_store_packet(message: str):
                     'source_id': parsed['source_id'],
                     'target_id': parsed['target_id'],
                     'summary': f"{parsed['source_id']} -> {parsed['target_id']}" if parsed['source_id'] and parsed['target_id'] else parsed['device_id'] or '',
-                    'details': parsed['decoded_data'],
+                    'details': decoded_data,
                     'fields': tx_fields,  # Backend-parsed field breakdown
                     'raw_hex': raw_hex,
-                    'rssi': None
+                    'rssi': None,
+                    'esp_t': esp_time
                 })
             except queue.Full:
                 pass
@@ -1098,6 +1129,339 @@ class ESP32Controller:
 
         entity_type, key = entity_info
         self.client.switch_command(key, state)
+
+
+# ============================================================================
+# BRIDGE PAIRING ORCHESTRATOR
+# Python state machine that orchestrates the 5-phase bridge pairing protocol.
+# ESP32 handles TX/RX, Python controls the flow and emits events via SSE.
+# ============================================================================
+
+class BridgePairingOrchestrator:
+    """Orchestrates 5-phase bridge-dimmer pairing sequence.
+
+    Protocol phases:
+      1. BEACON: Broadcast 0x93 -> 0x91 -> 0x92 beacons (~65ms interval)
+      2. AWAIT_B0: Wait for 0xB0 discovery packet from dimmer
+      3. CONFIG: Send 0xA1/A2/A3 config packets to discovered device
+      4. STATE_RPT: Send 0x83 finalization packets
+      5. HANDSHAKE: 6-round C1-E0 exchange (dimmer sends odd, bridge sends even)
+
+    Usage:
+      orchestrator = BridgePairingOrchestrator(subnet=0x2C90)
+      orchestrator.on('device_discovered', lambda hw_id: ...)
+      orchestrator.on('phase_change', lambda phase: ...)
+      orchestrator.on('complete', lambda: ...)
+      await orchestrator.start_pairing()
+    """
+
+    STATES = ['IDLE', 'BEACON', 'AWAIT_B0', 'CONFIG', 'STATE_RPT', 'HANDSHAKE', 'COMPLETE', 'ERROR']
+
+    # Handshake packet types (dimmer sends odd, bridge responds with even)
+    HANDSHAKE_DIMMER = [0xC1, 0xC7, 0xCD, 0xD3, 0xD9, 0xDF]
+    HANDSHAKE_BRIDGE = [0xC2, 0xC8, 0xCE, 0xD4, 0xDA, 0xE0]
+
+    def __init__(self, subnet: int = 0x2C90):
+        self.subnet = subnet
+        self.state = 'IDLE'
+        self.error = None
+
+        # Bridge zone IDs (generated from subnet)
+        # Format: 0x00 | subnet | suffix
+        self.bridge_zone_ad = (subnet << 8) | 0xAD
+        self.bridge_zone_af = (subnet << 8) | 0xAF
+
+        # Discovered devices during pairing
+        self.discovered_devices = []  # List of {hw_id, device_type, rssi, timestamp}
+        self.selected_device = None   # HW ID of device being paired
+
+        # Assigned load ID (generated during config phase)
+        self.assigned_load_id = None
+
+        # Handshake tracking
+        self.handshake_round = 0
+
+        # Event listeners
+        self._listeners = {}
+
+        # Controller instance
+        self._controller = None
+        self._beacon_task = None
+        self._timeout_task = None
+
+    def on(self, event: str, callback):
+        """Register event listener. Events: device_discovered, phase_change, handshake_round, complete, error"""
+        if event not in self._listeners:
+            self._listeners[event] = []
+        self._listeners[event].append(callback)
+
+    def _emit(self, event: str, *args):
+        """Emit event to listeners."""
+        for callback in self._listeners.get(event, []):
+            try:
+                callback(*args)
+            except Exception as e:
+                print(f"Event callback error: {e}")
+
+    def _set_state(self, new_state: str):
+        """Update state and emit phase_change event."""
+        if new_state != self.state:
+            old_state = self.state
+            self.state = new_state
+            self._emit('phase_change', new_state, old_state)
+
+    async def start_pairing(self, duration: int = 60):
+        """Start bridge pairing mode. Broadcasts beacons until B0 received or timeout."""
+        if self.state != 'IDLE':
+            raise RuntimeError(f"Cannot start pairing from state {self.state}")
+
+        self._set_state('BEACON')
+        self.discovered_devices = []
+        self.handshake_round = 0
+        self.error = None
+
+        try:
+            self._controller = ESP32Controller()
+            await self._controller.connect()
+
+            # Start beacon broadcast (runs on ESP32)
+            # Beacons: 0x93 (15 packets) -> 0x91 (20 packets) -> 0x92 (continuous)
+            await self._controller.call_service('start_pairing', subnet=f"0x{self.subnet:04X}")
+
+            # Transition to AWAIT_B0
+            self._set_state('AWAIT_B0')
+
+            # Start timeout timer
+            self._timeout_task = asyncio.create_task(self._timeout_handler(duration))
+
+        except Exception as e:
+            self.error = str(e)
+            self._set_state('ERROR')
+            self._emit('error', str(e))
+            raise
+
+    async def stop_pairing(self):
+        """Stop pairing mode and clean up."""
+        if self._timeout_task:
+            self._timeout_task.cancel()
+            self._timeout_task = None
+
+        if self._controller:
+            try:
+                await self._controller.call_service('stop_pairing', subnet=f"0x{self.subnet:04X}")
+                await self._controller.disconnect()
+            except Exception:
+                pass
+            self._controller = None
+
+        self._set_state('IDLE')
+
+    async def _timeout_handler(self, duration: int):
+        """Handle pairing timeout."""
+        await asyncio.sleep(duration)
+        if self.state in ('BEACON', 'AWAIT_B0', 'CONFIG', 'STATE_RPT', 'HANDSHAKE'):
+            self.error = f"Pairing timeout after {duration}s in state {self.state}"
+            self._set_state('ERROR')
+            self._emit('error', self.error)
+            await self.stop_pairing()
+
+    def on_rx_packet(self, packet_type: int, raw_bytes: bytes, rssi: int = None):
+        """Process received packet during pairing. Called from log parser."""
+        try:
+            if self.state == 'AWAIT_B0' and packet_type == 0xB0:
+                # Dimmer discovery packet - extract HW ID from bytes 16-19 (big-endian)
+                if len(raw_bytes) >= 20:
+                    hw_id = int.from_bytes(raw_bytes[16:20], 'big')
+                    device_type = raw_bytes[20] if len(raw_bytes) > 20 else 0
+                    device_info = {
+                        'hw_id': hw_id,
+                        'hw_id_hex': f'0x{hw_id:08X}',
+                        'device_type': device_type,
+                        'rssi': rssi,
+                        'timestamp': datetime.now().isoformat()
+                    }
+
+                    # Check if already discovered
+                    existing = next((d for d in self.discovered_devices if d['hw_id'] == hw_id), None)
+                    if not existing:
+                        self.discovered_devices.append(device_info)
+                        self._emit('device_discovered', device_info)
+
+            elif self.state == 'HANDSHAKE' and packet_type in self.HANDSHAKE_DIMMER:
+                # Handshake packet from dimmer - track round
+                round_idx = self.HANDSHAKE_DIMMER.index(packet_type)
+                self.handshake_round = round_idx + 1
+                self._emit('handshake_round', self.handshake_round, 6)
+
+                # ESP32 auto-responds with even type
+                # Check if handshake complete
+                if self.handshake_round >= 6:
+                    self._set_state('COMPLETE')
+                    self._emit('complete')
+
+        except Exception as e:
+            print(f"Error processing pairing packet: {e}")
+
+    async def select_device(self, hw_id: int, zone_suffix: int = 0x80):
+        """Select a discovered device and continue pairing with config exchange.
+
+        Args:
+            hw_id: Hardware ID from B0 discovery (e.g., 0x06FE43B1)
+            zone_suffix: Suffix for assigned load ID (default 0x80)
+        """
+        if self.state != 'AWAIT_B0':
+            raise RuntimeError(f"Cannot select device from state {self.state}")
+
+        self.selected_device = hw_id
+
+        # Generate assigned load ID: 0x06 | subnet | suffix
+        # Example: subnet=0x2C90, suffix=0x80 -> 0x062C9080
+        self.assigned_load_id = (0x06 << 24) | (self.subnet << 8) | zone_suffix
+
+        try:
+            # Stop beacon loop before config exchange
+            # This prevents beacons from interfering with config packets
+            await self._controller.call_service('stop_pairing', subnet=f"0x{self.subnet:04X}")
+            await asyncio.sleep(0.2)  # Wait for stop beacons to complete
+
+            # Phase 2.5a: Targeted beacon (0x93 format 0x0D) - acknowledges discovered device
+            # From RadioRA3 capture: this is sent BEFORE the 0x82 zone assignment
+            self._emit('targeted_beacon', f'0x{hw_id:08X}')
+            for _ in range(3):  # Send a few like real bridge does
+                for zone_id in [self.bridge_zone_ad, self.bridge_zone_af]:
+                    await self._controller.call_service(
+                        'send_targeted_beacon_93',
+                        bridge_zone_id=f"0x{zone_id:08X}",
+                        target_hw_id=f"0x{hw_id:08X}",
+                        subnet=f"0x{self.subnet:04X}"
+                    )
+                    await asyncio.sleep(0.065)
+            await asyncio.sleep(0.2)
+
+            # Phase 2.5b: Zone assignment (0x82) - makes dimmer flash!
+            # From RadioRA3 capture: this targeted packet tells dimmer it's assigned to a zone
+            self._emit('zone_assignment', f'0x{hw_id:08X}')
+            for zone_id in [self.bridge_zone_ad, self.bridge_zone_af]:
+                await self._controller.call_service(
+                    'send_zone_assignment_82',
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}"
+                )
+                await asyncio.sleep(0.065)
+            await asyncio.sleep(0.2)  # Wait for dimmer to process
+
+            # Phase 3: Config exchange (A1/A2/A3)
+            self._set_state('CONFIG')
+            await self._send_config_packets(hw_id)
+
+            # Phase 4: State reports (0x83)
+            self._set_state('STATE_RPT')
+            await self._send_state_reports(hw_id)
+
+            # Phase 5: Handshake (wait for dimmer to initiate)
+            self._set_state('HANDSHAKE')
+
+        except Exception as e:
+            self.error = str(e)
+            self._set_state('ERROR')
+            self._emit('error', str(e))
+            raise
+
+    async def _send_config_packets(self, hw_id: int):
+        """Send config packets to target device matching real bridge sequence.
+
+        Real bridge sequence for each zone:
+        1. A3 device link (slot 0) - links dimmer to controller device
+        2. A1 device link (slot 1) - links dimmer to another controller
+        3. A2 config params (0x50 format)
+        4. A3 config params (0x50 format)
+        """
+        # Use bridge zones as linked "controller" devices
+        # Real bridge links to actual picos/keypads, we link to our zones
+        linked_device_slot0 = self.bridge_zone_ad  # First controller
+        linked_device_slot1 = self.bridge_zone_af  # Second controller
+
+        # Send 5 rounds from each zone
+        for round_num in range(5):
+            for zone_id in [self.bridge_zone_ad, self.bridge_zone_af]:
+                # Step 1: A3 device link (slot 0)
+                await self._controller.call_service(
+                    'send_device_link',
+                    link_type=0xA3,
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}",
+                    linked_device_id=f"0x{linked_device_slot0:08X}",
+                    slot=0
+                )
+                await asyncio.sleep(0.065)
+
+                # Step 2: A1 device link (slot 1)
+                await self._controller.call_service(
+                    'send_device_link',
+                    link_type=0xA1,
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}",
+                    linked_device_id=f"0x{linked_device_slot1:08X}",
+                    slot=1
+                )
+                await asyncio.sleep(0.065)
+
+                # Step 3: A2 config params
+                await self._controller.call_service(
+                    'send_config_packet',
+                    config_type=0xA2,
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}",
+                    assigned_load_id=f"0x{self.assigned_load_id:08X}"
+                )
+                await asyncio.sleep(0.065)
+
+                # Step 4: A3 config params
+                await self._controller.call_service(
+                    'send_config_packet',
+                    config_type=0xA3,
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}",
+                    assigned_load_id=f"0x{self.assigned_load_id:08X}"
+                )
+                await asyncio.sleep(0.065)
+
+            await asyncio.sleep(0.1)  # Small pause between rounds
+
+    async def _send_state_reports(self, hw_id: int):
+        """Send 0x83 broadcast state report finalization packets.
+
+        Real bridge sends many broadcast state reports (format 0x0A) to signal
+        pairing completion and trigger dimmer handshake.
+        """
+        # Send 10 state reports from each zone (more than before)
+        for _ in range(10):
+            for zone_id in [self.bridge_zone_ad, self.bridge_zone_af]:
+                await self._controller.call_service(
+                    'send_state_report_83',
+                    bridge_zone_id=f"0x{zone_id:08X}",
+                    target_hw_id=f"0x{hw_id:08X}"
+                )
+                await asyncio.sleep(0.075)
+
+    def get_status(self) -> dict:
+        """Get current pairing status for API response."""
+        return {
+            'state': self.state,
+            'subnet': f'0x{self.subnet:04X}',
+            'bridge_zone_ad': f'0x{self.bridge_zone_ad:08X}',
+            'bridge_zone_af': f'0x{self.bridge_zone_af:08X}',
+            'discovered_devices': self.discovered_devices,
+            'selected_device': f'0x{self.selected_device:08X}' if self.selected_device else None,
+            'assigned_load_id': f'0x{self.assigned_load_id:08X}' if self.assigned_load_id else None,
+            'handshake_round': self.handshake_round,
+            'error': self.error
+        }
+
+
+# Global pairing orchestrator instance (for SSE streaming)
+_bridge_pairing: BridgePairingOrchestrator = None
+_bridge_pairing_events = queue.Queue(maxsize=100)
 
 
 def cmd_serve(args):
@@ -1969,6 +2333,135 @@ def cmd_serve(args):
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 
+    # ========== BRIDGE PAIRING ENDPOINTS ==========
+
+    async def bridge_pair_start_async(subnet: int, duration: int):
+        """Start bridge pairing mode."""
+        global _bridge_pairing
+        if _bridge_pairing and _bridge_pairing.state not in ('IDLE', 'COMPLETE', 'ERROR'):
+            raise RuntimeError(f"Pairing already in progress: {_bridge_pairing.state}")
+
+        _bridge_pairing = BridgePairingOrchestrator(subnet=subnet)
+
+        # Wire up event handlers to push to SSE queue
+        def on_event(event_type, *args):
+            try:
+                event_data = {'type': event_type, 'data': args}
+                _bridge_pairing_events.put_nowait(event_data)
+            except queue.Full:
+                pass
+
+        _bridge_pairing.on('device_discovered', lambda d: on_event('device_discovered', d))
+        _bridge_pairing.on('phase_change', lambda new, old: on_event('phase_change', {'new': new, 'old': old}))
+        _bridge_pairing.on('handshake_round', lambda r, t: on_event('handshake_round', {'round': r, 'total': t}))
+        _bridge_pairing.on('complete', lambda: on_event('complete', {}))
+        _bridge_pairing.on('error', lambda e: on_event('error', {'message': e}))
+
+        await _bridge_pairing.start_pairing(duration=duration)
+
+    async def bridge_pair_stop_async():
+        """Stop bridge pairing mode."""
+        global _bridge_pairing
+        if _bridge_pairing:
+            await _bridge_pairing.stop_pairing()
+
+    async def bridge_pair_select_async(hw_id: int, zone_suffix: int):
+        """Select a discovered device for pairing."""
+        global _bridge_pairing
+        if not _bridge_pairing:
+            raise RuntimeError("No pairing session active")
+        await _bridge_pairing.select_device(hw_id, zone_suffix)
+
+    @app.route('/api/bridge/pair', methods=['POST'])
+    def api_bridge_pair():
+        """Start bridge pairing mode.
+
+        Broadcasts beacons to discover dimmers, then allows selecting one to pair.
+
+        Parameters:
+        - subnet: Subnet ID (default 0x2C90 from your bridge)
+        - duration: Timeout in seconds (default 60)
+
+        Returns SSE stream with events: device_discovered, phase_change, complete, error
+        """
+        try:
+            subnet = parse_hex_int(get_param('subnet', '0x2C90'))
+            duration = int(get_param('duration', '60'))
+
+            asyncio.run(bridge_pair_start_async(subnet, duration))
+
+            return jsonify({
+                'status': 'ok',
+                'subnet': f'0x{subnet:04X}',
+                'bridge_zone_ad': f'0x{(subnet << 8) | 0xAD:08X}',
+                'bridge_zone_af': f'0x{(subnet << 8) | 0xAF:08X}',
+                'duration': duration
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/bridge/pair/stop', methods=['POST'])
+    def api_bridge_pair_stop():
+        """Stop bridge pairing mode."""
+        try:
+            asyncio.run(bridge_pair_stop_async())
+            return jsonify({'status': 'ok'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/bridge/pair/select', methods=['POST'])
+    def api_bridge_pair_select():
+        """Select a discovered device to complete pairing.
+
+        Parameters:
+        - hw_id: Hardware ID from B0 discovery (e.g., 0x06FE43B1)
+        - zone_suffix: Suffix for assigned load ID (default 0x80)
+        """
+        try:
+            hw_id = parse_hex_int(get_param('hw_id', ''))
+            zone_suffix = parse_hex_int(get_param('zone_suffix', '0x80'))
+
+            if not hw_id:
+                return jsonify({'status': 'error', 'error': 'Missing hw_id'}), 400
+
+            asyncio.run(bridge_pair_select_async(hw_id, zone_suffix))
+
+            return jsonify({
+                'status': 'ok',
+                'hw_id': f'0x{hw_id:08X}',
+                'zone_suffix': f'0x{zone_suffix:02X}'
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/bridge/pair/status')
+    def api_bridge_pair_status():
+        """Get current bridge pairing status."""
+        global _bridge_pairing
+        if _bridge_pairing:
+            return jsonify(_bridge_pairing.get_status())
+        return jsonify({
+            'state': 'IDLE',
+            'discovered_devices': [],
+            'error': None
+        })
+
+    @app.route('/api/bridge/pair/events')
+    def api_bridge_pair_events():
+        """SSE stream of bridge pairing events."""
+        def event_stream():
+            while True:
+                try:
+                    event = _bridge_pairing_events.get(timeout=30)
+                    yield f"data: {json.dumps(event)}\n\n"
+                except queue.Empty:
+                    # Send keepalive
+                    yield f"data: {json.dumps({'type': 'keepalive'})}\n\n"
+                except Exception:
+                    break
+
+        return Response(event_stream(), mimetype='text/event-stream')
+
     @app.route('/api/rx/start', methods=['POST'])
     def api_rx_start():
         """Start RX mode."""
@@ -2424,6 +2917,51 @@ def cmd_serve(args):
                     break
         return jsonify({'status': 'ok', 'message': 'Log subscription will restart on next stream connection'})
 
+    @app.route('/api/logs/dump', methods=['POST'])
+    def api_logs_dump():
+        """Dump log history to a temp file.
+
+        Returns the path to the saved file for easy sharing.
+        """
+        import tempfile
+        from datetime import datetime as dt
+
+        with log_history_lock:
+            if not log_history:
+                return jsonify({'status': 'error', 'error': 'No logs in history'}), 400
+
+            # Create temp file with timestamp
+            timestamp = dt.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'esp32_logs_{timestamp}.log'
+            filepath = os.path.join(tempfile.gettempdir(), filename)
+
+            with open(filepath, 'w') as f:
+                for entry in log_history:
+                    time_str = entry.get('time', '')
+                    # Extract just HH:MM:SS from ISO timestamp
+                    if 'T' in time_str:
+                        time_str = time_str.split('T')[1].split('.')[0]
+                    level = entry.get('level', 'I')
+                    msg = entry.get('msg', '')
+                    f.write(f"{time_str} [{level}] {msg}\n")
+
+            log_count = len(log_history)
+
+        return jsonify({
+            'status': 'ok',
+            'filepath': filepath,
+            'filename': filename,
+            'log_count': log_count
+        })
+
+    @app.route('/api/logs/clear', methods=['POST'])
+    def api_logs_clear():
+        """Clear the log history buffer."""
+        with log_history_lock:
+            count = len(log_history)
+            log_history.clear()
+        return jsonify({'status': 'ok', 'cleared': count})
+
     def subscribe_to_logs():
         """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""
         global log_subscription_started, log_thread_heartbeat, log_last_received
@@ -2480,11 +3018,20 @@ def cmd_serve(args):
                             # Parse and store packets in database
                             _parse_and_store_packet(message)
 
-                            log_queue.put_nowait({
+                            log_entry = {
                                 'time': datetime.now().isoformat(),
                                 'level': level_map.get(level_int, 'I'),
                                 'msg': message
-                            })
+                            }
+
+                            # Add to history buffer for dump functionality
+                            with log_history_lock:
+                                log_history.append(log_entry)
+                                # Trim if too large
+                                if len(log_history) > LOG_HISTORY_MAX:
+                                    log_history[:] = log_history[-LOG_HISTORY_MAX:]
+
+                            log_queue.put_nowait(log_entry)
                         except queue.Full:
                             pass
 

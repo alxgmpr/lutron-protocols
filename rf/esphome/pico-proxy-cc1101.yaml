@@ -316,6 +316,106 @@ api:
             ESP_LOGI("service", "send_pair_assignment: subnet=0x%04X factory=0x%08X zone=0x%02X", sub, fid, zone);
             id(lutron_radio)->send_pair_assignment(sub, fid, zone);
 
+    # ========== BRIDGE PAIRING PROTOCOL (Python orchestrated) ==========
+
+    # Send beacon with specific type (0x93=initial, 0x91=active, 0x92=stop)
+    - service: send_bridge_beacon
+      variables:
+        beacon_type: int
+        subnet: string
+        seq: int
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_bridge_beacon: type=0x%02X subnet=0x%04X seq=%d", beacon_type, sub, seq);
+            id(lutron_radio)->send_bridge_beacon(beacon_type, sub, seq);
+
+    # Send A1/A2/A3 config packet (Phase 3)
+    - service: send_config_packet
+      variables:
+        config_type: int
+        bridge_zone_id: string
+        target_hw_id: string
+        assigned_load_id: string
+      then:
+        - lambda: |-
+            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
+            uint32_t load = strtoul(assigned_load_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_config_packet: type=0x%02X zone=0x%08X target=0x%08X load=0x%08X",
+                     config_type, zone, target, load);
+            id(lutron_radio)->send_config_packet(config_type, zone, target, load);
+
+    # Send A1/A3 device link packet with 0x70 format
+    # Real bridge sends A3 slot 0 first, then A1 slot 1
+    - service: send_device_link
+      variables:
+        link_type: int           # 0xA1 or 0xA3
+        bridge_zone_id: string
+        target_hw_id: string
+        linked_device_id: string
+        slot: int                # 0 or 1
+      then:
+        - lambda: |-
+            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
+            uint32_t linked = strtoul(linked_device_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_device_link: type=0x%02X zone=0x%08X target=0x%08X link=0x%08X slot=%d",
+                     link_type, zone, target, linked, slot);
+            id(lutron_radio)->send_device_link(link_type, zone, target, linked, slot);
+
+    # Send 0x93 targeted beacon to acknowledge discovered device
+    # This is sent BEFORE the 0x82 zone assignment
+    - service: send_targeted_beacon_93
+      variables:
+        bridge_zone_id: string
+        target_hw_id: string
+        subnet: string
+      then:
+        - lambda: |-
+            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_targeted_beacon_93: zone=0x%08X target=0x%08X subnet=0x%04X", zone, target, sub);
+            id(lutron_radio)->send_targeted_beacon_93(zone, target, sub);
+
+    # Send 0x82 zone assignment (makes dimmer flash!)
+    # This targeted packet tells the dimmer it's being assigned to a zone
+    - service: send_zone_assignment_82
+      variables:
+        bridge_zone_id: string
+        target_hw_id: string
+      then:
+        - lambda: |-
+            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_zone_assignment_82: zone=0x%08X target=0x%08X", zone, target);
+            id(lutron_radio)->send_zone_assignment_82(zone, target);
+
+    # Send 0x83 state report (Phase 4 finalization)
+    - service: send_state_report_83
+      variables:
+        bridge_zone_id: string
+        target_hw_id: string
+      then:
+        - lambda: |-
+            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
+            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_state_report_83: zone=0x%08X target=0x%08X", zone, target);
+            id(lutron_radio)->send_state_report_83(zone, target);
+
+    # Send handshake response (Phase 5)
+    # Responds to dimmer's Cx packet with Cx+1
+    - service: send_handshake_response
+      variables:
+        dimmer_type: int
+        subnet: string
+      then:
+        - lambda: |-
+            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
+            ESP_LOGI("service", "send_handshake_response: dimmer_type=0x%02X subnet=0x%04X", dimmer_type, sub);
+            id(lutron_radio)->send_handshake_response(dimmer_type, sub);
+
 ota:
   platform: esphome
   password: "test"
