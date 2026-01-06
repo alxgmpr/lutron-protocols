@@ -265,6 +265,78 @@ pub unsafe extern "C" fn cca_decode_n81_byte(
     }
 }
 
+/// Encode a packet with preamble, sync, N81 data, and trailing bits
+///
+/// Output format:
+/// - Preamble: 32 alternating bits (1010...)
+/// - Sync: 0xFF as N81
+/// - Prefix: 0xFA 0xDE as N81
+/// - Payload: data bytes as N81
+/// - Trailing: 16 zero bits
+///
+/// # Arguments
+/// * `payload` - Raw packet bytes (including CRC)
+/// * `payload_len` - Payload length
+/// * `output` - Output buffer for encoded bitstream
+/// * `output_size` - Size of output buffer
+///
+/// # Returns
+/// Number of bytes written to output, or 0 on error
+#[no_mangle]
+pub unsafe extern "C" fn cca_encode_packet(
+    payload: *const u8,
+    payload_len: usize,
+    output: *mut u8,
+    output_size: usize,
+) -> usize {
+    if payload.is_null() || output.is_null() || payload_len == 0 {
+        return 0;
+    }
+
+    let payload_slice = slice::from_raw_parts(payload, payload_len);
+    let encoded = n81::encode_packet(payload_slice);
+
+    if encoded.len() > output_size {
+        return 0; // Buffer too small
+    }
+
+    ptr::copy_nonoverlapping(encoded.as_ptr(), output, encoded.len());
+    encoded.len()
+}
+
+/// Append CRC-16 to payload bytes
+///
+/// # Arguments
+/// * `payload` - Payload bytes (22 or 51 bytes)
+/// * `payload_len` - Payload length
+/// * `output` - Output buffer (must be payload_len + 2 bytes)
+/// * `output_size` - Size of output buffer
+///
+/// # Returns
+/// Number of bytes written (payload_len + 2), or 0 on error
+#[no_mangle]
+pub unsafe extern "C" fn cca_append_crc(
+    payload: *const u8,
+    payload_len: usize,
+    output: *mut u8,
+    output_size: usize,
+) -> usize {
+    if payload.is_null() || output.is_null() || payload_len == 0 {
+        return 0;
+    }
+
+    let required = payload_len + 2;
+    if output_size < required {
+        return 0;
+    }
+
+    let payload_slice = slice::from_raw_parts(payload, payload_len);
+    let with_crc = crc::append_crc(payload_slice);
+
+    ptr::copy_nonoverlapping(with_crc.as_ptr(), output, with_crc.len());
+    with_crc.len()
+}
+
 // ============================================================================
 // Utility functions
 // ============================================================================

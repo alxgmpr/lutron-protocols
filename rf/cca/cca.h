@@ -271,6 +271,47 @@ bool cca_decode_n81_byte(const uint8_t *bits,
                          uint8_t *byte_out);
 
 /**
+ * Encode a packet with preamble, sync, N81 data, and trailing bits
+ *
+ * Output format:
+ * - Preamble: 32 alternating bits (1010...)
+ * - Sync: 0xFF as N81
+ * - Prefix: 0xFA 0xDE as N81
+ * - Payload: data bytes as N81
+ * - Trailing: 16 zero bits
+ *
+ * # Arguments
+ * * `payload` - Raw packet bytes (including CRC)
+ * * `payload_len` - Payload length
+ * * `output` - Output buffer for encoded bitstream
+ * * `output_size` - Size of output buffer
+ *
+ * # Returns
+ * Number of bytes written to output, or 0 on error
+ */
+uintptr_t cca_encode_packet(const uint8_t *payload,
+                            uintptr_t payload_len,
+                            uint8_t *output,
+                            uintptr_t output_size);
+
+/**
+ * Append CRC-16 to payload bytes
+ *
+ * # Arguments
+ * * `payload` - Payload bytes (22 or 51 bytes)
+ * * `payload_len` - Payload length
+ * * `output` - Output buffer (must be payload_len + 2 bytes)
+ * * `output_size` - Size of output buffer
+ *
+ * # Returns
+ * Number of bytes written (payload_len + 2), or 0 on error
+ */
+uintptr_t cca_append_crc(const uint8_t *payload,
+                         uintptr_t payload_len,
+                         uint8_t *output,
+                         uintptr_t output_size);
+
+/**
  * Get human-readable packet type name
  *
  * # Returns
