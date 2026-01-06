@@ -2697,6 +2697,10 @@ Examples:
     level_cmd.add_argument('target', help='Target device ID')
     level_cmd.add_argument('level', type=int, help='Level 0-100')
 
+    # Logs command - stream logs to stdout
+    logs_cmd = subparsers.add_parser('logs', aliases=['l'], help='Stream ESP32 logs to stdout')
+    logs_cmd.add_argument('--host', '-H', default=ESP32_IP, help=f'ESP32 IP (default: {ESP32_IP})')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -2715,8 +2719,56 @@ Examples:
         asyncio.run(cmd_pair(args))
     elif args.command == 'level':
         asyncio.run(cmd_level(args))
+    elif args.command in ['logs', 'l']:
+        asyncio.run(cmd_logs(args))
 
     return 0
+
+
+async def cmd_logs(args):
+    """Stream ESP32 logs to stdout."""
+    import sys
+    host = args.host
+    print(f"Connecting to {host}:{ESP32_PORT}...", file=sys.stderr)
+
+    client = APIClient(
+        host,
+        ESP32_PORT,
+        ESP32_PASSWORD,
+        noise_psk=ESP32_ENCRYPTION_KEY
+    )
+
+    try:
+        await client.connect(login=True)
+        print(f"Connected. Streaming logs (Ctrl+C to stop)...", file=sys.stderr)
+
+        def on_log(msg):
+            level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
+            level_int = msg.level if isinstance(msg.level, int) else 3
+            level = level_map.get(level_int, 'I')
+
+            message = msg.message if hasattr(msg, 'message') else str(msg)
+            if isinstance(message, bytes):
+                message = message.decode('utf-8', errors='replace')
+            # Strip ANSI escape codes
+            message = re.sub(r'\x1b\[[0-9;]*m', '', message)
+
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            print(f"{timestamp} [{level}] {message}", flush=True)
+
+        client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
+
+        # Keep running
+        while True:
+            await asyncio.sleep(1)
+
+    except KeyboardInterrupt:
+        print("\nDisconnecting...", file=sys.stderr)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        await client.disconnect()
 
 
 if __name__ == '__main__':
