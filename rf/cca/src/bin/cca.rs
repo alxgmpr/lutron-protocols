@@ -11,6 +11,7 @@ use cca::decode::{decode_log_file, summarize_log, LogEntry};
 use cca::live::LiveStream;
 use cca::serve::{start_server, ServerConfig};
 use cca::crc;
+use cca::codegen;
 
 #[derive(Parser)]
 #[command(name = "cca")]
@@ -82,6 +83,25 @@ enum Commands {
         #[arg(short, long)]
         static_dir: Option<PathBuf>,
     },
+
+    /// Generate protocol code from YAML definition
+    Codegen {
+        /// Protocol YAML file
+        #[arg(short, long, default_value = "protocol/cca.yaml")]
+        input: PathBuf,
+
+        /// Output directory
+        #[arg(short, long, default_value = "protocol/generated")]
+        output: PathBuf,
+
+        /// Target languages (comma-separated: rust,c,ts,py,md)
+        #[arg(short, long)]
+        targets: Option<String>,
+
+        /// Check if files are up-to-date (for CI)
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[tokio::main]
@@ -103,6 +123,9 @@ async fn main() {
         }
         Commands::Serve { port, backend_port, host, static_dir } => {
             serve_command(port, backend_port, &host, static_dir).await;
+        }
+        Commands::Codegen { input, output, targets, check } => {
+            codegen_command(&input, &output, targets.as_deref(), check);
         }
     }
 }
@@ -351,4 +374,70 @@ fn info_command() {
     println!();
     println!("CRC: Polynomial 0xCA0F (non-standard)");
     println!("Encoding: N81 (start=0, 8 data LSB-first, stop=1)");
+}
+
+fn codegen_command(input: &PathBuf, output: &PathBuf, targets_str: Option<&str>, check: bool) {
+    // Parse target list
+    let targets: Vec<codegen::Target> = match targets_str {
+        Some(s) => {
+            s.split(',')
+                .filter_map(|t| codegen::Target::from_str(t.trim()))
+                .collect()
+        }
+        None => codegen::Target::all().to_vec(),
+    };
+
+    if targets.is_empty() {
+        eprintln!("No valid targets specified");
+        eprintln!("Valid targets: rust, c, ts, py, md");
+        std::process::exit(1);
+    }
+
+    // Load protocol definition
+    let protocol = match codegen::load_protocol(input) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to load protocol file '{}': {}", input.display(), e);
+            std::process::exit(1);
+        }
+    };
+
+    if check {
+        // Check mode - verify files are up-to-date
+        match codegen::check(&protocol, output, &targets) {
+            Ok(true) => {
+                println!("All generated files are up-to-date");
+            }
+            Ok(false) => {
+                eprintln!("Generated files are out of date. Run 'cca codegen' to regenerate.");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("Check failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        // Generate mode
+        match codegen::generate(&protocol, output, &targets) {
+            Ok(()) => {
+                println!("Generated files:");
+                for target in &targets {
+                    let target_dir = output.join(target.output_dir());
+                    let filename = match target {
+                        codegen::Target::Rust => "mod.rs",
+                        codegen::Target::C => "cca_protocol.h",
+                        codegen::Target::TypeScript => "protocol.ts",
+                        codegen::Target::Python => "cca_protocol.py",
+                        codegen::Target::Markdown => "PROTOCOL.md",
+                    };
+                    println!("  {}", target_dir.join(filename).display());
+                }
+            }
+            Err(e) => {
+                eprintln!("Code generation failed: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }

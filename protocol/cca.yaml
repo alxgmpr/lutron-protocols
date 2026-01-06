@@ -1,0 +1,512 @@
+# Lutron Clear Connect Type A (CCA) Protocol Definition
+# Source of truth for all generated code
+# Run: cca codegen
+
+meta:
+  name: "Lutron Clear Connect Type A"
+  version: "1.0.0"
+  description: "RF protocol for RadioRA3, Homeworks QSX, Caseta Pro"
+
+# RF Physical Layer
+rf:
+  frequency_hz: 433602844
+  deviation_hz: 41200
+  baud_rate: 62484.7
+  modulation: "2-FSK"
+  encoding: "N81"  # Async serial: 1 start, 8 data (LSB first), 1 stop
+
+# CRC Configuration
+crc:
+  polynomial: 0xCA0F
+  width: 16
+  initial: 0x0000
+  byte_order: big_endian
+
+# Packet Framing
+framing:
+  preamble_bits: 32
+  preamble_pattern: 0xAAAAAAAA
+  sync_byte: 0xFF
+  prefix: [0xFA, 0xDE]
+  trailing_bits: 16
+
+# Timing Constants (milliseconds)
+timing:
+  button_repeat_ms: 70
+  beacon_interval_ms: 65
+  pairing_interval_ms: 75
+  level_report_ms: 60
+  unpair_interval_ms: 60
+  led_config_interval_ms: 75
+
+# Sequence number behavior (constant across all packet types)
+sequence:
+  increment: 6
+  wrap: 0x48
+
+# Packet Lengths
+lengths:
+  standard: 24
+  pairing: 53
+
+# Field Format Types
+field_formats:
+  hex:
+    description: "Raw hex byte(s)"
+  decimal:
+    description: "Decimal integer"
+  device_id:
+    description: "32-bit device ID, little-endian"
+    size: 4
+    endian: little
+  device_id_be:
+    description: "32-bit device ID, big-endian"
+    size: 4
+    endian: big
+  level_byte:
+    description: "Single byte level (0x00-0xFE = 0-100%)"
+    size: 1
+    divisor: 254
+  level_16bit:
+    description: "16-bit level (0x0000-0xFEFF = 0-100%)"
+    size: 2
+    endian: big
+    divisor: 65279
+  button:
+    description: "Button code"
+    enum_ref: button
+  action:
+    description: "Action code"
+    enum_ref: action
+
+# Enumerations
+enums:
+  button:
+    description: "Button code values"
+    values:
+      ON:       { value: 0x02, description: "5-button ON / top" }
+      FAVORITE: { value: 0x03, description: "5-button FAV / middle" }
+      OFF:      { value: 0x04, description: "5-button OFF / bottom" }
+      RAISE:    { value: 0x05, description: "5-button RAISE" }
+      LOWER:    { value: 0x06, description: "5-button LOWER" }
+      SCENE4:   { value: 0x08, description: "4-button bottom" }
+      SCENE3:   { value: 0x09, description: "4-button third" }
+      SCENE2:   { value: 0x0A, description: "4-button second" }
+      SCENE1:   { value: 0x0B, description: "4-button top" }
+      RESET:    { value: 0xFF, description: "Reset/unpair" }
+
+  action:
+    description: "Button action codes"
+    values:
+      PRESS:   { value: 0x00 }
+      RELEASE: { value: 0x01 }
+      HOLD:    { value: 0x02, description: "Continuous hold for dimming" }
+      SAVE:    { value: 0x03, description: "Save favorite/scene" }
+
+  category:
+    description: "Packet categories for filtering"
+    values:
+      BUTTON: { description: "Button press/release from Pico" }
+      STATE: { description: "Dimmer/switch state reports" }
+      BEACON: { description: "Pairing beacons" }
+      PAIRING: { description: "Pairing announcements" }
+      CONFIG: { description: "Device configuration" }
+      HANDSHAKE: { description: "Pairing responses" }
+
+  device_class:
+    description: "Device class codes (byte 28 in pairing)"
+    values:
+      DIMMER: { value: 0x04 }
+      SWITCH: { value: 0x05 }
+      FAN: { value: 0x06 }
+      SHADE: { value: 0x0A }
+      KEYPAD: { value: 0x0B }
+
+# Packet Type Definitions
+packet_types:
+  # Button packets (24 bytes)
+  BTN_SHORT_A:
+    value: 0x88
+    length: 24
+    category: BUTTON
+    description: "Button press, short format, group A"
+    device_id_endian: big
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: device_id, offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,  offset: 6,  size: 1, format: hex, description: "Always 0x21" }
+      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for short" }
+      - { name: fixed,     offset: 8,  size: 2, format: hex }
+      - { name: button,    offset: 10, size: 1, format: button }
+      - { name: action,    offset: 11, size: 1, format: action }
+      - { name: padding,   offset: 12, size: 10, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  BTN_LONG_A:
+    value: 0x89
+    length: 24
+    category: BUTTON
+    description: "Button press, long format, group A"
+    device_id_endian: big
+    fields:
+      - { name: type,          offset: 0,  size: 1, format: hex }
+      - { name: sequence,      offset: 1,  size: 1, format: decimal }
+      - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,      offset: 6,  size: 1, format: hex }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for long" }
+      - { name: fixed,         offset: 8,  size: 2, format: hex }
+      - { name: button,        offset: 10, size: 1, format: button }
+      - { name: action,        offset: 11, size: 1, format: action }
+      - { name: device_repeat, offset: 12, size: 4, format: device_id_be }
+      - { name: button_data,   offset: 16, size: 6, format: hex }
+      - { name: crc,           offset: 22, size: 2, format: hex }
+
+  BTN_SHORT_B:
+    value: 0x8A
+    length: 24
+    category: BUTTON
+    description: "Button press, short format, group B"
+    device_id_endian: big
+    inherits: BTN_SHORT_A
+
+  BTN_LONG_B:
+    value: 0x8B
+    length: 24
+    category: BUTTON
+    description: "Button press, long format, group B"
+    device_id_endian: big
+    inherits: BTN_LONG_A
+
+  # State report packets (24 bytes)
+  STATE_RPT_81:
+    value: 0x81
+    length: 24
+    category: STATE
+    description: "State report (type 81)"
+    device_id_endian: little
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: device_id, offset: 2,  size: 4, format: device_id }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex }
+      - { name: fixed,     offset: 8,  size: 3, format: hex }
+      - { name: level,     offset: 11, size: 1, format: level_byte }
+      - { name: padding,   offset: 12, size: 10, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  STATE_RPT_82:
+    value: 0x82
+    length: 24
+    category: STATE
+    description: "State report (type 82)"
+    device_id_endian: little
+    inherits: STATE_RPT_81
+
+  STATE_RPT_83:
+    value: 0x83
+    length: 24
+    category: STATE
+    description: "State report (type 83)"
+    device_id_endian: little
+    inherits: STATE_RPT_81
+
+  # Set level command (24 bytes, special format)
+  SET_LEVEL:
+    value: 0xA2
+    length: 24
+    category: CONFIG
+    description: "Set level command"
+    device_id_endian: little
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: source_id, offset: 2,  size: 4, format: device_id }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex }
+      - { name: fixed,     offset: 8,  size: 1, format: hex }
+      - { name: target_id, offset: 9,  size: 4, format: device_id_be }
+      - { name: fixed2,    offset: 13, size: 3, format: hex }
+      - { name: level,     offset: 16, size: 2, format: level_16bit }
+      - { name: padding,   offset: 18, size: 4, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  # Beacon packets (24 bytes)
+  BEACON:
+    value: 0x91
+    length: 24
+    category: BEACON
+    description: "Pairing beacon"
+    device_id_endian: big
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: load_id,   offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex }
+      - { name: fixed,     offset: 8,  size: 5, format: hex }
+      - { name: broadcast, offset: 13, size: 9, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  BEACON_92:
+    value: 0x92
+    length: 24
+    category: BEACON
+    description: "Beacon stop"
+    device_id_endian: big
+    inherits: BEACON
+
+  BEACON_93:
+    value: 0x93
+    length: 24
+    category: BEACON
+    description: "Beacon variant"
+    device_id_endian: big
+    inherits: BEACON
+
+  # Pairing packets (53 bytes)
+  PAIR_B0:
+    value: 0xB0
+    length: 53
+    category: PAIRING
+    description: "Device announcement"
+    device_id_endian: big
+    fields:
+      - { name: type,       offset: 0,  size: 1, format: hex }
+      - { name: sequence,   offset: 1,  size: 1, format: decimal }
+      - { name: device_id,  offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,   offset: 6,  size: 1, format: hex }
+      - { name: format,     offset: 7,  size: 1, format: hex }
+      - { name: data,       offset: 8,  size: 43, format: hex }
+      - { name: crc,        offset: 51, size: 2, format: hex }
+
+  PAIR_B8:
+    value: 0xB8
+    length: 53
+    category: PAIRING
+    description: "Scene Pico pairing (bridge-only)"
+    device_id_endian: big
+    fields:
+      - { name: type,        offset: 0,  size: 1, format: hex }
+      - { name: sequence,    offset: 1,  size: 1, format: decimal }
+      - { name: device_id,   offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,    offset: 6,  size: 1, format: hex }
+      - { name: format,      offset: 7,  size: 1, format: hex }
+      - { name: fixed,       offset: 8,  size: 2, format: hex }
+      - { name: btn_scheme,  offset: 10, size: 1, format: hex, description: "Button scheme byte" }
+      - { name: fixed2,      offset: 11, size: 2, format: hex }
+      - { name: broadcast,   offset: 13, size: 5, format: hex }
+      - { name: fixed3,      offset: 18, size: 2, format: hex }
+      - { name: device_id2,  offset: 20, size: 4, format: device_id_be }
+      - { name: device_id3,  offset: 24, size: 4, format: device_id_be }
+      - { name: device_class, offset: 28, size: 1, format: hex }
+      - { name: device_sub,  offset: 29, size: 1, format: hex }
+      - { name: caps,        offset: 30, size: 11, format: hex }
+      - { name: broadcast2,  offset: 41, size: 4, format: hex }
+      - { name: padding,     offset: 45, size: 6, format: hex }
+      - { name: crc,         offset: 51, size: 2, format: hex }
+
+  PAIR_B9:
+    value: 0xB9
+    length: 53
+    category: PAIRING
+    description: "Direct-pair Pico pairing"
+    device_id_endian: big
+    inherits: PAIR_B8
+
+  PAIR_BA:
+    value: 0xBA
+    length: 53
+    category: PAIRING
+    description: "Scene Pico pairing variant"
+    device_id_endian: big
+    inherits: PAIR_B8
+
+  PAIR_BB:
+    value: 0xBB
+    length: 53
+    category: PAIRING
+    description: "Direct-pair Pico pairing variant"
+    device_id_endian: big
+    inherits: PAIR_B8
+
+  # Pairing response packets (24 bytes)
+  PAIR_RESP_C0:
+    value: 0xC0
+    length: 24
+    category: HANDSHAKE
+    description: "Pairing response"
+    device_id_endian: big
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: device_id, offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex }
+      - { name: data,      offset: 8,  size: 14, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  PAIR_RESP_C1:
+    value: 0xC1
+    length: 24
+    category: HANDSHAKE
+    description: "Pairing response phase 1"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  PAIR_RESP_C2:
+    value: 0xC2
+    length: 24
+    category: HANDSHAKE
+    description: "Pairing response phase 2"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  PAIR_RESP_C8:
+    value: 0xC8
+    length: 24
+    category: HANDSHAKE
+    description: "Pairing acknowledgment"
+    device_id_endian: big
+    inherits: PAIR_RESP_C0
+
+  # Virtual types (assigned by decoder based on format byte)
+  UNPAIR:
+    value: 0xF0
+    virtual: true
+    length: 24
+    category: CONFIG
+    description: "Unpair command (derived from STATE_RPT format 0x0C)"
+    device_id_endian: little
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: source_id, offset: 2,  size: 4, format: device_id }
+      - { name: protocol,  offset: 6,  size: 1, format: hex }
+      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x0C for unpair" }
+      - { name: fixed,     offset: 8,  size: 3, format: hex }
+      - { name: command,   offset: 11, size: 5, format: hex }
+      - { name: target_id, offset: 16, size: 4, format: device_id_be }
+      - { name: padding,   offset: 20, size: 2, format: hex }
+      - { name: crc,       offset: 22, size: 2, format: hex }
+
+  UNPAIR_PREP:
+    value: 0xF1
+    virtual: true
+    length: 24
+    category: CONFIG
+    description: "Unpair preparation (derived from STATE_RPT format 0x09)"
+    device_id_endian: little
+    inherits: UNPAIR
+
+  LED_CONFIG:
+    value: 0xF2
+    virtual: true
+    length: 24
+    category: CONFIG
+    description: "LED configuration (derived from STATE_RPT format 0x0A)"
+    device_id_endian: little
+
+# Transmission Sequences
+# Note: sequence numbers always increment by 6 (defined in sequence.increment)
+sequences:
+  button_press:
+    description: "Standard 5-button Pico press"
+    params:
+      - { name: device_id, type: u32 }
+      - { name: button, type: button }
+    steps:
+      - { packet: BTN_SHORT_A, count: 3, interval_ms: 70 }
+      - { packet: BTN_LONG_A, count: 1 }
+
+  button_release:
+    description: "Button release (sent after press)"
+    params:
+      - { name: device_id, type: u32 }
+      - { name: button, type: button }
+    steps:
+      - { packet: BTN_SHORT_B, count: 3, interval_ms: 70 }
+      - { packet: BTN_LONG_B, count: 1 }
+
+  button_hold:
+    description: "Dimming hold (raise/lower)"
+    params:
+      - { name: device_id, type: u32 }
+      - { name: button, type: button }
+    steps:
+      - { packet: BTN_SHORT_A, count: null, interval_ms: 65 }  # Repeat until stop
+
+  set_level:
+    description: "Set dimmer level"
+    params:
+      - { name: source_id, type: u32 }
+      - { name: target_id, type: u32 }
+      - { name: level, type: u8, description: "0-100%" }
+    steps:
+      - { packet: SET_LEVEL, count: 20, interval_ms: 60 }
+
+  pairing_beacon:
+    description: "Pairing beacon broadcast"
+    params:
+      - { name: subnet, type: u16 }
+    steps:
+      - { packet: BEACON, count: null, interval_ms: 65 }  # Repeat for duration
+
+  pico_pairing:
+    description: "Pico pairing announcement"
+    params:
+      - { name: device_id, type: u32 }
+      - { name: pico_type, type: str, description: "5btn, 4btn-scene, 4btn-rl, 2btn" }
+    steps:
+      - { packet: PAIR_B9, count: 15, interval_ms: 75 }  # Packet type varies by pico_type
+
+  unpair:
+    description: "Unpair device from bridge"
+    params:
+      - { name: source_id, type: u32 }
+      - { name: target_id, type: u32 }
+    steps:
+      - { packet: UNPAIR, count: 20, interval_ms: 60 }
+
+# Pairing Presets (button schemes and capability bytes)
+pairing_presets:
+  5btn:
+    description: "5-button Pico"
+    packet: PAIR_B9
+    btn_scheme: 0x04
+    bytes:
+      30: 0x03
+      31: 0x00
+      37: 0x02
+      38: 0x06
+
+  4btn-scene:
+    description: "4-button scene Pico"
+    packet: PAIR_BA
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x02
+      31: 0x00
+      37: 0x02
+      38: 0x21
+
+  4btn-rl:
+    description: "4-button raise/lower Pico"
+    packet: PAIR_B9
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x02
+      31: 0x00
+      37: 0x02
+      38: 0x21
+
+  2btn:
+    description: "2-button Pico"
+    packet: PAIR_B9
+    btn_scheme: 0x04
+    bytes:
+      30: 0x03
+      31: 0x08
+      37: 0x01
+      38: 0x01

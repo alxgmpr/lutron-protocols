@@ -52,6 +52,8 @@ pub mod decode;
 pub mod live;
 #[cfg(feature = "std")]
 pub mod serve;
+#[cfg(feature = "std")]
+pub mod codegen;
 
 // Re-exports for convenience
 pub use crc::{calc_crc, verify_crc, append_crc};

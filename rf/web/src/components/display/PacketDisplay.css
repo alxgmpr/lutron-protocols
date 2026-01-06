@@ -27,18 +27,19 @@
 .packet-container {
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
 }
 
 .packet-entry {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 4px 12px;
+  padding: 2px 8px;
   border-bottom: 1px solid var(--border-primary);
   cursor: pointer;
   transition: background 0.15s;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .packet-entry:hover {
@@ -55,18 +56,16 @@
 
 .packet-time {
   color: var(--text-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
+  margin-right: 6px;
 }
 
 .packet-type {
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 9px;
   text-transform: uppercase;
+  margin-right: 6px;
 }
 
 /* TX packet types */
@@ -132,18 +131,18 @@
 
 /* Bad CRC indicator */
 .packet-crc-warning {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  font-size: 10px;
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  line-height: 12px;
+  text-align: center;
+  font-size: 9px;
   font-weight: 700;
   color: #fff;
   background: #f44336;
   border-radius: 50%;
-  flex-shrink: 0;
   cursor: help;
+  margin-right: 4px;
 }
 
 .packet-bad-crc {
@@ -156,26 +155,21 @@
 
 .packet-summary {
   color: var(--text-primary);
-  white-space: nowrap;
-  flex-shrink: 0;
 }
 
 .packet-details {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  min-width: 0;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .packet-detail {
   color: var(--text-muted);
   font-size: 10px;
-  white-space: nowrap;
 }
 
 .packet-detail:before {
   content: "|";
-  margin-right: 8px;
+  margin: 0 4px;
   opacity: 0.5;
 }
 
