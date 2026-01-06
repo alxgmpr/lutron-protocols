@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use cca::packet::PacketParser;
 use cca::decode::{decode_log_file, summarize_log, LogEntry};
 use cca::live::LiveStream;
+use cca::serve::{start_server, ServerConfig};
 use cca::crc;
 
 #[derive(Parser)]
@@ -62,9 +63,29 @@ enum Commands {
 
     /// Show protocol information
     Info,
+
+    /// Start unified web server (frontend + API proxy)
+    Serve {
+        /// Port to listen on
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+
+        /// Backend port (Python server)
+        #[arg(short = 'b', long, default_value = "8080")]
+        backend_port: u16,
+
+        /// ESP32 host IP
+        #[arg(short = 'H', long, default_value = "10.1.4.59")]
+        host: String,
+
+        /// Static files directory (frontend build)
+        #[arg(short, long)]
+        static_dir: Option<PathBuf>,
+    },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
@@ -80,6 +101,24 @@ fn main() {
         Commands::Info => {
             info_command();
         }
+        Commands::Serve { port, backend_port, host, static_dir } => {
+            serve_command(port, backend_port, &host, static_dir).await;
+        }
+    }
+}
+
+async fn serve_command(port: u16, backend_port: u16, esp32_host: &str, static_dir: Option<PathBuf>) {
+    let config = ServerConfig {
+        port,
+        backend_port,
+        esp32_host: esp32_host.to_string(),
+        static_dir,
+        controller_path: None,
+    };
+
+    if let Err(e) = start_server(config).await {
+        eprintln!("Server error: {}", e);
+        std::process::exit(1);
     }
 }
 

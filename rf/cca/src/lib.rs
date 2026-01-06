@@ -31,6 +31,7 @@ pub mod decode;
 pub mod ffi;
 pub mod live;
 pub mod error;
+pub mod serve;
 
 // Re-exports for convenience
 pub use crc::{calc_crc, verify_crc, append_crc};

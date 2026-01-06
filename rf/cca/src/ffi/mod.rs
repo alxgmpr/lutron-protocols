@@ -1,8 +1,12 @@
-//! Foreign Function Interface for C/C++ integration
+//! Foreign Function Interface for C/C++ and Python integration
 //!
-//! This module provides a C-compatible API for use with ESPHome and other
-//! C/C++ projects. The API is designed to be safe and easy to use from C.
+//! This module provides:
+//! - C-compatible API for ESPHome and other C/C++ projects
+//! - Python bindings via PyO3 (when `python` feature is enabled)
 
 mod c_api;
+
+#[cfg(feature = "python")]
+pub mod python;
 
 pub use c_api::*;

@@ -25,12 +25,13 @@ clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
 axum = "0.7"
 tower-http = { version = "0.5", features = ["fs", "cors"] }
+reqwest = { version = "0.12", features = ["stream"] }
 
 # Optional PyO3 bindings
 [dependencies.pyo3]
-version = "0.20"
+version = "0.23"
 optional = true
-features = ["extension-module"]
+features = ["extension-module", "abi3-py38"]
 
 [features]
 default = []
