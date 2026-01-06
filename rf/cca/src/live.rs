@@ -34,7 +34,7 @@ pub enum Direction {
     Tx,
 }
 
-/// JSON payload from ESP32 log format
+/// JSON payload from ESP32 RX log format
 #[derive(Debug, serde::Deserialize)]
 struct RxJsonPayload {
     bytes: String,
@@ -44,11 +44,19 @@ struct RxJsonPayload {
     crc_ok: bool,
 }
 
+/// JSON payload from ESP32 TX log format
+#[derive(Debug, serde::Deserialize)]
+struct TxJsonPayload {
+    bytes: String,
+    #[allow(dead_code)]
+    len: usize,
+}
+
 /// Live stream parser
 pub struct LiveStream {
     // RX format: 02:49:08 [I] [I][lutron_cc1101:069]: RX: {"bytes":"...", "rssi":-47, ...}
     rx_pattern: Regex,
-    // TX format: 02:49:08 [I] [I][lutron_cc1101:143]: TX 24 bytes: 82 01 AD ...
+    // TX format: 02:49:08 [I] [I][lutron_cc1101:134]: TX: {"bytes":"...", "len":24}
     tx_pattern: Regex,
     parser: PacketParser,
 }
@@ -60,9 +68,9 @@ impl LiveStream {
             r"(\d{2}:\d{2}:\d{2}) \[.\] .*RX: (\{.+\})"
         ).unwrap();
 
-        // TX format with raw bytes
+        // TX JSON format from ESP32
         let tx_pattern = Regex::new(
-            r"(\d{2}:\d{2}:\d{2}) \[.\] .*TX (\d+) bytes: ([0-9A-Fa-f ]+)"
+            r"(\d{2}:\d{2}:\d{2}) \[.\] .*TX: (\{.+\})"
         ).unwrap();
 
         Self {
@@ -125,13 +133,16 @@ impl LiveStream {
         })
     }
 
+    /// Parse JSON-format TX line with packet bytes
     fn parse_tx_capture(&self, caps: regex::Captures) -> Option<LivePacket> {
         let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-        let _len: usize = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        let hex_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+        let json_str = caps.get(2).map(|m| m.as_str())?;
 
-        // Parse hex bytes
-        let bytes: Vec<u8> = hex_str
+        // Parse the JSON payload
+        let payload: TxJsonPayload = serde_json::from_str(json_str).ok()?;
+
+        // Parse hex bytes from the JSON
+        let bytes: Vec<u8> = payload.bytes
             .split_whitespace()
             .filter_map(|s| u8::from_str_radix(s, 16).ok())
             .collect();
@@ -314,6 +325,23 @@ mod tests {
 
         assert_eq!(packet.packet_type, "BTN_SHORT_B");
         assert_eq!(packet.type_byte, 0x8A);
+    }
+
+    #[test]
+    fn test_parse_tx_json() {
+        let stream = LiveStream::new();
+
+        let line = r#"04:30:15 [I] [I][lutron_cc1101:134]: TX: {"bytes":"88 00 08 69 E7 4C 21 04 03 00 02 00 CC CC CC CC CC CC CC CC CC CC AB CD","len":24}"#;
+        let packet = stream.parse_line(line).unwrap();
+
+        assert_eq!(packet.direction, Direction::Tx);
+        assert_eq!(packet.timestamp, "04:30:15");
+        assert_eq!(packet.packet_type, "BTN_SHORT_A");
+        assert_eq!(packet.type_byte, 0x88);
+        assert_eq!(packet.device_id, "0869E74C");
+        assert_eq!(packet.button, Some("ON".to_string()));
+        assert_eq!(packet.rssi, None);  // TX packets have no RSSI
+        assert_eq!(packet.raw_bytes.len(), 24);
     }
 
     #[test]
