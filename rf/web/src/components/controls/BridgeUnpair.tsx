@@ -39,7 +39,7 @@ export function BridgeUnpair({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Unpair Device" badge="REMOVE" variant="device">
+    <Card title="Bridge Unpair" badge="REMOVE" variant="device" collapsible defaultCollapsed>
       <p className="help-text">
         Remove a device from bridge network. Sends two-phase unpair (prepare + unpair flood).
       </p>

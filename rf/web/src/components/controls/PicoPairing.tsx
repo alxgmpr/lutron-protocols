@@ -56,7 +56,7 @@ export function PicoPairing({ showStatus }: Props) {
   const currentPreset = PAIRING_PRESETS[preset] || PAIRING_PRESETS['5btn']
 
   return (
-    <Card title="Pico Pairing" badge="PICO → DEVICE" variant="pairing">
+    <Card title="Pico Pairing" badge="PICO → DEVICE" variant="pairing" collapsible>
       <div className="form-row">
         <FormGroup label="Pico ID">
           <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />

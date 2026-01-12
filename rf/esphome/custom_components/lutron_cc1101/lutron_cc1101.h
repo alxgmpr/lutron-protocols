@@ -1,11 +1,14 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/automation.h"
 #include "esphome/components/spi/spi.h"
 #include "cc1101_radio.h"
 #include "lutron_protocol.h"
 #include "lutron_pairing.h"
 #include "lutron_decoder.h"
+#include <vector>
+#include <functional>
 
 namespace esphome {
 namespace lutron_cc1101 {
@@ -386,6 +389,22 @@ class LutronCC1101 : public Component,
    */
   void transmit_packet(const uint8_t *packet, size_t len);
 
+  /**
+   * @brief Register a callback for received packets
+   * Callback receives: raw bytes, RSSI
+   */
+  void add_on_packet_callback(std::function<void(const std::vector<uint8_t> &, int8_t)> callback) {
+    this->on_packet_callbacks_.push_back(std::move(callback));
+  }
+
+  /**
+   * @brief Register a callback for transmitted packets
+   * Callback receives: raw bytes (RSSI=0 for TX)
+   */
+  void add_on_tx_callback(std::function<void(const std::vector<uint8_t> &)> callback) {
+    this->on_tx_callbacks_.push_back(std::move(callback));
+  }
+
  protected:
   void handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi);
 
@@ -404,6 +423,40 @@ class LutronCC1101 : public Component,
   uint8_t pairing_beacon_count_{0};  // Counter for RX gap timing
   uint32_t last_rx_check_{0};
   uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
+
+  // Callbacks for packet reception (used by UDP streaming)
+  std::vector<std::function<void(const std::vector<uint8_t> &, int8_t)>> on_packet_callbacks_;
+
+  // Callbacks for packet transmission (used by UDP streaming)
+  std::vector<std::function<void(const std::vector<uint8_t> &)>> on_tx_callbacks_;
+};
+
+/**
+ * @brief Automation trigger for received packets
+ * Triggered when a valid CCA packet is received.
+ * Template variables: data (vector<uint8_t>), rssi (int32_t)
+ */
+class LutronPacketTrigger : public Trigger<std::vector<uint8_t>, int32_t> {
+ public:
+  explicit LutronPacketTrigger(LutronCC1101 *parent) {
+    parent->add_on_packet_callback([this](const std::vector<uint8_t> &data, int8_t rssi) {
+      this->trigger(data, static_cast<int32_t>(rssi));
+    });
+  }
+};
+
+/**
+ * @brief Automation trigger for transmitted packets
+ * Triggered when a packet is transmitted.
+ * Template variables: data (vector<uint8_t>)
+ */
+class LutronTxTrigger : public Trigger<std::vector<uint8_t>> {
+ public:
+  explicit LutronTxTrigger(LutronCC1101 *parent) {
+    parent->add_on_tx_callback([this](const std::vector<uint8_t> &data) {
+      this->trigger(data);
+    });
+  }
 };
 
 }  // namespace lutron_cc1101

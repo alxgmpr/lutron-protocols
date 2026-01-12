@@ -46,6 +46,13 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(__file__))
     import database as db
 
+# Import UDP transport for direct packet streaming
+try:
+    from udp_transport import UDPTransport
+    UDP_TRANSPORT_AVAILABLE = True
+except ImportError:
+    UDP_TRANSPORT_AVAILABLE = False
+
 # ESP32 connection settings (defaults)
 ESP32_IP = "10.1.4.59"
 ESP32_PORT = 6053
@@ -82,6 +89,12 @@ LOG_STALE_TIMEOUT = 60  # Consider connection stale if no logs for this long
 log_history = []
 log_history_lock = threading.Lock()
 LOG_HISTORY_MAX = 10000
+
+# Service instances (initialized in cmd_serve)
+_mqtt_client = None
+_event_aggregator = None
+_proxy_engine = None
+_udp_transport = None  # UDP transport for direct packet streaming
 
 # Device database - now uses SQLite via database module
 import os
@@ -531,6 +544,153 @@ def _is_echo_from_device(device_id: str) -> bool:
                 return True
     return False
 
+
+def _record_tx_packet(packet_type: str, device_id: str = None, source_id: str = None,
+                      target_id: str = None, level: int = None, button: int = None):
+    """
+    Record a TX packet sent by the backend.
+
+    Since we no longer parse TX from ESP32 logs, we record TX directly when sending.
+    This feeds into the same dashboard/database as RX packets.
+    """
+    timestamp = datetime.now().isoformat()
+
+    # Build decoded data
+    decoded_data = {'type_hex': packet_type}
+    if level is not None:
+        decoded_data['level'] = level
+    if button is not None:
+        decoded_data['button'] = button
+
+    # Determine device_id for display
+    display_device_id = device_id or source_id
+
+    # Store in database
+    db.insert_decoded_packet(
+        direction='tx',
+        packet_type=packet_type,
+        timestamp=timestamp,
+        raw_hex=None,  # No raw bytes for backend-generated TX
+        device_id=display_device_id,
+        source_id=source_id,
+        target_id=target_id,
+        level=level,
+        decoded_data=decoded_data
+    )
+
+    # Push to packet queue for SSE streaming
+    try:
+        summary = f"{source_id} -> {target_id}" if source_id and target_id else display_device_id or ''
+        packet_queue.put_nowait({
+            'direction': 'tx',
+            'type': packet_type,
+            'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
+            'device_id': display_device_id,
+            'source_id': source_id,
+            'target_id': target_id,
+            'summary': summary,
+            'details': decoded_data,
+            'fields': [],
+            'raw_hex': None,
+            'rssi': None
+        })
+    except queue.Full:
+        pass
+
+
+def _handle_udp_packet(data: bytes, rssi: int, direction: str = 'rx'):
+    """
+    Handle a CCA packet received via UDP transport.
+
+    This is called by the UDP transport when a packet is received from the ESP32.
+    Handles both RX (received) and TX (transmitted) packets.
+
+    Args:
+        data: Raw CCA packet bytes (after N81 decoding)
+        rssi: RSSI value from CC1101 (0 for TX packets)
+        direction: 'rx' for received packets, 'tx' for transmitted packets
+    """
+    timestamp = datetime.now().isoformat()
+
+    # Convert bytes to hex string for parsing
+    raw_hex = ' '.join(f'{b:02X}' for b in data)
+    bytes_list = raw_hex.split()
+
+    # Parse packet using existing parser
+    parsed = parse_packet_bytes(bytes_list)
+
+    # Get packet type byte for hex display
+    pkt_type_byte = data[0] if data else 0
+
+    # Build decoded data
+    decoded_data = parsed['decoded_data']
+    decoded_data['type_hex'] = f'0x{pkt_type_byte:02X}'
+
+    pkt_data = {
+        'packet_type': parsed['packet_type'],
+        'timestamp': timestamp,
+        'device_id': parsed['device_id'],
+        'source_id': parsed['source_id'],
+        'target_id': parsed['target_id'],
+        'level': parsed['level'],
+        'button': parsed['button'],
+        'rssi': rssi if direction == 'rx' else None,
+        'decoded_data': decoded_data
+    }
+
+    # Feed into appropriate processing pipeline based on direction
+    if direction == 'tx':
+        _store_tx_packet(pkt_data, raw_hex)
+    else:
+        _store_rx_packet(pkt_data, raw_hex)
+
+
+def _store_tx_packet(pkt_data: Dict, raw_hex: str = None):
+    """Store TX packet in database and queue (from UDP stream)."""
+    packet_type = pkt_data.get('packet_type', 'UNKNOWN')
+    device_id = pkt_data.get('device_id')
+    timestamp = pkt_data.get('timestamp', datetime.now().isoformat())
+    decoded_data = pkt_data.get('decoded_data', {})
+
+    # Parse field breakdown from raw bytes
+    bytes_list = raw_hex.split() if raw_hex else []
+    parsed_fields = parse_packet_fields(bytes_list, packet_type) if bytes_list else []
+
+    # Store in database
+    db.insert_decoded_packet(
+        direction='tx',
+        packet_type=packet_type,
+        timestamp=timestamp,
+        raw_hex=raw_hex,
+        device_id=device_id,
+        source_id=pkt_data.get('source_id'),
+        target_id=pkt_data.get('target_id'),
+        level=pkt_data.get('level'),
+        button=pkt_data.get('button'),
+        rssi=None,  # No RSSI for TX
+        decoded_data=decoded_data
+    )
+
+    # Push to packet queue for SSE streaming
+    try:
+        summary = f"{pkt_data.get('source_id')} -> {pkt_data.get('target_id')}" if pkt_data.get('source_id') and pkt_data.get('target_id') else device_id or ''
+        packet_queue.put_nowait({
+            'direction': 'tx',
+            'type': packet_type,
+            'time': timestamp.split('T')[1].split('.')[0] if 'T' in timestamp else timestamp[-8:],
+            'device_id': device_id,
+            'source_id': pkt_data.get('source_id'),
+            'target_id': pkt_data.get('target_id'),
+            'summary': summary,
+            'details': decoded_data,
+            'fields': parsed_fields,
+            'raw_hex': raw_hex,
+            'rssi': None
+        })
+    except queue.Full:
+        pass
+
+
 def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
     """Store RX packet in database and queue, with echo filtering."""
     # Skip UNKNOWN packet types - not useful for display
@@ -555,15 +715,15 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
         # Determine if this packet type uses subnet-style IDs (little-endian, contains subnet)
         # vs label-style IDs (big-endian, matches printed label)
-        is_subnet_style = packet_type in ('STATE_RPT', 'LEVEL')
+        is_subnet_style = packet_type in ('STATE_RPT', 'SET_LEVEL')
 
         # Extract subnet from the appropriate ID:
-        # - For LEVEL packets: extract from source_id (bridge), not target (device)
+        # - For SET_LEVEL packets: extract from source_id (bridge), not target (device)
         # - For STATE_RPT: extract from device_id (the dimmer reporting)
         # Device ID format: [Zone][SubnetLo][SubnetHi][Endpoint]
         # Subnet displayed big-endian (as in Lutron Designer): SubnetHi + SubnetLo
         source_id = pkt_data.get('source_id')
-        subnet_source = source_id if packet_type == 'LEVEL' else device_id
+        subnet_source = source_id if packet_type == 'SET_LEVEL' else device_id
         if is_subnet_style and subnet_source and len(subnet_source) == 8:
             subnet_lo = subnet_source[2:4]  # bytes 1
             subnet_hi = subnet_source[4:6]  # bytes 2
@@ -623,10 +783,14 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
         db.upsert_device(
             device_id=device_id,
             category=category,
-            bridge_id=pkt_data.get('source_id') if packet_type == 'LEVEL' else None,
-            factory_id=pkt_data.get('target_id') if packet_type == 'LEVEL' else device_id,
+            bridge_id=pkt_data.get('source_id') if packet_type == 'SET_LEVEL' else None,
+            factory_id=pkt_data.get('target_id') if packet_type == 'SET_LEVEL' else device_id,
             info=decoded_data
         )
+
+    # Feed to event aggregator for semantic event grouping
+    if _event_aggregator:
+        _event_aggregator.on_packet(pkt_data)
 
 def _parse_and_store_packet(message: str):
     """Parse a log message and store any packets in the database.
@@ -964,24 +1128,31 @@ class ESP32Controller:
     async def send_button(self, device_id: int, button_code: int):
         """Send a button press."""
         await self.call_service('send_button', device_id=f"0x{device_id:08X}", button_code=button_code)
+        # Record TX for dashboard
+        _record_tx_packet('BTN_SHORT', device_id=f"{device_id:08X}", button=button_code)
 
     async def send_pairing(self, device_id: int, duration: int = 6):
         """Send pairing sequence."""
         await self.call_service('send_pairing', device_id=f"0x{device_id:08X}", duration_seconds=duration)
+        _record_tx_packet('PAIRING', device_id=f"{device_id:08X}")
 
     async def send_level(self, source_id: int, target_id: int, level: int):
         """Send level command."""
         await self.call_service('send_level', source_id=f"0x{source_id:08X}",
                                target_id=f"0x{target_id:08X}", level_percent=level)
+        # Record TX for dashboard
+        _record_tx_packet('SET_LEVEL', source_id=f"{source_id:08X}", target_id=f"{target_id:08X}", level=level)
 
     async def send_state_report(self, device_id: int, level: int):
         """Send state report."""
         await self.call_service('send_state_report', device_id=f"0x{device_id:08X}", level_percent=level)
+        _record_tx_packet('STATE_RPT', device_id=f"{device_id:08X}", level=level)
 
     async def send_beacon(self, device_id: int, beacon_type: int, duration: int):
         """Send pairing beacon."""
         await self.call_service('send_beacon', device_id=f"0x{device_id:08X}",
                                beacon_type=beacon_type, duration_seconds=duration)
+        _record_tx_packet('BEACON', device_id=f"{device_id:08X}")
 
     async def pair_pico(self, device_id: int, pico_type: int = 1, ba_count: int = 12, bb_count: int = 6, button_scheme: int = 0x04):
         """Send Pico pairing.
@@ -1482,6 +1653,140 @@ def cmd_serve(args):
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return response
 
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INITIALIZE SERVICES (MQTT, Event Aggregator, Proxy Engine)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    global _mqtt_client, _event_aggregator, _proxy_engine
+
+    # Import and initialize services
+    try:
+        from event_aggregator import EventAggregator
+        from mqtt_client import MQTTClient
+        from proxy_engine import ProxyEngine
+
+        _event_aggregator = EventAggregator()
+        _mqtt_client = MQTTClient()
+        _proxy_engine = ProxyEngine()
+
+        # Controller callback for proxy engine
+        async def proxy_send_command(action: str, **params):
+            """Send commands from proxy engine to ESP32."""
+            controller = ESP32Controller()
+            try:
+                await controller.connect()
+                if action == 'send_button':
+                    device_id = params.get('device_id')
+                    button_code = params.get('button_code')
+                    if isinstance(device_id, str):
+                        device_id = int(device_id, 16)
+                    await controller.send_button(device_id, button_code)
+                elif action == 'send_level':
+                    source_id = params.get('source_id')
+                    target_id = params.get('target_id')
+                    level = params.get('level')
+                    if isinstance(source_id, str):
+                        source_id = int(source_id, 16)
+                    if isinstance(target_id, str):
+                        target_id = int(target_id, 16)
+                    await controller.send_level(source_id, target_id, level)
+            finally:
+                await controller.disconnect()
+
+        _proxy_engine.set_controller(proxy_send_command)
+        _proxy_engine.reload_rules()
+
+        # Wire event aggregator to MQTT and proxy
+        def on_event(event_type: str, device_id: str, details: dict):
+            # Publish to MQTT if connected
+            if _mqtt_client and _mqtt_client.connected:
+                _mqtt_client.publish_event(event_type, device_id, details)
+            # Evaluate proxy rules
+            if _proxy_engine:
+                _proxy_engine.on_event(event_type, device_id, details)
+
+        _event_aggregator.add_listener(on_event)
+
+        # Connect MQTT if enabled
+        mqtt_cfg = db.get_mqtt_config()
+        if mqtt_cfg and mqtt_cfg.get('enabled'):
+            _mqtt_client.connect()
+            print("[MQTT] Auto-connected based on config")
+
+        # Subscribe to MQTT commands for bidirectional control
+        def on_mqtt_command(device_id: str, command: dict):
+            """Handle commands from Home Assistant."""
+            brightness = command.get('brightness')
+            state = command.get('state')
+
+            if brightness is not None:
+                # Send level command
+                # Need to determine source bridge - use first available or virtual
+                devices = db.get_all_devices()
+                device_info = devices.get(device_id, {})
+                bridge_id = device_info.get('info', {}).get('bridge_id')
+
+                if bridge_id:
+                    asyncio.run(proxy_send_command(
+                        'send_level',
+                        source_id=bridge_id,
+                        target_id=device_id,
+                        level=brightness
+                    ))
+            elif state == 'ON':
+                asyncio.run(proxy_send_command(
+                    'send_level', source_id=device_id, target_id=device_id, level=100
+                ))
+            elif state == 'OFF':
+                asyncio.run(proxy_send_command(
+                    'send_level', source_id=device_id, target_id=device_id, level=0
+                ))
+
+        _mqtt_client.subscribe_commands(on_mqtt_command)
+
+        print("[SERVICES] Event aggregator, MQTT client, and proxy engine initialized")
+
+    except ImportError as e:
+        print(f"[SERVICES] Warning: Could not import services: {e}")
+        print("[SERVICES] MQTT and proxy features will be disabled")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INITIALIZE UDP TRANSPORT (optional, for direct packet streaming)
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    global _udp_transport
+
+    if UDP_TRANSPORT_AVAILABLE:
+        UDP_PORT = 9433  # Default port for CCA packet streaming
+
+        def start_udp_transport():
+            """Start UDP transport in a background thread."""
+            global _udp_transport
+
+            async def run_transport():
+                global _udp_transport
+                _udp_transport = UDPTransport(port=UDP_PORT)
+                _udp_transport.on_packet = _handle_udp_packet
+                await _udp_transport.start()
+                # Keep running
+                while True:
+                    await asyncio.sleep(60)
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(run_transport())
+            except Exception as e:
+                print(f"[UDP] Transport error: {e}")
+            finally:
+                loop.close()
+
+        udp_thread = threading.Thread(target=start_udp_transport, daemon=True)
+        udp_thread.start()
+        print(f"[UDP] Transport started on port {UDP_PORT}")
+    else:
+        print("[UDP] Transport not available (udp_transport module not found)")
+
     @app.route('/api/health')
     def health():
         return jsonify({'status': 'ok'})
@@ -1913,6 +2218,74 @@ def cmd_serve(args):
                 'host': host,
                 'error': str(e)
             })
+
+    @app.route('/api/esp/udp', methods=['GET'])
+    def api_esp_udp_status():
+        """Get UDP transport status."""
+        if not UDP_TRANSPORT_AVAILABLE:
+            return jsonify({
+                'status': 'unavailable',
+                'error': 'UDP transport module not found'
+            })
+
+        stats = _udp_transport.get_stats() if _udp_transport else {}
+        return jsonify({
+            'status': 'ok',
+            'running': stats.get('running', False),
+            'port': stats.get('port', 9433),
+            'packets_received': stats.get('packets_received', 0),
+            'bytes_received': stats.get('bytes_received', 0)
+        })
+
+    @app.route('/api/esp/udp/configure', methods=['POST'])
+    def api_esp_udp_configure():
+        """Configure ESP32 to stream packets to this backend via UDP.
+
+        This calls the ESP32's set_udp_backend service to tell it where
+        to send packets.
+
+        Request body:
+            {"host": "10.1.4.50", "port": 9433}
+
+        If host is not specified, uses the current machine's IP.
+        """
+        data = request.json or {}
+        host = data.get('host', '')
+        port = data.get('port', 9433)
+
+        # Auto-detect host if not specified
+        if not host:
+            import socket
+            try:
+                # Get local IP by connecting to ESP32
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect((current_esp_host, 80))
+                host = s.getsockname()[0]
+                s.close()
+            except Exception:
+                host = '127.0.0.1'
+
+        try:
+            async def configure():
+                controller = ESP32Controller()
+                await controller.connect()
+                try:
+                    await controller.call_service('set_udp_backend', host=host, port=port)
+                finally:
+                    await controller.disconnect()
+
+            asyncio.run(configure())
+            return jsonify({
+                'status': 'ok',
+                'host': host,
+                'port': port,
+                'message': f'ESP32 configured to stream to {host}:{port}'
+            })
+        except Exception as e:
+            return jsonify({
+                'status': 'error',
+                'error': str(e)
+            }), 500
 
     @app.route('/api/test/decode', methods=['POST'])
     def api_test_decode():
@@ -2961,6 +3334,223 @@ def cmd_serve(args):
             count = len(log_history)
             log_history.clear()
         return jsonify({'status': 'ok', 'cleared': count})
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # MQTT ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/mqtt/config')
+    def api_mqtt_config_get():
+        """Get MQTT configuration."""
+        config = db.get_mqtt_config()
+        if config:
+            # Don't expose password
+            config = dict(config)
+            if config.get('password'):
+                config['password'] = '********'
+        return jsonify(config or {})
+
+    @app.route('/api/mqtt/config', methods=['POST'])
+    def api_mqtt_config_set():
+        """Update MQTT configuration."""
+        data = request.json or {}
+        db.update_mqtt_config(**data)
+        # Reconnect if settings changed
+        if _mqtt_client:
+            _mqtt_client.reconnect()
+        return jsonify({'status': 'ok'})
+
+    @app.route('/api/mqtt/status')
+    def api_mqtt_status():
+        """Get MQTT connection status."""
+        return jsonify({
+            'connected': _mqtt_client.connected if _mqtt_client else False,
+            'broker': _mqtt_client.config.get('broker_host') if _mqtt_client and _mqtt_client.config else None,
+            'published_count': _mqtt_client.published_count if _mqtt_client else 0
+        })
+
+    @app.route('/api/mqtt/test', methods=['POST'])
+    def api_mqtt_test():
+        """Test MQTT connection with provided settings."""
+        data = request.json or {}
+        try:
+            from mqtt_client import MQTTClient
+            success = MQTTClient.test_connection(
+                host=data.get('host', 'homeassistant.local'),
+                port=data.get('port', 1883),
+                username=data.get('username'),
+                password=data.get('password')
+            )
+            return jsonify({'status': 'ok' if success else 'error', 'connected': success})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/mqtt/publish-discovery', methods=['POST'])
+    def api_mqtt_publish_discovery():
+        """Force publish Home Assistant discovery for all devices."""
+        if not _mqtt_client or not _mqtt_client.connected:
+            return jsonify({'status': 'error', 'error': 'MQTT not connected'}), 400
+        devices = db.get_all_devices()
+        count = _mqtt_client.publish_all_discovery(devices)
+        return jsonify({'status': 'ok', 'published': count})
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PROXY RULE ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/proxy/rules')
+    def api_proxy_rules_list():
+        """Get all proxy rules."""
+        rules = db.get_proxy_rules()
+        return jsonify(rules)
+
+    @app.route('/api/proxy/rules', methods=['POST'])
+    def api_proxy_rule_create():
+        """Create a new proxy rule."""
+        data = request.json or {}
+        required = ['name', 'source_device_id', 'source_type', 'target_device_id', 'target_type']
+        missing = [f for f in required if f not in data]
+        if missing:
+            return jsonify({'status': 'error', 'error': f'Missing fields: {missing}'}), 400
+
+        rule_id = db.create_proxy_rule(
+            name=data['name'],
+            source_device_id=data['source_device_id'],
+            source_type=data['source_type'],
+            target_device_id=data['target_device_id'],
+            target_type=data['target_type'],
+            target_bridge_id=data.get('target_bridge_id'),
+            mode=data.get('mode', 'forward'),
+            button_map=data.get('button_map'),
+            level_transform=data.get('level_transform'),
+            debounce_ms=data.get('debounce_ms', 100),
+            enabled=data.get('enabled', True)
+        )
+        if _proxy_engine:
+            _proxy_engine.reload_rules()
+        return jsonify({'status': 'ok', 'id': rule_id})
+
+    @app.route('/api/proxy/rules/<int:rule_id>', methods=['PUT'])
+    def api_proxy_rule_update(rule_id):
+        """Update a proxy rule."""
+        data = request.json or {}
+        success = db.update_proxy_rule(rule_id, **data)
+        if success and _proxy_engine:
+            _proxy_engine.reload_rules()
+        return jsonify({'status': 'ok' if success else 'error'})
+
+    @app.route('/api/proxy/rules/<int:rule_id>', methods=['DELETE'])
+    def api_proxy_rule_delete(rule_id):
+        """Delete a proxy rule."""
+        success = db.delete_proxy_rule(rule_id)
+        if success and _proxy_engine:
+            _proxy_engine.reload_rules()
+        return jsonify({'status': 'ok' if success else 'error'})
+
+    @app.route('/api/proxy/rules/<int:rule_id>/toggle', methods=['POST'])
+    def api_proxy_rule_toggle(rule_id):
+        """Toggle a proxy rule enabled/disabled."""
+        db.toggle_proxy_rule(rule_id)
+        if _proxy_engine:
+            _proxy_engine.reload_rules()
+        return jsonify({'status': 'ok'})
+
+    @app.route('/api/proxy/rules/<int:rule_id>/test', methods=['POST'])
+    def api_proxy_rule_test(rule_id):
+        """Test a proxy rule by simulating an event."""
+        data = request.json or {}
+        event_type = data.get('event_type', 'button_press')
+        if _proxy_engine:
+            result = _proxy_engine.test_rule(rule_id, event_type, data)
+            return jsonify(result)
+        return jsonify({'status': 'error', 'error': 'Proxy engine not initialized'}), 500
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # VIRTUAL DEVICE ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/virtual-devices')
+    def api_virtual_devices_list():
+        """Get all virtual devices."""
+        devices = db.get_virtual_devices()
+        return jsonify(devices)
+
+    @app.route('/api/virtual-devices', methods=['POST'])
+    def api_virtual_device_create():
+        """Create a virtual device."""
+        import random
+        data = request.json or {}
+        device_id = data.get('device_id')
+        if not device_id:
+            # Generate unique ID with CC prefix
+            device_id = f"CC{random.randint(100000, 999999):06X}"
+
+        name = data.get('name', f'Virtual {device_id}')
+        device_type = data.get('device_type', 'dimmer')
+        subnet = data.get('subnet')
+
+        try:
+            db.create_virtual_device(device_id, name, device_type, subnet)
+            return jsonify({'status': 'ok', 'device_id': device_id})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 400
+
+    @app.route('/api/virtual-devices/<device_id>', methods=['DELETE'])
+    def api_virtual_device_delete(device_id):
+        """Delete a virtual device."""
+        success = db.delete_virtual_device(device_id)
+        return jsonify({'status': 'ok' if success else 'error'})
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # EVENTS ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/events')
+    def api_events_list():
+        """Get recent semantic events."""
+        limit = int(request.args.get('limit', 100))
+        device_id = request.args.get('device')
+        event_type = request.args.get('type')
+        events = db.get_events(limit=limit, device_id=device_id, event_type=event_type)
+        return jsonify(events)
+
+    @app.route('/api/events/stream')
+    def api_events_stream():
+        """SSE stream of semantic events."""
+        import queue as q
+
+        def generate():
+            yield f"data: {json.dumps({'type': 'connected'})}\n\n"
+
+            # Create a queue for this connection
+            event_queue = q.Queue(maxsize=100)
+
+            def on_event(event_type, device_id, details):
+                try:
+                    event_queue.put_nowait({
+                        'event_type': event_type,
+                        'device_id': device_id,
+                        'details': details
+                    })
+                except q.Full:
+                    pass
+
+            # Subscribe to events
+            if _event_aggregator:
+                _event_aggregator.add_listener(on_event)
+
+            try:
+                while True:
+                    try:
+                        event = event_queue.get(timeout=10)
+                        yield f"data: {json.dumps(event)}\n\n"
+                    except q.Empty:
+                        yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+            finally:
+                if _event_aggregator:
+                    _event_aggregator.remove_listener(on_event)
+
+        return Response(generate(), mimetype='text/event-stream')
 
     def subscribe_to_logs():
         """Subscribe to ESP32 logs and push to queue. Runs forever with reconnect."""

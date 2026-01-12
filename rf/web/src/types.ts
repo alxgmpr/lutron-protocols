@@ -88,5 +88,64 @@ export const DEVICE_TYPES: Record<string, { name: string; buttons: string | null
   'fan': { name: 'Fan', buttons: 'fan' }
 }
 
+// MQTT Configuration
+export interface MqttConfig {
+  id: number
+  enabled: number
+  broker_host: string
+  broker_port: number
+  username?: string
+  password?: string
+  discovery_prefix: string
+  client_id: string
+  retain_state?: number
+  publish_raw?: number
+  updated_at?: string
+}
+
+// Proxy Rule
+export interface ProxyRule {
+  id: number
+  name: string
+  enabled: boolean
+  source_device_id: string
+  source_type: string
+  target_device_id: string
+  target_type: string
+  mode: string
+  button_map?: Record<string, string>
+  level_transform?: {
+    min?: number
+    max?: number
+    invert?: boolean
+  }
+  debounce_ms: number
+  created_at?: string
+  updated_at?: string
+}
+
+// Virtual Device
+export interface VirtualDevice {
+  id: string
+  name: string
+  device_type: string
+  subnet?: string
+  current_level?: number
+  last_command_at?: string
+  created_at?: string
+}
+
+// Semantic Event
+export interface SemanticEvent {
+  id: number
+  event_type: string
+  device_id: string
+  details?: Record<string, unknown>
+  packet_ids?: number[]
+  timestamp: string
+  published_mqtt: number
+  created_at?: string
+}
+
 
 

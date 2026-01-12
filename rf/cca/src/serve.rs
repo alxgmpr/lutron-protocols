@@ -19,6 +19,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Server configuration
 #[derive(Clone)]
@@ -48,12 +49,22 @@ struct AppState {
     http_client: reqwest::Client,
 }
 
+/// Global backend PID for signal handler
+static BACKEND_PID: AtomicU32 = AtomicU32::new(0);
+
 /// Start the unified server
 pub async fn start_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
     // Find the Python controller
     let controller_path = config.controller_path.clone().unwrap_or_else(|| {
         find_controller_path()
     });
+
+    // Build frontend first
+    eprintln!("Building frontend...");
+    if let Err(e) = build_frontend() {
+        eprintln!("Warning: Frontend build failed: {}", e);
+        eprintln!("Continuing anyway - frontend may be out of date");
+    }
 
     // Find static files directory
     let static_dir = config.static_dir.clone().unwrap_or_else(|| {
@@ -69,7 +80,9 @@ pub async fn start_server(config: ServerConfig) -> Result<(), Box<dyn std::error
 
     // Spawn Python backend
     let mut backend = spawn_backend(&controller_path, config.backend_port)?;
-    eprintln!("Python backend started (PID: {:?})", backend.id());
+    let backend_pid = backend.id();
+    BACKEND_PID.store(backend_pid, Ordering::SeqCst);
+    eprintln!("Python backend started (PID: {})", backend_pid);
 
     // Wait for backend to be ready
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
@@ -215,15 +228,32 @@ async fn proxy_api(
 
 /// Spawn the Python backend process
 fn spawn_backend(controller_path: &str, port: u16) -> std::io::Result<Child> {
-    Command::new("python3")
-        .args([
-            controller_path,
-            "serve",
-            "--port", &port.to_string(),
-        ])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        Command::new("python3")
+            .args([
+                controller_path,
+                "serve",
+                "--port", &port.to_string(),
+            ])
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .process_group(0)  // Create new process group so Ctrl+C doesn't go to it
+            .spawn()
+    }
+    #[cfg(not(unix))]
+    {
+        Command::new("python3")
+            .args([
+                controller_path,
+                "serve",
+                "--port", &port.to_string(),
+            ])
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+    }
 }
 
 /// Find the controller script path
@@ -265,9 +295,105 @@ fn find_static_dir() -> PathBuf {
     PathBuf::from("rf/web/dist")
 }
 
+/// Find the web source directory
+fn find_web_dir() -> Option<PathBuf> {
+    let paths = [
+        "rf/web",
+        "../rf/web",
+        "../../rf/web",
+        "../web",
+        "~/lutron-tools/rf/web",
+    ];
+
+    for p in paths {
+        let path = PathBuf::from(p);
+        if path.exists() && path.is_dir() && path.join("package.json").exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+/// Build the frontend using npm
+fn build_frontend() -> std::io::Result<()> {
+    let web_dir = find_web_dir().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "Could not find web directory")
+    })?;
+
+    eprintln!("  Building in {:?}...", web_dir);
+
+    let status = Command::new("npm")
+        .args(["run", "build"])
+        .current_dir(&web_dir)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()?;
+
+    if status.success() {
+        eprintln!("  Frontend build complete!");
+        Ok(())
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("npm build exited with status: {}", status)
+        ))
+    }
+}
+
 /// Shutdown signal handler
 async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to install Ctrl+C handler");
+    use tokio::signal;
+
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    // Kill the backend process immediately when signal is received
+    kill_backend();
+}
+
+/// Kill the backend process
+fn kill_backend() {
+    let pid = BACKEND_PID.load(Ordering::SeqCst);
+    if pid != 0 {
+        eprintln!("\nKilling backend (PID: {})...", pid);
+        #[cfg(unix)]
+        {
+            // Kill the process group (negative PID)
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGTERM);
+            }
+            // Give it a moment, then force kill
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            // On Windows, just try to kill via the PID
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .output();
+        }
+    }
 }

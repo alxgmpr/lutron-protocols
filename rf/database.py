@@ -28,7 +28,7 @@ from contextlib import contextmanager
 DB_FILE = os.path.join(os.path.dirname(__file__), "cca_playground.db")
 
 # Current schema version - increment when making breaking changes
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 
 def get_connection() -> sqlite3.Connection:
     """Get a database connection with row factory."""
@@ -141,10 +141,88 @@ def _run_migrations(conn: sqlite3.Connection, from_version: int):
         """)
         print(f"[DATABASE] Initialized schema version 1")
 
-    # Future migrations go here:
-    # if from_version < 2:
-    #     conn.executescript("ALTER TABLE ...")
-    #     conn.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    if from_version < 2:
+        # Schema v2: Add MQTT, proxy, virtual devices, and events tables
+        conn.executescript("""
+            -- MQTT configuration (singleton row)
+            CREATE TABLE IF NOT EXISTS mqtt_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled INTEGER DEFAULT 0,
+                broker_host TEXT DEFAULT 'homeassistant.local',
+                broker_port INTEGER DEFAULT 1883,
+                username TEXT,
+                password TEXT,
+                discovery_prefix TEXT DEFAULT 'homeassistant',
+                client_id TEXT DEFAULT 'cca_playground',
+                retain_state INTEGER DEFAULT 1,
+                publish_raw INTEGER DEFAULT 0,
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- Seed default MQTT config
+            INSERT OR IGNORE INTO mqtt_config (id) VALUES (1);
+
+            -- Proxy rules: source device -> target device(s)
+            CREATE TABLE IF NOT EXISTS proxy_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                source_device_id TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                target_device_id TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_bridge_id TEXT,
+                mode TEXT DEFAULT 'forward',
+                button_map TEXT,
+                level_transform TEXT,
+                debounce_ms INTEGER DEFAULT 100,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_proxy_source ON proxy_rules(source_device_id);
+            CREATE INDEX IF NOT EXISTS idx_proxy_target ON proxy_rules(target_device_id);
+            CREATE INDEX IF NOT EXISTS idx_proxy_enabled ON proxy_rules(enabled);
+
+            -- Virtual devices: fake dimmers/picos the ESP32 emulates
+            CREATE TABLE IF NOT EXISTS virtual_devices (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                device_type TEXT NOT NULL,
+                subnet TEXT,
+                current_level INTEGER DEFAULT 0,
+                last_command_at TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- Semantic events log
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                details TEXT,
+                packet_ids TEXT,
+                timestamp TEXT NOT NULL,
+                published_mqtt INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_events_device ON events(device_id);
+            CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+            CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+
+            -- Update schema version
+            UPDATE meta SET value = '2' WHERE key = 'schema_version';
+        """)
+        print(f"[DATABASE] Migrated to schema version 2 (MQTT, proxy, virtual devices, events)")
+
+    if from_version < 3:
+        # Schema v3: Add target_bridge_id to proxy_rules for multi-bridge setups
+        # Check if column exists first (in case table was created fresh with new schema)
+        cursor = conn.execute("PRAGMA table_info(proxy_rules)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'target_bridge_id' not in columns:
+            conn.execute("ALTER TABLE proxy_rules ADD COLUMN target_bridge_id TEXT")
+        conn.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
+        print(f"[DATABASE] Migrated to schema version 3 (proxy rule target_bridge_id)")
 
 def compute_packet_hash(raw_bytes: bytes) -> str:
     """Compute SHA256 hash of raw packet bytes."""
@@ -409,6 +487,7 @@ def get_all_devices() -> Dict[str, Dict]:
                 'device_type': d['device_type'],
                 'model': d['model'],
                 'link_id': d['link_id'],
+                'bridge_id': d['bridge_id'],
                 'first_seen': d['first_seen'],
                 'last_seen': d['last_seen'],
                 'count': d['packet_count'],
@@ -617,6 +696,321 @@ def get_stats() -> Dict:
         stats['packet_types'] = {row['packet_type']: row['count'] for row in rows}
 
         return stats
+
+# ===============================================================================
+# MQTT CONFIGURATION
+# ===============================================================================
+
+def get_mqtt_config() -> Optional[Dict]:
+    """Get MQTT configuration (singleton row)."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM mqtt_config WHERE id = 1").fetchone()
+        if row:
+            return dict(row)
+        return None
+
+def update_mqtt_config(**kwargs) -> bool:
+    """Update MQTT configuration fields."""
+    if not kwargs:
+        return False
+
+    valid_fields = {'enabled', 'broker_host', 'broker_port', 'username', 'password',
+                    'discovery_prefix', 'client_id', 'retain_state', 'publish_raw'}
+
+    updates = []
+    params = []
+    for key, value in kwargs.items():
+        if key in valid_fields:
+            updates.append(f"{key} = ?")
+            params.append(value)
+
+    if not updates:
+        return False
+
+    updates.append("updated_at = ?")
+    params.append(datetime.now().isoformat())
+
+    with get_db() as conn:
+        conn.execute(f"UPDATE mqtt_config SET {', '.join(updates)} WHERE id = 1", params)
+        return True
+
+# ===============================================================================
+# PROXY RULES
+# ===============================================================================
+
+def get_proxy_rules(enabled_only: bool = False) -> List[Dict]:
+    """Get all proxy rules."""
+    with get_db() as conn:
+        if enabled_only:
+            rows = conn.execute(
+                "SELECT * FROM proxy_rules WHERE enabled = 1 ORDER BY created_at"
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM proxy_rules ORDER BY created_at").fetchall()
+
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d['button_map']:
+                d['button_map'] = json.loads(d['button_map'])
+            if d['level_transform']:
+                d['level_transform'] = json.loads(d['level_transform'])
+            results.append(d)
+        return results
+
+def get_proxy_rule(rule_id: int) -> Optional[Dict]:
+    """Get a proxy rule by ID."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM proxy_rules WHERE id = ?", (rule_id,)).fetchone()
+        if row:
+            d = dict(row)
+            if d['button_map']:
+                d['button_map'] = json.loads(d['button_map'])
+            if d['level_transform']:
+                d['level_transform'] = json.loads(d['level_transform'])
+            return d
+        return None
+
+def get_proxy_rules_for_source(source_device_id: str) -> List[Dict]:
+    """Get all enabled proxy rules for a source device."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM proxy_rules WHERE source_device_id = ? AND enabled = 1",
+            (source_device_id,)
+        ).fetchall()
+
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d['button_map']:
+                d['button_map'] = json.loads(d['button_map'])
+            if d['level_transform']:
+                d['level_transform'] = json.loads(d['level_transform'])
+            results.append(d)
+        return results
+
+def create_proxy_rule(
+    name: str,
+    source_device_id: str,
+    source_type: str,
+    target_device_id: str,
+    target_type: str,
+    target_bridge_id: Optional[str] = None,
+    mode: str = 'forward',
+    button_map: Optional[Dict] = None,
+    level_transform: Optional[Dict] = None,
+    debounce_ms: int = 100,
+    enabled: bool = True
+) -> int:
+    """Create a new proxy rule, return its ID."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO proxy_rules
+            (name, enabled, source_device_id, source_type, target_device_id, target_type,
+             target_bridge_id, mode, button_map, level_transform, debounce_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            name, 1 if enabled else 0, source_device_id, source_type,
+            target_device_id, target_type, target_bridge_id, mode,
+            json.dumps(button_map) if button_map else None,
+            json.dumps(level_transform) if level_transform else None,
+            debounce_ms
+        ))
+        return cursor.lastrowid
+
+def update_proxy_rule(rule_id: int, **kwargs) -> bool:
+    """Update a proxy rule."""
+    valid_fields = {'name', 'enabled', 'source_device_id', 'source_type',
+                    'target_device_id', 'target_type', 'target_bridge_id',
+                    'mode', 'button_map', 'level_transform', 'debounce_ms'}
+
+    updates = []
+    params = []
+    for key, value in kwargs.items():
+        if key in valid_fields:
+            if key in ('button_map', 'level_transform') and value is not None:
+                value = json.dumps(value)
+            updates.append(f"{key} = ?")
+            params.append(value)
+
+    if not updates:
+        return False
+
+    updates.append("updated_at = ?")
+    params.append(datetime.now().isoformat())
+    params.append(rule_id)
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            f"UPDATE proxy_rules SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        return cursor.rowcount > 0
+
+def toggle_proxy_rule(rule_id: int) -> bool:
+    """Toggle a proxy rule's enabled state."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE proxy_rules SET enabled = 1 - enabled, updated_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), rule_id)
+        )
+        return True
+
+def delete_proxy_rule(rule_id: int) -> bool:
+    """Delete a proxy rule."""
+    with get_db() as conn:
+        cursor = conn.execute("DELETE FROM proxy_rules WHERE id = ?", (rule_id,))
+        return cursor.rowcount > 0
+
+# ===============================================================================
+# VIRTUAL DEVICES
+# ===============================================================================
+
+def get_virtual_devices() -> List[Dict]:
+    """Get all virtual devices."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM virtual_devices ORDER BY created_at").fetchall()
+        return [dict(row) for row in rows]
+
+def get_virtual_device(device_id: str) -> Optional[Dict]:
+    """Get a virtual device by ID."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM virtual_devices WHERE id = ?", (device_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+def create_virtual_device(
+    device_id: str,
+    name: str,
+    device_type: str,
+    subnet: Optional[str] = None
+) -> str:
+    """Create a virtual device, return its ID."""
+    with get_db() as conn:
+        conn.execute("""
+            INSERT INTO virtual_devices (id, name, device_type, subnet)
+            VALUES (?, ?, ?, ?)
+        """, (device_id, name, device_type, subnet))
+        return device_id
+
+def update_virtual_device_level(device_id: str, level: int) -> bool:
+    """Update a virtual device's current level."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE virtual_devices SET current_level = ?, last_command_at = ? WHERE id = ?",
+            (level, datetime.now().isoformat(), device_id)
+        )
+        return cursor.rowcount > 0
+
+def delete_virtual_device(device_id: str) -> bool:
+    """Delete a virtual device."""
+    with get_db() as conn:
+        cursor = conn.execute("DELETE FROM virtual_devices WHERE id = ?", (device_id,))
+        return cursor.rowcount > 0
+
+def is_virtual_device(device_id: str) -> bool:
+    """Check if a device ID belongs to a virtual device."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM virtual_devices WHERE id = ?", (device_id,)
+        ).fetchone()
+        return row is not None
+
+# ===============================================================================
+# EVENTS
+# ===============================================================================
+
+def insert_event(
+    event_type: str,
+    device_id: str,
+    details: Optional[Dict] = None,
+    packet_ids: Optional[List[int]] = None,
+    timestamp: Optional[str] = None
+) -> int:
+    """Insert a semantic event, return its ID."""
+    timestamp = timestamp or datetime.now().isoformat()
+
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO events (event_type, device_id, details, packet_ids, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            event_type, device_id,
+            json.dumps(details) if details else None,
+            json.dumps(packet_ids) if packet_ids else None,
+            timestamp
+        ))
+        return cursor.lastrowid
+
+def get_events(
+    limit: int = 100,
+    device_id: Optional[str] = None,
+    event_type: Optional[str] = None,
+    since: Optional[str] = None
+) -> List[Dict]:
+    """Get recent events with optional filters."""
+    conditions = []
+    params = []
+
+    if device_id:
+        conditions.append("device_id = ?")
+        params.append(device_id)
+    if event_type:
+        conditions.append("event_type = ?")
+        params.append(event_type)
+    if since:
+        conditions.append("timestamp > ?")
+        params.append(since)
+
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    params.append(limit)
+
+    with get_db() as conn:
+        rows = conn.execute(f"""
+            SELECT * FROM events
+            WHERE {where_clause}
+            ORDER BY timestamp DESC
+            LIMIT ?
+        """, params).fetchall()
+
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d['details']:
+                d['details'] = json.loads(d['details'])
+            if d['packet_ids']:
+                d['packet_ids'] = json.loads(d['packet_ids'])
+            results.append(d)
+        return results
+
+def mark_event_published(event_id: int) -> bool:
+    """Mark an event as published to MQTT."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE events SET published_mqtt = 1 WHERE id = ?", (event_id,)
+        )
+        return cursor.rowcount > 0
+
+def get_unpublished_events(limit: int = 100) -> List[Dict]:
+    """Get events that haven't been published to MQTT."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT * FROM events
+            WHERE published_mqtt = 0
+            ORDER BY timestamp ASC
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d['details']:
+                d['details'] = json.loads(d['details'])
+            if d['packet_ids']:
+                d['packet_ids'] = json.loads(d['packet_ids'])
+            results.append(d)
+        return results
 
 # Initialize on import
 init_db()

@@ -217,6 +217,7 @@ dependencies = [
  "cbindgen",
  "clap 4.5.54",
  "hex",
+ "libc",
  "pyo3",
  "regex",
  "reqwest",

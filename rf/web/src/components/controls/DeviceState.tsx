@@ -29,7 +29,7 @@ export function DeviceState({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Device State Report" badge="DEVICE → BRIDGE" variant="device">
+    <Card title="Device State" badge="DEVICE → BRIDGE" variant="device" collapsible defaultCollapsed>
       <p className="help-text">
         Report the current level of a device to the bridge. This will update the bridge with the current level of the dimmer.
       </p>

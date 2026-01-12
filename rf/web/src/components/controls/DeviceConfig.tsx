@@ -143,7 +143,7 @@ export function DeviceConfig({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Device Configuration" badge="BRIDGE CONFIG" variant="bridge">
+    <Card title="Device Config" badge="BRIDGE CONFIG" variant="bridge" collapsible defaultCollapsed>
       {/* Common fields */}
       <div className="form-row">
         <FormGroup label="Subnet" hint={`Source: ${sourceId}`}>

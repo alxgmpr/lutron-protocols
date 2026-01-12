@@ -52,22 +52,15 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
     return;  // Silently ignore undecoded packets
   }
 
-  // Format raw bytes as hex string for JSON output
-  // Backend will do all packet parsing (type, device ID, level, etc.)
-  char hex[180];  // 56 bytes * 3 chars + margin
-  int pos = 0;
-  size_t max_bytes = (pkt.raw_len > 53) ? 53 : pkt.raw_len;
-  for (size_t i = 0; i < max_bytes && pos < 170; i++) {
-    if (i > 0) {
-      pos += snprintf(hex + pos, sizeof(hex) - pos, " ");
+  // Call registered callbacks (for UDP streaming)
+  // Backend handles all logging and packet processing
+  ESP_LOGD(TAG, "RX packet len=%d rssi=%d callbacks=%d", pkt.raw_len, rssi, this->on_packet_callbacks_.size());
+  if (!this->on_packet_callbacks_.empty()) {
+    std::vector<uint8_t> packet_data(pkt.raw, pkt.raw + pkt.raw_len);
+    for (auto &callback : this->on_packet_callbacks_) {
+      callback(packet_data, rssi);
     }
-    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", pkt.raw[i]);
   }
-
-  // Log in simple JSON format with timestamp - include CRC status for debugging
-  // Backend can decide whether to filter bad CRC packets
-  ESP_LOGI(TAG, "RX: {\"t\":%lu,\"bytes\":\"%s\",\"rssi\":%d,\"len\":%d,\"crc_ok\":%s}",
-           millis(), hex, rssi, (int)pkt.raw_len, pkt.crc_valid ? "true" : "false");
 }
 
 void LutronCC1101::dump_config() {
@@ -133,18 +126,7 @@ void LutronCC1101::stop_rx() {
 }
 
 void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
-  // Log packet bytes in JSON format for backend echo detection and parsing
-  char hex[180];
-  int pos = 0;
-  size_t max_log = (len > 53) ? 53 : len;
-  for (size_t i = 0; i < max_log && pos < 170; i++) {
-    if (i > 0) {
-      pos += snprintf(hex + pos, sizeof(hex) - pos, " ");
-    }
-    pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X", packet[i]);
-  }
-  ESP_LOGI(TAG, "TX: {\"t\":%lu,\"bytes\":\"%s\",\"len\":%d}", millis(), hex, (int)len);
-
+  // TX logging handled by backend - it knows what it's sending
   uint8_t tx_buffer[128];
 
   // For large packets, use shorter preamble to fit in FIFO (64 bytes)
@@ -187,6 +169,14 @@ void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
   }
 
   this->radio_.transmit_raw(tx_buffer, encoded_len);
+
+  // Notify TX callbacks (for UDP streaming)
+  if (!this->on_tx_callbacks_.empty()) {
+    std::vector<uint8_t> packet_data(packet, packet + len);
+    for (auto &callback : this->on_tx_callbacks_) {
+      callback(packet_data);
+    }
+  }
 
   // Auto-resume RX after TX if auto mode enabled
   // (transmit_raw leaves radio in IDLE, we need to restart RX)

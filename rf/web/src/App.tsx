@@ -26,8 +26,13 @@ import { PacketDisplay, LogDisplay } from './components/display'
 // Devices
 import { DeviceList } from './components/devices'
 
+// Proxy & MQTT
+import { ProxyConfig, MqttConfig } from './components/proxy'
+
 import type { Device } from './types'
 import './App.css'
+
+type Tab = 'dashboard' | 'proxy' | 'mqtt'
 
 function App() {
   const { get, postJson, del } = useApi()
@@ -51,6 +56,7 @@ function App() {
 
   const [devices, setDevices] = useState<Record<string, Device>>({})
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
   // Resizable column widths (stored in localStorage)
   const [leftWidth, setLeftWidth] = useState(() => {
@@ -181,87 +187,122 @@ function App() {
     <div className="app">
       <Header connected={connected} />
 
-      <main
-        className="main-grid"
-        style={{
-          gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`
-        }}
-      >
-        <section className="panel left-panel">
-          <PicoPairing showStatus={showStatus} />
-          <PicoButtons showStatus={showStatus} />
-          <SaveFavorite showStatus={showStatus} />
-          <BridgeLevel showStatus={showStatus} />
-          <DeviceConfig showStatus={showStatus} />
-          <BridgeUnpair showStatus={showStatus} />
-          <BridgePairing showStatus={showStatus} />
-          <DeviceState showStatus={showStatus} />
-          <ResetPico showStatus={showStatus} />
-        </section>
+      <nav className="tab-nav">
+        <button
+          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'proxy' ? 'active' : ''}`}
+          onClick={() => setActiveTab('proxy')}
+        >
+          Proxy
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'mqtt' ? 'active' : ''}`}
+          onClick={() => setActiveTab('mqtt')}
+        >
+          MQTT
+        </button>
+      </nav>
 
-        <div
-          className="resize-handle resize-handle-left"
-          onMouseDown={(e) => handleMouseDown('left', e)}
-        />
+      {activeTab === 'dashboard' && (
+        <main
+          className="main-grid"
+          style={{
+            gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`
+          }}
+        >
+          <section className="panel left-panel">
+            <PicoPairing showStatus={showStatus} />
+            <PicoButtons showStatus={showStatus} />
+            <SaveFavorite showStatus={showStatus} />
+            <BridgeLevel showStatus={showStatus} />
+            <DeviceConfig showStatus={showStatus} />
+            <BridgeUnpair showStatus={showStatus} />
+            <BridgePairing showStatus={showStatus} />
+            <DeviceState showStatus={showStatus} />
+            <ResetPico showStatus={showStatus} />
+          </section>
 
-        <section className="panel center-panel">
-          <div className="center-panel-header">
-            <h2>Log Monitor</h2>
-            <div className="center-panel-actions">
-              <button
-                className={`pause-all-btn ${allPacketsPaused && pausedLogs ? 'paused' : ''}`}
-                onClick={() => { togglePauseAllPackets(); togglePauseLogs(); }}
-              >
-                {allPacketsPaused && pausedLogs ? 'Resume All' : 'Pause All'}
-              </button>
-              <button className="dump-logs-btn" onClick={dumpLogs}>Dump Logs</button>
-              <button className="clear-all-btn" onClick={() => { clearAllPackets(); clearLogs(); }}>Clear All</button>
+          <div
+            className="resize-handle resize-handle-left"
+            onMouseDown={(e) => handleMouseDown('left', e)}
+          />
+
+          <section className="panel center-panel">
+            <div className="center-panel-header">
+              <h2>Log Monitor</h2>
+              <div className="center-panel-actions">
+                <button
+                  className={`pause-all-btn ${allPacketsPaused && pausedLogs ? 'paused' : ''}`}
+                  onClick={() => { togglePauseAllPackets(); togglePauseLogs(); }}
+                >
+                  {allPacketsPaused && pausedLogs ? 'Resume All' : 'Pause All'}
+                </button>
+                <button className="dump-logs-btn" onClick={dumpLogs}>Dump Logs</button>
+                <button className="clear-all-btn" onClick={() => { clearAllPackets(); clearLogs(); }}>Clear All</button>
+              </div>
             </div>
-          </div>
-          <PacketDisplay
-            title="TX Packets"
-            packets={txPackets}
-            onClear={clearTx}
-            variant="tx"
-            paused={pausedTx}
-            onTogglePause={togglePauseTx}
-            collapsible
-          />
-          <PacketDisplay
-            title="RX Packets"
-            packets={rxPackets}
-            onClear={clearRx}
-            variant="rx"
-            paused={pausedRx}
-            onTogglePause={togglePauseRx}
-            collapsible
-          />
-          <LogDisplay
-            logs={logs}
-            onClear={clearLogs}
-            paused={pausedLogs}
-            onTogglePause={togglePauseLogs}
-            collapsible
-            defaultCollapsed
-          />
-        </section>
+            <PacketDisplay
+              title="TX Packets"
+              packets={txPackets}
+              onClear={clearTx}
+              variant="tx"
+              paused={pausedTx}
+              onTogglePause={togglePauseTx}
+              collapsible
+            />
+            <PacketDisplay
+              title="RX Packets"
+              packets={rxPackets}
+              onClear={clearRx}
+              variant="rx"
+              paused={pausedRx}
+              onTogglePause={togglePauseRx}
+              collapsible
+            />
+            <LogDisplay
+              logs={logs}
+              onClear={clearLogs}
+              paused={pausedLogs}
+              onTogglePause={togglePauseLogs}
+              collapsible
+              defaultCollapsed
+            />
+          </section>
 
-        <div
-          className="resize-handle resize-handle-right"
-          onMouseDown={(e) => handleMouseDown('right', e)}
-        />
-
-        <section className="panel right-panel">
-          <DeviceList
-            devices={devices}
-            onDelete={deleteDevice}
-            onClear={clearDevices}
-            onClearUnlabeled={clearUnlabeledDevices}
-            onRefresh={loadDevices}
-            showStatus={showStatus}
+          <div
+            className="resize-handle resize-handle-right"
+            onMouseDown={(e) => handleMouseDown('right', e)}
           />
-        </section>
-      </main>
+
+          <section className="panel right-panel">
+            <DeviceList
+              devices={devices}
+              onDelete={deleteDevice}
+              onClear={clearDevices}
+              onClearUnlabeled={clearUnlabeledDevices}
+              onRefresh={loadDevices}
+              showStatus={showStatus}
+            />
+          </section>
+        </main>
+      )}
+
+      {activeTab === 'proxy' && (
+        <main className="proxy-page">
+          <ProxyConfig showStatus={showStatus} devices={devices} />
+        </main>
+      )}
+
+      {activeTab === 'mqtt' && (
+        <main className="proxy-page">
+          <MqttConfig showStatus={showStatus} devices={devices} />
+        </main>
+      )}
 
       <StatusBar message={status.message} type={status.type} />
     </div>

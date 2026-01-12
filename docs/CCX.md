@@ -160,6 +160,189 @@ The application layer commands will reveal how Lutron implements lighting contro
 
 See `DATABASE_EDITING.md` for detailed extraction instructions.
 
+## Application Layer Protocol (CBOR over UDP)
+
+CCX uses **CBOR-encoded messages** over **UDP port 9190** for lighting control.
+
+### Message Structure
+
+All messages are CBOR arrays with 2 elements:
+```
+[msg_type, body_map]
+```
+
+### Message Types
+
+| Type | Name | Description |
+|------|------|-------------|
+| 0 | Level Control | On/off, dimming commands (from app/Pico) |
+| 1 | Button Press | Physical button/scene press on device |
+| 7 | Acknowledgment | Response to commands |
+| 41 | Status | Thread/device status updates |
+| 65535 | Presence | Device broadcast/announcement |
+
+### Level Control (Type 0) - Primary Command Format
+
+```cbor
+[0, {
+    0: {
+        0: <level>,     # 0xFEFF = ON (100%), 0x0000 = OFF (0%)
+        3: 1            # Command subtype (always 1)
+    },
+    1: [<zone_type>, <zone_id>],  # e.g., [16, 961]
+    5: <sequence>
+}]
+```
+
+**Level Values** (LINEAR scale):
+```
+level = percent * 655.35
+level = percent * (65535 / 100)
+```
+
+| Percent | Level (hex) | Level (dec) |
+|---------|-------------|-------------|
+| 0% | 0x0000 | 0 |
+| 1% | 0x028F | 655 |
+| 10% | 0x199A | 6554 |
+| 25% | 0x4000 | 16384 |
+| 50% | 0x8000 | 32768 |
+| 75% | 0xBFFF | 49151 |
+| 100% | 0xFFFF | 65535 |
+| FULL ON | 0xFEFF | 65279 |
+
+Note: `0xFEFF` ("full on") vs `0xFFFF` may distinguish "turn on" from "set to 100%"
+
+**Zone Addressing**:
+- `zone_type`: Usually 16 (may indicate device category)
+- `zone_id`: Internal Lutron zone ID (e.g., 961)
+
+**Example ON command** (hardware ID 0631acd7, zone 961):
+```
+Hex: 8200a300a20019feff03010182101903c105185c
+Decoded: CCXLevelCommand(ON, level=100%, zone=961, seq=92)
+```
+
+**Example OFF command**:
+```
+Hex: 8200a300a2000003010182101903c105185d
+Decoded: CCXLevelCommand(OFF, level=0%, zone=961, seq=93)
+```
+
+### Presence Broadcast (Type 65535)
+
+Devices periodically broadcast presence messages:
+
+```cbor
+[65535, {
+    4: 1,           # Status (1 = active?)
+    5: <sequence>
+}]
+```
+
+### Acknowledgment (Type 7)
+
+```cbor
+[7, {
+    0: {
+        1: {
+            0: <response_bytes>
+        }
+    },
+    5: <sequence>
+}]
+```
+
+### Button Press (Type 1) - Physical Button/Scene
+
+Triggered when a physical button is pressed on a Lutron device (keypad button, dimmer paddle).
+The device broadcasts the button press, and the dimmer internally executes the associated scene.
+
+```cbor
+[1, {
+    0: {
+        0: <device_id>,       # 4 bytes: [cmd_type, zone_low, 0xEF, 0x20]
+        1: [cnt1, cnt2, cnt3] # Frame counters (replay protection)
+    },
+    5: <sequence>
+}]
+```
+
+**Device ID Format**: `[cmd_type, zone_low, 0xEF, 0x20]`
+- Byte 0: Command type (0x03 = button press)
+- Byte 1: Button/scene zone ID (low byte)
+- Bytes 2-3: Fixed suffix `0xEF 0x20`
+
+**Example** ("Relax" scene button sets light to 10%):
+```
+Hex: 8201a200a2004403b3ef2001831a0003e1483a0002fe66192c88051882
+Decoded: CCXButtonPress(id=03b3ef20, zone=179, counters=[254280, -196199, 11400], seq=130)
+```
+
+**Key Observation**: Button presses don't contain level values. The scene/preset is stored
+on the device itself. Pressing the button triggers the device to recall and execute its
+stored scene configuration.
+
+**ACK Response**: Button presses receive ACK with response byte `0x55` ('U'):
+```
+Hex: 8207a200a2000101a1004155051883
+```
+
+### Status Updates (Type 41)
+
+Periodic status broadcasts from Thread devices containing device state:
+
+```cbor
+[41, {
+    0: {
+        0: 0,
+        2: <status_payload>   # Raw status bytes
+    },
+    2: [type, device_id],     # Device identifier
+    3: {1: <extra_field>}
+}]
+```
+
+These appear at ~6 second intervals and may contain mesh routing or device health information.
+
+### Sample ON/OFF Traffic
+
+| Time | Seq | Type | Level | Zone | Description |
+|------|-----|------|-------|------|-------------|
+| 8.4s | 91 | 65535 | - | - | Presence broadcast |
+| 24.3s | 92 | 0 | 0xFEFF | 961 | Turn ON |
+| 29.3s | 93 | 0 | 0x0000 | 961 | Turn OFF |
+| 33.2s | 94 | 0 | 0xFEFF | 961 | Turn ON |
+| 37.1s | 95 | 0 | 0x0000 | 961 | Turn OFF |
+
+Note: Commands are broadcast multiple times across the Thread mesh for reliability.
+
+### Zone ID vs Hardware ID
+
+The `zone_id` in CCX messages (e.g., 961) is an **internal Lutron index**, not the hardware serial number. The hardware ID (e.g., `0631acd7`) is stored in the Lutron database `LinkNode` table and maps to the zone ID.
+
+### Wireshark Filter for Lutron Traffic
+
+```
+udp.port == 9190
+```
+
+### Python Decoder
+
+See `ccx/ccx_decoder.py` for a Python implementation:
+
+```python
+from ccx.ccx_decoder import decode_and_parse
+
+# Decode a level control command (from app/Pico)
+cmd = decode_and_parse("8200a300a20019feff03010182101903c105185c")
+print(cmd)  # CCXLevelCommand(FULL_ON, level=0xfeff, zone=961, seq=92)
+
+# Decode a physical button press
+btn = decode_and_parse("8201a200a2004403b3ef2001831a0003e1483a0002fe66192c88051882")
+print(btn)  # CCXButtonPress(id=03b3ef20, zone=179, counters=[...], seq=130)
+```
+
 ## Matter Compatibility
 
 Thread is the transport layer for Matter. Future research could investigate:

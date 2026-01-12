@@ -51,6 +51,44 @@
   opacity: 0.6;
 }
 
+/* Tab Navigation */
+.tab-nav {
+  display: flex;
+  gap: 0;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 1rem;
+}
+
+.tab-btn {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.tab-btn.active {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}
+
+/* Proxy Page */
+.proxy-page {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+}
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -62,6 +100,20 @@
 .left-panel {
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.left-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.left-panel::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+.left-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .center-panel {

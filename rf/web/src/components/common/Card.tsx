@@ -24,24 +24,32 @@ export function Card({
 }: CardProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed)
 
+  const handleHeaderClick = () => {
+    if (collapsible) {
+      setCollapsed(!collapsed)
+    }
+  }
+
   return (
     <div className={`card card-${variant} ${className} ${collapsed ? 'card-collapsed' : ''}`}>
-      <div className="card-header">
+      <div
+        className={`card-header ${collapsible ? 'card-header-clickable' : ''}`}
+        onClick={handleHeaderClick}
+      >
         <div className="card-header-left">
           {collapsible && (
-            <button
-              className={`card-collapse-btn ${collapsed ? 'collapsed' : ''}`}
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? 'Expand' : 'Collapse'}
-            >
+            <span className={`card-collapse-icon ${collapsed ? 'collapsed' : ''}`}>
               {collapsed ? '+' : '-'}
-            </button>
+            </span>
           )}
           <h2 className="card-title">{title}</h2>
-          {badge && <span className="card-badge">{badge}</span>}
-          {collapsed && <span className="card-collapsed-hint">click +/- to expand</span>}
+          {badge && !collapsed && <span className="card-badge">{badge}</span>}
         </div>
-        {actions && !collapsed && <div className="card-actions">{actions}</div>}
+        {actions && !collapsed && (
+          <div className="card-actions" onClick={e => e.stopPropagation()}>
+            {actions}
+          </div>
+        )}
       </div>
       {!collapsed && (
         <div className="card-body">
@@ -51,6 +59,3 @@ export function Card({
     </div>
   )
 }
-
-
-

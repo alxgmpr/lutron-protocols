@@ -247,12 +247,9 @@ void CC1101Radio::start_rx() {
   this->strobe(CC1101_SRX);
 
   this->rx_active_ = true;
-  ESP_LOGI(TAG, "RX mode active (sync=0xAAAA, fixed 48 bytes, 15/16 sync)");
 }
 
 void CC1101Radio::stop_rx() {
-  ESP_LOGI(TAG, "Stopping RX mode...");
-
   this->set_idle();
   delay(1);
   this->flush_rx();
@@ -264,7 +261,6 @@ void CC1101Radio::stop_rx() {
   this->write_register(CC1101_IOCFG0, 0x06);
 
   this->rx_active_ = false;
-  ESP_LOGI(TAG, "RX mode stopped");
 }
 
 bool CC1101Radio::check_rx() {

@@ -7,6 +7,19 @@ substitutions:
 esphome:
   name: ${device_name}
   friendly_name: ${friendly_name}
+  includes:
+    - udp_stream.h
+  on_boot:
+    priority: -100  # Run after WiFi is connected
+    then:
+      - lambda: |-
+          // Initialize UDP streaming to backend
+          cca_udp_stream.set_address(id(udp_backend_host), id(udp_backend_port));
+          if (cca_udp_stream.begin()) {
+            ESP_LOGI("udp", "UDP stream initialized to %s:%d", id(udp_backend_host), id(udp_backend_port));
+          } else {
+            ESP_LOGE("udp", "Failed to initialize UDP stream");
+          }
 
 esp32:
   board: esp32dev
@@ -18,7 +31,6 @@ wifi:
   password: 7qnUoWuiVbExHaU
 
 logger:
-  level: DEBUG
 
 api:
   encryption:
@@ -416,6 +428,20 @@ api:
             ESP_LOGI("service", "send_handshake_response: dimmer_type=0x%02X subnet=0x%04X", dimmer_type, sub);
             id(lutron_radio)->send_handshake_response(dimmer_type, sub);
 
+    # ========== UDP STREAMING CONFIGURATION ==========
+
+    # Configure UDP backend for packet streaming
+    # Call this from Python to set where packets should be sent
+    - service: set_udp_backend
+      variables:
+        host: string
+        port: int
+      then:
+        - lambda: |-
+            ESP_LOGI("service", "set_udp_backend: %s:%d", host.c_str(), port);
+            cca_udp_stream.set_address(host.c_str(), port);
+            cca_udp_stream.begin();
+
 ota:
   platform: esphome
   password: "test"
@@ -434,6 +460,14 @@ lutron_cc1101:
   id: lutron_radio
   cs_pin: GPIO21
   gdo0_pin: GPIO4
+  on_packet:
+    - lambda: |-
+        // Send RX packet via UDP to backend
+        cca_udp_stream.send_packet(data, rssi);
+  on_tx:
+    - lambda: |-
+        // Send TX packet via UDP to backend
+        cca_udp_stream.send_tx_packet(data);
 
 globals:
   - id: beacon_active
@@ -445,6 +479,13 @@ globals:
   - id: beacon_device_id
     type: uint32_t
     initial_value: '0xCC110001'
+  # UDP backend configuration
+  - id: udp_backend_host
+    type: 'const char*'
+    initial_value: '"10.1.1.10"'  # Backend server IP (en11 interface)
+  - id: udp_backend_port
+    type: uint16_t
+    initial_value: '9433'  # Backend UDP port for CCA packets
 
 interval:
   - interval: 65ms

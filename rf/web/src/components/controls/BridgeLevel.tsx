@@ -44,7 +44,7 @@ export function BridgeLevel({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Level Control" badge="BRIDGE -> DEVICE" variant="bridge">
+    <Card title="Bridge Level" badge="BRIDGE -> DEVICE" variant="bridge" collapsible defaultCollapsed>
       <p className="help-text">Set a dimmer's level via bridge protocol. Enter the bridge subnet (middle 4 hex digits from any bridge zone ID).</p>
       <div className="form-row">
         <FormGroup label="Subnet" hint={`Source: ${sourceId}`}>

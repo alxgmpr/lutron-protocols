@@ -28,7 +28,7 @@ export function ResetPico({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Reset Pico" badge="FORGET ME" variant="device">
+    <Card title="Reset Pico" badge="FORGET ME" variant="device" collapsible defaultCollapsed>
       <p className="help-text">Broadcasts "forget" message to devices within earshot. Devices who have paired to this Pico will forget about it.</p>
       <div className="form-row">
         <FormGroup label="Pico ID" flex="auto">

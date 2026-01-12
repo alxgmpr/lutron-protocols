@@ -139,7 +139,7 @@ export function BridgePairing({ showStatus }: Props) {
   const canSelect = state === 'AWAIT_B0' && (pairingStatus?.discovered_devices?.length ?? 0) > 0
 
   return (
-    <Card title="Bridge Pairing" badge="BRIDGE → DIMMER" variant="pairing">
+    <Card title="Bridge Pairing" badge="BRIDGE → DIMMER" variant="pairing" collapsible defaultCollapsed>
       <p className="help-text">
         Pair dimmers to ESP32 as a bridge. Sends beacons to make dimmers discoverable.
       </p>
