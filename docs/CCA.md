@@ -305,6 +305,42 @@ Button press sequence:
 3. ~70ms gap between packets
 4. Sequence increments: +2/+4 alternating for short, +6 for long
 
+### Pico Burst Characteristics
+
+Observed via CC1101 receiver (ESP32 @ 1MHz SPI):
+
+| Action | Packets Observed |
+|--------|------------------|
+| Quick tap (press+release) | 8-12 packets |
+| Maximum hold (press, hold, release) | Up to 24 packets |
+
+The maximum of 12 packets per button action (press OR release) represents the full burst:
+- 6 short format + 6 long format = 12 packets per action
+- A complete press-hold-release cycle sends two bursts (press burst + release burst)
+
+Packet loss is normal due to:
+- Sync word detection timing vs continuous preamble
+- FIFO read latency between packets in burst
+- Radio state transitions (IDLE->RX restart)
+
+Receiving 8-12 packets per action indicates good RF reception. The redundancy in Lutron's
+protocol means even 2-3 packets are sufficient for reliable command detection.
+
+### Bridge/Dimmer Command Reception
+
+| Source | Packets Observed | Notes |
+|--------|------------------|-------|
+| Pico button | 8-12 | Excellent |
+| Dimmer STATE_REPORT | 8-12 | Excellent |
+| Bridge SET_LEVEL | 1-6 | Needs tuning |
+
+Bridge SET_LEVEL commands are less reliably captured. Possible causes:
+- Bridge may transmit fewer redundant packets than Picos/dimmers
+- Different TX power characteristics (bridge is mains-powered, may use higher power)
+- AGC settling time issues when signal is stronger than expected
+
+**TODO:** Investigate bridge SET_LEVEL packet timing and burst count.
+
 ## Level Command (24 bytes)
 
 Bridge sends level commands to dimmers:
