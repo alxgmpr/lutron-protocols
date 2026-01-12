@@ -28,7 +28,7 @@ from contextlib import contextmanager
 DB_FILE = os.path.join(os.path.dirname(__file__), "cca_playground.db")
 
 # Current schema version - increment when making breaking changes
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 def get_connection() -> sqlite3.Connection:
     """Get a database connection with row factory."""
@@ -224,6 +224,84 @@ def _run_migrations(conn: sqlite3.Connection, from_version: int):
         conn.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
         print(f"[DATABASE] Migrated to schema version 3 (proxy rule target_bridge_id)")
 
+    if from_version < 4:
+        # Schema v4: Separate RF behavior discovery from CCA subnet topology
+        # Add new columns to devices table for RF role classification
+        cursor = conn.execute("PRAGMA table_info(devices)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'rf_role' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN rf_role TEXT DEFAULT 'unknown'")
+        if 'confidence' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN confidence REAL DEFAULT 0.0")
+
+        conn.executescript("""
+            -- CCA Subnets: observed network constructs
+            CREATE TABLE IF NOT EXISTS cca_subnets (
+                subnet_id TEXT PRIMARY KEY,          -- 4-hex subnet ID (big-endian display format)
+                primary_bridge_id TEXT,              -- Best guess at owning bridge (8-hex)
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                confidence REAL DEFAULT 0.0,         -- 0.0 to 1.0
+                source_counts TEXT,                  -- JSON: {"set_level": n, "state_rpt": n}
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+
+            -- CCA Subnet Members: which devices belong to which subnet
+            CREATE TABLE IF NOT EXISTS cca_subnet_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subnet_id TEXT NOT NULL,             -- FK to cca_subnets
+                cca_device_id TEXT NOT NULL,         -- Full 8-hex device address
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                role_hint TEXT DEFAULT 'unknown',    -- node | bridge | unknown
+                confidence REAL DEFAULT 0.0,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(subnet_id, cca_device_id),
+                FOREIGN KEY (subnet_id) REFERENCES cca_subnets(subnet_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_subnet_members_subnet ON cca_subnet_members(subnet_id);
+            CREATE INDEX IF NOT EXISTS idx_subnet_members_device ON cca_subnet_members(cca_device_id);
+
+            -- RF Link Events: raw observed linkage facts
+            CREATE TABLE IF NOT EXISTS rf_link_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                tx_id TEXT NOT NULL,                 -- Transmitter device ID
+                subnet_id TEXT,                      -- If event involves CCA traffic
+                rx_candidate_id TEXT,                -- Nullable receiver candidate
+                evidence TEXT NOT NULL,              -- pairing_sequence | control_state_change | ack_chain | user_annotated
+                confidence REAL DEFAULT 0.5,
+                packet_refs TEXT,                    -- JSON list of packet IDs
+                details TEXT,                        -- JSON of additional context
+                created_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_link_events_tx ON rf_link_events(tx_id);
+            CREATE INDEX IF NOT EXISTS idx_link_events_timestamp ON rf_link_events(timestamp);
+
+            -- RF Links: derived best-belief relationships
+            CREATE TABLE IF NOT EXISTS rf_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tx_id TEXT NOT NULL,                 -- Transmitter device ID
+                rx_id TEXT NOT NULL,                 -- Receiver device ID (or CCA device)
+                link_type TEXT DEFAULT 'unknown',    -- direct_one_way | via_bridge | unknown
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                confidence REAL DEFAULT 0.0,
+                supporting_event_count INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                UNIQUE(tx_id, rx_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_rf_links_tx ON rf_links(tx_id);
+            CREATE INDEX IF NOT EXISTS idx_rf_links_rx ON rf_links(rx_id);
+
+            -- Update schema version
+            UPDATE meta SET value = '4' WHERE key = 'schema_version';
+        """)
+        print(f"[DATABASE] Migrated to schema version 4 (CCA subnets, RF links)")
+
 def compute_packet_hash(raw_bytes: bytes) -> str:
     """Compute SHA256 hash of raw packet bytes."""
     return hashlib.sha256(raw_bytes).hexdigest()
@@ -397,9 +475,21 @@ def upsert_device(
     category: Optional[str] = None,
     bridge_id: Optional[str] = None,
     factory_id: Optional[str] = None,
-    info: Optional[Dict] = None
+    info: Optional[Dict] = None,
+    rf_role: Optional[str] = None,
+    confidence: Optional[float] = None
 ) -> Dict:
-    """Insert or update a device record."""
+    """Insert or update a device record.
+
+    Args:
+        device_id: 8-char hex device ID
+        category: Legacy category (pico, dimmer_passive, bridge_controlled, etc.)
+        bridge_id: Controlling bridge ID (for SET_LEVEL packets)
+        factory_id: Factory/hardware ID
+        info: Additional info dict to merge
+        rf_role: RF behavior role (one_way_tx, two_way_cca_node, cca_bridge, etc.)
+        confidence: Confidence in the rf_role assignment (0.0 to 1.0)
+    """
     now = datetime.now().isoformat()
 
     # Compute link_id from device_id or bridge_id
@@ -441,19 +531,30 @@ def upsert_device(
                 updates.append("info = ?")
                 params.append(json.dumps(existing_info))
 
+            # Update rf_role only if confidence is higher than existing
+            if rf_role and confidence is not None:
+                existing_confidence = existing['confidence'] or 0.0
+                if confidence > existing_confidence or existing['rf_role'] == 'unknown':
+                    updates.append("rf_role = ?")
+                    params.append(rf_role)
+                    updates.append("confidence = ?")
+                    params.append(confidence)
+
             params.append(device_id)
             conn.execute(f"UPDATE devices SET {', '.join(updates)} WHERE id = ?", params)
         else:
             # Insert new
             conn.execute("""
                 INSERT INTO devices (id, link_id, bridge_id, factory_id, category, controllable,
-                                    first_seen, last_seen, packet_count, info)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+                                    first_seen, last_seen, packet_count, info, rf_role, confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
             """, (
                 device_id, link_id, bridge_id, factory_id, category,
                 1 if category in ('pico', 'scene_pico', 'bridge_controlled') else 0,
                 now, now,
-                json.dumps(info) if info else None
+                json.dumps(info) if info else None,
+                rf_role or 'unknown',
+                confidence or 0.0
             ))
 
     # Get device after commit (outside the with block)
@@ -491,7 +592,10 @@ def get_all_devices() -> Dict[str, Dict]:
                 'first_seen': d['first_seen'],
                 'last_seen': d['last_seen'],
                 'count': d['packet_count'],
-                'info': d['info'] or {}
+                'info': d['info'] or {},
+                # New RF behavior fields
+                'rf_role': d.get('rf_role', 'unknown'),
+                'confidence': d.get('confidence', 0.0)
             }
         return result
 
@@ -541,6 +645,276 @@ def get_bridge_pairings() -> List[str]:
             "SELECT DISTINCT link_id FROM devices WHERE link_id IS NOT NULL ORDER BY link_id"
         ).fetchall()
         return [row['link_id'] for row in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CCA SUBNETS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def upsert_cca_subnet(
+    subnet_id: str,
+    primary_bridge_id: Optional[str] = None,
+    source_type: Optional[str] = None,  # 'set_level' or 'state_rpt'
+    confidence: float = 0.5
+) -> Dict:
+    """Insert or update a CCA subnet record."""
+    now = datetime.now().isoformat()
+    subnet_id = subnet_id.upper()
+
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM cca_subnets WHERE subnet_id = ?", (subnet_id,)
+        ).fetchone()
+
+        if existing:
+            # Update existing
+            updates = ["last_seen = ?", "updated_at = ?"]
+            params = [now, now]
+
+            # Update source counts
+            if source_type:
+                source_counts = json.loads(existing['source_counts']) if existing['source_counts'] else {}
+                source_counts[source_type] = source_counts.get(source_type, 0) + 1
+                updates.append("source_counts = ?")
+                params.append(json.dumps(source_counts))
+
+            # Update bridge if provided and we don't have one yet
+            if primary_bridge_id and not existing['primary_bridge_id']:
+                updates.append("primary_bridge_id = ?")
+                params.append(primary_bridge_id)
+
+            # Update confidence if higher
+            if confidence > (existing['confidence'] or 0):
+                updates.append("confidence = ?")
+                params.append(confidence)
+
+            params.append(subnet_id)
+            conn.execute(f"UPDATE cca_subnets SET {', '.join(updates)} WHERE subnet_id = ?", params)
+        else:
+            # Insert new
+            source_counts = {source_type: 1} if source_type else {}
+            conn.execute("""
+                INSERT INTO cca_subnets (subnet_id, primary_bridge_id, first_seen, last_seen, confidence, source_counts)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (subnet_id, primary_bridge_id, now, now, confidence, json.dumps(source_counts)))
+
+    return get_cca_subnet(subnet_id)
+
+
+def get_cca_subnet(subnet_id: str) -> Optional[Dict]:
+    """Get a CCA subnet by ID."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM cca_subnets WHERE subnet_id = ?", (subnet_id.upper(),)).fetchone()
+        if row:
+            d = dict(row)
+            if d['source_counts']:
+                d['source_counts'] = json.loads(d['source_counts'])
+            return d
+        return None
+
+
+def get_all_cca_subnets() -> List[Dict]:
+    """Get all CCA subnets."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM cca_subnets ORDER BY last_seen DESC").fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            if d['source_counts']:
+                d['source_counts'] = json.loads(d['source_counts'])
+            result.append(d)
+        return result
+
+
+def upsert_cca_subnet_member(
+    subnet_id: str,
+    cca_device_id: str,
+    role_hint: str = 'unknown',
+    confidence: float = 0.5
+) -> Dict:
+    """Add or update a device membership in a CCA subnet."""
+    now = datetime.now().isoformat()
+    subnet_id = subnet_id.upper()
+    cca_device_id = cca_device_id.upper()
+
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM cca_subnet_members WHERE subnet_id = ? AND cca_device_id = ?",
+            (subnet_id, cca_device_id)
+        ).fetchone()
+
+        if existing:
+            # Update existing
+            updates = ["last_seen = ?", "updated_at = ?"]
+            params = [now, now]
+
+            # Update role_hint if not unknown and different
+            if role_hint != 'unknown' and existing['role_hint'] == 'unknown':
+                updates.append("role_hint = ?")
+                params.append(role_hint)
+
+            # Update confidence if higher
+            if confidence > (existing['confidence'] or 0):
+                updates.append("confidence = ?")
+                params.append(confidence)
+
+            params.extend([subnet_id, cca_device_id])
+            conn.execute(
+                f"UPDATE cca_subnet_members SET {', '.join(updates)} WHERE subnet_id = ? AND cca_device_id = ?",
+                params
+            )
+        else:
+            # Insert new
+            conn.execute("""
+                INSERT INTO cca_subnet_members (subnet_id, cca_device_id, first_seen, last_seen, role_hint, confidence)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (subnet_id, cca_device_id, now, now, role_hint, confidence))
+
+    return get_cca_subnet_members(subnet_id)
+
+
+def get_cca_subnet_members(subnet_id: str) -> List[Dict]:
+    """Get all members of a CCA subnet."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM cca_subnet_members WHERE subnet_id = ? ORDER BY last_seen DESC",
+            (subnet_id.upper(),)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_device_subnets(device_id: str) -> List[Dict]:
+    """Get all subnets a device belongs to."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM cca_subnet_members WHERE cca_device_id = ?",
+            (device_id.upper(),)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RF LINKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def insert_rf_link_event(
+    tx_id: str,
+    evidence: str,
+    timestamp: Optional[str] = None,
+    subnet_id: Optional[str] = None,
+    rx_candidate_id: Optional[str] = None,
+    confidence: float = 0.5,
+    packet_refs: Optional[List[int]] = None,
+    details: Optional[Dict] = None
+) -> int:
+    """Insert an RF link event (observed linkage fact)."""
+    now = datetime.now().isoformat()
+    timestamp = timestamp or now
+
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO rf_link_events (timestamp, tx_id, subnet_id, rx_candidate_id, evidence, confidence, packet_refs, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            timestamp,
+            tx_id.upper(),
+            subnet_id.upper() if subnet_id else None,
+            rx_candidate_id.upper() if rx_candidate_id else None,
+            evidence,
+            confidence,
+            json.dumps(packet_refs) if packet_refs else None,
+            json.dumps(details) if details else None
+        ))
+        return cursor.lastrowid
+
+
+def upsert_rf_link(
+    tx_id: str,
+    rx_id: str,
+    link_type: str = 'unknown',
+    confidence: float = 0.5
+) -> Dict:
+    """Insert or update an RF link (derived relationship)."""
+    now = datetime.now().isoformat()
+    tx_id = tx_id.upper()
+    rx_id = rx_id.upper()
+
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM rf_links WHERE tx_id = ? AND rx_id = ?",
+            (tx_id, rx_id)
+        ).fetchone()
+
+        if existing:
+            # Update existing
+            updates = [
+                "last_seen = ?",
+                "updated_at = ?",
+                "supporting_event_count = supporting_event_count + 1"
+            ]
+            params = [now, now]
+
+            # Update link_type if not unknown
+            if link_type != 'unknown' and existing['link_type'] == 'unknown':
+                updates.append("link_type = ?")
+                params.append(link_type)
+
+            # Update confidence if higher
+            if confidence > (existing['confidence'] or 0):
+                updates.append("confidence = ?")
+                params.append(confidence)
+
+            params.extend([tx_id, rx_id])
+            conn.execute(
+                f"UPDATE rf_links SET {', '.join(updates)} WHERE tx_id = ? AND rx_id = ?",
+                params
+            )
+        else:
+            # Insert new
+            conn.execute("""
+                INSERT INTO rf_links (tx_id, rx_id, link_type, first_seen, last_seen, confidence, supporting_event_count)
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+            """, (tx_id, rx_id, link_type, now, now, confidence))
+
+    return get_rf_link(tx_id, rx_id)
+
+
+def get_rf_link(tx_id: str, rx_id: str) -> Optional[Dict]:
+    """Get a specific RF link."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM rf_links WHERE tx_id = ? AND rx_id = ?",
+            (tx_id.upper(), rx_id.upper())
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_all_rf_links() -> List[Dict]:
+    """Get all RF links."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM rf_links ORDER BY last_seen DESC").fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_links_from_tx(tx_id: str) -> List[Dict]:
+    """Get all links from a transmitter."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM rf_links WHERE tx_id = ? ORDER BY last_seen DESC",
+            (tx_id.upper(),)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_links_to_rx(rx_id: str) -> List[Dict]:
+    """Get all links to a receiver."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM rf_links WHERE rx_id = ? ORDER BY last_seen DESC",
+            (rx_id.upper(),)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PACKET LOG FORMAT PARSING
@@ -737,6 +1111,167 @@ def update_mqtt_config(**kwargs) -> bool:
 # ===============================================================================
 # PROXY RULES
 # ===============================================================================
+
+# Valid RF roles for proxy source and target
+VALID_SOURCE_RF_ROLES = {'one_way_tx', 'two_way_cca_node', 'cca_bridge', 'unknown'}
+VALID_TARGET_RF_ROLES = {'two_way_cca_node', 'cca_bridge', 'silent_load_candidate', 'unknown'}
+
+# Map RF roles to proxy device types
+RF_ROLE_TO_PROXY_TYPE = {
+    'one_way_tx': 'pico',
+    'two_way_cca_node': 'dimmer',
+    'cca_bridge': 'bridge',
+    'silent_load_candidate': 'dimmer',
+    'unknown': 'unknown'
+}
+
+
+def get_device_rf_info(device_id: str) -> Optional[Dict]:
+    """Get RF role information for a device.
+
+    Returns dict with: rf_role, confidence, bridge_id, subnet, category
+    """
+    device = get_device(device_id)
+    if not device:
+        return None
+
+    return {
+        'rf_role': device.get('rf_role', 'unknown'),
+        'confidence': device.get('confidence', 0.0),
+        'bridge_id': device.get('bridge_id'),
+        'link_id': device.get('link_id'),
+        'category': device.get('category'),
+        'info': device.get('info', {})
+    }
+
+
+def infer_proxy_type_from_device(device_id: str) -> tuple[str, Optional[str], float]:
+    """Infer proxy device type from RF role.
+
+    Returns (device_type, bridge_id, confidence)
+    """
+    info = get_device_rf_info(device_id)
+    if not info:
+        return ('unknown', None, 0.0)
+
+    rf_role = info.get('rf_role', 'unknown')
+    proxy_type = RF_ROLE_TO_PROXY_TYPE.get(rf_role, 'unknown')
+
+    # Refine type based on category
+    category = info.get('category', '')
+    if rf_role == 'one_way_tx':
+        if category == 'scene_pico':
+            proxy_type = 'scene_pico'
+        else:
+            proxy_type = 'pico'
+
+    # Get bridge_id for CCA devices
+    bridge_id = info.get('bridge_id')
+    if not bridge_id:
+        # Try to find from subnet membership
+        device_info = info.get('info', {})
+        if device_info.get('subnet'):
+            # Look up the subnet's primary bridge
+            subnet = get_cca_subnet(device_info['subnet'])
+            if subnet and subnet.get('primary_bridge_id'):
+                bridge_id = subnet['primary_bridge_id']
+
+    return (proxy_type, bridge_id, info.get('confidence', 0.0))
+
+
+def validate_proxy_rule(
+    source_device_id: str,
+    target_device_id: str,
+    source_type: Optional[str] = None,
+    target_type: Optional[str] = None
+) -> Dict:
+    """Validate proxy rule based on RF roles.
+
+    Returns dict with:
+        valid: bool
+        warnings: list of warning messages
+        errors: list of error messages
+        inferred_source_type: str (auto-detected if not provided)
+        inferred_target_type: str (auto-detected if not provided)
+        inferred_target_bridge_id: str or None (auto-detected bridge)
+    """
+    result = {
+        'valid': True,
+        'warnings': [],
+        'errors': [],
+        'inferred_source_type': source_type,
+        'inferred_target_type': target_type,
+        'inferred_target_bridge_id': None
+    }
+
+    # Get source device info
+    source_info = get_device_rf_info(source_device_id)
+    if source_info:
+        source_rf_role = source_info.get('rf_role', 'unknown')
+        source_confidence = source_info.get('confidence', 0.0)
+
+        # Validate source can transmit
+        if source_rf_role == 'silent_load_candidate':
+            result['errors'].append(
+                f"Source device {source_device_id} is classified as 'silent_load_candidate' "
+                f"(possible one-way receiver) - it cannot transmit commands"
+            )
+            result['valid'] = False
+
+        # Auto-detect source type if not provided
+        if not source_type or source_type == 'auto':
+            inferred_type, _, _ = infer_proxy_type_from_device(source_device_id)
+            result['inferred_source_type'] = inferred_type
+            if source_confidence < 0.5:
+                result['warnings'].append(
+                    f"Source device {source_device_id} RF role confidence is low ({source_confidence:.0%})"
+                )
+    else:
+        # Device not in database - might be virtual or manual entry
+        result['warnings'].append(f"Source device {source_device_id} not found in device database")
+        if not source_type:
+            result['inferred_source_type'] = 'unknown'
+
+    # Get target device info
+    target_info = get_device_rf_info(target_device_id)
+    if target_info:
+        target_rf_role = target_info.get('rf_role', 'unknown')
+        target_confidence = target_info.get('confidence', 0.0)
+
+        # Validate target can receive
+        if target_rf_role == 'one_way_tx':
+            result['errors'].append(
+                f"Target device {target_device_id} is classified as 'one_way_tx' "
+                f"(one-way transmitter like Pico) - it cannot receive commands"
+            )
+            result['valid'] = False
+
+        # Auto-detect target type if not provided
+        if not target_type or target_type == 'auto':
+            inferred_type, bridge_id, _ = infer_proxy_type_from_device(target_device_id)
+            result['inferred_target_type'] = inferred_type
+            result['inferred_target_bridge_id'] = bridge_id
+            if target_confidence < 0.5:
+                result['warnings'].append(
+                    f"Target device {target_device_id} RF role confidence is low ({target_confidence:.0%})"
+                )
+        else:
+            # Even if type is provided, try to get bridge_id
+            _, bridge_id, _ = infer_proxy_type_from_device(target_device_id)
+            result['inferred_target_bridge_id'] = bridge_id
+    else:
+        # Device not in database - might be virtual or manual entry
+        result['warnings'].append(f"Target device {target_device_id} not found in device database")
+        if not target_type:
+            result['inferred_target_type'] = 'unknown'
+
+    # Check for same source and target
+    if source_device_id.upper() == target_device_id.upper():
+        result['errors'].append("Source and target device cannot be the same")
+        result['valid'] = False
+
+    return result
+
 
 def get_proxy_rules(enabled_only: bool = False) -> List[Dict]:
     """Get all proxy rules."""

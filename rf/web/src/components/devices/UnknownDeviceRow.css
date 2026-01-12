@@ -7,7 +7,7 @@
   background: var(--bg-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
-  border-left: 2px solid transparent;
+  border-left: 3px solid transparent;
 }
 
 .unknown-device-row:hover {
@@ -15,10 +15,42 @@
   border-left-color: var(--accent-orange);
 }
 
+/* RF Role-specific left border colors */
+.unknown-device-row.rf-role-tx {
+  border-left-color: rgba(255, 152, 0, 0.5);
+}
+
+.unknown-device-row.rf-role-cca {
+  border-left-color: rgba(33, 150, 243, 0.5);
+}
+
+.unknown-device-row.rf-role-bridge {
+  border-left-color: rgba(156, 39, 176, 0.5);
+}
+
+.unknown-device-row.rf-role-silent {
+  border-left-color: rgba(158, 158, 158, 0.5);
+}
+
+.unknown-device-row:hover.rf-role-tx {
+  border-left-color: #ff9800;
+  background: rgba(255, 152, 0, 0.08);
+}
+
+.unknown-device-row:hover.rf-role-cca {
+  border-left-color: #2196f3;
+  background: rgba(33, 150, 243, 0.08);
+}
+
+.unknown-device-row:hover.rf-role-bridge {
+  border-left-color: #9c27b0;
+  background: rgba(156, 39, 176, 0.08);
+}
+
 .unknown-device-main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -51,7 +83,55 @@
 .unknown-device-hint {
   font-size: 11px;
   color: var(--text-muted);
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* RF Role badge in hint area */
+.unknown-device-role-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-style: normal;
+}
+
+.unknown-device-role-badge.rf-role-tx {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffb74d;
+}
+
+.unknown-device-role-badge.rf-role-cca {
+  background: rgba(33, 150, 243, 0.2);
+  color: #64b5f6;
+}
+
+.unknown-device-role-badge.rf-role-bridge {
+  background: rgba(156, 39, 176, 0.2);
+  color: #ce93d8;
+}
+
+.unknown-device-role-badge.rf-role-silent {
+  background: rgba(158, 158, 158, 0.2);
+  color: #bdbdbd;
+}
+
+.unknown-device-confidence {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+.unknown-device-label-tag {
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #81c784;
+  font-style: normal;
 }
 
 .unknown-device-meta {
@@ -84,6 +164,3 @@
 .unknown-device-row:hover .unknown-device-action {
   opacity: 1;
 }
-
-
-

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { Device } from '../../types'
+import type { Device, RfRole } from '../../types'
 import './DeviceGroup.css'
 
 interface DeviceGroupProps {
@@ -10,21 +10,56 @@ interface DeviceGroupProps {
   formatTime?: (dateString: string) => string
 }
 
-function getInferredTypeHint(device: Device): string | null {
+// Map RF roles to user-friendly labels
+const RF_ROLE_LABELS: Record<RfRole, string> = {
+  'one_way_tx': 'Transmitter',
+  'two_way_cca_node': 'CCA Device',
+  'cca_bridge': 'Bridge',
+  'silent_load_candidate': 'Receiver?',
+  'unknown': ''
+}
+
+// Map RF roles to more specific device hints based on additional context
+function getRfRoleHint(device: Device): { label: string; role: RfRole } {
+  const rfRole = device.rf_role || 'unknown'
   const category = device.info?.category || ''
   const type = device.info?.type || ''
 
-  if (category === 'pico') return 'Pico'
-  if (category === 'scene_pico') return 'Scene'
-  if (category === 'bridge_controlled') return 'Dimmer'
-  if (category === 'dimmer_passive' || category === 'dimmer') return 'Dimmer'
-  if (type === 'LEVEL') return 'Dimmer'
-  if (type?.startsWith('BTN_')) return 'Remote'
-  return null
+  // Use rf_role if available and not unknown
+  if (rfRole && rfRole !== 'unknown') {
+    // Add specificity based on legacy category
+    if (rfRole === 'one_way_tx') {
+      if (category === 'scene_pico') return { label: 'Scene Pico', role: rfRole }
+      if (category === 'pico') return { label: 'Pico', role: rfRole }
+      return { label: 'Transmitter', role: rfRole }
+    }
+    if (rfRole === 'two_way_cca_node') {
+      return { label: 'CCA Device', role: rfRole }
+    }
+    if (rfRole === 'cca_bridge') {
+      return { label: 'Bridge', role: rfRole }
+    }
+    return { label: RF_ROLE_LABELS[rfRole], role: rfRole }
+  }
+
+  // Fallback to legacy category inference
+  if (category === 'pico') return { label: 'Pico', role: 'one_way_tx' }
+  if (category === 'scene_pico') return { label: 'Scene Pico', role: 'one_way_tx' }
+  if (category === 'bridge_controlled') return { label: 'CCA Device', role: 'two_way_cca_node' }
+  if (category === 'dimmer_passive' || category === 'dimmer') return { label: 'CCA Device', role: 'two_way_cca_node' }
+  if (type === 'LEVEL') return { label: 'CCA Device', role: 'two_way_cca_node' }
+  if (type?.startsWith('BTN_')) return { label: 'Transmitter', role: 'one_way_tx' }
+
+  return { label: '', role: 'unknown' }
 }
 
 function getDeviceCategory(devices: Array<[string, Device]>): 'pico' | 'dimmer' | 'unknown' {
   for (const [, device] of devices) {
+    const rfRole = device.rf_role
+    if (rfRole === 'one_way_tx') return 'pico'
+    if (rfRole === 'two_way_cca_node' || rfRole === 'cca_bridge') return 'dimmer'
+
+    // Legacy fallback
     const category = device.info?.category || ''
     if (category === 'pico' || category === 'scene_pico') return 'pico'
     if (category === 'bridge_controlled' || category === 'dimmer_passive' || category === 'dimmer') return 'dimmer'
@@ -37,6 +72,10 @@ function extractBridgePairing(devices: Array<[string, Device]>): string | null {
     // First check for pre-extracted bridge_pairing
     if (device.info?.bridge_pairing) {
       return device.info.bridge_pairing as string
+    }
+    // Check for subnet (new field)
+    if (device.info?.subnet) {
+      return device.info.subnet as string
     }
     // Otherwise extract from bridge_id
     if (device.info?.bridge_id) {
@@ -57,7 +96,9 @@ export function DeviceGroup({
   formatTime
 }: DeviceGroupProps) {
   const groupType = devices.find(([, d]) => d.device_type)?.[1].device_type || 'auto'
-  const inferredHint = groupType === 'auto' ? getInferredTypeHint(devices[0]?.[1]) : null
+  const { label: inferredHint, role: rfRole } = groupType === 'auto'
+    ? getRfRoleHint(devices[0]?.[1])
+    : { label: null, role: 'unknown' as RfRole }
   const category = getDeviceCategory(devices)
   const bridgePairing = extractBridgePairing(devices)
 
@@ -96,13 +137,19 @@ export function DeviceGroup({
 
   const showQuickButtons = onQuickAction && category !== 'unknown'
 
+  // Determine badge class based on RF role
+  const badgeClass = rfRole === 'one_way_tx' ? 'device-type-badge rf-role-tx' :
+                     rfRole === 'two_way_cca_node' ? 'device-type-badge rf-role-cca' :
+                     rfRole === 'cca_bridge' ? 'device-type-badge rf-role-bridge' :
+                     'device-type-badge'
+
   return (
     <div className="device-group" onClick={onClick}>
       <div className="device-group-content">
         <div className="device-group-info">
           <span className="device-group-label">{label}</span>
-          {inferredHint && <span className="device-type-badge">{inferredHint}</span>}
-          {bridgePairing && <span className="device-bridge-badge">{bridgePairing}</span>}
+          {inferredHint && <span className={badgeClass}>{inferredHint}</span>}
+          {bridgePairing && <span className="device-bridge-badge" title="CCA Subnet">{bridgePairing}</span>}
           {currentLevel && <span className="device-level-badge">{currentLevel}</span>}
         </div>
         <div className="device-group-right">

@@ -204,6 +204,44 @@
   color: var(--text-muted);
 }
 
+.confidence-percent {
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.8;
+}
+
+/* RF Role badge styles */
+.rf-role-badge {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.rf-role-badge.rf-role-one-way-tx {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffb74d;
+}
+
+.rf-role-badge.rf-role-two-way-cca-node {
+  background: rgba(33, 150, 243, 0.2);
+  color: #64b5f6;
+}
+
+.rf-role-badge.rf-role-cca-bridge {
+  background: rgba(156, 39, 176, 0.2);
+  color: #ce93d8;
+}
+
+.rf-role-badge.rf-role-silent-load-candidate {
+  background: rgba(158, 158, 158, 0.2);
+  color: #bdbdbd;
+}
+
+.rf-role-badge.rf-role-unknown {
+  background: rgba(107, 114, 128, 0.2);
+  color: var(--text-muted);
+}
+
 .inference-details {
   list-style: none;
   margin: 8px 0 0 0;

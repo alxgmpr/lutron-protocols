@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '../common'
 import { PacketInspector } from '../display'
 import { DEVICE_TYPES } from '../../types'
-import type { Device } from '../../types'
+import type { Device, RfRole } from '../../types'
 import './DeviceDetailModal.css'
 
 interface DeviceDetailModalProps {
@@ -18,9 +18,35 @@ interface DeviceDetailModalProps {
   getEffectiveType: (device: Device) => string
 }
 
-function inferDeviceInfo(device: Device): { guess: string; confidence: string; details: string[] } {
+// RF Role descriptions for display
+const RF_ROLE_INFO: Record<RfRole, { label: string; description: string }> = {
+  'one_way_tx': {
+    label: 'One-Way Transmitter',
+    description: 'Sends commands only (e.g., Pico remote, motion sensor)'
+  },
+  'two_way_cca_node': {
+    label: 'CCA Network Device',
+    description: 'Two-way device on CCA subnet (e.g., dimmer, switch)'
+  },
+  'cca_bridge': {
+    label: 'CCA Bridge/Processor',
+    description: 'Controls CCA subnet devices (e.g., Smart Bridge, RA3 processor)'
+  },
+  'silent_load_candidate': {
+    label: 'Possible One-Way Receiver',
+    description: 'May be a one-way receiver (no transmissions observed)'
+  },
+  'unknown': {
+    label: 'Unknown',
+    description: 'Device type could not be determined'
+  }
+}
+
+function inferDeviceInfo(device: Device): { guess: string; confidence: string; rfRole: RfRole; details: string[] } {
   const info = device.info || {}
   const category = info.category || ''
+  const rfRole = device.rf_role || 'unknown'
+  const rfConfidence = device.confidence || 0
   const details: string[] = []
 
   if (info.level) {
@@ -29,35 +55,62 @@ function inferDeviceInfo(device: Device): { guess: string; confidence: string; d
   if (info.button) {
     details.push(`Button: ${info.button}`)
   }
-  
+  if (info.subnet) {
+    details.push(`CCA Subnet: ${info.subnet}`)
+  }
+
   let guess = 'Unknown device type'
   let confidence = 'Low'
-  
-  if (category === 'pico') {
-    guess = 'Pico Remote (5-Button)'
-    confidence = 'High'
-    details.push('Detected button press patterns')
-  } else if (category === 'scene_pico') {
-    guess = 'Pico Scene Remote'
-    confidence = 'High'
-    details.push('Detected scene button activity')
-  } else if (category === 'bridge_controlled') {
-    guess = 'Dimmer/Switch (Bridge-controlled)'
-    confidence = 'High'
-    details.push('Receives level commands from bridge')
-  } else if (category === 'dimmer_passive' || category === 'dimmer') {
-    guess = 'Dimmer (Passive listener)'
-    confidence = 'Medium'
-    details.push('Reports state changes')
-  } else if (info.type === 'LEVEL') {
-    guess = 'Dimmer or Switch'
-    confidence = 'Medium'
-  } else if (info.type?.startsWith('BTN_')) {
-    guess = 'Remote or Pico'
-    confidence = 'Medium'
+
+  // Use rf_role if available
+  if (rfRole && rfRole !== 'unknown') {
+    const roleInfo = RF_ROLE_INFO[rfRole]
+    guess = roleInfo.label
+    details.unshift(roleInfo.description)
+
+    // Add specificity based on legacy category
+    if (rfRole === 'one_way_tx') {
+      if (category === 'scene_pico') {
+        guess = 'Scene Pico Remote'
+        details.push('Detected scene button activity')
+      } else if (category === 'pico') {
+        guess = 'Pico Remote (5-Button)'
+        details.push('Detected button press patterns')
+      }
+    }
+
+    // Convert numeric confidence to label
+    if (rfConfidence >= 0.8) confidence = 'High'
+    else if (rfConfidence >= 0.5) confidence = 'Medium'
+    else confidence = 'Low'
+  } else {
+    // Fallback to legacy category inference
+    if (category === 'pico') {
+      guess = 'Pico Remote (5-Button)'
+      confidence = 'High'
+      details.push('Detected button press patterns')
+    } else if (category === 'scene_pico') {
+      guess = 'Pico Scene Remote'
+      confidence = 'High'
+      details.push('Detected scene button activity')
+    } else if (category === 'bridge_controlled') {
+      guess = 'Dimmer/Switch (Bridge-controlled)'
+      confidence = 'High'
+      details.push('Receives level commands from bridge')
+    } else if (category === 'dimmer_passive' || category === 'dimmer') {
+      guess = 'Dimmer (Passive listener)'
+      confidence = 'Medium'
+      details.push('Reports state changes')
+    } else if (info.type === 'LEVEL') {
+      guess = 'Dimmer or Switch'
+      confidence = 'Medium'
+    } else if (info.type?.startsWith('BTN_')) {
+      guess = 'Remote or Pico'
+      confidence = 'Medium'
+    }
   }
-  
-  return { guess, confidence, details }
+
+  return { guess, confidence, rfRole, details }
 }
 
 export function DeviceDetailModal({ 
@@ -79,7 +132,7 @@ export function DeviceDetailModal({
   const [deviceType, setDeviceType] = useState(device.device_type || 'auto')
   const [model, setModel] = useState(device.model || '')
   
-  const { guess, confidence, details } = inferDeviceInfo(device)
+  const { guess, confidence, rfRole, details } = inferDeviceInfo(device)
   const effectiveType = getEffectiveType(device)
   const [showPacketInspector, setShowPacketInspector] = useState(false)
 
@@ -200,9 +253,14 @@ export function DeviceDetailModal({
                 <div className="device-inference">
                   <div className="inference-guess">
                     <span className="inference-label">Detected as:</span>
-                    <span className="inference-value">{guess}</span>
+                    <span className={`inference-value rf-role-badge rf-role-${rfRole.replace(/_/g, '-')}`}>
+                      {guess}
+                    </span>
                     <span className={`inference-confidence confidence-${confidence.toLowerCase()}`}>
                       {confidence} confidence
+                      {device.confidence !== undefined && device.confidence > 0 && (
+                        <span className="confidence-percent">({Math.round(device.confidence * 100)}%)</span>
+                      )}
                     </span>
                   </div>
                   {details.length > 0 && (

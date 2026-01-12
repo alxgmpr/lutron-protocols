@@ -257,7 +257,9 @@ class ProxyEngine:
             target_device = rule.source_device_id
 
         # Determine which bridge to use for the target device
-        # Priority: 1) Rule's explicit target_bridge_id, 2) Device's known bridge_id
+        # Priority: 1) Rule's explicit target_bridge_id
+        #           2) Device's known bridge_id (from SET_LEVEL packets)
+        #           3) CCA subnet's primary bridge (from subnet discovery)
         bridge_id = None
 
         # Check if rule has explicit target_bridge_id configured
@@ -273,10 +275,36 @@ class ProxyEngine:
             if bridge_id:
                 print(f"[PROXY] Using target device's learned bridge {bridge_id}")
 
+        # Fall back to CCA subnet's primary bridge (smart routing)
+        if not bridge_id:
+            # Check if device has a known subnet
+            device_subnets = db.get_device_subnets(target_device)
+            if device_subnets:
+                # Use the most recent subnet membership
+                subnet_id = device_subnets[0]['subnet_id']
+                subnet = db.get_cca_subnet(subnet_id)
+                if subnet and subnet.get('primary_bridge_id'):
+                    bridge_id = subnet['primary_bridge_id']
+                    print(f"[PROXY] Using subnet {subnet_id}'s primary bridge {bridge_id}")
+
+        # Last resort: check device info for subnet and look up bridge
+        if not bridge_id:
+            devices = db.get_all_devices()
+            target_info = devices.get(target_device, {})
+            info = target_info.get('info', {})
+            subnet_id = info.get('subnet')
+            if subnet_id:
+                subnet = db.get_cca_subnet(subnet_id)
+                if subnet and subnet.get('primary_bridge_id'):
+                    bridge_id = subnet['primary_bridge_id']
+                    print(f"[PROXY] Using subnet {subnet_id}'s primary bridge {bridge_id} (from device info)")
+
         if not bridge_id:
             print(f"[PROXY] Cannot forward level to {target_device}: no bridge_id found")
-            print(f"[PROXY]   Configure target_bridge_id in rule, or ensure target device")
-            print(f"[PROXY]   has received SET_LEVEL from its bridge to learn the association")
+            print(f"[PROXY]   Options:")
+            print(f"[PROXY]   1. Configure target_bridge_id in rule")
+            print(f"[PROXY]   2. Ensure target device has received SET_LEVEL from its bridge")
+            print(f"[PROXY]   3. Wait for CCA subnet discovery to detect the bridge")
             return
 
         print(f"[PROXY] Forwarding level {level} to {target_device} via bridge {bridge_id}")

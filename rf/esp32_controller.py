@@ -780,13 +780,72 @@ def _store_rx_packet(pkt_data: Dict, raw_hex: str = None):
     # Update device registry
     if device_id and re.match(r'^[0-9A-Fa-f]{8}$', device_id):
         category = _infer_category_from_type(packet_type, pkt_data.get('button'))
+        rf_role, rf_confidence = _infer_rf_role(packet_type, is_source=False)
         db.upsert_device(
             device_id=device_id,
             category=category,
             bridge_id=pkt_data.get('source_id') if packet_type == 'SET_LEVEL' else None,
             factory_id=pkt_data.get('target_id') if packet_type == 'SET_LEVEL' else device_id,
-            info=decoded_data
+            info=decoded_data,
+            rf_role=rf_role,
+            confidence=rf_confidence
         )
+
+    # Track CCA subnets from SET_LEVEL and STATE_RPT packets
+    subnet = decoded_data.get('subnet')
+    if subnet and len(subnet) == 4:
+        source_id = pkt_data.get('source_id')
+        target_id = pkt_data.get('target_id')
+
+        if packet_type == 'SET_LEVEL' and source_id:
+            # SET_LEVEL: source is bridge, target is CCA node
+            # Track subnet with bridge as primary
+            db.upsert_cca_subnet(
+                subnet_id=subnet,
+                primary_bridge_id=source_id,
+                source_type='set_level',
+                confidence=0.9
+            )
+            # Bridge is a member with role 'bridge'
+            db.upsert_cca_subnet_member(
+                subnet_id=subnet,
+                cca_device_id=source_id,
+                role_hint='bridge',
+                confidence=0.9
+            )
+            # Target is a member with role 'node'
+            if target_id:
+                db.upsert_cca_subnet_member(
+                    subnet_id=subnet,
+                    cca_device_id=target_id,
+                    role_hint='node',
+                    confidence=0.85
+                )
+                # Also set rf_role on target device
+                db.upsert_device(
+                    device_id=target_id,
+                    rf_role='two_way_cca_node',
+                    confidence=0.8
+                )
+            # Set rf_role on bridge
+            db.upsert_device(
+                device_id=source_id,
+                rf_role='cca_bridge',
+                confidence=0.9
+            )
+        elif packet_type == 'STATE_RPT' and device_id:
+            # STATE_RPT: device is a CCA node reporting state
+            db.upsert_cca_subnet(
+                subnet_id=subnet,
+                source_type='state_rpt',
+                confidence=0.7
+            )
+            db.upsert_cca_subnet_member(
+                subnet_id=subnet,
+                cca_device_id=device_id,
+                role_hint='node',
+                confidence=0.75
+            )
 
     # Feed to event aggregator for semantic event grouping
     if _event_aggregator:
@@ -1041,7 +1100,7 @@ def _parse_and_store_packet(message: str):
 
 
 def _infer_category_from_type(pkt_type: str, button: str = None) -> str:
-    """Infer device category from packet type."""
+    """Infer device category from packet type (legacy, for backwards compatibility)."""
     if pkt_type == 'LEVEL':
         return 'bridge_controlled'
     elif pkt_type == 'UNPAIR':
@@ -1057,6 +1116,46 @@ def _infer_category_from_type(pkt_type: str, button: str = None) -> str:
     elif pkt_type.startswith('PAIR'):
         return 'pairing'
     return 'unknown'
+
+
+def _infer_rf_role(pkt_type: str, is_source: bool = False) -> tuple[str, float]:
+    """Infer RF role from packet type.
+
+    Returns (rf_role, confidence) tuple.
+
+    RF Roles:
+    - one_way_tx: One-way transmitter (Pico, motion sensor)
+    - two_way_cca_node: Device on CCA subnet (dimmer, switch controlled via bridge)
+    - cca_bridge: Bridge/processor (initiates SET_LEVEL, owns subnet)
+    - silent_load_candidate: Possible one-way receiver (never transmits)
+    - unknown: Cannot determine from available evidence
+    """
+    if pkt_type.startswith('BTN_'):
+        # Button packets always come from one-way transmitters
+        return ('one_way_tx', 0.95)
+    elif pkt_type == 'SET_LEVEL' or pkt_type == 'LEVEL':
+        if is_source:
+            # Source of SET_LEVEL is a bridge
+            return ('cca_bridge', 0.9)
+        else:
+            # Target of SET_LEVEL is a CCA node
+            return ('two_way_cca_node', 0.8)
+    elif pkt_type == 'STATE_RPT':
+        # STATE_RPT comes from devices that can transmit on CCA subnet
+        return ('two_way_cca_node', 0.85)
+    elif pkt_type.startswith('BEACON'):
+        # Beacons come from bridges
+        return ('cca_bridge', 0.9)
+    elif pkt_type == 'UNPAIR':
+        if is_source:
+            return ('cca_bridge', 0.85)
+        else:
+            return ('two_way_cca_node', 0.7)
+    elif pkt_type.startswith('PAIR'):
+        # Pairing packets - could be either transmitter or CCA device
+        # Need more context to determine
+        return ('unknown', 0.3)
+    return ('unknown', 0.1)
 
 
 class ESP32Controller:
@@ -2958,6 +3057,55 @@ def cmd_serve(args):
         return jsonify({'status': 'ok', 'deleted': count})
 
     # ═══════════════════════════════════════════════════════════════════════════
+    # CCA SUBNET ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/subnets')
+    def api_subnets():
+        """Get all discovered CCA subnets."""
+        subnets = db.get_all_cca_subnets()
+        # Enrich with member counts
+        for subnet in subnets:
+            members = db.get_cca_subnet_members(subnet['subnet_id'])
+            subnet['member_count'] = len(members)
+            subnet['members'] = members
+        return jsonify(subnets)
+
+    @app.route('/api/subnets/<subnet_id>')
+    def api_subnet_detail(subnet_id):
+        """Get details for a specific CCA subnet."""
+        subnet = db.get_cca_subnet(subnet_id)
+        if not subnet:
+            return jsonify({'status': 'error', 'error': 'not found'}), 404
+        subnet['members'] = db.get_cca_subnet_members(subnet_id)
+        return jsonify(subnet)
+
+    @app.route('/api/subnets/<subnet_id>/members')
+    def api_subnet_members(subnet_id):
+        """Get all members of a CCA subnet."""
+        members = db.get_cca_subnet_members(subnet_id)
+        return jsonify(members)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # RF LINK ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/rf-links')
+    def api_rf_links():
+        """Get all discovered RF links (transmitter -> receiver relationships)."""
+        return jsonify(db.get_all_rf_links())
+
+    @app.route('/api/rf-links/from/<tx_id>')
+    def api_rf_links_from(tx_id):
+        """Get all links from a specific transmitter."""
+        return jsonify(db.get_links_from_tx(tx_id))
+
+    @app.route('/api/rf-links/to/<rx_id>')
+    def api_rf_links_to(rx_id):
+        """Get all links to a specific receiver."""
+        return jsonify(db.get_links_to_rx(rx_id))
+
+    # ═══════════════════════════════════════════════════════════════════════════
     # DATABASE QUERY ENDPOINTS
     # ═══════════════════════════════════════════════════════════════════════════
 
@@ -3404,22 +3552,89 @@ def cmd_serve(args):
         rules = db.get_proxy_rules()
         return jsonify(rules)
 
+    @app.route('/api/proxy/validate', methods=['POST'])
+    def api_proxy_validate():
+        """Validate a proxy rule configuration based on RF roles.
+
+        Returns validation result with auto-detected types and any warnings/errors.
+        """
+        data = request.json or {}
+        source_device_id = data.get('source_device_id')
+        target_device_id = data.get('target_device_id')
+
+        if not source_device_id or not target_device_id:
+            return jsonify({
+                'valid': False,
+                'errors': ['source_device_id and target_device_id are required'],
+                'warnings': []
+            })
+
+        validation = db.validate_proxy_rule(
+            source_device_id=source_device_id,
+            target_device_id=target_device_id,
+            source_type=data.get('source_type'),
+            target_type=data.get('target_type')
+        )
+
+        return jsonify(validation)
+
+    @app.route('/api/proxy/infer/<device_id>')
+    def api_proxy_infer_device(device_id):
+        """Get inferred proxy configuration for a device based on RF role."""
+        proxy_type, bridge_id, confidence = db.infer_proxy_type_from_device(device_id)
+        rf_info = db.get_device_rf_info(device_id)
+
+        return jsonify({
+            'device_id': device_id,
+            'inferred_type': proxy_type,
+            'bridge_id': bridge_id,
+            'confidence': confidence,
+            'rf_role': rf_info.get('rf_role') if rf_info else 'unknown',
+            'can_be_source': rf_info.get('rf_role') != 'silent_load_candidate' if rf_info else True,
+            'can_be_target': rf_info.get('rf_role') != 'one_way_tx' if rf_info else True
+        })
+
     @app.route('/api/proxy/rules', methods=['POST'])
     def api_proxy_rule_create():
-        """Create a new proxy rule."""
+        """Create a new proxy rule with RF role validation and auto-detection."""
         data = request.json or {}
-        required = ['name', 'source_device_id', 'source_type', 'target_device_id', 'target_type']
+
+        # Minimal required fields (types can be auto-detected)
+        required = ['name', 'source_device_id', 'target_device_id']
         missing = [f for f in required if f not in data]
         if missing:
             return jsonify({'status': 'error', 'error': f'Missing fields: {missing}'}), 400
 
+        # Validate and auto-detect types based on RF roles
+        validation = db.validate_proxy_rule(
+            source_device_id=data['source_device_id'],
+            target_device_id=data['target_device_id'],
+            source_type=data.get('source_type'),
+            target_type=data.get('target_type')
+        )
+
+        # Return errors if validation failed
+        if not validation['valid']:
+            return jsonify({
+                'status': 'error',
+                'error': '; '.join(validation['errors']),
+                'validation': validation
+            }), 400
+
+        # Use inferred types if not explicitly provided
+        source_type = data.get('source_type') or validation['inferred_source_type'] or 'unknown'
+        target_type = data.get('target_type') or validation['inferred_target_type'] or 'unknown'
+
+        # Use inferred bridge_id if not explicitly provided
+        target_bridge_id = data.get('target_bridge_id') or validation['inferred_target_bridge_id']
+
         rule_id = db.create_proxy_rule(
             name=data['name'],
             source_device_id=data['source_device_id'],
-            source_type=data['source_type'],
+            source_type=source_type,
             target_device_id=data['target_device_id'],
-            target_type=data['target_type'],
-            target_bridge_id=data.get('target_bridge_id'),
+            target_type=target_type,
+            target_bridge_id=target_bridge_id,
             mode=data.get('mode', 'forward'),
             button_map=data.get('button_map'),
             level_transform=data.get('level_transform'),
@@ -3428,7 +3643,18 @@ def cmd_serve(args):
         )
         if _proxy_engine:
             _proxy_engine.reload_rules()
-        return jsonify({'status': 'ok', 'id': rule_id})
+
+        response = {'status': 'ok', 'id': rule_id}
+        if validation['warnings']:
+            response['warnings'] = validation['warnings']
+        if validation['inferred_source_type']:
+            response['inferred_source_type'] = source_type
+        if validation['inferred_target_type']:
+            response['inferred_target_type'] = target_type
+        if target_bridge_id:
+            response['inferred_target_bridge_id'] = target_bridge_id
+
+        return jsonify(response)
 
     @app.route('/api/proxy/rules/<int:rule_id>', methods=['PUT'])
     def api_proxy_rule_update(rule_id):

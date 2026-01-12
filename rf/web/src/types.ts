@@ -1,3 +1,13 @@
+/**
+ * RF Role types (from backend classification):
+ * - one_way_tx: One-way transmitter (Pico, motion sensor)
+ * - two_way_cca_node: Device on CCA subnet (dimmer, switch controlled via bridge)
+ * - cca_bridge: Bridge/processor (initiates SET_LEVEL, owns subnet)
+ * - silent_load_candidate: Possible one-way receiver (never transmits)
+ * - unknown: Cannot determine from available evidence
+ */
+export type RfRole = 'one_way_tx' | 'two_way_cca_node' | 'cca_bridge' | 'silent_load_candidate' | 'unknown'
+
 export interface Device {
   id: string
   type: string
@@ -9,6 +19,9 @@ export interface Device {
   device_type?: string
   link_id?: string
   info: DeviceInfo
+  // New RF behavior fields
+  rf_role?: RfRole
+  confidence?: number  // 0.0 to 1.0
 }
 
 export interface DeviceInfo {
@@ -145,6 +158,57 @@ export interface SemanticEvent {
   timestamp: string
   published_mqtt: number
   created_at?: string
+}
+
+// CCA Subnet (discovered from SET_LEVEL/STATE_RPT traffic)
+export interface CcaSubnet {
+  subnet_id: string              // 4-hex subnet ID (big-endian display format)
+  primary_bridge_id?: string     // Best guess at owning bridge (8-hex)
+  first_seen: string
+  last_seen: string
+  confidence: number             // 0.0 to 1.0
+  source_counts?: {              // Packet type counts
+    set_level?: number
+    state_rpt?: number
+  }
+  member_count?: number          // Number of devices on this subnet
+  members?: CcaSubnetMember[]    // Devices on this subnet (when expanded)
+}
+
+// CCA Subnet Member
+export interface CcaSubnetMember {
+  id: number
+  subnet_id: string
+  cca_device_id: string          // Full 8-hex device address
+  first_seen: string
+  last_seen: string
+  role_hint: 'node' | 'bridge' | 'unknown'
+  confidence: number
+}
+
+// RF Link (transmitter -> receiver relationship)
+export interface RfLink {
+  id: number
+  tx_id: string                  // Transmitter device ID
+  rx_id: string                  // Receiver device ID (or CCA device)
+  link_type: 'direct_one_way' | 'via_bridge' | 'unknown'
+  first_seen: string
+  last_seen: string
+  confidence: number
+  supporting_event_count: number
+}
+
+// RF Link Event (raw observed linkage fact)
+export interface RfLinkEvent {
+  id: number
+  timestamp: string
+  tx_id: string
+  subnet_id?: string
+  rx_candidate_id?: string
+  evidence: 'pairing_sequence' | 'control_state_change' | 'ack_chain' | 'user_annotated'
+  confidence: number
+  packet_refs?: number[]
+  details?: Record<string, unknown>
 }
 
 

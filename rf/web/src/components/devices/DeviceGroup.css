@@ -48,6 +48,27 @@
   white-space: nowrap;
 }
 
+/* RF Role-specific badge colors */
+.device-type-badge.rf-role-tx {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffb74d;
+}
+
+.device-type-badge.rf-role-cca {
+  background: rgba(33, 150, 243, 0.2);
+  color: #64b5f6;
+}
+
+.device-type-badge.rf-role-bridge {
+  background: rgba(156, 39, 176, 0.2);
+  color: #ce93d8;
+}
+
+.device-type-badge.rf-role-silent {
+  background: rgba(158, 158, 158, 0.2);
+  color: #bdbdbd;
+}
+
 .device-bridge-badge {
   font-size: 9px;
   font-weight: 600;
