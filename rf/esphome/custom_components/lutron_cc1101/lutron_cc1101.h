@@ -28,7 +28,7 @@ namespace lutron_cc1101 {
  */
 class LutronCC1101 : public Component,
                      public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
-                                           spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_1MHZ>,
+                                           spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_4MHZ>,
                      public CC1101SPI {
  public:
   void setup() override;
