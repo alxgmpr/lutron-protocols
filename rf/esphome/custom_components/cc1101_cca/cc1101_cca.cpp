@@ -1,12 +1,12 @@
-#include "lutron_cc1101.h"
+#include "cc1101_cca.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 static const char *const TAG = "lutron_cc1101";
 
-void LutronCC1101::setup() {
+void CC1101CCA::setup() {
   ESP_LOGI(TAG, "Setting up Lutron CC1101...");
 
   // Initialize SPI first
@@ -39,7 +39,7 @@ void LutronCC1101::setup() {
 
 // Echo detection moved to backend - ESP32 just streams all valid packets
 
-void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
+void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
   // Filter out noise - real Lutron packets have RSSI > -70 typically
   // Noise floor is around -80 to -95
   if (rssi < -70) {
@@ -63,14 +63,14 @@ void LutronCC1101::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi
   }
 }
 
-void LutronCC1101::dump_config() {
+void CC1101CCA::dump_config() {
   ESP_LOGCONFIG(TAG, "Lutron CC1101:");
   ESP_LOGCONFIG(TAG, "  Status: %s", this->radio_.is_initialized() ? "OK" : "FAILED");
   ESP_LOGCONFIG(TAG, "  RX Enabled: %s", this->rx_enabled_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  RX Auto: %s", this->rx_auto_ ? "YES" : "NO");
 }
 
-void LutronCC1101::loop() {
+void CC1101CCA::loop() {
   // Only poll RX when enabled - poll every iteration to keep up with data rate
   if (this->rx_enabled_) {
     this->radio_.check_rx();
@@ -110,7 +110,7 @@ void LutronCC1101::loop() {
   }
 }
 
-void LutronCC1101::start_rx() {
+void CC1101CCA::start_rx() {
   ESP_LOGI(TAG, "=== STARTING RX MODE ===");
   this->radio_.start_rx();
   this->rx_enabled_ = true;
@@ -118,14 +118,14 @@ void LutronCC1101::start_rx() {
   this->last_rx_check_ = millis();
 }
 
-void LutronCC1101::stop_rx() {
+void CC1101CCA::stop_rx() {
   ESP_LOGI(TAG, "=== STOPPING RX MODE ===");
   this->radio_.stop_rx();
   this->rx_enabled_ = false;
   this->rx_auto_ = false;  // Disable auto-resume when manually stopped
 }
 
-void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
+void CC1101CCA::transmit_packet(const uint8_t *packet, size_t len) {
   // TX logging handled by backend - it knows what it's sending
   uint8_t tx_buffer[128];
 
@@ -186,7 +186,7 @@ void LutronCC1101::transmit_packet(const uint8_t *packet, size_t len) {
   }
 }
 
-void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
+void CC1101CCA::send_button_press(uint32_t device_id, uint8_t button) {
   ESP_LOGI(TAG, "Button 0x%02X for device %08X", button, device_id);
 
   uint8_t packet[24];
@@ -289,7 +289,7 @@ void LutronCC1101::send_button_press(uint32_t device_id, uint8_t button) {
   ESP_LOGI(TAG, "Button press complete");
 }
 
-void LutronCC1101::send_save_favorite(uint32_t device_id, uint8_t button, int hold_seconds) {
+void CC1101CCA::send_save_favorite(uint32_t device_id, uint8_t button, int hold_seconds) {
   // Save favorite - just send the SAVE command packets
   // The hold detection happens on the Pico itself, not over RF
   // Dimmer only needs to see the save command
@@ -350,7 +350,7 @@ void LutronCC1101::send_save_favorite(uint32_t device_id, uint8_t button, int ho
   ESP_LOGI(TAG, "=== SAVE COMPLETE ===");
 }
 
-void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
+void CC1101CCA::send_level(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "Level %d%% for device %08X", level_percent, device_id);
 
   if (level_percent > 100) level_percent = 100;
@@ -404,7 +404,7 @@ void LutronCC1101::send_level(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "Level command complete");
 }
 
-void LutronCC1101::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent) {
+void CC1101CCA::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "=== BRIDGE-STYLE LEVEL COMMAND ===");
   ESP_LOGI(TAG, "Bridge zone: %08X, Target: %08X, Level: %d%%",
            bridge_zone_id, target_device_id, level_percent);
@@ -477,13 +477,13 @@ void LutronCC1101::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_de
   ESP_LOGI(TAG, "=== BRIDGE LEVEL COMPLETE ===");
 }
 
-void LutronCC1101::send_pairing_b9(uint32_t device_id) {
+void CC1101CCA::send_pairing_b9(uint32_t device_id) {
   if (this->pairing_ != nullptr) {
     this->pairing_->send_pairing_b9(device_id, 5);
   }
 }
 
-void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
+void CC1101CCA::send_pairing_pico(uint32_t device_id, int duration_seconds) {
   ESP_LOGI(TAG, "=== PICO-STYLE PAIRING (0xBA + 0xBB) ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X, Duration: %ds", device_id, duration_seconds);
   ESP_LOGI(TAG, "Real Pico sends 0xBA packets first, then 0xBB packets");
@@ -691,7 +691,7 @@ void LutronCC1101::send_pairing_pico(uint32_t device_id, int duration_seconds) {
   ESP_LOGI(TAG, "=== PICO PAIRING COMPLETE: %d x 0xBA + %d x 0xBB ===", ba_count, bb_count);
 }
 
-void LutronCC1101::send_test_packet(uint32_t device_id) {
+void CC1101CCA::send_test_packet(uint32_t device_id) {
   ESP_LOGI(TAG, "=== TEST PACKET FOR RTL-SDR CAPTURE ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X", device_id);
   ESP_LOGI(TAG, "Sending 5 copies of 0xB9 pairing packet...");
@@ -787,7 +787,7 @@ void LutronCC1101::send_test_packet(uint32_t device_id) {
   ESP_LOGI(TAG, "=== TEST COMPLETE ===");
 }
 
-void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int duration_seconds) {
+void CC1101CCA::send_beacon(uint32_t device_id, uint8_t beacon_type, int duration_seconds) {
   ESP_LOGI(TAG, "=== SENDING PAIRING BEACON ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X, Type: 0x%02X, Duration: %ds", device_id, beacon_type, duration_seconds);
 
@@ -879,7 +879,7 @@ void LutronCC1101::send_beacon(uint32_t device_id, uint8_t beacon_type, int dura
   ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
 }
 
-uint8_t LutronCC1101::send_beacon_single(uint32_t device_id, uint8_t seq) {
+uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq) {
   uint8_t packet[24];
   memset(packet, 0xCC, sizeof(packet));
 
@@ -924,7 +924,7 @@ uint8_t LutronCC1101::send_beacon_single(uint32_t device_id, uint8_t seq) {
   return (seq + 5) & 0xFF;
 }
 
-void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id) {
+void CC1101CCA::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id) {
   ESP_LOGI(TAG, "=== SENDING 0xB0 PAIRING ASSIGNMENT ===");
   ESP_LOGI(TAG, "Load ID: 0x%08X, Target: 0x%08X", load_id, target_factory_id);
 
@@ -1029,7 +1029,7 @@ void LutronCC1101::send_pairing_b0(uint32_t load_id, uint32_t target_factory_id)
   ESP_LOGI(TAG, "=== 0xB0 PAIRING COMPLETE ===");
 }
 
-void LutronCC1101::send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target_factory_id,
+void CC1101CCA::send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target_factory_id,
                                               int beacon_seconds) {
   ESP_LOGI(TAG, "=== BRIDGE PAIRING SEQUENCE ===");
   ESP_LOGI(TAG, "Bridge ID: 0x%08X, Target: 0x%08X, Duration: %ds",
@@ -1189,7 +1189,7 @@ void LutronCC1101::send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target
   ESP_LOGI(TAG, "Try sending level commands to 0x%08X now!", target_factory_id);
 }
 
-void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) {
+void CC1101CCA::send_state_report(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "=== FAKE STATE REPORT ===");
   ESP_LOGI(TAG, "Device ID: 0x%08X, Level: %d%%", device_id, level_percent);
 
@@ -1255,7 +1255,7 @@ void LutronCC1101::send_state_report(uint32_t device_id, uint8_t level_percent) 
   ESP_LOGI(TAG, "=== STATE REPORT COMPLETE ===");
 }
 
-void LutronCC1101::send_debug_pattern() {
+void CC1101CCA::send_debug_pattern() {
   ESP_LOGI(TAG, "=== DEBUG: Sending raw 0xAA pattern ===");
 
   // Send 32 bytes of 0xAA (alternating bits) directly to CC1101
@@ -1299,7 +1299,7 @@ void LutronCC1101::send_debug_pattern() {
   ESP_LOGI(TAG, "=== DEBUG COMPLETE ===");
 }
 
-void LutronCC1101::test_decode_packet(const std::string &hex_bytes) {
+void CC1101CCA::test_decode_packet(const std::string &hex_bytes) {
   ESP_LOGI(TAG, "=== TEST DECODE PACKET ===");
   ESP_LOGI(TAG, "Input: %s", hex_bytes.c_str());
 
@@ -1363,13 +1363,13 @@ void LutronCC1101::test_decode_packet(const std::string &hex_bytes) {
   ESP_LOGI(TAG, "=== TEST DECODE COMPLETE ===");
 }
 
-void LutronCC1101::send_pairing_5button(uint32_t device_id, int duration_seconds) {
+void CC1101CCA::send_pairing_5button(uint32_t device_id, int duration_seconds) {
   if (this->pairing_) {
     this->pairing_->send_pairing_5button(device_id, duration_seconds);
   }
 }
 
-void LutronCC1101::send_pairing_advanced(uint32_t device_id, int duration_seconds,
+void CC1101CCA::send_pairing_advanced(uint32_t device_id, int duration_seconds,
                                           uint8_t pkt_type_a, uint8_t pkt_type_b,
                                           uint8_t byte10, uint8_t byte30, uint8_t byte31,
                                           uint8_t byte37, uint8_t byte38) {
@@ -1380,7 +1380,7 @@ void LutronCC1101::send_pairing_advanced(uint32_t device_id, int duration_second
   }
 }
 
-void LutronCC1101::send_reset(uint32_t source_id, uint32_t paired_id) {
+void CC1101CCA::send_reset(uint32_t source_id, uint32_t paired_id) {
   // For Pico reset, we only use source_id (the Pico saying "forget about me")
   // paired_id is ignored - kept for API compatibility
   (void)paired_id;
@@ -1434,7 +1434,7 @@ void LutronCC1101::send_reset(uint32_t source_id, uint32_t paired_id) {
 
 // ========== DEVICE CONFIGURATION (from CCA Playground captures) ==========
 
-void LutronCC1101::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t mode) {
+void CC1101CCA::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t mode) {
   ESP_LOGI(TAG, "=== LED CONFIG ===");
   ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, Mode: %d", bridge_zone_id, target_device_id, mode);
 
@@ -1534,7 +1534,7 @@ void LutronCC1101::send_led_config(uint32_t bridge_zone_id, uint32_t target_devi
   ESP_LOGI(TAG, "=== LED CONFIG COMPLETE ===");
 }
 
-void LutronCC1101::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
+void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
                                      uint8_t fade_on_qs, uint8_t fade_off_qs) {
   ESP_LOGI(TAG, "=== FADE CONFIG ===");
   ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, FadeOn: %d qs (%.2fs), FadeOff: %d qs (%.2fs)",
@@ -1607,7 +1607,7 @@ void LutronCC1101::send_fade_config(uint32_t bridge_zone_id, uint32_t target_dev
   ESP_LOGI(TAG, "=== FADE CONFIG COMPLETE ===");
 }
 
-void LutronCC1101::send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
+void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
                                       uint8_t high_trim, uint8_t low_trim, bool phase_reverse) {
   ESP_LOGI(TAG, "=== DEVICE STATE CONFIG ===");
   ESP_LOGI(TAG, "Bridge: %08X, Target: %08X", bridge_zone_id, target_device_id);
@@ -1686,12 +1686,12 @@ void LutronCC1101::send_device_state(uint32_t bridge_zone_id, uint32_t target_de
   ESP_LOGI(TAG, "=== DEVICE STATE CONFIG COMPLETE ===");
 }
 
-void LutronCC1101::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {
+void CC1101CCA::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {
   // Call the two-zone version with alternate zone = 0 (disabled)
   send_bridge_unpair_dual(bridge_zone_id, 0, target_device_id);
 }
 
-void LutronCC1101::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, uint32_t target_device_id) {
+void CC1101CCA::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, uint32_t target_device_id) {
   ESP_LOGI(TAG, "=== BRIDGE UNPAIR ===");
   ESP_LOGI(TAG, "Zone 1: %08X, Zone 2: %08X, Target: %08X", zone_id_1, zone_id_2, target_device_id);
 
@@ -1823,7 +1823,7 @@ void LutronCC1101::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_
 
 // ========== BRIDGE PAIRING (based on real RadioRA3 captures) ==========
 
-void LutronCC1101::start_bridge_pairing(uint16_t subnet) {
+void CC1101CCA::start_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, "=== START BRIDGE PAIRING MODE ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
 
@@ -1838,7 +1838,7 @@ void LutronCC1101::start_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, ">>> HOLD OFF BUTTON ON DEVICE FOR 10 SECONDS <<<");
 }
 
-void LutronCC1101::stop_bridge_pairing(uint16_t subnet) {
+void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, "=== STOP BRIDGE PAIRING MODE ===");
 
   this->pairing_active_ = false;
@@ -1897,7 +1897,7 @@ void LutronCC1101::stop_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, "Stop beacons sent. Devices should stop flashing.");
 }
 
-void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
+void CC1101CCA::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
   ESP_LOGI(TAG, "=== SEND PAIR ASSIGNMENT (B1) ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X, Factory ID: 0x%08X, Zone: 0x06%04X%02X",
            subnet, factory_id, subnet, zone_suffix);
@@ -2031,7 +2031,7 @@ void LutronCC1101::send_pair_assignment(uint16_t subnet, uint32_t factory_id, ui
   ESP_LOGI(TAG, "=== LISTEN PERIOD COMPLETE ===");
 }
 
-void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
+void CC1101CCA::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
   ESP_LOGI(TAG, "=== COMPLETE BRIDGE PAIRING SEQUENCE ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X, Factory: 0x%08X, Zone suffix: 0x%02X",
            subnet, factory_id, zone_suffix);
@@ -2077,7 +2077,7 @@ void LutronCC1101::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zon
 
 // ========== BRIDGE PAIRING PROTOCOL IMPLEMENTATIONS ==========
 
-void LutronCC1101::send_config_packet(uint8_t type, uint32_t bridge_zone_id,
+void CC1101CCA::send_config_packet(uint8_t type, uint32_t bridge_zone_id,
                                        uint32_t target_hw_id, uint32_t assigned_load_id) {
   ESP_LOGI(TAG, "=== CONFIG PACKET 0x%02X ===", type);
   ESP_LOGI(TAG, "Bridge zone: 0x%08X, Target: 0x%08X, Load ID: 0x%08X",
@@ -2167,7 +2167,7 @@ void LutronCC1101::send_config_packet(uint8_t type, uint32_t bridge_zone_id,
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void LutronCC1101::send_device_link(uint8_t type, uint32_t bridge_zone_id,
+void CC1101CCA::send_device_link(uint8_t type, uint32_t bridge_zone_id,
                                      uint32_t target_hw_id, uint32_t linked_device_id,
                                      uint8_t slot) {
   ESP_LOGI(TAG, "=== DEVICE LINK 0x%02X (slot %d) ===", type, slot);
@@ -2225,7 +2225,7 @@ void LutronCC1101::send_device_link(uint8_t type, uint32_t bridge_zone_id,
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void LutronCC1101::send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t target_hw_id, uint16_t subnet) {
+void CC1101CCA::send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t target_hw_id, uint16_t subnet) {
   ESP_LOGI(TAG, "=== TARGETED BEACON 0x93 (format 0x0D) ===");
   ESP_LOGI(TAG, "Zone: 0x%08X, Target: 0x%08X, Subnet: 0x%04X", bridge_zone_id, target_hw_id, subnet);
 
@@ -2277,7 +2277,7 @@ void LutronCC1101::send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t tar
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void LutronCC1101::send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t target_hw_id) {
+void CC1101CCA::send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t target_hw_id) {
   ESP_LOGI(TAG, "=== ZONE ASSIGNMENT 0x82 ===");
   ESP_LOGI(TAG, "Zone: 0x%08X, Target: 0x%08X", bridge_zone_id, target_hw_id);
 
@@ -2323,7 +2323,7 @@ void LutronCC1101::send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t tar
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void LutronCC1101::send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id) {
+void CC1101CCA::send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id) {
   ESP_LOGI(TAG, "=== STATE REPORT 0x83 ===");
   ESP_LOGI(TAG, "From zone: 0x%08X, To device: 0x%08X", bridge_zone_id, target_hw_id);
 
@@ -2369,7 +2369,7 @@ void LutronCC1101::send_state_report_83(uint32_t bridge_zone_id, uint32_t target
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void LutronCC1101::send_handshake_response(uint8_t dimmer_type, uint16_t subnet) {
+void CC1101CCA::send_handshake_response(uint8_t dimmer_type, uint16_t subnet) {
   // Validate dimmer sent odd type (C1, C7, CD, D3, D9, DF)
   if ((dimmer_type & 0x01) == 0) {
     ESP_LOGW(TAG, "Expected odd handshake type, got 0x%02X", dimmer_type);
@@ -2424,7 +2424,7 @@ void LutronCC1101::send_handshake_response(uint8_t dimmer_type, uint16_t subnet)
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-uint8_t LutronCC1101::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq) {
+uint8_t CC1101CCA::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq) {
   ESP_LOGD(TAG, "Beacon 0x%02X, subnet 0x%04X, seq 0x%02X", beacon_type, subnet, seq);
 
   // Validate beacon type
@@ -2497,5 +2497,5 @@ uint8_t LutronCC1101::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, u
   return (seq + 6) % 0x48;
 }
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

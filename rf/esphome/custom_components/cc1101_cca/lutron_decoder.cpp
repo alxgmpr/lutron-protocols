@@ -7,7 +7,7 @@
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 void LutronDecoder::log_packet_json(const DecodedPacket &packet) {
   char device_id_str[9];
@@ -28,5 +28,5 @@ void LutronDecoder::log_packet_json(const DecodedPacket &packet) {
            packet.crc, packet.crc_valid ? "true" : "false", (int)packet.raw_len);
 }
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

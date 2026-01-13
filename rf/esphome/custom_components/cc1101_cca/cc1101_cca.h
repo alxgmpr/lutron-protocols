@@ -11,7 +11,7 @@
 #include <functional>
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 /**
  * @brief Lutron Clear Connect Type A (CCA) RF Controller
@@ -26,7 +26,7 @@ namespace lutron_cc1101 {
  * EXPERIMENTAL (not working):
  * - Pairing
  */
-class LutronCC1101 : public Component,
+class CC1101CCA : public Component,
                      public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
                                            spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_4MHZ>,
                      public CC1101SPI {
@@ -424,9 +424,9 @@ class LutronCC1101 : public Component,
  * Triggered when a valid CCA packet is received.
  * Template variables: data (vector<uint8_t>), rssi (int32_t)
  */
-class LutronPacketTrigger : public Trigger<std::vector<uint8_t>, int32_t> {
+class CCAPacketTrigger : public Trigger<std::vector<uint8_t>, int32_t> {
  public:
-  explicit LutronPacketTrigger(LutronCC1101 *parent) {
+  explicit CCAPacketTrigger(CC1101CCA *parent) {
     parent->add_on_packet_callback([this](const std::vector<uint8_t> &data, int8_t rssi) {
       this->trigger(data, static_cast<int32_t>(rssi));
     });
@@ -438,14 +438,14 @@ class LutronPacketTrigger : public Trigger<std::vector<uint8_t>, int32_t> {
  * Triggered when a packet is transmitted.
  * Template variables: data (vector<uint8_t>)
  */
-class LutronTxTrigger : public Trigger<std::vector<uint8_t>> {
+class CCATxTrigger : public Trigger<std::vector<uint8_t>> {
  public:
-  explicit LutronTxTrigger(LutronCC1101 *parent) {
+  explicit CCATxTrigger(CC1101CCA *parent) {
     parent->add_on_tx_callback([this](const std::vector<uint8_t> &data) {
       this->trigger(data);
     });
   }
 };
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

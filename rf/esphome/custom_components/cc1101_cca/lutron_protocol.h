@@ -14,7 +14,7 @@ extern "C" {
 }
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 // Lutron Button Codes (re-exported from Rust for compatibility)
 static const uint8_t LUTRON_BUTTON_ON = 0x02;
@@ -74,5 +74,5 @@ class LutronEncoder {
   }
 };
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

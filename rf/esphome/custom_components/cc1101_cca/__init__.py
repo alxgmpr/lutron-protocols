@@ -8,18 +8,18 @@ import os
 DEPENDENCIES = ['spi']
 CODEOWNERS = ['@custom']
 
-lutron_cc1101_ns = cg.esphome_ns.namespace('lutron_cc1101')
-LutronCC1101 = lutron_cc1101_ns.class_('LutronCC1101', cg.Component, spi.SPIDevice)
+cc1101_cca_ns = cg.esphome_ns.namespace('cc1101_cca')
+CC1101CCA = cc1101_cca_ns.class_('CC1101CCA', cg.Component, spi.SPIDevice)
 
 # Trigger type for on_packet - receives vector<uint8_t> and int32 rssi
-LutronPacketTrigger = lutron_cc1101_ns.class_(
-    'LutronPacketTrigger',
+CCAPacketTrigger = cc1101_cca_ns.class_(
+    'CCAPacketTrigger',
     automation.Trigger.template(cg.std_vector.template(cg.uint8), cg.int32)
 )
 
 # Trigger type for on_tx - receives vector<uint8_t> only (no RSSI for TX)
-LutronTxTrigger = lutron_cc1101_ns.class_(
-    'LutronTxTrigger',
+CCATxTrigger = cc1101_cca_ns.class_(
+    'CCATxTrigger',
     automation.Trigger.template(cg.std_vector.template(cg.uint8))
 )
 
@@ -28,13 +28,13 @@ CONF_ON_PACKET = 'on_packet'
 CONF_ON_TX = 'on_tx'
 
 CONFIG_SCHEMA = cv.Schema({
-    cv.GenerateID(): cv.declare_id(LutronCC1101),
+    cv.GenerateID(): cv.declare_id(CC1101CCA),
     cv.Optional(CONF_GDO0_PIN): pins.gpio_input_pin_schema,
     cv.Optional(CONF_ON_PACKET): automation.validate_automation({
-        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(LutronPacketTrigger),
+        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(CCAPacketTrigger),
     }),
     cv.Optional(CONF_ON_TX): automation.validate_automation({
-        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(LutronTxTrigger),
+        cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(CCATxTrigger),
     }),
 }).extend(cv.COMPONENT_SCHEMA).extend(spi.spi_device_schema(cs_pin_required=True))
 

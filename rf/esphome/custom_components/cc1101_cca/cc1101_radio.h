@@ -6,7 +6,7 @@
 #include "esphome/core/hal.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 // CC1101 Strobe Commands
 static const uint8_t CC1101_SRES = 0x30;
@@ -164,5 +164,5 @@ class CC1101SPI {
   virtual uint8_t spi_transfer(uint8_t data) = 0;
 };
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

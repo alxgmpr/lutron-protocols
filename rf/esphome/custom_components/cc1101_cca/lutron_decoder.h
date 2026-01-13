@@ -15,7 +15,7 @@ extern "C" {
 }
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 // Re-export constants from Rust for compatibility with existing code
 static const uint8_t PKT_BUTTON_SHORT_A = 0x88;
@@ -191,5 +191,5 @@ class LutronDecoder {
   CcaDecoder *decoder_;
 };
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

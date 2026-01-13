@@ -4,7 +4,7 @@
 #include "lutron_protocol.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 /**
  * @brief Lutron Clear Connect pairing handler
@@ -101,5 +101,5 @@ class LutronPairing {
   void transmit_encoded(const uint8_t *packet, size_t len);
 };
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

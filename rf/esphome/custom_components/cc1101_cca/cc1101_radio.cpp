@@ -2,7 +2,7 @@
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 static const char *const TAG = "cc1101_radio";
 
@@ -479,5 +479,5 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
   return true;
 }
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome

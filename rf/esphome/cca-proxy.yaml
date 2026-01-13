@@ -1,6 +1,6 @@
 substitutions:
-  device_name: pico-trigger
-  friendly_name: Pico RF Transmitter
+  device_name: cca-proxy
+  friendly_name: CCA Proxy
 
 esphome:
   name: ${device_name}
@@ -36,7 +36,7 @@ api:
         button_code: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_button_press(strtoul(device_id.c_str(), nullptr, 0), button_code);
+            id(cca_radio)->send_button_press(strtoul(device_id.c_str(), nullptr, 0), button_code);
 
     - service: send_pairing
       variables:
@@ -44,7 +44,7 @@ api:
         duration_seconds: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_pairing_pico(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
+            id(cca_radio)->send_pairing_pico(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
 
     - service: send_level
       variables:
@@ -53,7 +53,7 @@ api:
         level_percent: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_bridge_level(
+            id(cca_radio)->send_bridge_level(
               strtoul(source_id.c_str(), nullptr, 0),
               strtoul(target_id.c_str(), nullptr, 0),
               level_percent);
@@ -65,7 +65,7 @@ api:
         duration_seconds: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_beacon(strtoul(device_id.c_str(), nullptr, 0), beacon_type, duration_seconds);
+            id(cca_radio)->send_beacon(strtoul(device_id.c_str(), nullptr, 0), beacon_type, duration_seconds);
 
     - service: send_state_report
       variables:
@@ -73,7 +73,7 @@ api:
         level_percent: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_state_report(strtoul(device_id.c_str(), nullptr, 0), level_percent);
+            id(cca_radio)->send_state_report(strtoul(device_id.c_str(), nullptr, 0), level_percent);
 
     - service: save_favorite
       variables:
@@ -82,7 +82,7 @@ api:
         hold_seconds: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_save_favorite(strtoul(device_id.c_str(), nullptr, 0), button_code, hold_seconds);
+            id(cca_radio)->send_save_favorite(strtoul(device_id.c_str(), nullptr, 0), button_code, hold_seconds);
 
     - service: pair_5button
       variables:
@@ -90,7 +90,7 @@ api:
         duration_seconds: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_pairing_5button(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
+            id(cca_radio)->send_pairing_5button(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
 
     - service: pair_advanced
       variables:
@@ -105,7 +105,7 @@ api:
         byte38: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_pairing_advanced(
+            id(cca_radio)->send_pairing_advanced(
               strtoul(device_id.c_str(), nullptr, 0), duration_seconds,
               pkt_type_a, pkt_type_b, byte10, byte30, byte31, byte37, byte38);
 
@@ -115,7 +115,7 @@ api:
         paired_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_reset(
+            id(cca_radio)->send_reset(
               strtoul(source_id.c_str(), nullptr, 0),
               strtoul(paired_id.c_str(), nullptr, 0));
 
@@ -125,7 +125,7 @@ api:
         target_device_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_bridge_unpair(
+            id(cca_radio)->send_bridge_unpair(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0));
 
@@ -136,7 +136,7 @@ api:
         target_device_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_bridge_unpair_dual(
+            id(cca_radio)->send_bridge_unpair_dual(
               strtoul(zone_id_1.c_str(), nullptr, 0),
               strtoul(zone_id_2.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0));
@@ -145,7 +145,7 @@ api:
       variables:
         hex_bytes: string
       then:
-        - lambda: id(lutron_radio)->test_decode_packet(hex_bytes);
+        - lambda: id(cca_radio)->test_decode_packet(hex_bytes);
 
     - service: send_led_config
       variables:
@@ -154,7 +154,7 @@ api:
         mode: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_led_config(
+            id(cca_radio)->send_led_config(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0), mode);
 
@@ -166,7 +166,7 @@ api:
         fade_off_qs: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_fade_config(
+            id(cca_radio)->send_fade_config(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0),
               fade_on_qs, fade_off_qs);
@@ -180,7 +180,7 @@ api:
         phase_reverse: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_device_state(
+            id(cca_radio)->send_device_state(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0),
               high_trim, low_trim, phase_reverse != 0);
@@ -192,7 +192,7 @@ api:
         zone_suffix: string
       then:
         - lambda: |-
-            id(lutron_radio)->pair_device(
+            id(cca_radio)->pair_device(
               strtoul(subnet.c_str(), nullptr, 0),
               strtoul(factory_id.c_str(), nullptr, 0),
               strtoul(zone_suffix.c_str(), nullptr, 0));
@@ -201,13 +201,13 @@ api:
       variables:
         subnet: string
       then:
-        - lambda: id(lutron_radio)->start_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
+        - lambda: id(cca_radio)->start_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
 
     - service: stop_pairing
       variables:
         subnet: string
       then:
-        - lambda: id(lutron_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
+        - lambda: id(cca_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
 
     - service: send_pair_assignment
       variables:
@@ -216,7 +216,7 @@ api:
         zone_suffix: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_pair_assignment(
+            id(cca_radio)->send_pair_assignment(
               strtoul(subnet.c_str(), nullptr, 0),
               strtoul(factory_id.c_str(), nullptr, 0),
               strtoul(zone_suffix.c_str(), nullptr, 0));
@@ -227,7 +227,7 @@ api:
         subnet: string
         seq: int
       then:
-        - lambda: id(lutron_radio)->send_bridge_beacon(beacon_type, strtoul(subnet.c_str(), nullptr, 0), seq);
+        - lambda: id(cca_radio)->send_bridge_beacon(beacon_type, strtoul(subnet.c_str(), nullptr, 0), seq);
 
     - service: send_config_packet
       variables:
@@ -237,7 +237,7 @@ api:
         assigned_load_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_config_packet(config_type,
+            id(cca_radio)->send_config_packet(config_type,
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0),
               strtoul(assigned_load_id.c_str(), nullptr, 0));
@@ -251,7 +251,7 @@ api:
         slot: int
       then:
         - lambda: |-
-            id(lutron_radio)->send_device_link(link_type,
+            id(cca_radio)->send_device_link(link_type,
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0),
               strtoul(linked_device_id.c_str(), nullptr, 0), slot);
@@ -263,7 +263,7 @@ api:
         subnet: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_targeted_beacon_93(
+            id(cca_radio)->send_targeted_beacon_93(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0),
               strtoul(subnet.c_str(), nullptr, 0));
@@ -274,7 +274,7 @@ api:
         target_hw_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_zone_assignment_82(
+            id(cca_radio)->send_zone_assignment_82(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0));
 
@@ -284,7 +284,7 @@ api:
         target_hw_id: string
       then:
         - lambda: |-
-            id(lutron_radio)->send_state_report_83(
+            id(cca_radio)->send_state_report_83(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0));
 
@@ -293,7 +293,7 @@ api:
         dimmer_type: int
         subnet: string
       then:
-        - lambda: id(lutron_radio)->send_handshake_response(dimmer_type, strtoul(subnet.c_str(), nullptr, 0));
+        - lambda: id(cca_radio)->send_handshake_response(dimmer_type, strtoul(subnet.c_str(), nullptr, 0));
 
     - service: set_udp_backend
       variables:
@@ -318,8 +318,8 @@ spi:
   mosi_pin: GPIO23
   miso_pin: GPIO19
 
-lutron_cc1101:
-  id: lutron_radio
+cc1101_cca:
+  id: cca_radio
   cs_pin: GPIO21
   gdo0_pin: GPIO4
   on_packet:

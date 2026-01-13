@@ -2,7 +2,7 @@
 #include "esphome/core/log.h"
 
 namespace esphome {
-namespace lutron_cc1101 {
+namespace cc1101_cca {
 
 static const char *const TAG = "lutron_pairing";
 
@@ -340,5 +340,5 @@ void LutronPairing::send_pairing_advanced(uint32_t device_id, int duration_secon
   ESP_LOGI(TAG, "Sent %d alternating %02X/%02X packets", packet_count, pkt_type_a, pkt_type_b);
 }
 
-}  // namespace lutron_cc1101
+}  // namespace cc1101_cca
 }  // namespace esphome
