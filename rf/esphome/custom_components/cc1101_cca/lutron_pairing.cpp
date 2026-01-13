@@ -27,6 +27,12 @@ void LutronPairing::transmit_encoded(const uint8_t *packet, size_t len) {
 
   ESP_LOGD(TAG, "Transmitting %d encoded bytes", encoded_len);
   this->radio_->transmit_raw(tx_buffer, encoded_len);
+
+  // Notify TX callback if set
+  if (this->tx_callback_) {
+    std::vector<uint8_t> packet_data(packet, packet + len);
+    this->tx_callback_(packet_data);
+  }
 }
 
 void LutronPairing::send_pairing_b9(uint32_t device_id, int duration_seconds) {

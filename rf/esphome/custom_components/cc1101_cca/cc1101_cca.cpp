@@ -28,6 +28,13 @@ void CC1101CCA::setup() {
   // Create pairing handler
   this->pairing_ = new LutronPairing(&this->radio_);
 
+  // Set up TX callback for pairing packets (route through main TX callbacks)
+  this->pairing_->set_tx_callback([this](const std::vector<uint8_t> &data) {
+    for (auto &callback : this->on_tx_callbacks_) {
+      callback(data);
+    }
+  });
+
   // Auto-start RX mode if enabled (default: on)
   if (this->rx_auto_) {
     ESP_LOGV(TAG, "Auto-starting RX mode...");

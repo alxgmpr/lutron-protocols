@@ -2,6 +2,8 @@
 
 #include "cc1101_radio.h"
 #include "lutron_protocol.h"
+#include <functional>
+#include <vector>
 
 namespace esphome {
 namespace cc1101_cca {
@@ -92,10 +94,19 @@ class LutronPairing {
                              uint8_t byte10, uint8_t byte30, uint8_t byte31,
                              uint8_t byte37, uint8_t byte38);
 
+  /**
+   * @brief Set callback for TX notifications
+   * Called with raw packet data (before encoding) for each transmitted packet
+   */
+  void set_tx_callback(std::function<void(const std::vector<uint8_t> &)> callback) {
+    this->tx_callback_ = std::move(callback);
+  }
+
  private:
   CC1101Radio *radio_;
   LutronEncoder encoder_;
   uint8_t sequence_{0};
+  std::function<void(const std::vector<uint8_t> &)> tx_callback_;
 
   uint8_t next_seq();
   void transmit_encoded(const uint8_t *packet, size_t len);
