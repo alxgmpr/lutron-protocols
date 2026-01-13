@@ -8,16 +8,11 @@ esphome:
   includes:
     - udp_stream.h
   on_boot:
-    priority: -100  # Run after WiFi is connected
+    priority: -100
     then:
       - lambda: |-
-          // Initialize UDP streaming to backend
           cca_udp_stream.set_address(id(udp_backend_host), id(udp_backend_port));
-          if (cca_udp_stream.begin()) {
-            ESP_LOGI("udp", "UDP stream initialized to %s:%d", id(udp_backend_host), id(udp_backend_port));
-          } else {
-            ESP_LOGE("udp", "Failed to initialize UDP stream");
-          }
+          cca_udp_stream.begin();
 
 esp32:
   board: esp32dev
@@ -25,39 +20,32 @@ esp32:
     type: arduino
 
 wifi:
-  ssid: gompper-sage-iot
-  password: 7qnUoWuiVbExHaU
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
 
 logger:
-  level: INFO
+  level: WARN
 
 api:
   encryption:
-    key: "EixuPCx/wLtc5a55a/16gNEubH7qiZWFhn7LR98qQU8="
+    key: !secret api_key
   services:
-    # Dynamic button press - any device ID, any button code
     - service: send_button
       variables:
         device_id: string
         button_code: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_button: device=0x%08X button=0x%02X", dev_id, button_code);
-            id(lutron_radio)->send_button_press(dev_id, button_code);
+            id(lutron_radio)->send_button_press(strtoul(device_id.c_str(), nullptr, 0), button_code);
 
-    # Dynamic pairing - any device ID
     - service: send_pairing
       variables:
         device_id: string
         duration_seconds: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_pairing: device=0x%08X duration=%ds", dev_id, duration_seconds);
-            id(lutron_radio)->send_pairing_pico(dev_id, duration_seconds);
+            id(lutron_radio)->send_pairing_pico(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
 
-    # Dynamic level command (bridge-style)
     - service: send_level
       variables:
         source_id: string
@@ -65,12 +53,11 @@ api:
         level_percent: int
       then:
         - lambda: |-
-            uint32_t src_id = strtoul(source_id.c_str(), nullptr, 0);
-            uint32_t tgt_id = strtoul(target_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_level: source=0x%08X target=0x%08X level=%d%%", src_id, tgt_id, level_percent);
-            id(lutron_radio)->send_bridge_level(src_id, tgt_id, level_percent);
+            id(lutron_radio)->send_bridge_level(
+              strtoul(source_id.c_str(), nullptr, 0),
+              strtoul(target_id.c_str(), nullptr, 0),
+              level_percent);
 
-    # Raw beacon for pairing mode
     - service: send_beacon
       variables:
         device_id: string
@@ -78,22 +65,16 @@ api:
         duration_seconds: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
-            id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
+            id(lutron_radio)->send_beacon(strtoul(device_id.c_str(), nullptr, 0), beacon_type, duration_seconds);
 
-    # Fake state report - emulate a device reporting its level
     - service: send_state_report
       variables:
         device_id: string
         level_percent: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_state_report: device=0x%08X level=%d%%", dev_id, level_percent);
-            id(lutron_radio)->send_state_report(dev_id, level_percent);
+            id(lutron_radio)->send_state_report(strtoul(device_id.c_str(), nullptr, 0), level_percent);
 
-    # Save Favorite/Scene - Hold button for extended time to save current level
     - service: save_favorite
       variables:
         device_id: string
@@ -101,40 +82,16 @@ api:
         hold_seconds: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "save_favorite: device=0x%08X button=0x%02X hold=%ds",
-                     dev_id, button_code, hold_seconds);
-            id(lutron_radio)->send_save_favorite(dev_id, button_code, hold_seconds);
+            id(lutron_radio)->send_save_favorite(strtoul(device_id.c_str(), nullptr, 0), button_code, hold_seconds);
 
-    # Experimental pairing - configurable protocol parameters
-    - service: pair_experiment
-      variables:
-        device_id: string
-        ba_count: int
-        bb_count: int
-        protocol_variant: int
-        pico_type: int
-        button_scheme: int
-      then:
-        - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "pair_experiment: device=0x%08X BA=%d BB=%d proto=%d type=%d btn_scheme=0x%02X",
-                     dev_id, ba_count, bb_count, protocol_variant, pico_type, button_scheme);
-            id(lutron_radio)->send_pairing_experimental(dev_id, ba_count, bb_count,
-                                                         protocol_variant, pico_type, button_scheme);
-
-    # 5-Button Pico Pairing - Uses B9 packets matching real Pico exactly
     - service: pair_5button
       variables:
         device_id: string
         duration_seconds: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "pair_5button: device=0x%08X duration=%ds", dev_id, duration_seconds);
-            id(lutron_radio)->send_pairing_5button(dev_id, duration_seconds);
+            id(lutron_radio)->send_pairing_5button(strtoul(device_id.c_str(), nullptr, 0), duration_seconds);
 
-    # Advanced Pairing - Full control over ALL capability bytes
     - service: pair_advanced
       variables:
         device_id: string
@@ -148,39 +105,30 @@ api:
         byte38: int
       then:
         - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "pair_advanced: device=0x%08X pkt=%02X/%02X b10=%02X b30=%02X b31=%02X b37=%02X b38=%02X",
-                     dev_id, pkt_type_a, pkt_type_b, byte10, byte30, byte31, byte37, byte38);
-            id(lutron_radio)->send_pairing_advanced(dev_id, duration_seconds,
-                                                     pkt_type_a, pkt_type_b,
-                                                     byte10, byte30, byte31, byte37, byte38);
+            id(lutron_radio)->send_pairing_advanced(
+              strtoul(device_id.c_str(), nullptr, 0), duration_seconds,
+              pkt_type_a, pkt_type_b, byte10, byte30, byte31, byte37, byte38);
 
-    # Reset/Unpair - Remove a Pico from a device
     - service: send_reset
       variables:
         source_id: string
         paired_id: string
       then:
         - lambda: |-
-            uint32_t src_id = strtoul(source_id.c_str(), nullptr, 0);
-            uint32_t pair_id = strtoul(paired_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_reset: source=0x%08X paired=0x%08X", src_id, pair_id);
-            id(lutron_radio)->send_reset(src_id, pair_id);
+            id(lutron_radio)->send_reset(
+              strtoul(source_id.c_str(), nullptr, 0),
+              strtoul(paired_id.c_str(), nullptr, 0));
 
-    # Bridge-style unpair - Remove a device from bridge network (single zone)
     - service: send_bridge_unpair
       variables:
         bridge_zone_id: string
         target_device_id: string
       then:
         - lambda: |-
-            uint32_t bridge_id = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target_id = strtoul(target_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_bridge_unpair: bridge=0x%08X target=0x%08X", bridge_id, target_id);
-            id(lutron_radio)->send_bridge_unpair(bridge_id, target_id);
+            id(lutron_radio)->send_bridge_unpair(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_device_id.c_str(), nullptr, 0));
 
-    # Bridge-style unpair with TWO zone IDs (interleaved like real bridge)
-    # Real bridge sends from both zones (e.g., 002C90AD and 002C90AF)
     - service: send_bridge_unpair_dual
       variables:
         zone_id_1: string
@@ -188,27 +136,17 @@ api:
         target_device_id: string
       then:
         - lambda: |-
-            uint32_t z1 = strtoul(zone_id_1.c_str(), nullptr, 0);
-            uint32_t z2 = strtoul(zone_id_2.c_str(), nullptr, 0);
-            uint32_t target_id = strtoul(target_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_bridge_unpair_dual: z1=0x%08X z2=0x%08X target=0x%08X", z1, z2, target_id);
-            id(lutron_radio)->send_bridge_unpair_dual(z1, z2, target_id);
+            id(lutron_radio)->send_bridge_unpair_dual(
+              strtoul(zone_id_1.c_str(), nullptr, 0),
+              strtoul(zone_id_2.c_str(), nullptr, 0),
+              strtoul(target_device_id.c_str(), nullptr, 0));
 
-    # Test packet decoding - for test framework
-    # Takes hex bytes string, parses and logs result as JSON
-    # Output format: TEST_RESULT: {"type":"BTN_SHORT_A","device_id":"0595E68D",...}
     - service: test_decode
       variables:
         hex_bytes: string
       then:
-        - lambda: |-
-            ESP_LOGI("service", "test_decode: %s", hex_bytes.c_str());
-            id(lutron_radio)->test_decode_packet(hex_bytes);
+        - lambda: id(lutron_radio)->test_decode_packet(hex_bytes);
 
-    # ========== DEVICE CONFIGURATION ==========
-
-    # LED config - change status LED behavior
-    # mode: 0=Both Off, 1=Both On, 2=On when load on, 3=On when load off
     - service: send_led_config
       variables:
         bridge_zone_id: string
@@ -216,13 +154,10 @@ api:
         mode: int
       then:
         - lambda: |-
-            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_led_config: bridge=0x%08X target=0x%08X mode=%d", bridge, target, mode);
-            id(lutron_radio)->send_led_config(bridge, target, mode);
+            id(lutron_radio)->send_led_config(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_device_id.c_str(), nullptr, 0), mode);
 
-    # Fade config - set fade on/off rates
-    # Values in quarter-seconds: 1=0.25s, 3=0.75s, 10=2.5s, 12=3s, 20=5s, 60=15s
     - service: send_fade_config
       variables:
         bridge_zone_id: string
@@ -231,15 +166,11 @@ api:
         fade_off_qs: int
       then:
         - lambda: |-
-            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_fade_config: bridge=0x%08X target=0x%08X fade_on=%d fade_off=%d",
-                     bridge, target, fade_on_qs, fade_off_qs);
-            id(lutron_radio)->send_fade_config(bridge, target, fade_on_qs, fade_off_qs);
+            id(lutron_radio)->send_fade_config(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_device_id.c_str(), nullptr, 0),
+              fade_on_qs, fade_off_qs);
 
-    # Device state config - set trim and phase
-    # high_trim/low_trim: 0-100 (percentage)
-    # phase_reverse: 0=Forward, 1=Reverse
     - service: send_device_state
       variables:
         bridge_zone_id: string
@@ -249,14 +180,11 @@ api:
         phase_reverse: int
       then:
         - lambda: |-
-            uint32_t bridge = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_device_state: bridge=0x%08X target=0x%08X high=%d low=%d phase=%s",
-                     bridge, target, high_trim, low_trim, phase_reverse ? "Reverse" : "Forward");
-            id(lutron_radio)->send_device_state(bridge, target, high_trim, low_trim, phase_reverse != 0);
+            id(lutron_radio)->send_device_state(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_device_id.c_str(), nullptr, 0),
+              high_trim, low_trim, phase_reverse != 0);
 
-    # Bridge pairing - complete sequence
-    # Example: pair_device subnet=0x2C90 factory_id=0x0707DF6A zone_suffix=0x8F
     - service: pair_device
       variables:
         subnet: string
@@ -264,33 +192,23 @@ api:
         zone_suffix: string
       then:
         - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            uint32_t fid = strtoul(factory_id.c_str(), nullptr, 0);
-            uint8_t zone = strtoul(zone_suffix.c_str(), nullptr, 0);
-            ESP_LOGI("service", "pair_device: subnet=0x%04X factory=0x%08X zone=0x%02X", sub, fid, zone);
-            id(lutron_radio)->pair_device(sub, fid, zone);
+            id(lutron_radio)->pair_device(
+              strtoul(subnet.c_str(), nullptr, 0),
+              strtoul(factory_id.c_str(), nullptr, 0),
+              strtoul(zone_suffix.c_str(), nullptr, 0));
 
-    # Start bridge pairing mode (just sends beacons)
     - service: start_pairing
       variables:
         subnet: string
       then:
-        - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            ESP_LOGI("service", "start_pairing: subnet=0x%04X", sub);
-            id(lutron_radio)->start_bridge_pairing(sub);
+        - lambda: id(lutron_radio)->start_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
 
-    # Stop bridge pairing mode
     - service: stop_pairing
       variables:
         subnet: string
       then:
-        - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            ESP_LOGI("service", "stop_pairing: subnet=0x%04X", sub);
-            id(lutron_radio)->stop_bridge_pairing(sub);
+        - lambda: id(lutron_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
 
-    # Send B0 pairing assignment (without beacon phase)
     - service: send_pair_assignment
       variables:
         subnet: string
@@ -298,27 +216,19 @@ api:
         zone_suffix: string
       then:
         - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            uint32_t fid = strtoul(factory_id.c_str(), nullptr, 0);
-            uint8_t zone = strtoul(zone_suffix.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_pair_assignment: subnet=0x%04X factory=0x%08X zone=0x%02X", sub, fid, zone);
-            id(lutron_radio)->send_pair_assignment(sub, fid, zone);
+            id(lutron_radio)->send_pair_assignment(
+              strtoul(subnet.c_str(), nullptr, 0),
+              strtoul(factory_id.c_str(), nullptr, 0),
+              strtoul(zone_suffix.c_str(), nullptr, 0));
 
-    # ========== BRIDGE PAIRING PROTOCOL (Python orchestrated) ==========
-
-    # Send beacon with specific type (0x93=initial, 0x91=active, 0x92=stop)
     - service: send_bridge_beacon
       variables:
         beacon_type: int
         subnet: string
         seq: int
       then:
-        - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_bridge_beacon: type=0x%02X subnet=0x%04X seq=%d", beacon_type, sub, seq);
-            id(lutron_radio)->send_bridge_beacon(beacon_type, sub, seq);
+        - lambda: id(lutron_radio)->send_bridge_beacon(beacon_type, strtoul(subnet.c_str(), nullptr, 0), seq);
 
-    # Send A1/A2/A3 config packet (Phase 3)
     - service: send_config_packet
       variables:
         config_type: int
@@ -327,33 +237,25 @@ api:
         assigned_load_id: string
       then:
         - lambda: |-
-            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
-            uint32_t load = strtoul(assigned_load_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_config_packet: type=0x%02X zone=0x%08X target=0x%08X load=0x%08X",
-                     config_type, zone, target, load);
-            id(lutron_radio)->send_config_packet(config_type, zone, target, load);
+            id(lutron_radio)->send_config_packet(config_type,
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_hw_id.c_str(), nullptr, 0),
+              strtoul(assigned_load_id.c_str(), nullptr, 0));
 
-    # Send A1/A3 device link packet with 0x70 format
-    # Real bridge sends A3 slot 0 first, then A1 slot 1
     - service: send_device_link
       variables:
-        link_type: int           # 0xA1 or 0xA3
+        link_type: int
         bridge_zone_id: string
         target_hw_id: string
         linked_device_id: string
-        slot: int                # 0 or 1
+        slot: int
       then:
         - lambda: |-
-            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
-            uint32_t linked = strtoul(linked_device_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_device_link: type=0x%02X zone=0x%08X target=0x%08X link=0x%08X slot=%d",
-                     link_type, zone, target, linked, slot);
-            id(lutron_radio)->send_device_link(link_type, zone, target, linked, slot);
+            id(lutron_radio)->send_device_link(link_type,
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_hw_id.c_str(), nullptr, 0),
+              strtoul(linked_device_id.c_str(), nullptr, 0), slot);
 
-    # Send 0x93 targeted beacon to acknowledge discovered device
-    # This is sent BEFORE the 0x82 zone assignment
     - service: send_targeted_beacon_93
       variables:
         bridge_zone_id: string
@@ -361,66 +263,50 @@ api:
         subnet: string
       then:
         - lambda: |-
-            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_targeted_beacon_93: zone=0x%08X target=0x%08X subnet=0x%04X", zone, target, sub);
-            id(lutron_radio)->send_targeted_beacon_93(zone, target, sub);
+            id(lutron_radio)->send_targeted_beacon_93(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_hw_id.c_str(), nullptr, 0),
+              strtoul(subnet.c_str(), nullptr, 0));
 
-    # Send 0x82 zone assignment (makes dimmer flash!)
-    # This targeted packet tells the dimmer it's being assigned to a zone
     - service: send_zone_assignment_82
       variables:
         bridge_zone_id: string
         target_hw_id: string
       then:
         - lambda: |-
-            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_zone_assignment_82: zone=0x%08X target=0x%08X", zone, target);
-            id(lutron_radio)->send_zone_assignment_82(zone, target);
+            id(lutron_radio)->send_zone_assignment_82(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_hw_id.c_str(), nullptr, 0));
 
-    # Send 0x83 state report (Phase 4 finalization)
     - service: send_state_report_83
       variables:
         bridge_zone_id: string
         target_hw_id: string
       then:
         - lambda: |-
-            uint32_t zone = strtoul(bridge_zone_id.c_str(), nullptr, 0);
-            uint32_t target = strtoul(target_hw_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_state_report_83: zone=0x%08X target=0x%08X", zone, target);
-            id(lutron_radio)->send_state_report_83(zone, target);
+            id(lutron_radio)->send_state_report_83(
+              strtoul(bridge_zone_id.c_str(), nullptr, 0),
+              strtoul(target_hw_id.c_str(), nullptr, 0));
 
-    # Send handshake response (Phase 5)
-    # Responds to dimmer's Cx packet with Cx+1
     - service: send_handshake_response
       variables:
         dimmer_type: int
         subnet: string
       then:
-        - lambda: |-
-            uint16_t sub = strtoul(subnet.c_str(), nullptr, 0);
-            ESP_LOGI("service", "send_handshake_response: dimmer_type=0x%02X subnet=0x%04X", dimmer_type, sub);
-            id(lutron_radio)->send_handshake_response(dimmer_type, sub);
+        - lambda: id(lutron_radio)->send_handshake_response(dimmer_type, strtoul(subnet.c_str(), nullptr, 0));
 
-    # ========== UDP STREAMING CONFIGURATION ==========
-
-    # Configure UDP backend for packet streaming
-    # Call this from Python to set where packets should be sent
     - service: set_udp_backend
       variables:
         host: string
         port: int
       then:
         - lambda: |-
-            ESP_LOGI("service", "set_udp_backend: %s:%d", host.c_str(), port);
             cca_udp_stream.set_address(host.c_str(), port);
             cca_udp_stream.begin();
 
 ota:
   platform: esphome
-  password: "test"
+  password: !secret ota_password
 
 external_components:
   - source:
@@ -437,20 +323,14 @@ lutron_cc1101:
   cs_pin: GPIO21
   gdo0_pin: GPIO4
   on_packet:
-    - lambda: |-
-        // Send RX packet via UDP to backend
-        cca_udp_stream.send_packet(data, rssi);
+    - lambda: cca_udp_stream.send_packet(data, rssi);
   on_tx:
-    - lambda: |-
-        // Send TX packet via UDP to backend
-        cca_udp_stream.send_tx_packet(data);
+    - lambda: cca_udp_stream.send_tx_packet(data);
 
 globals:
-  # UDP backend configuration
   - id: udp_backend_host
     type: 'const char*'
-    initial_value: '"10.1.1.10"'
+    initial_value: !secret udp_backend_host
   - id: udp_backend_port
     type: uint16_t
-    initial_value: '9433'
-
+    initial_value: !secret udp_backend_port

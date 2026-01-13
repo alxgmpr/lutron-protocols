@@ -1363,14 +1363,6 @@ void LutronCC1101::test_decode_packet(const std::string &hex_bytes) {
   ESP_LOGI(TAG, "=== TEST DECODE COMPLETE ===");
 }
 
-void LutronCC1101::send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
-                                              int protocol_variant, int pico_type, int button_scheme) {
-  if (this->pairing_) {
-    this->pairing_->send_pairing_experimental(device_id, ba_count, bb_count,
-                                               protocol_variant, pico_type, button_scheme);
-  }
-}
-
 void LutronCC1101::send_pairing_5button(uint32_t device_id, int duration_seconds) {
   if (this->pairing_) {
     this->pairing_->send_pairing_5button(device_id, duration_seconds);

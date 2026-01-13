@@ -1253,19 +1253,6 @@ class ESP32Controller:
                                beacon_type=beacon_type, duration_seconds=duration)
         _record_tx_packet('BEACON', device_id=f"{device_id:08X}")
 
-    async def pair_pico(self, device_id: int, pico_type: int = 1, ba_count: int = 12, bb_count: int = 6, button_scheme: int = 0x04):
-        """Send Pico pairing.
-        pico_type: 0=Scene (bridge only), 1=5-button (direct to dimmer)
-        button_scheme: 0x04=5-btn codes (0x02-0x06), 0x0B=4-btn codes (0x08-0x0B)
-        """
-        await self.call_service('pair_experiment',
-                               device_id=f"0x{device_id:08X}",
-                               ba_count=ba_count,
-                               bb_count=bb_count,
-                               protocol_variant=0,  # New protocol (0x25)
-                               pico_type=pico_type,  # 0=Scene, 1=5-button
-                               button_scheme=button_scheme)  # Byte 10: button code scheme
-
     async def save_favorite(self, device_id: int, button: int = 0x03, hold_seconds: int = 6):
         """Send save favorite/scene sequence.
         Holds button for extended time to trigger save mode on paired dimmers.
@@ -1959,17 +1946,6 @@ def cmd_serve(args):
             except (asyncio.TimeoutError, Exception):
                 # Ignore disconnect timeout - ESP32 is busy with beacon
                 pass
-
-    async def pair_pico_async(device_id: int, pico_type: int = 1, button_scheme: int = 0x04):
-        """pico_type: 0 = Scene, 1 = 5-button
-        button_scheme: 0x04 = 5-btn, 0x0B = 4-btn
-        """
-        controller = ESP32Controller()
-        try:
-            await controller.connect()
-            await controller.pair_pico(device_id, pico_type, button_scheme=button_scheme)
-        finally:
-            await controller.disconnect()
 
     async def pair_5button_async(device_id: int, duration: int = 10):
         """Pair using 5-button Pico B9 packets (matches real Pico exactly)."""
@@ -4005,14 +3981,30 @@ async def cmd_send(args):
 async def cmd_pair(args):
     """Pair as 5-button Pico."""
     device_id = parse_hex_or_int(args.device)
+    duration = getattr(args, 'duration', 10)
 
     controller = ESP32Controller()
     try:
         await controller.connect()
-        await controller.pair_pico(device_id)
-        print(f"Paired 0x{device_id:08X} as 5-button Pico")
+        # 5-button Pico: B9/BB, byte10=0x04, byte30=0x03, byte31=0x00, byte37=0x02, byte38=0x06
+        await controller.call_service('pair_advanced',
+                                     device_id=f"0x{device_id:08X}",
+                                     duration_seconds=duration,
+                                     pkt_type_a=0xB9,
+                                     pkt_type_b=0xBB,
+                                     byte10=0x04,
+                                     byte30=0x03,
+                                     byte31=0x00,
+                                     byte37=0x02,
+                                     byte38=0x06)
+        print(f"Paired 0x{device_id:08X} as 5-button Pico ({duration}s)")
+    except asyncio.TimeoutError:
+        print(f"Paired 0x{device_id:08X} (timeout expected)")
     finally:
-        await controller.disconnect()
+        try:
+            await asyncio.wait_for(controller.disconnect(), timeout=2.0)
+        except (asyncio.TimeoutError, Exception):
+            pass
 
 
 async def cmd_level(args):

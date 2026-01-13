@@ -61,23 +61,6 @@ class LutronPairing {
   void replay_raw(const uint8_t *raw_encoded, size_t len);
 
   /**
-   * @brief Experimental pairing with configurable parameters
-   *
-   * Allows testing different protocol variants and packet counts.
-   *
-   * @param device_id 32-bit device ID
-   * @param ba_count Number of 0xBA packets (capability announcement)
-   * @param bb_count Number of 0xBB packets (pair request)
-   * @param protocol_variant 0=new (0x25), 1=old (0x21/0x17)
-   * @param pico_type 0=scene (4-btn), 1=5-button
-   * @param button_scheme Byte 10 value - tells receiver what button codes to expect:
-   *                      0x04 = 5-button scheme (codes 0x02-0x06)
-   *                      0x0B = 4-button scheme (codes 0x08-0x0B)
-   */
-  void send_pairing_experimental(uint32_t device_id, int ba_count, int bb_count,
-                                  int protocol_variant, int pico_type, int button_scheme);
-
-  /**
    * @brief Direct-pair as 5-button Pico using B9 packets
    *
    * Matches REAL 5-button Pico pairing capture exactly. Uses B9 packet type

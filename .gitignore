@@ -15,6 +15,9 @@ rf/esphome/.esphome/
 rf/esphome/**/.pioenvs/
 rf/esphome/**/.piolibdeps/
 
+# ESPHome secrets
+rf/esphome/secrets.yaml
+
 # External tools (not part of this repo)
 rtl_433/
 
