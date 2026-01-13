@@ -1,8 +1,6 @@
 substitutions:
   device_name: pico-trigger
   friendly_name: Pico RF Transmitter
-  # Default device ID for ESP32 virtual Pico (can be overridden)
-  esp32_pico_id: "0xCC110001"
 
 esphome:
   name: ${device_name}
@@ -83,29 +81,6 @@ api:
             uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
             ESP_LOGI("service", "send_beacon: device=0x%08X type=0x%02X duration=%ds", dev_id, beacon_type, duration_seconds);
             id(lutron_radio)->send_beacon(dev_id, beacon_type, duration_seconds);
-
-    # Set beacon device ID for toggle mode
-    - service: set_beacon_device
-      variables:
-        device_id: string
-      then:
-        - lambda: |-
-            uint32_t dev_id = strtoul(device_id.c_str(), nullptr, 0);
-            id(beacon_device_id) = dev_id;
-            ESP_LOGI("service", "set_beacon_device: 0x%08X", dev_id);
-
-    # Complete bridge pairing sequence
-    - service: bridge_pair
-      variables:
-        bridge_id: string
-        target_id: string
-        beacon_seconds: int
-      then:
-        - lambda: |-
-            uint32_t brg_id = strtoul(bridge_id.c_str(), nullptr, 0);
-            uint32_t tgt_id = strtoul(target_id.c_str(), nullptr, 0);
-            ESP_LOGI("service", "bridge_pair: bridge=0x%08X target=0x%08X duration=%ds", brg_id, tgt_id, beacon_seconds);
-            id(lutron_radio)->send_bridge_pair_sequence(brg_id, tgt_id, beacon_seconds);
 
     # Fake state report - emulate a device reporting its level
     - service: send_state_report
@@ -471,62 +446,11 @@ lutron_cc1101:
         cca_udp_stream.send_tx_packet(data);
 
 globals:
-  - id: beacon_active
-    type: bool
-    initial_value: 'false'
-  - id: beacon_seq
-    type: uint8_t
-    initial_value: '0'
-  - id: beacon_device_id
-    type: uint32_t
-    initial_value: '0xCC110001'
   # UDP backend configuration
   - id: udp_backend_host
     type: 'const char*'
-    initial_value: '"10.1.1.10"'  # Backend server IP (en11 interface)
+    initial_value: '"10.1.1.10"'
   - id: udp_backend_port
     type: uint16_t
-    initial_value: '9433'  # Backend UDP port for CCA packets
+    initial_value: '9433'
 
-interval:
-  - interval: 65ms
-    then:
-      - lambda: |-
-          if (id(beacon_active)) {
-            id(beacon_seq) = id(lutron_radio)->send_beacon_single(id(beacon_device_id), id(beacon_seq));
-          }
-
-switch:
-  - platform: template
-    name: "Beacon Mode"
-    id: beacon_mode_switch
-    icon: "mdi:broadcast"
-    optimistic: true
-    turn_on_action:
-      - globals.set:
-          id: beacon_active
-          value: 'true'
-      - logger.log: "Beacon mode ON"
-    turn_off_action:
-      - globals.set:
-          id: beacon_active
-          value: 'false'
-      - logger.log: "Beacon mode OFF"
-
-button:
-  - platform: template
-    name: "Test Packet"
-    id: test_pkt
-    icon: "mdi:access-point"
-    on_press:
-      - lambda: |-
-          uint32_t dev_id = strtoul("${esp32_pico_id}", nullptr, 0);
-          id(lutron_radio)->send_test_packet(dev_id);
-
-  - platform: template
-    name: "Debug Pattern"
-    id: debug_pattern
-    icon: "mdi:bug"
-    on_press:
-      - lambda: |-
-          id(lutron_radio)->send_debug_pattern();
