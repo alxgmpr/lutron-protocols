@@ -28,7 +28,7 @@
 .card-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .card-title {
@@ -39,13 +39,7 @@
 }
 
 .card-badge {
-  font-size: 10px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  display: none;
 }
 
 .card-actions {
@@ -54,7 +48,7 @@
 }
 
 .card-body {
-  padding: 10px 12px;
+  padding: 12px;
   flex: 1;
   min-height: 0;
   overflow-x: hidden;

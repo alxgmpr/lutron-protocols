@@ -41,6 +41,7 @@ body {
   font-family: var(--font-sans);
   background: var(--bg-secondary);
   color: var(--text-primary);
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -71,9 +72,9 @@ input, select {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   color: var(--text-primary);
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 11px;
 }
 
 input:focus, select:focus {

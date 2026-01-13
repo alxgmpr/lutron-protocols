@@ -30,16 +30,16 @@
 }
 
 .autocomplete-item {
-  padding: 6px 10px;
+  padding: 6px 8px;
   cursor: pointer;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-primary);
 }
 
 .autocomplete-item:hover,
 .autocomplete-item.highlighted {
-  background: var(--bg-hover);
+  background: var(--bg-elevated);
 }
 
 .autocomplete-prefix {

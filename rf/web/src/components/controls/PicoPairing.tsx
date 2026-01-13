@@ -56,69 +56,71 @@ export function PicoPairing({ showStatus }: Props) {
   const currentPreset = PAIRING_PRESETS[preset] || PAIRING_PRESETS['5btn']
 
   return (
-    <Card title="Pico Pairing" badge="PICO → DEVICE" variant="pairing" collapsible>
-      <div className="form-row">
+    <Card title="Pico Pairing" variant="pairing" collapsible>
+      <p className="help-text">
+        Pair a virtual Pico to dimmers/switches. Put target in pairing mode first.
+      </p>
+
+      <FormGroup label="Preset">
+        <FormSelect value={preset} onChange={handlePresetChange}>
+          <option value="5btn">5-Button Pico</option>
+          <option value="2btn">2-Button Paddle</option>
+          <option value="4btn-rl">4-Button Raise/Lower</option>
+          <option value="4btn-scene-custom">4-Button Scene Custom</option>
+          <option value="4btn-scene-std">4-Button Scene Standard</option>
+          <option value="custom">Custom</option>
+        </FormSelect>
+      </FormGroup>
+
+      <div className="form-row" style={{ marginTop: 8 }}>
         <FormGroup label="Pico ID">
-          <FormInput value={deviceId} onChange={setDeviceId} width={120} prefix="0x" />
+          <FormInput value={deviceId} onChange={setDeviceId} width={110} />
         </FormGroup>
-        <FormGroup label="Preset" flex="auto">
-          <FormSelect value={preset} onChange={handlePresetChange}>
-            <option value="5btn">5-Button Pico (B9, FAV works)</option>
-            <option value="2btn">2-Button Paddle (B9)</option>
-            <option value="4btn-rl">4-Button Raise/Lower (B9)</option>
-            <option value="4btn-scene-custom">4-Button Scene Custom (B9)</option>
-            <option value="4btn-scene-std">4-Button Scene Standard (BA/BB)</option>
-            <option value="custom">Custom (Advanced)</option>
-          </FormSelect>
-        </FormGroup>
-        <FormGroup label="Duration">
-          <FormInput 
-            type="number" 
-            value={duration} 
-            onChange={v => setDuration(parseInt(v) || 4)} 
-            width={60}
+        <FormGroup label="Seconds">
+          <FormInput
+            type="number"
+            value={duration}
+            onChange={v => setDuration(parseInt(v) || 4)}
+            width={50}
             min={3}
             max={30}
           />
         </FormGroup>
-        <Button variant="purple" onClick={handlePair}>PAIR</Button>
+        <Button variant="purple" onClick={handlePair}>Pair</Button>
       </div>
 
       {showAdvanced && (
         <div className="advanced-panel">
-          <div className="advanced-title">Advanced Parameters</div>
+          <div className="advanced-title">Advanced</div>
           <div className="form-row">
-            <FormGroup label="Pkt Type">
-              <FormSelect value={pktType} onChange={setPktType} width={70}>
+            <FormGroup label="Pkt">
+              <FormSelect value={pktType} onChange={setPktType} width={60}>
                 <option value="B9">B9</option>
                 <option value="BA">BA</option>
               </FormSelect>
             </FormGroup>
-            <FormGroup label="Byte 10">
-              <FormInput value={byte10} onChange={setByte10} width={50} />
+            <FormGroup label="b10">
+              <FormInput value={byte10} onChange={setByte10} width={45} />
             </FormGroup>
-            <FormGroup label="Byte 30">
-              <FormInput value={byte30} onChange={setByte30} width={50} />
+            <FormGroup label="b30">
+              <FormInput value={byte30} onChange={setByte30} width={45} />
             </FormGroup>
-            <FormGroup label="Byte 31">
-              <FormInput value={byte31} onChange={setByte31} width={50} />
+            <FormGroup label="b31">
+              <FormInput value={byte31} onChange={setByte31} width={45} />
             </FormGroup>
-            <FormGroup label="Byte 37">
-              <FormInput value={byte37} onChange={setByte37} width={50} />
+            <FormGroup label="b37">
+              <FormInput value={byte37} onChange={setByte37} width={45} />
             </FormGroup>
-            <FormGroup label="Byte 38">
-              <FormInput value={byte38} onChange={setByte38} width={50} />
+            <FormGroup label="b38">
+              <FormInput value={byte38} onChange={setByte38} width={45} />
             </FormGroup>
           </div>
         </div>
       )}
 
       <div className="info-line">
-        {currentPreset.pkt} | byte10={currentPreset.b10} | byte30={currentPreset.b30} | {currentPreset.desc}
+        {currentPreset.desc}
       </div>
     </Card>
   )
 }
-
-
-

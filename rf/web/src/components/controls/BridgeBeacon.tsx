@@ -146,25 +146,24 @@ export function BridgeBeacon({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Pairing" badge="EXPERIMENTAL" variant="bridge">
+    <Card title="Bridge Pairing" variant="bridge">
       <p className="help-text">
-        Pair devices to our ESP32 as a bridge. Toggle beacon on, hold OFF on device for 10 seconds,
-        then click Pair Device. Zone: 0x{computedZone}
+        Pair devices to ESP32 as bridge. Toggle beacon, hold OFF on device 10s, then pair.
       </p>
 
       <div className="form-row">
-        <FormGroup label="Subnet" hint="e.g. 2C90">
-          <FormInput value={subnet} onChange={setSubnet} width={80} />
+        <FormGroup label="Subnet">
+          <FormInput value={subnet} onChange={setSubnet} width={70} />
         </FormGroup>
-        <FormGroup label="Factory ID" hint="from device label">
-          <FormInput value={factoryId} onChange={setFactoryId} width={100} />
+        <FormGroup label="Factory ID">
+          <FormInput value={factoryId} onChange={setFactoryId} width={90} />
         </FormGroup>
-        <FormGroup label="Zone" hint={`-> 0x${computedZone}`}>
-          <FormInput value={zoneSuffix} onChange={setZoneSuffix} width={60} />
+        <FormGroup label="Zone">
+          <FormInput value={zoneSuffix} onChange={setZoneSuffix} width={50} />
         </FormGroup>
       </div>
 
-      <div className="form-row" style={{ marginTop: '12px', alignItems: 'center' }}>
+      <div className="form-row">
         <div className="beacon-toggle-container">
           <span className="beacon-toggle-label">Pairing Beacon</span>
           <button
@@ -180,28 +179,14 @@ export function BridgeBeacon({ showStatus }: Props) {
         </div>
       </div>
 
-      <div className="form-row" style={{ marginTop: '12px' }}>
-        <Button
-          variant="primary"
-          onClick={handlePairDevice}
-          disabled={loading}
-          title="Complete sequence: beacon + assignment + stop"
-        >
-          Pair Device
-        </Button>
-        <Button
-          variant="blue"
-          onClick={handleSendAssignment}
-          disabled={loading}
-          title="Send B0 assignment packets only"
-        >
-          Send Assignment
-        </Button>
+      <div className="form-row">
+        <Button variant="primary" onClick={handlePairDevice} disabled={loading}>Pair</Button>
+        <Button variant="blue" onClick={handleSendAssignment} disabled={loading}>Assign Only</Button>
       </div>
 
       {beaconActive && (
-        <p className="status-text active" style={{ marginTop: '12px', color: 'var(--accent-green)' }}>
-          Beaconing active - hold OFF on device for 10 seconds, then click Pair Device
+        <p className="info-line" style={{ color: 'var(--accent-green)', borderTop: 'none', paddingTop: 0 }}>
+          Beaconing active - hold OFF on device 10s, then click Pair
         </p>
       )}
     </Card>

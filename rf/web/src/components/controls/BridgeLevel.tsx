@@ -8,8 +8,6 @@ interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
 
-// Convert 4-char subnet to full bridge zone ID
-// Pattern: subnet "2C90" -> source "0x002C90AD"
 function subnetToSourceId(subnet: string): string {
   const clean = subnet.replace(/^0x/i, '').toUpperCase().padStart(4, '0')
   return `0x00${clean}AD`
@@ -44,26 +42,27 @@ export function BridgeLevel({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Level" badge="BRIDGE -> DEVICE" variant="bridge" collapsible defaultCollapsed>
-      <p className="help-text">Set a dimmer's level via bridge protocol. Enter the bridge subnet (middle 4 hex digits from any bridge zone ID).</p>
+    <Card title="Bridge Level" variant="bridge" collapsible defaultCollapsed>
+      <p className="help-text">Set dimmer level via bridge protocol.</p>
+
       <div className="form-row">
-        <FormGroup label="Subnet" hint={`Source: ${sourceId}`}>
+        <FormGroup label="Subnet">
           <AutocompleteInput value={subnet} onChange={setSubnet} suggestions={seen.bridgeSubnets} width={70} />
         </FormGroup>
-        <FormGroup label="Target Device">
-          <AutocompleteInput value={targetId} onChange={setTargetId} suggestions={seen.dimmers} width={120} prefix="0x" />
+        <FormGroup label="Target">
+          <AutocompleteInput value={targetId} onChange={setTargetId} suggestions={seen.dimmers} width={110} />
         </FormGroup>
         <FormGroup label="Level">
           <FormInput
             type="number"
             value={level}
             onChange={v => setLevel(parseInt(v) || 0)}
-            width={60}
+            width={50}
             min={0}
             max={100}
           />
         </FormGroup>
-        <Button variant="blue" onClick={() => handleSend()}>SET</Button>
+        <Button variant="blue" onClick={() => handleSend()}>Set</Button>
       </div>
 
       <QuickButtons>
@@ -76,4 +75,3 @@ export function BridgeLevel({ showStatus }: Props) {
     </Card>
   )
 }
-

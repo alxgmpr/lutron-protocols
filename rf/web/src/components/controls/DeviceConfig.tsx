@@ -143,14 +143,13 @@ export function DeviceConfig({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Device Config" badge="BRIDGE CONFIG" variant="bridge" collapsible defaultCollapsed>
-      {/* Common fields */}
+    <Card title="Device Config" variant="bridge" collapsible defaultCollapsed>
       <div className="form-row">
-        <FormGroup label="Subnet" hint={`Source: ${sourceId}`}>
+        <FormGroup label="Subnet">
           <AutocompleteInput value={subnet} onChange={setSubnet} suggestions={seen.bridgeSubnets} width={70} />
         </FormGroup>
-        <FormGroup label="Target Device">
-          <AutocompleteInput value={targetId} onChange={setTargetId} suggestions={seen.dimmers} width={120} prefix="0x" />
+        <FormGroup label="Target">
+          <AutocompleteInput value={targetId} onChange={setTargetId} suggestions={seen.dimmers} width={110} />
         </FormGroup>
       </div>
 

@@ -1,49 +1,57 @@
 /* Shared styles for control panels */
 
+.section-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
 .form-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: flex-end;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .form-row:last-child {
   margin-bottom: 0;
 }
 
+/* Legacy help-text class - use section-desc instead */
 .help-text {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin: 0 0 8px 0;
-  line-height: 1.3;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
 }
 
 .info-line {
-  margin-top: 6px;
-  padding-top: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--border-primary);
   font-size: 10px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 
 .advanced-panel {
   margin-top: 12px;
-  padding: 12px;
+  padding: 10px;
   background: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid var(--border-primary);
 }
 
 .advanced-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 /* Utility classes */
@@ -55,11 +63,14 @@
 .beacon-toggle-container {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .beacon-toggle-label {
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
@@ -80,11 +91,11 @@
 }
 
 .toggle-track {
-  width: 48px;
-  height: 26px;
+  width: 40px;
+  height: 22px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
-  border-radius: 13px;
+  border-radius: 11px;
   position: relative;
   transition: all 0.2s ease;
 }
@@ -98,15 +109,15 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   background: var(--text-secondary);
   border-radius: 50%;
   transition: all 0.2s ease;
 }
 
 .beacon-toggle.active .toggle-thumb {
-  left: 24px;
+  left: 20px;
   background: white;
 }
 
@@ -120,7 +131,7 @@
 }
 
 .toggle-text {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   min-width: 28px;
@@ -133,22 +144,22 @@
 /* Config Tabs */
 .config-tabs {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   margin: 12px 0 0 0;
-  padding: 4px;
+  padding: 3px;
   background: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid var(--border-primary);
 }
 
 .config-tab {
   flex: 1;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -169,10 +180,8 @@
 }
 
 .config-panel {
-  padding: 12px;
+  padding: 10px;
   background: var(--bg-primary);
-  border-radius: 6px;
+  border-radius: 4px;
   border: 1px solid var(--border-primary);
 }
-
-

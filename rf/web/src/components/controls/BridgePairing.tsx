@@ -139,43 +139,23 @@ export function BridgePairing({ showStatus }: Props) {
   const canSelect = state === 'AWAIT_B0' && (pairingStatus?.discovered_devices?.length ?? 0) > 0
 
   return (
-    <Card title="Bridge Pairing" badge="BRIDGE → DIMMER" variant="pairing" collapsible defaultCollapsed>
-      <p className="help-text">
-        Pair dimmers to ESP32 as a bridge. Sends beacons to make dimmers discoverable.
-      </p>
+    <Card title="Bridge Pairing" variant="pairing" collapsible defaultCollapsed>
+      <p className="help-text">Pair dimmers to ESP32 as a bridge using beacon mode.</p>
 
       <div className="form-row">
         <FormGroup label="Subnet">
-          <FormInput
-            value={subnet}
-            onChange={setSubnet}
-            width={80}
-            disabled={isActive}
-          />
+          <FormInput value={subnet} onChange={setSubnet} width={70} disabled={isActive} />
         </FormGroup>
-        <FormGroup label="Timeout (s)">
-          <FormInput
-            type="number"
-            value={duration}
-            onChange={v => setDuration(parseInt(v) || 60)}
-            width={60}
-            min={10}
-            max={120}
-            disabled={isActive}
-          />
+        <FormGroup label="Timeout">
+          <FormInput type="number" value={duration} onChange={v => setDuration(parseInt(v) || 60)} width={50} min={10} max={120} disabled={isActive} />
         </FormGroup>
-        <FormGroup label="Zone Suffix">
-          <FormInput
-            value={zoneSuffix}
-            onChange={setZoneSuffix}
-            width={60}
-            disabled={isActive}
-          />
+        <FormGroup label="Zone">
+          <FormInput value={zoneSuffix} onChange={setZoneSuffix} width={60} disabled={isActive} />
         </FormGroup>
         {canStart ? (
-          <Button variant="green" onClick={handleStartPairing}>START</Button>
+          <Button variant="green" onClick={handleStartPairing}>Start</Button>
         ) : (
-          <Button variant="red" onClick={handleStopPairing}>STOP</Button>
+          <Button variant="red" onClick={handleStopPairing}>Stop</Button>
         )}
       </div>
 

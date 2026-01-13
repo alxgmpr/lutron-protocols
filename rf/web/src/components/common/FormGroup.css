@@ -1,21 +1,19 @@
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .form-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
 .form-hint {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
-  opacity: 0.7;
   font-family: var(--font-mono);
 }
-

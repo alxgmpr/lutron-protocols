@@ -1,17 +1,17 @@
 .form-input {
-  padding: 6px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--border-primary);
   border-radius: 4px;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.2);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .form-input::placeholder {
@@ -39,15 +39,15 @@
 }
 
 .form-input-with-prefix:focus-within {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(99, 179, 237, 0.2);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .form-input-prefix {
-  padding: 6px 0 6px 10px;
+  padding: 6px 0 6px 8px;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   user-select: none;
 }
 
@@ -61,6 +61,3 @@
   outline: none;
   box-shadow: none;
 }
-
-
-

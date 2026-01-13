@@ -29,27 +29,27 @@ export function DeviceState({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Device State" badge="DEVICE → BRIDGE" variant="device" collapsible defaultCollapsed>
+    <Card title="Device State" variant="device" collapsible defaultCollapsed>
       <p className="help-text">
-        Report the current level of a device to the bridge. This will update the bridge with the current level of the dimmer.
+        Report device level to the bridge.
       </p>
+
       <div className="form-row">
         <FormGroup label="Device ID">
-          <AutocompleteInput value={deviceId} onChange={setDeviceId} suggestions={seen.dimmers} width={120} prefix="0x" />
+          <AutocompleteInput value={deviceId} onChange={setDeviceId} suggestions={seen.dimmers} width={110} />
         </FormGroup>
         <FormGroup label="Level">
-          <FormInput 
-            type="number" 
-            value={level} 
+          <FormInput
+            type="number"
+            value={level}
             onChange={v => setLevel(parseInt(v) || 0)}
-            width={70}
+            width={50}
             min={0}
             max={100}
           />
         </FormGroup>
-        <Button variant="orange" onClick={handleSend}>REPORT</Button>
+        <Button variant="orange" onClick={handleSend}>Report</Button>
       </div>
     </Card>
   )
 }
-

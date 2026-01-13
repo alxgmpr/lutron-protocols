@@ -28,19 +28,13 @@ export function ResetPico({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Reset Pico" badge="FORGET ME" variant="device" collapsible defaultCollapsed>
-      <p className="help-text">Broadcasts "forget" message to devices within earshot. Devices who have paired to this Pico will forget about it.</p>
+    <Card title="Reset Pico" variant="device" collapsible defaultCollapsed>
+      <p className="help-text">Broadcasts "forget me" to unpair this Pico from all devices.</p>
       <div className="form-row">
-        <FormGroup label="Pico ID" flex="auto">
-          <AutocompleteInput
-            value={picoId}
-            onChange={setPicoId}
-            suggestions={seen.picos}
-            placeholder="Pico ID to reset"
-            prefix="0x"
-          />
+        <FormGroup label="Pico ID">
+          <AutocompleteInput value={picoId} onChange={setPicoId} suggestions={seen.picos} width={110} />
         </FormGroup>
-        <Button variant="red" onClick={handleReset}>RESET</Button>
+        <Button variant="red" onClick={handleReset}>Reset</Button>
       </div>
     </Card>
   )

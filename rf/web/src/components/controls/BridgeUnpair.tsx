@@ -14,7 +14,6 @@ export function BridgeUnpair({ showStatus }: Props) {
   const [bridgeSubnet, setBridgeSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('0x06F4587E')
 
-  // Compute zone IDs from subnet
   const cleanSubnet = bridgeSubnet.replace(/^0x/i, '').toUpperCase().padStart(4, '0')
   const zone1 = `0x00${cleanSubnet}AD`
   const zone2 = `0x00${cleanSubnet}AF`
@@ -39,30 +38,29 @@ export function BridgeUnpair({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Unpair" badge="REMOVE" variant="device" collapsible defaultCollapsed>
+    <Card title="Bridge Unpair" variant="device" collapsible defaultCollapsed>
       <p className="help-text">
-        Remove a device from bridge network. Sends two-phase unpair (prepare + unpair flood).
+        Remove a device from bridge network.
       </p>
+
       <div className="form-row">
-        <FormGroup label="Subnet" hint={`Zones: ${zone1.slice(2)}, ${zone2.slice(2)}`}>
+        <FormGroup label="Subnet">
           <AutocompleteInput
             value={bridgeSubnet}
             onChange={setBridgeSubnet}
             suggestions={seen.bridgeSubnets}
             width={70}
-            placeholder="2C90"
           />
         </FormGroup>
-        <FormGroup label="Target Device">
+        <FormGroup label="Target">
           <AutocompleteInput
             value={targetId}
             onChange={setTargetId}
             suggestions={seen.dimmers}
-            width={120}
-            prefix="0x"
+            width={110}
           />
         </FormGroup>
-        <Button variant="red" onClick={handleUnpair}>UNPAIR</Button>
+        <Button variant="red" onClick={handleUnpair}>Unpair</Button>
       </div>
     </Card>
   )

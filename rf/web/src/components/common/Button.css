@@ -1,8 +1,8 @@
 .btn {
-  padding: 8px 14px;
+  padding: 6px 12px;
   border: none;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 500;
   background: var(--bg-elevated);
   color: var(--text-primary);
@@ -24,8 +24,8 @@
 }
 
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 4px 8px;
+  font-size: 10px;
 }
 
 .btn-primary {
@@ -62,4 +62,3 @@
   background: var(--accent-green);
   color: #000;
 }
-
