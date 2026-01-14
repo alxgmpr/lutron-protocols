@@ -4,7 +4,7 @@ import './Card.css'
 interface CardProps {
   title: string
   badge?: string
-  variant?: 'default' | 'pico' | 'bridge' | 'pairing' | 'device' | 'tx' | 'rx' | 'logs'
+  variant?: 'default' | 'pico' | 'bridge' | 'pairing' | 'device' | 'tx' | 'rx' | 'logs' | 'experiment'
   actions?: ReactNode
   children: ReactNode
   className?: string

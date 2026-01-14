@@ -1291,6 +1291,23 @@ class ESP32Controller:
         """Stop bridge pairing mode - sends stop beacons."""
         await self.call_service('stop_pairing', subnet=f"0x{subnet:04X}")
 
+    async def start_vive_manual(self, subnet: int, packet_type: int, protocol: int, format: int, mode: int):
+        """Start Vive pairing in manual mode with explicit parameters."""
+        await self.call_service('start_vive_manual',
+                               subnet=f"0x{subnet:04X}",
+                               packet_type=packet_type,
+                               protocol=protocol,
+                               format=format,
+                               mode=mode)
+
+    async def start_vive_sweep(self, subnet: int):
+        """Start Vive pairing auto-sweep - cycles through all beacon variations."""
+        await self.call_service('start_vive_sweep', subnet=f"0x{subnet:04X}")
+
+    async def stop_vive_pairing(self):
+        """Stop Vive pairing (manual or sweep)."""
+        await self.call_service('stop_vive_pairing')
+
     async def pair_device(self, subnet: int, factory_id: int, zone_suffix: int):
         """Complete bridge pairing sequence for a device."""
         await self.call_service('pair_device',
@@ -3283,6 +3300,85 @@ def cmd_serve(args):
                 'factory_id': f"0x{factory_id:08X}",
                 'zone': f"0x06{subnet:04X}{zone_suffix:02X}"
             })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    # ========== VIVE PAIRING (EXPERIMENTAL) ==========
+
+    @app.route('/api/vive/manual', methods=['POST'])
+    def api_vive_manual():
+        """Start Vive pairing in manual mode with explicit parameters."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+            packet_type = int(data.get('packet_type', 0x92))
+            protocol = int(data.get('protocol', 0x21))
+            format_byte = int(data.get('format', 0x0C))
+            mode = int(data.get('mode', 0x02))
+
+            async def do_start():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.start_vive_manual(subnet, packet_type, protocol, format_byte, mode)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_start())
+            return jsonify({
+                'status': 'ok',
+                'subnet': f"0x{subnet:04X}",
+                'packet_type': f"0x{packet_type:02X}",
+                'protocol': f"0x{protocol:02X}",
+                'format': f"0x{format_byte:02X}",
+                'mode': f"0x{mode:02X}"
+            })
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/vive/sweep', methods=['POST'])
+    def api_vive_sweep():
+        """Start Vive pairing auto-sweep - cycles through all beacon variations."""
+        try:
+            data = request.json or {}
+            subnet = parse_hex(data.get('subnet', '0x2C90'))
+
+            async def do_start():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.start_vive_sweep(subnet)
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_start())
+            return jsonify({'status': 'ok', 'subnet': f"0x{subnet:04X}"})
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
+
+    @app.route('/api/vive/stop', methods=['POST'])
+    def api_vive_stop():
+        """Stop Vive pairing (manual or sweep)."""
+        try:
+            async def do_stop():
+                controller = ESP32Controller(current_esp_host)
+                try:
+                    await controller.connect()
+                    await controller.stop_vive_pairing()
+                finally:
+                    try:
+                        await controller.disconnect()
+                    except:
+                        pass
+
+            asyncio.run(do_stop())
+            return jsonify({'status': 'ok'})
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 

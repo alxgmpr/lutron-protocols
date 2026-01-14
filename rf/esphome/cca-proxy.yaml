@@ -209,6 +209,30 @@ api:
       then:
         - lambda: id(cca_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
 
+    # Vive pairing (experimental - for RMJS PowPaks)
+    - service: start_vive_manual
+      variables:
+        subnet: string
+        packet_type: int
+        protocol: int
+        format: int
+        mode: int
+      then:
+        - lambda: |-
+            id(cca_radio)->start_vive_manual(
+              strtoul(subnet.c_str(), nullptr, 0),
+              packet_type, protocol, format, mode);
+
+    - service: start_vive_sweep
+      variables:
+        subnet: string
+      then:
+        - lambda: id(cca_radio)->start_vive_sweep(strtoul(subnet.c_str(), nullptr, 0));
+
+    - service: stop_vive_pairing
+      then:
+        - lambda: id(cca_radio)->stop_vive_pairing();
+
     - service: send_pair_assignment
       variables:
         subnet: string

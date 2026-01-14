@@ -6,6 +6,32 @@ namespace cc1101_cca {
 
 static const char *const TAG = "lutron_cc1101";
 
+// Vive fuzzer arrays - trying unexplored packet type ranges
+static const uint8_t VIVE_PACKET_TYPES[] = {
+  // Unexplored ranges - Vive commercial might use these
+  0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+  0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+  0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+  0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF
+};
+// Protocol bytes: 0x21 is standard, try nearby values
+static const uint8_t VIVE_PROTOCOL_BYTES[] = {
+  0x21,              // Standard CCA
+  0x20, 0x22,        // +/- 1
+  0x1F, 0x23,        // +/- 2
+  0x11, 0x31, 0x01   // Bit variations
+};
+// Format bytes: 0x08 (initial) and 0x0C (active) are known
+static const uint8_t VIVE_FORMAT_BYTES[] = {
+  0x08, 0x0C,        // Known working
+  0x09, 0x0A, 0x0B,  // Near 0x08
+  0x0D, 0x0E,        // Near 0x0C
+  0x04, 0x18         // Bit variations
+};
+static const int NUM_PACKET_TYPES = sizeof(VIVE_PACKET_TYPES) / sizeof(VIVE_PACKET_TYPES[0]);
+static const int NUM_PROTOCOL_BYTES = sizeof(VIVE_PROTOCOL_BYTES) / sizeof(VIVE_PROTOCOL_BYTES[0]);
+static const int NUM_FORMAT_BYTES = sizeof(VIVE_FORMAT_BYTES) / sizeof(VIVE_FORMAT_BYTES[0]);
+
 void CC1101CCA::setup() {
   ESP_LOGI(TAG, "Setting up Lutron CC1101...");
 
@@ -111,8 +137,74 @@ void CC1101CCA::loop() {
                            ((this->pairing_subnet_ >> 8) << 8) |
                            0x00;  // Byte 5 is 0x00 in real bridge captures
 
-      // Use the working send_beacon_single function
-      this->pairing_seq_ = this->send_beacon_single(device_id, this->pairing_seq_);
+      // Send beacon with current type, then cycle: 0x93 -> 0x91 -> 0x92 -> repeat
+      this->pairing_seq_ = this->send_beacon_single(device_id, this->pairing_seq_, this->pairing_beacon_type_);
+
+      // Cycle to next beacon type
+      if (this->pairing_beacon_type_ == 0x93) {
+        this->pairing_beacon_type_ = 0x91;
+      } else if (this->pairing_beacon_type_ == 0x91) {
+        this->pairing_beacon_type_ = 0x92;
+      } else {
+        this->pairing_beacon_type_ = 0x93;  // Back to initial
+      }
+    }
+  }
+
+  // Vive pairing - sends beacons with current parameters (manual or sweep mode)
+  if (this->vive_pairing_active_) {
+    uint32_t now = millis();
+
+    // Send beacons at 50ms intervals (matches real bridge timing)
+    if (now - this->last_vive_beacon_ >= 50) {
+      this->last_vive_beacon_ = now;
+
+      // Send beacon with current parameters using proper packet structure
+      this->send_vive_beacon(this->vive_subnet_, this->vive_packet_type_,
+                             this->vive_protocol_, this->vive_format_, this->vive_mode_);
+      this->vive_variation_count_++;
+
+      // If in sweep mode, advance parameters after N packets
+      // Order: packet type (inner) -> format -> protocol (outer)
+      // This tries all packet types first since that's most likely to differ
+      if (this->vive_sweep_active_) {
+        this->vive_sweep_packets_++;
+
+        // Send 50 packets (~2.5 sec) with same settings before advancing
+        if (this->vive_sweep_packets_ >= 50) {
+          this->vive_sweep_packets_ = 0;
+
+          // Advance to next packet type (inner loop - most likely to matter)
+          this->vive_sweep_type_idx_++;
+          if (this->vive_sweep_type_idx_ >= NUM_PACKET_TYPES) {
+            this->vive_sweep_type_idx_ = 0;
+
+            // Advance to next format
+            this->vive_sweep_format_idx_++;
+            if (this->vive_sweep_format_idx_ >= NUM_FORMAT_BYTES) {
+              this->vive_sweep_format_idx_ = 0;
+
+              // Advance to next protocol (outer loop)
+              this->vive_sweep_proto_idx_++;
+              if (this->vive_sweep_proto_idx_ >= NUM_PROTOCOL_BYTES) {
+                this->vive_sweep_proto_idx_ = 0;
+                ESP_LOGW(TAG, "VIVE: Completed full cycle (%lu packets), restarting",
+                         this->vive_variation_count_);
+              }
+            }
+          }
+
+          // Update current parameters from sweep indices
+          this->vive_packet_type_ = VIVE_PACKET_TYPES[this->vive_sweep_type_idx_];
+          this->vive_protocol_ = VIVE_PROTOCOL_BYTES[this->vive_sweep_proto_idx_];
+          this->vive_format_ = VIVE_FORMAT_BYTES[this->vive_sweep_format_idx_];
+          // Mode follows format: 0x08 uses 0x01, 0x0C uses 0x02
+          this->vive_mode_ = (this->vive_format_ == 0x08) ? 0x01 : 0x02;
+
+          ESP_LOGW(TAG, "VIVE: type=0x%02X proto=0x%02X fmt=0x%02X mode=0x%02X",
+                   this->vive_packet_type_, this->vive_protocol_, this->vive_format_, this->vive_mode_);
+        }
+      }
     }
   }
 }
@@ -886,11 +978,12 @@ void CC1101CCA::send_beacon(uint32_t device_id, uint8_t beacon_type, int duratio
   ESP_LOGI(TAG, "=== BEACON COMPLETE: %d packets sent ===", packet_count);
 }
 
-uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq) {
+uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq, uint8_t beacon_type) {
   uint8_t packet[24];
   memset(packet, 0xCC, sizeof(packet));
 
-  packet[0] = 0x92;  // Beacon type
+  // Beacon type: 0x93=initial, 0x91=active, 0x92=continue
+  packet[0] = beacon_type;
   packet[1] = seq;
 
   // Device ID (zone ID) - big-endian
@@ -900,7 +993,16 @@ uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq) {
   packet[5] = device_id & 0xFF;
 
   packet[6] = 0x21;  // Protocol marker
-  packet[7] = 0x0C;  // Format
+
+  // Format and mode bytes differ by beacon type:
+  // 0x93 (initial): format=0x08, mode=0x01
+  // 0x91 (active):  format=0x0C, mode=0x02
+  // 0x92 (continue): format=0x0C, mode=0x02
+  if (beacon_type == 0x93) {
+    packet[7] = 0x08;  // Initial beacon format
+  } else {
+    packet[7] = 0x0C;  // Active beacon format (0x91, 0x92)
+  }
   packet[8] = 0x00;
 
   // Broadcast address
@@ -911,13 +1013,22 @@ uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq) {
   packet[13] = 0xFF;
 
   packet[14] = 0x08;
-  packet[15] = 0x02;
 
-  // Middle bytes of load ID + fixed trailer
-  packet[16] = (device_id >> 16) & 0xFF;
-  packet[17] = (device_id >> 8) & 0xFF;
-  packet[18] = 0x1A;
-  packet[19] = 0x04;
+  // Mode byte differs by beacon type
+  if (beacon_type == 0x93) {
+    packet[15] = 0x01;  // Initial mode
+  } else {
+    packet[15] = 0x02;  // Active mode (0x91, 0x92)
+  }
+
+  // Additional zone info for 0x91/0x92 beacons
+  if (beacon_type != 0x93) {
+    packet[16] = (device_id >> 16) & 0xFF;  // Subnet low byte
+    packet[17] = (device_id >> 8) & 0xFF;   // Subnet high byte
+    packet[18] = 0x1A;
+    packet[19] = 0x04;
+  }
+  // 0x93 leaves bytes 16-21 as 0xCC (padding)
 
   // Calculate CRC
   uint16_t crc = this->encoder_.calc_crc(packet, 22);
@@ -1833,11 +1944,13 @@ void CC1101CCA::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, 
 void CC1101CCA::start_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, "=== START BRIDGE PAIRING MODE ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
+  ESP_LOGI(TAG, "Beacon rotation: 0x93 (initial) -> 0x91 (active) -> 0x92 (continue)");
 
   // Set up continuous beaconing - loop() handles the rest
   this->pairing_active_ = true;
   this->pairing_subnet_ = subnet;
   this->pairing_seq_ = 1;
+  this->pairing_beacon_type_ = 0x93;  // Start with initial beacon
   this->pairing_beacon_count_ = 0;
   this->last_pairing_beacon_ = 0;  // Force immediate first beacon
 
@@ -1902,6 +2015,112 @@ void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
   }
 
   ESP_LOGI(TAG, "Stop beacons sent. Devices should stop flashing.");
+}
+
+// ========== VIVE PAIRING (experimental for RMJS PowPaks) ==========
+
+void CC1101CCA::send_vive_beacon(uint16_t subnet, uint8_t packet_type, uint8_t protocol, uint8_t format, uint8_t mode) {
+  // Build beacon packet using same structure as working send_beacon_single
+  uint8_t packet[24];
+  memset(packet, 0xCC, sizeof(packet));
+
+  packet[0] = packet_type;
+  packet[1] = this->vive_seq_;
+
+  // Zone ID - alternate between AF and AD suffixes like real bridge
+  uint8_t zone_suffix = (this->vive_seq_ % 2 == 0) ? 0xAF : 0xAD;
+  packet[2] = zone_suffix;
+  packet[3] = subnet & 0xFF;           // Subnet low byte
+  packet[4] = (subnet >> 8) & 0xFF;    // Subnet high byte
+  packet[5] = 0x00;
+
+  packet[6] = protocol;  // Protocol byte (0x21 for standard CCA)
+  packet[7] = format;    // Format byte (0x08=initial, 0x0C=active)
+  packet[8] = 0x00;
+
+  // Broadcast address
+  packet[9] = 0xFF;
+  packet[10] = 0xFF;
+  packet[11] = 0xFF;
+  packet[12] = 0xFF;
+  packet[13] = 0xFF;
+
+  packet[14] = 0x08;
+  packet[15] = mode;  // Mode byte (0x01=initial, 0x02=active)
+
+  // Additional zone info (used by 0x91/0x92 beacons)
+  if (format == 0x0C || mode == 0x02) {
+    packet[16] = subnet & 0xFF;
+    packet[17] = (subnet >> 8) & 0xFF;
+    packet[18] = 0x1A;
+    packet[19] = 0x04;
+  }
+  // Otherwise bytes 16-21 stay as 0xCC (padding for 0x93-style packets)
+
+  // Calculate CRC
+  uint16_t crc = this->encoder_.calc_crc(packet, 22);
+  packet[22] = (crc >> 8) & 0xFF;
+  packet[23] = crc & 0xFF;
+
+  this->transmit_packet(packet, 24);
+  this->vive_seq_ = (this->vive_seq_ + 5) & 0xFF;
+}
+
+void CC1101CCA::start_vive_manual(uint16_t subnet, uint8_t packet_type, uint8_t protocol, uint8_t format, uint8_t mode) {
+  ESP_LOGI(TAG, "=== START VIVE MANUAL MODE ===");
+  ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
+  ESP_LOGI(TAG, "Params: type=0x%02X proto=0x%02X fmt=0x%02X mode=0x%02X",
+           packet_type, protocol, format, mode);
+
+  this->vive_pairing_active_ = true;
+  this->vive_sweep_active_ = false;
+  this->vive_subnet_ = subnet;
+  this->vive_seq_ = 0;
+  this->vive_packet_type_ = packet_type;
+  this->vive_protocol_ = protocol;
+  this->vive_format_ = format;
+  this->vive_mode_ = mode;
+  this->vive_variation_count_ = 0;
+  this->last_vive_beacon_ = 0;
+}
+
+void CC1101CCA::start_vive_sweep(uint16_t subnet) {
+  ESP_LOGI(TAG, "=== START VIVE AUTO-SWEEP ===");
+  ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
+  ESP_LOGI(TAG, "Fuzzing %d packet types x %d protocols x %d formats = %d combinations",
+           NUM_PACKET_TYPES, NUM_PROTOCOL_BYTES, NUM_FORMAT_BYTES,
+           NUM_PACKET_TYPES * NUM_PROTOCOL_BYTES * NUM_FORMAT_BYTES);
+  ESP_LOGI(TAG, "~2.5 sec per variation. Watch the RMJS for any LED activity!");
+
+  this->vive_pairing_active_ = true;
+  this->vive_sweep_active_ = true;
+  this->vive_subnet_ = subnet;
+  this->vive_seq_ = 0;
+  this->vive_sweep_type_idx_ = 0;
+  this->vive_sweep_proto_idx_ = 0;
+  this->vive_sweep_format_idx_ = 0;
+  this->vive_sweep_packets_ = 0;
+  this->vive_variation_count_ = 0;
+  this->last_vive_beacon_ = 0;
+
+  // Initialize current params from first indices
+  this->vive_packet_type_ = VIVE_PACKET_TYPES[0];
+  this->vive_protocol_ = VIVE_PROTOCOL_BYTES[0];
+  this->vive_format_ = VIVE_FORMAT_BYTES[0];
+  this->vive_mode_ = (this->vive_format_ == 0x08) ? 0x01 : 0x02;
+
+  ESP_LOGI(TAG, "Starting with: type=0x%02X proto=0x%02X fmt=0x%02X mode=0x%02X",
+           this->vive_packet_type_, this->vive_protocol_, this->vive_format_, this->vive_mode_);
+}
+
+void CC1101CCA::stop_vive_pairing() {
+  ESP_LOGI(TAG, "=== STOP VIVE PAIRING ===");
+  ESP_LOGI(TAG, "Sent %lu beacon packets", this->vive_variation_count_);
+  ESP_LOGI(TAG, "Last params: type=0x%02X proto=0x%02X fmt=0x%02X mode=0x%02X",
+           this->vive_packet_type_, this->vive_protocol_, this->vive_format_, this->vive_mode_);
+
+  this->vive_pairing_active_ = false;
+  this->vive_sweep_active_ = false;
 }
 
 void CC1101CCA::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {

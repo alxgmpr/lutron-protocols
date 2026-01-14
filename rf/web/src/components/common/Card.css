@@ -24,6 +24,7 @@
 .card-tx .card-header { border-left-color: var(--accent-green); }
 .card-rx .card-header { border-left-color: var(--accent-cyan); }
 .card-logs .card-header { border-left-color: var(--text-muted); }
+.card-experiment .card-header { border-left-color: var(--accent-red); }
 
 .card-header-left {
   display: flex;

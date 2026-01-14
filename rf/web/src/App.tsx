@@ -15,6 +15,7 @@ import {
   BridgeLevel,
   BridgeUnpair,
   BridgePairing,
+  VivePairing,
   DeviceState,
   DeviceConfig,
   ResetPico
@@ -223,6 +224,7 @@ function App() {
             <DeviceConfig showStatus={showStatus} />
             <BridgeUnpair showStatus={showStatus} />
             <BridgePairing showStatus={showStatus} />
+            <VivePairing showStatus={showStatus} />
             <DeviceState showStatus={showStatus} />
             <ResetPico showStatus={showStatus} />
           </section>
