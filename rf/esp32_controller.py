@@ -93,8 +93,8 @@ LOG_HISTORY_MAX = 10000
 # Service instances (initialized in cmd_serve)
 _mqtt_client = None
 _event_aggregator = None
-_proxy_engine = None
 _udp_transport = None  # UDP transport for direct packet streaming
+_packet_relay = None   # Low-latency packet relay engine
 
 # Device database - now uses SQLite via database module
 import os
@@ -1757,56 +1757,24 @@ def cmd_serve(args):
         return response
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # INITIALIZE SERVICES (MQTT, Event Aggregator, Proxy Engine)
+    # INITIALIZE SERVICES (MQTT, Event Aggregator)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    global _mqtt_client, _event_aggregator, _proxy_engine
+    global _mqtt_client, _event_aggregator
 
     # Import and initialize services
     try:
         from event_aggregator import EventAggregator
         from mqtt_client import MQTTClient
-        from proxy_engine import ProxyEngine
 
         _event_aggregator = EventAggregator()
         _mqtt_client = MQTTClient()
-        _proxy_engine = ProxyEngine()
 
-        # Controller callback for proxy engine
-        async def proxy_send_command(action: str, **params):
-            """Send commands from proxy engine to ESP32."""
-            controller = ESP32Controller()
-            try:
-                await controller.connect()
-                if action == 'send_button':
-                    device_id = params.get('device_id')
-                    button_code = params.get('button_code')
-                    if isinstance(device_id, str):
-                        device_id = int(device_id, 16)
-                    await controller.send_button(device_id, button_code)
-                elif action == 'send_level':
-                    source_id = params.get('source_id')
-                    target_id = params.get('target_id')
-                    level = params.get('level')
-                    if isinstance(source_id, str):
-                        source_id = int(source_id, 16)
-                    if isinstance(target_id, str):
-                        target_id = int(target_id, 16)
-                    await controller.send_level(source_id, target_id, level)
-            finally:
-                await controller.disconnect()
-
-        _proxy_engine.set_controller(proxy_send_command)
-        _proxy_engine.reload_rules()
-
-        # Wire event aggregator to MQTT and proxy
+        # Wire event aggregator to MQTT
         def on_event(event_type: str, device_id: str, details: dict):
             # Publish to MQTT if connected
             if _mqtt_client and _mqtt_client.connected:
                 _mqtt_client.publish_event(event_type, device_id, details)
-            # Evaluate proxy rules
-            if _proxy_engine:
-                _proxy_engine.on_event(event_type, device_id, details)
 
         _event_aggregator.add_listener(on_event)
 
@@ -1854,10 +1822,48 @@ def cmd_serve(args):
         print("[SERVICES] MQTT and proxy features will be disabled")
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # INITIALIZE UDP TRANSPORT (optional, for direct packet streaming)
+    # INITIALIZE UDP TRANSPORT AND PACKET RELAY
     # ═══════════════════════════════════════════════════════════════════════════
 
-    global _udp_transport
+    global _udp_transport, _packet_relay
+
+    # Initialize packet relay for low-latency forwarding
+    try:
+        from packet_relay import PacketRelay
+        _packet_relay = PacketRelay(esp32_host=current_esp_host, tx_port=9434)
+
+        # Load relay rules from database
+        relay_rules = db.get_relay_rules(enabled_only=True)
+        _packet_relay.load_rules(relay_rules)
+
+        # Set up callbacks
+        def on_relay_event(event_type, details):
+            """Log relay events and push to SSE."""
+            try:
+                packet_queue.put_nowait({
+                    'direction': 'relay',
+                    'type': event_type.upper(),
+                    'time': datetime.now().strftime('%H:%M:%S'),
+                    'device_id': details.get('target_device', ''),
+                    'summary': f"{details.get('source_device', '')} -> {details.get('target_device', '')}",
+                    'details': details,
+                    'fields': [],
+                    'raw_hex': None,
+                    'rssi': None
+                })
+            except queue.Full:
+                pass
+
+        _packet_relay.on_relay_event = on_relay_event
+
+        # Unmatched packets go to normal processing
+        _packet_relay.on_unmatched_packet = _handle_udp_packet
+
+        _packet_relay.start()
+        print(f"[PacketRelay] Started with {len(relay_rules)} rules")
+    except ImportError as e:
+        print(f"[PacketRelay] Not available: {e}")
+        _packet_relay = None
 
     if UDP_TRANSPORT_AVAILABLE:
         UDP_PORT = 9433  # Default port for CCA packet streaming
@@ -1869,11 +1875,23 @@ def cmd_serve(args):
             async def run_transport():
                 global _udp_transport
                 _udp_transport = UDPTransport(port=UDP_PORT)
-                _udp_transport.on_packet = _handle_udp_packet
+
+                # Route packets through relay first if available, then to normal handler
+                def handle_packet_with_relay(data, rssi, direction='rx'):
+                    if _packet_relay and direction == 'rx':
+                        # Relay handles it, will call on_unmatched_packet for non-relayed
+                        _packet_relay.handle_packet(data, rssi, direction)
+                    else:
+                        # No relay or TX packet - use normal handler
+                        _handle_udp_packet(data, rssi, direction)
+
+                _udp_transport.on_packet = handle_packet_with_relay
                 await _udp_transport.start()
-                # Keep running
+                # Keep running and check relay retries
                 while True:
-                    await asyncio.sleep(60)
+                    await asyncio.sleep(0.05)  # 50ms interval for retry checks
+                    if _packet_relay:
+                        _packet_relay.check_retries()
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -3615,189 +3633,116 @@ def cmd_serve(args):
         return jsonify({'status': 'ok', 'published': count})
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PROXY RULE ENDPOINTS
+    # RELAY RULES ENDPOINTS (Low-Latency Packet Relay)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    @app.route('/api/proxy/rules')
-    def api_proxy_rules_list():
-        """Get all proxy rules."""
-        rules = db.get_proxy_rules()
+    @app.route('/api/relay/rules')
+    def api_relay_rules_list():
+        """Get all relay rules."""
+        rules = db.get_relay_rules()
         return jsonify(rules)
 
-    @app.route('/api/proxy/validate', methods=['POST'])
-    def api_proxy_validate():
-        """Validate a proxy rule configuration based on RF roles.
-
-        Returns validation result with auto-detected types and any warnings/errors.
-        """
+    @app.route('/api/relay/rules', methods=['POST'])
+    def api_relay_rule_create():
+        """Create a new relay rule."""
         data = request.json or {}
+        name = data.get('name', 'Unnamed Rule')
         source_device_id = data.get('source_device_id')
         target_device_id = data.get('target_device_id')
 
         if not source_device_id or not target_device_id:
             return jsonify({
-                'valid': False,
-                'errors': ['source_device_id and target_device_id are required'],
-                'warnings': []
-            })
-
-        validation = db.validate_proxy_rule(
-            source_device_id=source_device_id,
-            target_device_id=target_device_id,
-            source_type=data.get('source_type'),
-            target_type=data.get('target_type')
-        )
-
-        return jsonify(validation)
-
-    @app.route('/api/proxy/infer/<device_id>')
-    def api_proxy_infer_device(device_id):
-        """Get inferred proxy configuration for a device based on RF role."""
-        proxy_type, bridge_id, confidence = db.infer_proxy_type_from_device(device_id)
-        rf_info = db.get_device_rf_info(device_id)
-
-        return jsonify({
-            'device_id': device_id,
-            'inferred_type': proxy_type,
-            'bridge_id': bridge_id,
-            'confidence': confidence,
-            'rf_role': rf_info.get('rf_role') if rf_info else 'unknown',
-            'can_be_source': rf_info.get('rf_role') != 'silent_load_candidate' if rf_info else True,
-            'can_be_target': rf_info.get('rf_role') != 'one_way_tx' if rf_info else True
-        })
-
-    @app.route('/api/proxy/rules', methods=['POST'])
-    def api_proxy_rule_create():
-        """Create a new proxy rule with RF role validation and auto-detection."""
-        data = request.json or {}
-
-        # Minimal required fields (types can be auto-detected)
-        required = ['name', 'source_device_id', 'target_device_id']
-        missing = [f for f in required if f not in data]
-        if missing:
-            return jsonify({'status': 'error', 'error': f'Missing fields: {missing}'}), 400
-
-        # Validate and auto-detect types based on RF roles
-        validation = db.validate_proxy_rule(
-            source_device_id=data['source_device_id'],
-            target_device_id=data['target_device_id'],
-            source_type=data.get('source_type'),
-            target_type=data.get('target_type')
-        )
-
-        # Return errors if validation failed
-        if not validation['valid']:
-            return jsonify({
                 'status': 'error',
-                'error': '; '.join(validation['errors']),
-                'validation': validation
+                'error': 'source_device_id and target_device_id are required'
             }), 400
 
-        # Use inferred types if not explicitly provided
-        source_type = data.get('source_type') or validation['inferred_source_type'] or 'unknown'
-        target_type = data.get('target_type') or validation['inferred_target_type'] or 'unknown'
-
-        # Use inferred bridge_id if not explicitly provided
-        target_bridge_id = data.get('target_bridge_id') or validation['inferred_target_bridge_id']
-
-        rule_id = db.create_proxy_rule(
-            name=data['name'],
-            source_device_id=data['source_device_id'],
-            source_type=source_type,
-            target_device_id=data['target_device_id'],
-            target_type=target_type,
-            target_bridge_id=target_bridge_id,
-            mode=data.get('mode', 'forward'),
-            button_map=data.get('button_map'),
-            level_transform=data.get('level_transform'),
-            debounce_ms=data.get('debounce_ms', 100),
+        rule_id = db.create_relay_rule(
+            name=name,
+            source_device_id=source_device_id,
+            target_device_id=target_device_id,
+            target_bridge_id=data.get('target_bridge_id'),
+            bidirectional=data.get('bidirectional', False),
+            relay_buttons=data.get('relay_buttons', True),
+            relay_level=data.get('relay_level', True),
             enabled=data.get('enabled', True)
         )
-        if _proxy_engine:
-            _proxy_engine.reload_rules()
 
-        response = {'status': 'ok', 'id': rule_id}
-        if validation['warnings']:
-            response['warnings'] = validation['warnings']
-        if validation['inferred_source_type']:
-            response['inferred_source_type'] = source_type
-        if validation['inferred_target_type']:
-            response['inferred_target_type'] = target_type
-        if target_bridge_id:
-            response['inferred_target_bridge_id'] = target_bridge_id
+        # Reload relay rules into engine
+        if _packet_relay:
+            rules = db.get_relay_rules(enabled_only=True)
+            _packet_relay.load_rules(rules)
 
-        return jsonify(response)
+        return jsonify({'status': 'ok', 'id': rule_id})
 
-    @app.route('/api/proxy/rules/<int:rule_id>', methods=['PUT'])
-    def api_proxy_rule_update(rule_id):
-        """Update a proxy rule."""
+    @app.route('/api/relay/rules/<int:rule_id>', methods=['GET'])
+    def api_relay_rule_get(rule_id):
+        """Get a relay rule by ID."""
+        rule = db.get_relay_rule(rule_id)
+        if rule:
+            return jsonify(rule)
+        return jsonify({'status': 'error', 'error': 'Rule not found'}), 404
+
+    @app.route('/api/relay/rules/<int:rule_id>', methods=['PUT'])
+    def api_relay_rule_update(rule_id):
+        """Update a relay rule."""
         data = request.json or {}
-        success = db.update_proxy_rule(rule_id, **data)
-        if success and _proxy_engine:
-            _proxy_engine.reload_rules()
+        success = db.update_relay_rule(rule_id, **data)
+
+        # Reload relay rules into engine
+        if _packet_relay and success:
+            rules = db.get_relay_rules(enabled_only=True)
+            _packet_relay.load_rules(rules)
+
         return jsonify({'status': 'ok' if success else 'error'})
 
-    @app.route('/api/proxy/rules/<int:rule_id>', methods=['DELETE'])
-    def api_proxy_rule_delete(rule_id):
-        """Delete a proxy rule."""
-        success = db.delete_proxy_rule(rule_id)
-        if success and _proxy_engine:
-            _proxy_engine.reload_rules()
+    @app.route('/api/relay/rules/<int:rule_id>', methods=['DELETE'])
+    def api_relay_rule_delete(rule_id):
+        """Delete a relay rule."""
+        success = db.delete_relay_rule(rule_id)
+
+        # Reload relay rules into engine
+        if _packet_relay and success:
+            rules = db.get_relay_rules(enabled_only=True)
+            _packet_relay.load_rules(rules)
+
         return jsonify({'status': 'ok' if success else 'error'})
 
-    @app.route('/api/proxy/rules/<int:rule_id>/toggle', methods=['POST'])
-    def api_proxy_rule_toggle(rule_id):
-        """Toggle a proxy rule enabled/disabled."""
-        db.toggle_proxy_rule(rule_id)
-        if _proxy_engine:
-            _proxy_engine.reload_rules()
+    @app.route('/api/relay/rules/<int:rule_id>/toggle', methods=['POST'])
+    def api_relay_rule_toggle(rule_id):
+        """Toggle a relay rule enabled/disabled."""
+        db.toggle_relay_rule(rule_id)
+
+        # Reload relay rules into engine
+        if _packet_relay:
+            rules = db.get_relay_rules(enabled_only=True)
+            _packet_relay.load_rules(rules)
+
         return jsonify({'status': 'ok'})
 
-    @app.route('/api/proxy/rules/<int:rule_id>/test', methods=['POST'])
-    def api_proxy_rule_test(rule_id):
-        """Test a proxy rule by simulating an event."""
-        data = request.json or {}
-        event_type = data.get('event_type', 'button_press')
-        if _proxy_engine:
-            result = _proxy_engine.test_rule(rule_id, event_type, data)
-            return jsonify(result)
-        return jsonify({'status': 'error', 'error': 'Proxy engine not initialized'}), 500
+    @app.route('/api/relay/stats')
+    def api_relay_stats():
+        """Get packet relay statistics."""
+        if not _packet_relay:
+            return jsonify({
+                'status': 'error',
+                'error': 'Packet relay not available'
+            }), 503
 
-    # ═══════════════════════════════════════════════════════════════════════════
-    # VIRTUAL DEVICE ENDPOINTS
-    # ═══════════════════════════════════════════════════════════════════════════
+        stats = _packet_relay.get_stats()
+        return jsonify(stats)
 
-    @app.route('/api/virtual-devices')
-    def api_virtual_devices_list():
-        """Get all virtual devices."""
-        devices = db.get_virtual_devices()
-        return jsonify(devices)
+    @app.route('/api/relay/reload', methods=['POST'])
+    def api_relay_reload():
+        """Reload relay rules from database."""
+        if not _packet_relay:
+            return jsonify({
+                'status': 'error',
+                'error': 'Packet relay not available'
+            }), 503
 
-    @app.route('/api/virtual-devices', methods=['POST'])
-    def api_virtual_device_create():
-        """Create a virtual device."""
-        import random
-        data = request.json or {}
-        device_id = data.get('device_id')
-        if not device_id:
-            # Generate unique ID with CC prefix
-            device_id = f"CC{random.randint(100000, 999999):06X}"
-
-        name = data.get('name', f'Virtual {device_id}')
-        device_type = data.get('device_type', 'dimmer')
-        subnet = data.get('subnet')
-
-        try:
-            db.create_virtual_device(device_id, name, device_type, subnet)
-            return jsonify({'status': 'ok', 'device_id': device_id})
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 400
-
-    @app.route('/api/virtual-devices/<device_id>', methods=['DELETE'])
-    def api_virtual_device_delete(device_id):
-        """Delete a virtual device."""
-        success = db.delete_virtual_device(device_id)
-        return jsonify({'status': 'ok' if success else 'error'})
+        rules = db.get_relay_rules(enabled_only=True)
+        _packet_relay.load_rules(rules)
+        return jsonify({'status': 'ok', 'rules_loaded': len(rules)})
 
     # ═══════════════════════════════════════════════════════════════════════════
     # EVENTS ENDPOINTS

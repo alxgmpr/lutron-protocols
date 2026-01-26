@@ -28,7 +28,7 @@ from contextlib import contextmanager
 DB_FILE = os.path.join(os.path.dirname(__file__), "cca_playground.db")
 
 # Current schema version - increment when making breaking changes
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 def get_connection() -> sqlite3.Connection:
     """Get a database connection with row factory."""
@@ -301,6 +301,31 @@ def _run_migrations(conn: sqlite3.Connection, from_version: int):
             UPDATE meta SET value = '4' WHERE key = 'schema_version';
         """)
         print(f"[DATABASE] Migrated to schema version 4 (CCA subnets, RF links)")
+
+    if from_version < 5:
+        # Schema v5: Add relay_rules table for low-latency packet relay
+        conn.executescript("""
+            -- Relay rules: direct packet-level translation for low latency
+            CREATE TABLE IF NOT EXISTS relay_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                enabled INTEGER DEFAULT 1,
+                source_device_id TEXT NOT NULL,        -- 8-hex device ID to relay from
+                target_device_id TEXT NOT NULL,        -- 8-hex device ID to relay to
+                target_bridge_id TEXT,                 -- Optional bridge ID for level commands
+                bidirectional INTEGER DEFAULT 0,       -- Also relay in reverse direction
+                relay_buttons INTEGER DEFAULT 1,       -- Relay button press packets (0x88-0x8B)
+                relay_level INTEGER DEFAULT 1,         -- Relay level/state packets (0x81-0x83)
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_relay_source ON relay_rules(source_device_id);
+            CREATE INDEX IF NOT EXISTS idx_relay_enabled ON relay_rules(enabled);
+
+            -- Update schema version
+            UPDATE meta SET value = '5' WHERE key = 'schema_version';
+        """)
+        print(f"[DATABASE] Migrated to schema version 5 (relay_rules for low-latency packet relay)")
 
 def compute_packet_hash(raw_bytes: bytes) -> str:
     """Compute SHA256 hash of raw packet bytes."""
@@ -1395,6 +1420,107 @@ def delete_proxy_rule(rule_id: int) -> bool:
     """Delete a proxy rule."""
     with get_db() as conn:
         cursor = conn.execute("DELETE FROM proxy_rules WHERE id = ?", (rule_id,))
+        return cursor.rowcount > 0
+
+# ===============================================================================
+# RELAY RULES (Low-Latency Packet Relay)
+# ===============================================================================
+
+def get_relay_rules(enabled_only: bool = False) -> List[Dict]:
+    """Get all relay rules."""
+    with get_db() as conn:
+        if enabled_only:
+            rows = conn.execute(
+                "SELECT * FROM relay_rules WHERE enabled = 1 ORDER BY created_at"
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM relay_rules ORDER BY created_at").fetchall()
+        return [dict(row) for row in rows]
+
+def get_relay_rule(rule_id: int) -> Optional[Dict]:
+    """Get a relay rule by ID."""
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM relay_rules WHERE id = ?", (rule_id,)).fetchone()
+        return dict(row) if row else None
+
+def get_relay_rules_for_source(source_device_id: str) -> List[Dict]:
+    """Get all enabled relay rules for a source device."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM relay_rules WHERE source_device_id = ? AND enabled = 1",
+            (source_device_id.upper(),)
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+def create_relay_rule(
+    name: str,
+    source_device_id: str,
+    target_device_id: str,
+    target_bridge_id: Optional[str] = None,
+    bidirectional: bool = False,
+    relay_buttons: bool = True,
+    relay_level: bool = True,
+    enabled: bool = True
+) -> int:
+    """Create a new relay rule, return its ID."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO relay_rules
+            (name, enabled, source_device_id, target_device_id, target_bridge_id,
+             bidirectional, relay_buttons, relay_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            name, 1 if enabled else 0, source_device_id.upper(),
+            target_device_id.upper(),
+            target_bridge_id.upper() if target_bridge_id else None,
+            1 if bidirectional else 0,
+            1 if relay_buttons else 0,
+            1 if relay_level else 0
+        ))
+        return cursor.lastrowid
+
+def update_relay_rule(rule_id: int, **kwargs) -> bool:
+    """Update a relay rule."""
+    valid_fields = {'name', 'enabled', 'source_device_id', 'target_device_id',
+                    'target_bridge_id', 'bidirectional', 'relay_buttons', 'relay_level'}
+
+    updates = []
+    params = []
+    for key, value in kwargs.items():
+        if key in valid_fields:
+            # Normalize device IDs to uppercase
+            if key in ('source_device_id', 'target_device_id', 'target_bridge_id') and value:
+                value = value.upper()
+            updates.append(f"{key} = ?")
+            params.append(value)
+
+    if not updates:
+        return False
+
+    updates.append("updated_at = ?")
+    params.append(datetime.now().isoformat())
+    params.append(rule_id)
+
+    with get_db() as conn:
+        cursor = conn.execute(
+            f"UPDATE relay_rules SET {', '.join(updates)} WHERE id = ?",
+            params
+        )
+        return cursor.rowcount > 0
+
+def toggle_relay_rule(rule_id: int) -> bool:
+    """Toggle a relay rule's enabled state."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE relay_rules SET enabled = 1 - enabled, updated_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), rule_id)
+        )
+        return True
+
+def delete_relay_rule(rule_id: int) -> bool:
+    """Delete a relay rule."""
+    with get_db() as conn:
+        cursor = conn.execute("DELETE FROM relay_rules WHERE id = ?", (rule_id,))
         return cursor.rowcount > 0
 
 # ===============================================================================

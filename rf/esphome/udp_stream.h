@@ -3,32 +3,76 @@
 #include <WiFiUdp.h>
 #include <vector>
 #include <string>
+#include <functional>
 #include "esphome/core/log.h"
 
 /**
- * UDP streaming for CCA packets
+ * Bidirectional UDP streaming for CCA packets
  *
- * Sends raw CCA packets to a backend server via UDP.
- * Packet format:
- *   Byte 0: RSSI (signed int8)
- *   Byte 1: Packet length
- *   Bytes 2+: Raw packet data
+ * TX (ESP32 -> Backend):
+ *   Port: configurable (default 9433)
+ *   Format: [FLAGS:1][LEN:1][DATA:N]
+ *   FLAGS: bit 7 = direction (0=RX, 1=TX), bits 0-6 = |RSSI| for RX
+ *
+ * RX (Backend -> ESP32):
+ *   Port: configurable (default 9434)
+ *   Format: [CMD:1][LEN:1][DATA:N]
+ *   CMD 0x01 = TX_RAW_PACKET (transmit immediately)
  */
+
+// Command bytes for RX packets
+#define CCA_UDP_CMD_TX_RAW 0x01
 
 class CCAUdpStream {
  public:
-  CCAUdpStream() : initialized_(false), port_(9433) {}
+  // TX callback type: called when RX packet requests TX
+  using TxCallback = std::function<void(const std::vector<uint8_t>&)>;
+
+  CCAUdpStream() : initialized_(false), rx_initialized_(false),
+                   tx_port_(9433), rx_port_(9434) {}
 
   void set_address(const char *host, uint16_t port) {
     host_ = host;
-    port_ = port;
+    tx_port_ = port;
+  }
+
+  void set_rx_port(uint16_t port) {
+    rx_port_ = port;
+  }
+
+  void set_tx_callback(TxCallback callback) {
+    tx_callback_ = callback;
   }
 
   bool begin() {
     if (!initialized_) {
-      initialized_ = udp_.begin(0);  // Use any available port for sending
+      initialized_ = tx_udp_.begin(0);  // Use any available port for sending
     }
     return initialized_;
+  }
+
+  bool begin_rx() {
+    if (!rx_initialized_) {
+      rx_initialized_ = rx_udp_.begin(rx_port_);
+      if (rx_initialized_) {
+        ESP_LOGI("udp_stream", "RX listening on port %d", rx_port_);
+      } else {
+        ESP_LOGE("udp_stream", "Failed to bind RX port %d", rx_port_);
+      }
+    }
+    return rx_initialized_;
+  }
+
+  // Poll for incoming TX commands - call from loop()
+  void poll() {
+    if (!rx_initialized_) {
+      return;
+    }
+
+    int packet_size = rx_udp_.parsePacket();
+    if (packet_size > 0) {
+      handle_rx_packet(packet_size);
+    }
   }
 
   // Send RX packet with RSSI
@@ -41,7 +85,50 @@ class CCAUdpStream {
     send_packet_internal(data, 0, true);
   }
 
+  // Stats
+  uint32_t rx_commands_received() const { return rx_commands_; }
+  uint32_t tx_packets_sent() const { return tx_packets_; }
+
  private:
+  void handle_rx_packet(int packet_size) {
+    if (packet_size < 2) {
+      return;  // Too short
+    }
+
+    uint8_t buffer[64];  // Max expected command size
+    int len = rx_udp_.read(buffer, std::min(packet_size, (int)sizeof(buffer)));
+    if (len < 2) {
+      return;
+    }
+
+    uint8_t cmd = buffer[0];
+    uint8_t data_len = buffer[1];
+
+    if (len < 2 + data_len) {
+      ESP_LOGW("udp_stream", "Truncated RX command: expected %d data bytes, got %d",
+               data_len, len - 2);
+      return;
+    }
+
+    rx_commands_++;
+
+    switch (cmd) {
+      case CCA_UDP_CMD_TX_RAW:
+        if (tx_callback_) {
+          std::vector<uint8_t> tx_data(buffer + 2, buffer + 2 + data_len);
+          ESP_LOGD("udp_stream", "TX_RAW command: %d bytes", data_len);
+          tx_callback_(tx_data);
+        } else {
+          ESP_LOGW("udp_stream", "TX_RAW command but no TX callback set");
+        }
+        break;
+
+      default:
+        ESP_LOGW("udp_stream", "Unknown RX command: 0x%02X", cmd);
+        break;
+    }
+  }
+
   void send_packet_internal(const std::vector<uint8_t> &data, int8_t rssi, bool is_tx) {
     if (!initialized_ || host_.empty()) {
       return;
@@ -60,17 +147,26 @@ class CCAUdpStream {
     // Send to backend
     IPAddress addr;
     if (addr.fromString(host_.c_str())) {
-      udp_.beginPacket(addr, port_);
-      udp_.write(packet.data(), packet.size());
-      udp_.endPacket();
+      tx_udp_.beginPacket(addr, tx_port_);
+      tx_udp_.write(packet.data(), packet.size());
+      tx_udp_.endPacket();
+      tx_packets_++;
     }
   }
 
  private:
-  WiFiUDP udp_;
+  WiFiUDP tx_udp_;      // For sending to backend
+  WiFiUDP rx_udp_;      // For receiving from backend
   bool initialized_;
+  bool rx_initialized_;
   std::string host_;
-  uint16_t port_;
+  uint16_t tx_port_;    // Port to send TO (backend RX)
+  uint16_t rx_port_;    // Port to listen ON (ESP32 RX)
+  TxCallback tx_callback_;
+
+  // Stats
+  uint32_t rx_commands_ = 0;
+  uint32_t tx_packets_ = 0;
 };
 
 // Global instance (inline ensures single instance across all translation units)

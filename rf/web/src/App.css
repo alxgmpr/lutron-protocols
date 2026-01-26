@@ -82,8 +82,8 @@
   border-bottom-color: var(--accent-blue);
 }
 
-/* Proxy Page */
-.proxy-page {
+/* Relay Page */
+.relay-page {
   flex: 1;
   overflow-y: auto;
   background: var(--bg-secondary);

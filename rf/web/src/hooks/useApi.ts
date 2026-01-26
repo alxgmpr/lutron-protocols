@@ -18,11 +18,11 @@ export function useApi() {
     }
   }, [])
 
-  const postJson = useCallback(async (endpoint: string, body: Record<string, unknown>): Promise<ApiResponse> => {
+  const postJson = useCallback(async (endpoint: string, body: Record<string, unknown>, method: string = 'POST'): Promise<ApiResponse> => {
     setLoading(true)
     try {
       const response = await fetch(endpoint, {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })

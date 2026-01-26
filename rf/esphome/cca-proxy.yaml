@@ -11,8 +11,24 @@ esphome:
     priority: -100
     then:
       - lambda: |-
+          // Configure backend address for TX (sending to Python)
           cca_udp_stream.set_address(id(udp_backend_host), id(udp_backend_port));
           cca_udp_stream.begin();
+
+          // Configure RX port (receiving from Python)
+          cca_udp_stream.set_rx_port(id(udp_tx_port));
+
+          // Set TX callback - when we receive a TX_RAW command, transmit via radio
+          cca_udp_stream.set_tx_callback([](const std::vector<uint8_t>& data) {
+            if (data.size() >= 22) {
+              id(cca_radio)->transmit_packet(data.data(), data.size());
+            } else {
+              ESP_LOGW("udp_stream", "TX_RAW packet too short: %d bytes", data.size());
+            }
+          });
+
+          // Start RX listener
+          cca_udp_stream.begin_rx();
 
 esp32:
   board: esp32dev
@@ -351,6 +367,12 @@ cc1101_cca:
   on_tx:
     - lambda: cca_udp_stream.send_tx_packet(data);
 
+# Poll UDP for TX commands from Python at high frequency
+interval:
+  - interval: 1ms
+    then:
+      - lambda: cca_udp_stream.poll();
+
 globals:
   - id: udp_backend_host
     type: 'const char*'
@@ -358,3 +380,6 @@ globals:
   - id: udp_backend_port
     type: uint16_t
     initial_value: !secret udp_backend_port
+  - id: udp_tx_port
+    type: uint16_t
+    initial_value: '9434'  # Port to listen for TX commands from Python

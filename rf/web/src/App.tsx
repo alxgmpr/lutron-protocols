@@ -27,13 +27,13 @@ import { PacketDisplay, LogDisplay } from './components/display'
 // Devices
 import { DeviceList } from './components/devices'
 
-// Proxy & MQTT
-import { ProxyConfig, MqttConfig } from './components/proxy'
+// Relay
+import { RelayConfig } from './components/relay'
 
 import type { Device } from './types'
 import './App.css'
 
-type Tab = 'dashboard' | 'proxy' | 'mqtt'
+type Tab = 'dashboard' | 'relay'
 
 function App() {
   const { get, postJson, del } = useApi()
@@ -196,16 +196,10 @@ function App() {
           Dashboard
         </button>
         <button
-          className={`tab-btn ${activeTab === 'proxy' ? 'active' : ''}`}
-          onClick={() => setActiveTab('proxy')}
+          className={`tab-btn ${activeTab === 'relay' ? 'active' : ''}`}
+          onClick={() => setActiveTab('relay')}
         >
-          Proxy
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'mqtt' ? 'active' : ''}`}
-          onClick={() => setActiveTab('mqtt')}
-        >
-          MQTT
+          Relay
         </button>
       </nav>
 
@@ -294,15 +288,9 @@ function App() {
         </main>
       )}
 
-      {activeTab === 'proxy' && (
-        <main className="proxy-page">
-          <ProxyConfig showStatus={showStatus} devices={devices} />
-        </main>
-      )}
-
-      {activeTab === 'mqtt' && (
-        <main className="proxy-page">
-          <MqttConfig showStatus={showStatus} devices={devices} />
+      {activeTab === 'relay' && (
+        <main className="relay-page">
+          <RelayConfig showStatus={showStatus} devices={devices} />
         </main>
       )}
 
