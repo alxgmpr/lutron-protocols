@@ -28,7 +28,7 @@ from contextlib import contextmanager
 DB_FILE = os.path.join(os.path.dirname(__file__), "cca_playground.db")
 
 # Current schema version - increment when making breaking changes
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 def get_connection() -> sqlite3.Connection:
     """Get a database connection with row factory."""
@@ -326,6 +326,87 @@ def _run_migrations(conn: sqlite3.Connection, from_version: int):
             UPDATE meta SET value = '5' WHERE key = 'schema_version';
         """)
         print(f"[DATABASE] Migrated to schema version 5 (relay_rules for low-latency packet relay)")
+
+    if from_version < 6:
+        # Schema v6: User-driven device discovery (sessions, annotations, user profiles)
+        # Add new columns to decoded_packets
+        cursor = conn.execute("PRAGMA table_info(decoded_packets)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'session_id' not in columns:
+            conn.execute("ALTER TABLE decoded_packets ADD COLUMN session_id INTEGER")
+        if 'crc_status' not in columns:
+            conn.execute("ALTER TABLE decoded_packets ADD COLUMN crc_status TEXT DEFAULT 'unknown'")
+        if 'user_classification' not in columns:
+            conn.execute("ALTER TABLE decoded_packets ADD COLUMN user_classification TEXT")
+        if 'tags' not in columns:
+            conn.execute("ALTER TABLE decoded_packets ADD COLUMN tags TEXT")
+
+        # Add new columns to devices table for separating auto/user detection
+        cursor = conn.execute("PRAGMA table_info(devices)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if 'auto_category' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN auto_category TEXT")
+        if 'user_category' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN user_category TEXT")
+        if 'auto_confidence' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN auto_confidence REAL DEFAULT 0.0")
+        if 'user_confirmed' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN user_confirmed INTEGER DEFAULT 0")
+        if 'user_overrides' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN user_overrides TEXT")
+        if 'pinned' not in columns:
+            conn.execute("ALTER TABLE devices ADD COLUMN pinned INTEGER DEFAULT 0")
+
+        conn.executescript("""
+            -- Capture sessions: group packets into named sessions
+            CREATE TABLE IF NOT EXISTS capture_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                description TEXT,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                status TEXT DEFAULT 'active',    -- active | ended | archived
+                packet_count INTEGER DEFAULT 0,
+                tags TEXT,                        -- JSON array of tags
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_sessions_status ON capture_sessions(status);
+            CREATE INDEX IF NOT EXISTS idx_sessions_started ON capture_sessions(started_at);
+
+            -- Packet annotations: notes, tags, classifications for individual packets
+            CREATE TABLE IF NOT EXISTS packet_annotations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                decoded_packet_id INTEGER NOT NULL,
+                annotation_type TEXT NOT NULL,   -- note | tag | classification | highlight
+                content TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (decoded_packet_id) REFERENCES decoded_packets(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_annotations_packet ON packet_annotations(decoded_packet_id);
+            CREATE INDEX IF NOT EXISTS idx_annotations_type ON packet_annotations(annotation_type);
+
+            -- User device profiles: user-defined device metadata
+            CREATE TABLE IF NOT EXISTS user_device_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT UNIQUE NOT NULL,   -- FK to devices
+                user_label TEXT,
+                user_category TEXT,
+                user_notes TEXT,
+                linked_devices TEXT,              -- JSON array of related device IDs
+                location TEXT,                    -- Physical location description
+                icon TEXT,                        -- Icon identifier for UI
+                color TEXT,                       -- Color for UI highlighting
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_profiles_device ON user_device_profiles(device_id);
+
+            -- Update schema version
+            UPDATE meta SET value = '6' WHERE key = 'schema_version';
+        """)
+        print(f"[DATABASE] Migrated to schema version 6 (capture sessions, annotations, user profiles)")
 
 def compute_packet_hash(raw_bytes: bytes) -> str:
     """Compute SHA256 hash of raw packet bytes."""
@@ -1097,43 +1178,6 @@ def get_stats() -> Dict:
         return stats
 
 # ===============================================================================
-# MQTT CONFIGURATION
-# ===============================================================================
-
-def get_mqtt_config() -> Optional[Dict]:
-    """Get MQTT configuration (singleton row)."""
-    with get_db() as conn:
-        row = conn.execute("SELECT * FROM mqtt_config WHERE id = 1").fetchone()
-        if row:
-            return dict(row)
-        return None
-
-def update_mqtt_config(**kwargs) -> bool:
-    """Update MQTT configuration fields."""
-    if not kwargs:
-        return False
-
-    valid_fields = {'enabled', 'broker_host', 'broker_port', 'username', 'password',
-                    'discovery_prefix', 'client_id', 'retain_state', 'publish_raw'}
-
-    updates = []
-    params = []
-    for key, value in kwargs.items():
-        if key in valid_fields:
-            updates.append(f"{key} = ?")
-            params.append(value)
-
-    if not updates:
-        return False
-
-    updates.append("updated_at = ?")
-    params.append(datetime.now().isoformat())
-
-    with get_db() as conn:
-        conn.execute(f"UPDATE mqtt_config SET {', '.join(updates)} WHERE id = 1", params)
-        return True
-
-# ===============================================================================
 # PROXY RULES
 # ===============================================================================
 
@@ -1645,31 +1689,249 @@ def get_events(
             results.append(d)
         return results
 
-def mark_event_published(event_id: int) -> bool:
-    """Mark an event as published to MQTT."""
+# ═══════════════════════════════════════════════════════════════════════════════
+# CAPTURE SESSIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_capture_session(name: str = None, description: str = None, tags: List[str] = None) -> int:
+    """Create a new capture session."""
+    timestamp = datetime.now().isoformat()
     with get_db() as conn:
-        cursor = conn.execute(
-            "UPDATE events SET published_mqtt = 1 WHERE id = ?", (event_id,)
-        )
+        cursor = conn.execute("""
+            INSERT INTO capture_sessions (name, description, started_at, tags)
+            VALUES (?, ?, ?, ?)
+        """, (name, description, timestamp, json.dumps(tags) if tags else None))
+        return cursor.lastrowid
+
+def end_capture_session(session_id: int) -> bool:
+    """End a capture session."""
+    timestamp = datetime.now().isoformat()
+    with get_db() as conn:
+        cursor = conn.execute("""
+            UPDATE capture_sessions
+            SET ended_at = ?, status = 'ended', updated_at = ?
+            WHERE id = ?
+        """, (timestamp, timestamp, session_id))
         return cursor.rowcount > 0
 
-def get_unpublished_events(limit: int = 100) -> List[Dict]:
-    """Get events that haven't been published to MQTT."""
+def get_capture_session(session_id: int) -> Optional[Dict]:
+    """Get a capture session by ID."""
     with get_db() as conn:
-        rows = conn.execute("""
-            SELECT * FROM events
-            WHERE published_mqtt = 0
-            ORDER BY timestamp ASC
-            LIMIT ?
-        """, (limit,)).fetchall()
+        row = conn.execute("SELECT * FROM capture_sessions WHERE id = ?", (session_id,)).fetchone()
+        if row:
+            d = dict(row)
+            if d['tags']:
+                d['tags'] = json.loads(d['tags'])
+            return d
+        return None
 
+def get_all_capture_sessions(status: str = None) -> List[Dict]:
+    """Get all capture sessions, optionally filtered by status."""
+    with get_db() as conn:
+        if status:
+            rows = conn.execute("""
+                SELECT * FROM capture_sessions WHERE status = ?
+                ORDER BY started_at DESC
+            """, (status,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT * FROM capture_sessions ORDER BY started_at DESC
+            """).fetchall()
         results = []
         for row in rows:
             d = dict(row)
-            if d['details']:
-                d['details'] = json.loads(d['details'])
-            if d['packet_ids']:
-                d['packet_ids'] = json.loads(d['packet_ids'])
+            if d['tags']:
+                d['tags'] = json.loads(d['tags'])
+            results.append(d)
+        return results
+
+def get_active_session() -> Optional[Dict]:
+    """Get the currently active capture session, if any."""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT * FROM capture_sessions WHERE status = 'active'
+            ORDER BY started_at DESC LIMIT 1
+        """).fetchone()
+        if row:
+            d = dict(row)
+            if d['tags']:
+                d['tags'] = json.loads(d['tags'])
+            return d
+        return None
+
+def update_session_packet_count(session_id: int, count: int) -> bool:
+    """Update packet count for a session."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            UPDATE capture_sessions
+            SET packet_count = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (count, session_id))
+        return cursor.rowcount > 0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PACKET ANNOTATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def add_packet_annotation(
+    packet_id: int,
+    annotation_type: str,
+    content: str
+) -> int:
+    """Add an annotation to a packet."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            INSERT INTO packet_annotations (decoded_packet_id, annotation_type, content)
+            VALUES (?, ?, ?)
+        """, (packet_id, annotation_type, content))
+        return cursor.lastrowid
+
+def get_packet_annotations(packet_id: int) -> List[Dict]:
+    """Get all annotations for a packet."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT * FROM packet_annotations
+            WHERE decoded_packet_id = ?
+            ORDER BY created_at ASC
+        """, (packet_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+def delete_packet_annotation(annotation_id: int) -> bool:
+    """Delete an annotation."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "DELETE FROM packet_annotations WHERE id = ?", (annotation_id,)
+        )
+        return cursor.rowcount > 0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# USER DEVICE PROFILES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_user_device_profile(device_id: str) -> Optional[Dict]:
+    """Get user profile for a device."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_device_profiles WHERE device_id = ?", (device_id,)
+        ).fetchone()
+        if row:
+            d = dict(row)
+            if d['linked_devices']:
+                d['linked_devices'] = json.loads(d['linked_devices'])
+            return d
+        return None
+
+def upsert_user_device_profile(
+    device_id: str,
+    user_label: str = None,
+    user_category: str = None,
+    user_notes: str = None,
+    linked_devices: List[str] = None,
+    location: str = None,
+    icon: str = None,
+    color: str = None
+) -> bool:
+    """Create or update a user device profile."""
+    timestamp = datetime.now().isoformat()
+    with get_db() as conn:
+        # Check if exists
+        existing = conn.execute(
+            "SELECT id FROM user_device_profiles WHERE device_id = ?", (device_id,)
+        ).fetchone()
+
+        if existing:
+            # Update existing
+            conn.execute("""
+                UPDATE user_device_profiles SET
+                    user_label = COALESCE(?, user_label),
+                    user_category = COALESCE(?, user_category),
+                    user_notes = COALESCE(?, user_notes),
+                    linked_devices = COALESCE(?, linked_devices),
+                    location = COALESCE(?, location),
+                    icon = COALESCE(?, icon),
+                    color = COALESCE(?, color),
+                    updated_at = ?
+                WHERE device_id = ?
+            """, (
+                user_label, user_category, user_notes,
+                json.dumps(linked_devices) if linked_devices else None,
+                location, icon, color, timestamp, device_id
+            ))
+        else:
+            # Insert new
+            conn.execute("""
+                INSERT INTO user_device_profiles
+                    (device_id, user_label, user_category, user_notes, linked_devices, location, icon, color)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                device_id, user_label, user_category, user_notes,
+                json.dumps(linked_devices) if linked_devices else None,
+                location, icon, color
+            ))
+        return True
+
+def pin_device(device_id: str, pinned: bool = True) -> bool:
+    """Pin or unpin a device for attention."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            UPDATE devices SET pinned = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (1 if pinned else 0, device_id))
+        return cursor.rowcount > 0
+
+def confirm_device_detection(device_id: str, confirmed: bool = True) -> bool:
+    """User confirms or unconfirms auto-detected classification."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            UPDATE devices SET user_confirmed = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (1 if confirmed else 0, device_id))
+        return cursor.rowcount > 0
+
+def set_user_device_category(device_id: str, category: str) -> bool:
+    """Set user-defined category for a device (overrides auto)."""
+    with get_db() as conn:
+        cursor = conn.execute("""
+            UPDATE devices SET user_category = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (category, device_id))
+        return cursor.rowcount > 0
+
+def get_device_suggestions(device_id: str) -> Dict:
+    """Get auto-detection suggestions with confidence for a device."""
+    with get_db() as conn:
+        row = conn.execute("""
+            SELECT id, auto_category, auto_confidence, user_category, user_confirmed,
+                   rf_role, confidence, category, device_type
+            FROM devices WHERE id = ?
+        """, (device_id,)).fetchone()
+
+        if not row:
+            return {}
+
+        d = dict(row)
+        return {
+            'device_id': d['id'],
+            'auto_category': d['auto_category'] or d['category'],
+            'auto_confidence': d['auto_confidence'] or d['confidence'] or 0.0,
+            'user_category': d['user_category'],
+            'user_confirmed': bool(d['user_confirmed']),
+            'rf_role': d['rf_role'],
+            'device_type': d['device_type']
+        }
+
+def get_pinned_devices() -> List[Dict]:
+    """Get all pinned devices."""
+    with get_db() as conn:
+        rows = conn.execute("""
+            SELECT * FROM devices WHERE pinned = 1
+            ORDER BY last_seen DESC
+        """).fetchall()
+        results = []
+        for row in rows:
+            d = dict(row)
+            if d['info']:
+                d['info'] = json.loads(d['info'])
             results.append(d)
         return results
 

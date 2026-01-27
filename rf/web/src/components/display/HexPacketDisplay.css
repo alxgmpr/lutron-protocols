@@ -1,0 +1,40 @@
+.hex-packet-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.hex-packet-card.paused {
+  opacity: 0.85;
+}
+
+.hex-packet-card.paused .card-header {
+  border-left: 3px solid #ff9800;
+}
+
+.hex-packet-card .card-header {
+  flex-shrink: 0;
+}
+
+.hex-packet-card .card-body {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.hex-packet-container {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.hex-packet-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 20px;
+}

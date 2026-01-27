@@ -40,7 +40,13 @@
 }
 
 .card-badge {
-  display: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .card-actions {

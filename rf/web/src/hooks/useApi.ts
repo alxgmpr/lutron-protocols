@@ -18,7 +18,7 @@ export function useApi() {
     }
   }, [])
 
-  const postJson = useCallback(async (endpoint: string, body: Record<string, unknown>, method: string = 'POST'): Promise<ApiResponse> => {
+  const postJson = useCallback(async <T = ApiResponse>(endpoint: string, body: Record<string, unknown>, method: string = 'POST'): Promise<T> => {
     setLoading(true)
     try {
       const response = await fetch(endpoint, {

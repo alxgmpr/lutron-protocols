@@ -1,0 +1,599 @@
+# Lutron Clear Connect Type A Protocol Definition
+# ================================================
+# This is the authoritative source of truth for packet structures,
+# field formats, and enums used throughout the CCA Playground.
+#
+# Generated code should import from this file to ensure consistency.
+
+meta:
+  name: "Lutron Clear Connect Type A"
+  version: "1.0.0"
+  description: "Protocol definition for Lutron Clear Connect Type A RF communication"
+
+# ============================================================================
+# ENUMS - Lookup tables for decoded values
+# ============================================================================
+enums:
+  button:
+    0x02: "ON"
+    0x03: "FAV"
+    0x04: "OFF"
+    0x05: "RAISE"
+    0x06: "LOWER"
+    0x08: "SCENE1"
+    0x09: "SCENE2"
+    0x0A: "SCENE3"
+    0x0B: "SCENE4"
+
+  action:
+    0x00: "PRESS"
+    0x01: "RELEASE"
+    0x03: "SAVE"
+
+# ============================================================================
+# FIELD FORMATS - How to decode and display different field types
+# ============================================================================
+field_formats:
+  hex:
+    description: "Raw hexadecimal bytes"
+    color: "#9E9E9E"
+
+  decimal:
+    description: "Single byte as decimal number"
+    color: "#FFC107"
+
+  device_id:
+    description: "4-byte device ID (little-endian)"
+    size: 4
+    endian: "little"
+    color: "#2196F3"
+
+  device_id_be:
+    description: "4-byte device ID (big-endian)"
+    size: 4
+    endian: "big"
+    color: "#03A9F4"
+
+  level_byte:
+    description: "Single byte level (0x00-0xFE = 0-100%)"
+    size: 1
+    divisor: 254
+    color: "#4CAF50"
+
+  level_16bit:
+    description: "16-bit level (0x0000-0xFEFF = 0-100%)"
+    size: 2
+    divisor: 65279
+    color: "#8BC34A"
+
+  button:
+    description: "Button code (lookup in enums.button)"
+    size: 1
+    enum: "button"
+    color: "#FF9800"
+
+  action:
+    description: "Action code (lookup in enums.action)"
+    size: 1
+    enum: "action"
+    color: "#E91E63"
+
+  crc:
+    description: "16-bit CRC"
+    size: 2
+    color: "#607D8B"
+
+# ============================================================================
+# PACKET TYPE MAPPINGS - First byte to packet type name
+# ============================================================================
+packet_type_map:
+  0x80: "STATE_RPT"
+  0x81: "STATE_RPT"
+  0x82: "STATE_RPT"
+  0x83: "STATE_RPT"
+  0x88: "BTN_SHORT_A"
+  0x89: "BTN_LONG_A"
+  0x8A: "BTN_SHORT_B"
+  0x8B: "BTN_LONG_B"
+  0x91: "BEACON"
+  0x92: "BEACON"
+  0x93: "BEACON"
+  0xA2: "SET_LEVEL"
+  0xB0: "PAIR_B0"
+  0xB8: "PAIR_B8"
+  0xB9: "PAIR_B9"
+  0xBA: "PAIR_BA"
+  0xBB: "PAIR_BB"
+  0xC0: "PAIR_RESP"
+  0xC1: "PAIR_RESP"
+  0xC2: "PAIR_RESP"
+  0xC8: "PAIR_RESP"
+
+# ============================================================================
+# PACKET TYPES - Full structure definitions
+# ============================================================================
+packet_types:
+  # STATE_RPT: Dimmer broadcasting its current level (format byte 0x08)
+  STATE_RPT:
+    description: "Dimmer state report - broadcasts current level"
+    category: "status"
+    length: 24
+    device_id_endian: "little"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Device ID"
+        offset: 2
+        size: 4
+        format: "device_id"
+      - name: "Format"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 3
+        format: "hex"
+      - name: "Level"
+        offset: 11
+        size: 1
+        format: "level_byte"
+      - name: "Fixed"
+        offset: 12
+        size: 4
+        format: "hex"
+      - name: "Padding"
+        offset: 16
+        size: 6
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # DIMMER_ACK: Dimmer acknowledgment during button handling
+  DIMMER_ACK:
+    description: "Dimmer acknowledgment packet"
+    category: "status"
+    length: 24
+    device_id_endian: "little"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Device ID"
+        offset: 2
+        size: 4
+        format: "device_id"
+      - name: "Format"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Payload"
+        offset: 8
+        size: 14
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # SET_LEVEL: Bridge sending level command to dimmer (format byte 0x0E)
+  SET_LEVEL:
+    description: "Bridge level command to dimmer"
+    category: "control"
+    length: 24
+    device_id_endian: "little"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Source ID"
+        offset: 2
+        size: 4
+        format: "device_id"
+      - name: "Format"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 1
+        format: "hex"
+      - name: "Target ID"
+        offset: 9
+        size: 4
+        format: "device_id_be"
+      - name: "Fixed"
+        offset: 13
+        size: 3
+        format: "hex"
+      - name: "Level"
+        offset: 16
+        size: 2
+        format: "level_16bit"
+      - name: "Trailer"
+        offset: 18
+        size: 4
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # UNPAIR: Bridge removing a device from the network (format byte 0x0C)
+  UNPAIR:
+    description: "Bridge unpair command"
+    category: "pairing"
+    length: 24
+    device_id_endian: "little"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Bridge Zone"
+        offset: 2
+        size: 4
+        format: "device_id"
+      - name: "Protocol"
+        offset: 6
+        size: 1
+        format: "hex"
+      - name: "Format"
+        offset: 7
+        size: 1
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 1
+        format: "hex"
+      - name: "Broadcast"
+        offset: 9
+        size: 5
+        format: "hex"
+      - name: "Command"
+        offset: 14
+        size: 2
+        format: "hex"
+      - name: "Target ID"
+        offset: 16
+        size: 4
+        format: "device_id_be"
+      - name: "Padding"
+        offset: 20
+        size: 2
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # UNPAIR_PREP: Unpair prepare phase (format byte 0x09)
+  UNPAIR_PREP:
+    description: "Unpair preparation packet"
+    category: "pairing"
+    length: 24
+    device_id_endian: "little"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Bridge Zone"
+        offset: 2
+        size: 4
+        format: "device_id"
+      - name: "Protocol"
+        offset: 6
+        size: 1
+        format: "hex"
+      - name: "Format"
+        offset: 7
+        size: 1
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 1
+        format: "hex"
+      - name: "Target ID"
+        offset: 9
+        size: 4
+        format: "device_id_be"
+      - name: "Marker"
+        offset: 13
+        size: 1
+        format: "hex"
+      - name: "Command"
+        offset: 14
+        size: 2
+        format: "hex"
+      - name: "Payload"
+        offset: 16
+        size: 6
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # BTN: Button press packets (covers BTN_SHORT_A, BTN_LONG_A, BTN_SHORT_B, BTN_LONG_B)
+  BTN:
+    description: "Pico button press packet"
+    category: "button"
+    length: 24
+    device_id_endian: "big"
+    aliases:
+      - "BTN_SHORT_A"
+      - "BTN_LONG_A"
+      - "BTN_SHORT_B"
+      - "BTN_LONG_B"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Device ID"
+        offset: 2
+        size: 4
+        format: "device_id_be"
+      - name: "Protocol"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 2
+        format: "hex"
+      - name: "Button"
+        offset: 10
+        size: 1
+        format: "button"
+      - name: "Action"
+        offset: 11
+        size: 1
+        format: "action"
+      - name: "Payload"
+        offset: 12
+        size: 10
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # BEACON: Bridge pairing beacon
+  BEACON:
+    description: "Bridge pairing beacon"
+    category: "pairing"
+    length: 24
+    device_id_endian: "big"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Load ID"
+        offset: 2
+        size: 4
+        format: "device_id_be"
+      - name: "Format"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 1
+        format: "hex"
+      - name: "Broadcast"
+        offset: 9
+        size: 5
+        format: "hex"
+      - name: "Fixed"
+        offset: 14
+        size: 6
+        format: "hex"
+      - name: "Padding"
+        offset: 20
+        size: 2
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # PAIR: Pico pairing packets (53 bytes)
+  PAIR:
+    description: "Pico pairing packet"
+    category: "pairing"
+    length: 53
+    device_id_endian: "big"
+    aliases:
+      - "PAIR_B0"
+      - "PAIR_B8"
+      - "PAIR_B9"
+      - "PAIR_BA"
+      - "PAIR_BB"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Device ID"
+        offset: 2
+        size: 4
+        format: "device_id_be"
+      - name: "Format"
+        offset: 6
+        size: 2
+        format: "hex"
+      - name: "Fixed"
+        offset: 8
+        size: 2
+        format: "hex"
+      - name: "Btn Scheme"
+        offset: 10
+        size: 1
+        format: "hex"
+      - name: "Fixed"
+        offset: 11
+        size: 2
+        format: "hex"
+      - name: "Broadcast"
+        offset: 13
+        size: 5
+        format: "hex"
+      - name: "Fixed"
+        offset: 18
+        size: 2
+        format: "hex"
+      - name: "Device ID 2"
+        offset: 20
+        size: 4
+        format: "device_id_be"
+      - name: "Device ID 3"
+        offset: 24
+        size: 4
+        format: "device_id_be"
+      - name: "Capabilities"
+        offset: 28
+        size: 13
+        format: "hex"
+      - name: "Broadcast 2"
+        offset: 41
+        size: 4
+        format: "hex"
+      - name: "Padding"
+        offset: 45
+        size: 6
+        format: "hex"
+      - name: "CRC"
+        offset: 51
+        size: 2
+        format: "crc"
+
+  # PAIR_RESP: Pairing response
+  PAIR_RESP:
+    description: "Pairing response packet"
+    category: "pairing"
+    length: 24
+    device_id_endian: "big"
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Device ID"
+        offset: 2
+        size: 4
+        format: "device_id_be"
+      - name: "Payload"
+        offset: 6
+        size: 16
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+  # UNKNOWN: Generic fallback for unknown packets
+  UNKNOWN:
+    description: "Unknown packet type"
+    category: "unknown"
+    length: 24
+    fields:
+      - name: "Type"
+        offset: 0
+        size: 1
+        format: "hex"
+      - name: "Sequence"
+        offset: 1
+        size: 1
+        format: "decimal"
+      - name: "Payload"
+        offset: 2
+        size: 20
+        format: "hex"
+      - name: "CRC"
+        offset: 22
+        size: 2
+        format: "crc"
+
+# ============================================================================
+# DEVICE CATEGORIES - Classification of discovered devices
+# ============================================================================
+device_categories:
+  pico:
+    name: "Pico Remote"
+    description: "Battery-powered remote control"
+    rf_role: "one_way_tx"
+
+  dimmer:
+    name: "Dimmer"
+    description: "Smart dimmer switch"
+    rf_role: "two_way_cca_node"
+
+  switch:
+    name: "Switch"
+    description: "Smart on/off switch"
+    rf_role: "two_way_cca_node"
+
+  bridge:
+    name: "Bridge"
+    description: "RA3 processor or Caseta bridge"
+    rf_role: "cca_bridge"
+
+  fan:
+    name: "Fan Controller"
+    description: "Smart fan controller"
+    rf_role: "two_way_cca_node"
+
+  motion:
+    name: "Motion Sensor"
+    description: "Occupancy/vacancy sensor"
+    rf_role: "one_way_tx"
+
+  unknown:
+    name: "Unknown"
+    description: "Device type not yet determined"
+    rf_role: "unknown"

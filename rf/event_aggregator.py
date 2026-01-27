@@ -6,7 +6,7 @@ This module processes raw CCA packets and groups them into meaningful events:
 - Level changes (from STATE_RPT packets)
 - Level commands (from SET_LEVEL packets)
 
-Events are emitted to registered listeners (MQTT client, proxy engine, etc.)
+Events are emitted to registered listeners (proxy engine, UI, etc.)
 and stored in the database for history/debugging.
 """
 

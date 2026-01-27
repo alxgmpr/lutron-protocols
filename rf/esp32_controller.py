@@ -74,8 +74,7 @@ BUTTONS = {
     "beacon": "beacon__pairing_mode_",
 }
 
-# Global log queue for SSE streaming
-log_queue = queue.Queue(maxsize=1000)
+# Global queues for SSE streaming
 rx_queue = queue.Queue(maxsize=500)
 packet_queue = queue.Queue(maxsize=500)  # Parsed packets for SSE
 log_subscription_started = False
@@ -85,13 +84,7 @@ log_last_received = 0  # Timestamp of last actual log received from ESP32
 LOG_THREAD_TIMEOUT = 30  # Consider thread dead if no heartbeat for this many seconds
 LOG_STALE_TIMEOUT = 60  # Consider connection stale if no logs for this long
 
-# Log history buffer for dump functionality (max 10000 entries)
-log_history = []
-log_history_lock = threading.Lock()
-LOG_HISTORY_MAX = 10000
-
 # Service instances (initialized in cmd_serve)
-_mqtt_client = None
 _event_aggregator = None
 _udp_transport = None  # UDP transport for direct packet streaming
 _packet_relay = None   # Low-latency packet relay engine
@@ -1291,23 +1284,6 @@ class ESP32Controller:
         """Stop bridge pairing mode - sends stop beacons."""
         await self.call_service('stop_pairing', subnet=f"0x{subnet:04X}")
 
-    async def start_vive_manual(self, subnet: int, packet_type: int, protocol: int, format: int, mode: int):
-        """Start Vive pairing in manual mode with explicit parameters."""
-        await self.call_service('start_vive_manual',
-                               subnet=f"0x{subnet:04X}",
-                               packet_type=packet_type,
-                               protocol=protocol,
-                               format=format,
-                               mode=mode)
-
-    async def start_vive_sweep(self, subnet: int):
-        """Start Vive pairing auto-sweep - cycles through all beacon variations."""
-        await self.call_service('start_vive_sweep', subnet=f"0x{subnet:04X}")
-
-    async def stop_vive_pairing(self):
-        """Stop Vive pairing (manual or sweep)."""
-        await self.call_service('stop_vive_pairing')
-
     async def pair_device(self, subnet: int, factory_id: int, zone_suffix: int):
         """Complete bridge pairing sequence for a device."""
         await self.call_service('pair_device',
@@ -1757,69 +1733,21 @@ def cmd_serve(args):
         return response
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # INITIALIZE SERVICES (MQTT, Event Aggregator)
+    # INITIALIZE SERVICES (Event Aggregator)
     # ═══════════════════════════════════════════════════════════════════════════
 
-    global _mqtt_client, _event_aggregator
+    global _event_aggregator
 
     # Import and initialize services
     try:
         from event_aggregator import EventAggregator
-        from mqtt_client import MQTTClient
 
         _event_aggregator = EventAggregator()
-        _mqtt_client = MQTTClient()
 
-        # Wire event aggregator to MQTT
-        def on_event(event_type: str, device_id: str, details: dict):
-            # Publish to MQTT if connected
-            if _mqtt_client and _mqtt_client.connected:
-                _mqtt_client.publish_event(event_type, device_id, details)
-
-        _event_aggregator.add_listener(on_event)
-
-        # Connect MQTT if enabled
-        mqtt_cfg = db.get_mqtt_config()
-        if mqtt_cfg and mqtt_cfg.get('enabled'):
-            _mqtt_client.connect()
-            print("[MQTT] Auto-connected based on config")
-
-        # Subscribe to MQTT commands for bidirectional control
-        def on_mqtt_command(device_id: str, command: dict):
-            """Handle commands from Home Assistant."""
-            brightness = command.get('brightness')
-            state = command.get('state')
-
-            if brightness is not None:
-                # Send level command
-                # Need to determine source bridge - use first available or virtual
-                devices = db.get_all_devices()
-                device_info = devices.get(device_id, {})
-                bridge_id = device_info.get('info', {}).get('bridge_id')
-
-                if bridge_id:
-                    asyncio.run(proxy_send_command(
-                        'send_level',
-                        source_id=bridge_id,
-                        target_id=device_id,
-                        level=brightness
-                    ))
-            elif state == 'ON':
-                asyncio.run(proxy_send_command(
-                    'send_level', source_id=device_id, target_id=device_id, level=100
-                ))
-            elif state == 'OFF':
-                asyncio.run(proxy_send_command(
-                    'send_level', source_id=device_id, target_id=device_id, level=0
-                ))
-
-        _mqtt_client.subscribe_commands(on_mqtt_command)
-
-        print("[SERVICES] Event aggregator, MQTT client, and proxy engine initialized")
+        print("[SERVICES] Event aggregator initialized")
 
     except ImportError as e:
-        print(f"[SERVICES] Warning: Could not import services: {e}")
-        print("[SERVICES] MQTT and proxy features will be disabled")
+        print(f"[SERVICES] Warning: Could not import event aggregator: {e}")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # INITIALIZE UDP TRANSPORT AND PACKET RELAY
@@ -1911,6 +1839,28 @@ def cmd_serve(args):
     @app.route('/api/health')
     def health():
         return jsonify({'status': 'ok'})
+
+    @app.route('/api/protocol')
+    def api_protocol():
+        """Get protocol definitions (enums, field formats, packet types)."""
+        try:
+            import yaml
+            protocol_path = os.path.join(os.path.dirname(__file__), 'protocol', 'cca.yaml')
+            with open(protocol_path, 'r') as f:
+                protocol = yaml.safe_load(f)
+            return jsonify(protocol)
+        except Exception as e:
+            # Fallback to generated Python module
+            from generated.python import cca_protocol as proto
+            return jsonify({
+                'enums': {
+                    'button': {str(k): v for k, v in proto.BUTTON_NAMES.items()},
+                    'action': {str(k): v for k, v in proto.ACTION_NAMES.items()},
+                },
+                'field_formats': proto.FIELD_FORMATS,
+                'packet_type_map': {str(k): v for k, v in proto.PACKET_TYPE_MAP.items()},
+                'packet_types': proto.PACKET_TYPES,
+            })
 
     # Frontend is served by `cca serve` - this is API-only
     @app.route('/')
@@ -2293,12 +2243,7 @@ def cmd_serve(args):
             print(f"[API] Forcing ESP32 reconnect to {current_esp_host}...", flush=True)
             log_subscription_started = False
             log_thread_heartbeat = 0
-            # Clear queues
-            while not log_queue.empty():
-                try:
-                    log_queue.get_nowait()
-                except queue.Empty:
-                    break
+            # Clear packet queue
             while not packet_queue.empty():
                 try:
                     packet_queue.get_nowait()
@@ -3067,6 +3012,141 @@ def cmd_serve(args):
         count = db.clear_all_devices()
         return jsonify({'status': 'ok', 'deleted': count})
 
+    @app.route('/api/devices/<device_id>/user-profile')
+    def api_get_user_profile(device_id):
+        """Get user profile for a device."""
+        profile = db.get_user_device_profile(device_id)
+        if profile:
+            return jsonify(profile)
+        return jsonify({})
+
+    @app.route('/api/devices/<device_id>/user-profile', methods=['PUT'])
+    def api_set_user_profile(device_id):
+        """Update user profile for a device."""
+        data = request.json or {}
+        db.upsert_user_device_profile(
+            device_id,
+            user_label=data.get('user_label'),
+            user_category=data.get('user_category'),
+            user_notes=data.get('user_notes'),
+            linked_devices=data.get('linked_devices'),
+            location=data.get('location'),
+            icon=data.get('icon'),
+            color=data.get('color')
+        )
+        return jsonify({'status': 'ok', 'device_id': device_id})
+
+    @app.route('/api/devices/<device_id>/pin', methods=['POST'])
+    def api_pin_device(device_id):
+        """Pin a device for attention."""
+        data = request.json or {}
+        pinned = data.get('pinned', True)
+        if db.pin_device(device_id, pinned):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'pinned': pinned})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/<device_id>/confirm', methods=['POST'])
+    def api_confirm_device(device_id):
+        """User confirms auto-detected classification."""
+        data = request.json or {}
+        confirmed = data.get('confirmed', True)
+        if db.confirm_device_detection(device_id, confirmed):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'confirmed': confirmed})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/<device_id>/category', methods=['POST'])
+    def api_set_user_category(device_id):
+        """Set user-defined category for a device."""
+        data = request.json or {}
+        category = data.get('category')
+        if category and db.set_user_device_category(device_id, category):
+            return jsonify({'status': 'ok', 'device_id': device_id, 'category': category})
+        return jsonify({'status': 'error', 'error': 'not found or invalid category'}), 404
+
+    @app.route('/api/devices/suggestions/<device_id>')
+    def api_device_suggestions(device_id):
+        """Get auto-detection suggestions with confidence for a device."""
+        suggestions = db.get_device_suggestions(device_id)
+        if suggestions:
+            return jsonify(suggestions)
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/devices/pinned')
+    def api_pinned_devices():
+        """Get all pinned devices."""
+        return jsonify(db.get_pinned_devices())
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CAPTURE SESSION ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/sessions')
+    def api_sessions():
+        """Get all capture sessions."""
+        status = request.args.get('status')
+        return jsonify(db.get_all_capture_sessions(status))
+
+    @app.route('/api/sessions', methods=['POST'])
+    def api_create_session():
+        """Create a new capture session."""
+        data = request.json or {}
+        session_id = db.create_capture_session(
+            name=data.get('name'),
+            description=data.get('description'),
+            tags=data.get('tags')
+        )
+        return jsonify({'status': 'ok', 'session_id': session_id})
+
+    @app.route('/api/sessions/active')
+    def api_active_session():
+        """Get the currently active capture session."""
+        session = db.get_active_session()
+        if session:
+            return jsonify(session)
+        return jsonify(None)
+
+    @app.route('/api/sessions/<int:session_id>')
+    def api_session_detail(session_id):
+        """Get details for a specific capture session."""
+        session = db.get_capture_session(session_id)
+        if session:
+            return jsonify(session)
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    @app.route('/api/sessions/<int:session_id>/end', methods=['POST'])
+    def api_end_session(session_id):
+        """End a capture session."""
+        if db.end_capture_session(session_id):
+            return jsonify({'status': 'ok', 'session_id': session_id})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PACKET ANNOTATION ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/packets/<int:packet_id>/annotations')
+    def api_packet_annotations(packet_id):
+        """Get all annotations for a packet."""
+        return jsonify(db.get_packet_annotations(packet_id))
+
+    @app.route('/api/packets/<int:packet_id>/annotations', methods=['POST'])
+    def api_add_annotation(packet_id):
+        """Add an annotation to a packet."""
+        data = request.json or {}
+        annotation_type = data.get('type', 'note')
+        content = data.get('content', '')
+        if not content:
+            return jsonify({'status': 'error', 'error': 'content required'}), 400
+        annotation_id = db.add_packet_annotation(packet_id, annotation_type, content)
+        return jsonify({'status': 'ok', 'annotation_id': annotation_id})
+
+    @app.route('/api/annotations/<int:annotation_id>', methods=['DELETE'])
+    def api_delete_annotation(annotation_id):
+        """Delete an annotation."""
+        if db.delete_packet_annotation(annotation_id):
+            return jsonify({'status': 'ok'})
+        return jsonify({'status': 'error', 'error': 'not found'}), 404
+
     # ═══════════════════════════════════════════════════════════════════════════
     # CCA SUBNET ENDPOINTS
     # ═══════════════════════════════════════════════════════════════════════════
@@ -3171,6 +3251,153 @@ def cmd_serve(args):
     def api_db_bridges():
         """Get list of unique bridge pairing IDs."""
         return jsonify(db.get_bridge_pairings())
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # EXPORT ENDPOINTS
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @app.route('/api/export/packets', methods=['POST'])
+    def api_export_packets():
+        """Export packets in JSON or CSV format.
+
+        Request body:
+        {
+            "format": "json" | "csv",
+            "filters": {
+                "device_ids": ["..."],
+                "session_id": 123,
+                "time_range": {"start": "...", "end": "..."},
+                "packet_types": ["LEVEL", "BTN_SHORT_A", ...]
+            },
+            "options": {
+                "include_annotations": true,
+                "include_raw_bytes": true,
+                "include_schema": true
+            }
+        }
+        """
+        data = request.json or {}
+        export_format = data.get('format', 'json')
+        filters = data.get('filters', {})
+        options = data.get('options', {})
+
+        # Build query parameters
+        packets = db.get_decoded_packets(
+            device_id=filters.get('device_ids', [None])[0] if filters.get('device_ids') else None,
+            packet_type=filters.get('packet_types', [None])[0] if filters.get('packet_types') else None,
+            limit=filters.get('limit', 10000),
+            offset=0
+        )
+
+        # Filter by time range if specified
+        time_range = filters.get('time_range')
+        if time_range:
+            start = time_range.get('start')
+            end = time_range.get('end')
+            if start:
+                packets = [p for p in packets if p.get('timestamp', '') >= start]
+            if end:
+                packets = [p for p in packets if p.get('timestamp', '') <= end]
+
+        # Filter by multiple device IDs
+        device_ids = filters.get('device_ids')
+        if device_ids and len(device_ids) > 1:
+            packets = [p for p in packets if
+                       p.get('device_id') in device_ids or
+                       p.get('source_id') in device_ids or
+                       p.get('target_id') in device_ids]
+
+        # Filter by multiple packet types
+        packet_types = filters.get('packet_types')
+        if packet_types and len(packet_types) > 1:
+            packets = [p for p in packets if p.get('packet_type') in packet_types]
+
+        # Add annotations if requested
+        if options.get('include_annotations'):
+            for packet in packets:
+                packet['annotations'] = db.get_packet_annotations(packet['id'])
+
+        # Remove raw bytes if not requested
+        if not options.get('include_raw_bytes', True):
+            for packet in packets:
+                packet.pop('raw_hex', None)
+
+        if export_format == 'csv':
+            import csv
+            import io
+            output = io.StringIO()
+            if packets:
+                fieldnames = ['id', 'direction', 'packet_type', 'device_id', 'source_id',
+                             'target_id', 'level', 'button', 'rssi', 'timestamp']
+                if options.get('include_raw_bytes', True):
+                    fieldnames.append('raw_hex')
+                writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore')
+                writer.writeheader()
+                for packet in packets:
+                    writer.writerow(packet)
+            csv_content = output.getvalue()
+            return Response(csv_content, mimetype='text/csv',
+                           headers={'Content-Disposition': 'attachment; filename=packets.csv'})
+
+        # JSON format
+        result = {'packets': packets, 'count': len(packets)}
+        if options.get('include_schema'):
+            try:
+                import yaml
+                protocol_path = os.path.join(os.path.dirname(__file__), 'protocol', 'cca.yaml')
+                with open(protocol_path, 'r') as f:
+                    result['schema'] = yaml.safe_load(f)
+            except Exception:
+                pass
+        return jsonify(result)
+
+    @app.route('/api/export/session/<int:session_id>')
+    def api_export_session(session_id):
+        """Export a complete session bundle (packets + devices + schema)."""
+        session = db.get_capture_session(session_id)
+        if not session:
+            return jsonify({'status': 'error', 'error': 'session not found'}), 404
+
+        # Get packets for this session (if session tracking is implemented)
+        # For now, get packets within the session's time range
+        packets = db.get_decoded_packets(limit=50000)
+        if session.get('started_at'):
+            packets = [p for p in packets if p.get('timestamp', '') >= session['started_at']]
+        if session.get('ended_at'):
+            packets = [p for p in packets if p.get('timestamp', '') <= session['ended_at']]
+
+        # Get devices
+        devices = db.get_all_devices()
+
+        # Get schema
+        schema = None
+        try:
+            import yaml
+            protocol_path = os.path.join(os.path.dirname(__file__), 'protocol', 'cca.yaml')
+            with open(protocol_path, 'r') as f:
+                schema = yaml.safe_load(f)
+        except Exception:
+            pass
+
+        return jsonify({
+            'session': session,
+            'packets': packets,
+            'devices': devices,
+            'schema': schema,
+            'export_time': datetime.now().isoformat()
+        })
+
+    @app.route('/api/export/schema')
+    def api_export_schema():
+        """Export the current YAML protocol definitions."""
+        try:
+            import yaml
+            protocol_path = os.path.join(os.path.dirname(__file__), 'protocol', 'cca.yaml')
+            with open(protocol_path, 'r') as f:
+                schema = yaml.safe_load(f)
+            return jsonify(schema)
+        except Exception as e:
+            return jsonify({'status': 'error', 'error': str(e)}), 500
 
     @app.route('/api/button/<button_id>/press', methods=['POST', 'GET'])
     def api_button_press(button_id):
@@ -3321,135 +3548,11 @@ def cmd_serve(args):
         except Exception as e:
             return jsonify({'status': 'error', 'error': str(e)}), 500
 
-    # ========== VIVE PAIRING (EXPERIMENTAL) ==========
-
-    @app.route('/api/vive/manual', methods=['POST'])
-    def api_vive_manual():
-        """Start Vive pairing in manual mode with explicit parameters."""
-        try:
-            data = request.json or {}
-            subnet = parse_hex(data.get('subnet', '0x2C90'))
-            packet_type = int(data.get('packet_type', 0x92))
-            protocol = int(data.get('protocol', 0x21))
-            format_byte = int(data.get('format', 0x0C))
-            mode = int(data.get('mode', 0x02))
-
-            async def do_start():
-                controller = ESP32Controller(current_esp_host)
-                try:
-                    await controller.connect()
-                    await controller.start_vive_manual(subnet, packet_type, protocol, format_byte, mode)
-                finally:
-                    try:
-                        await controller.disconnect()
-                    except:
-                        pass
-
-            asyncio.run(do_start())
-            return jsonify({
-                'status': 'ok',
-                'subnet': f"0x{subnet:04X}",
-                'packet_type': f"0x{packet_type:02X}",
-                'protocol': f"0x{protocol:02X}",
-                'format': f"0x{format_byte:02X}",
-                'mode': f"0x{mode:02X}"
-            })
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    @app.route('/api/vive/sweep', methods=['POST'])
-    def api_vive_sweep():
-        """Start Vive pairing auto-sweep - cycles through all beacon variations."""
-        try:
-            data = request.json or {}
-            subnet = parse_hex(data.get('subnet', '0x2C90'))
-
-            async def do_start():
-                controller = ESP32Controller(current_esp_host)
-                try:
-                    await controller.connect()
-                    await controller.start_vive_sweep(subnet)
-                finally:
-                    try:
-                        await controller.disconnect()
-                    except:
-                        pass
-
-            asyncio.run(do_start())
-            return jsonify({'status': 'ok', 'subnet': f"0x{subnet:04X}"})
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    @app.route('/api/vive/stop', methods=['POST'])
-    def api_vive_stop():
-        """Stop Vive pairing (manual or sweep)."""
-        try:
-            async def do_stop():
-                controller = ESP32Controller(current_esp_host)
-                try:
-                    await controller.connect()
-                    await controller.stop_vive_pairing()
-                finally:
-                    try:
-                        await controller.disconnect()
-                    except:
-                        pass
-
-            asyncio.run(do_stop())
-            return jsonify({'status': 'ok'})
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    @app.route('/api/logs/stream')
-    def api_logs_stream():
-        """Stream ESP32 logs via Server-Sent Events."""
-        global log_subscription_started, log_thread_heartbeat
-
-        def generate():
-            global log_subscription_started, log_thread_heartbeat
-
-            # Send initial connection message
-            yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Connected to log stream'})}\n\n"
-
-            # Start log subscription thread if needed
-            with log_subscription_lock:
-                now = time.time()
-                thread_is_stale = (now - log_thread_heartbeat) > LOG_THREAD_TIMEOUT
-
-                if not log_subscription_started or thread_is_stale:
-                    if thread_is_stale and log_subscription_started:
-                        print(f"[LOG STREAM] Log thread appears dead (no heartbeat for {now - log_thread_heartbeat:.0f}s), restarting...", flush=True)
-                        # Clear the queue of stale messages
-                        while not log_queue.empty():
-                            try:
-                                log_queue.get_nowait()
-                            except queue.Empty:
-                                break
-
-                    log_subscription_started = True
-                    log_thread_heartbeat = now
-                    log_thread = threading.Thread(target=subscribe_to_logs, daemon=True)
-                    log_thread.start()
-                    yield f"data: {json.dumps({'time': datetime.now().isoformat(), 'level': 'I', 'msg': 'Starting ESP32 log subscription...'})}\n\n"
-
-            # Stream logs from queue
-            while True:
-                try:
-                    log_entry = log_queue.get(timeout=10)
-                    yield f"data: {json.dumps(log_entry)}\n\n"
-                except queue.Empty:
-                    # Send heartbeat to keep connection alive
-                    yield f"data: {json.dumps({'type': 'heartbeat', 'time': datetime.now().isoformat()})}\n\n"
-
-        return Response(generate(), mimetype='text/event-stream',
-                       headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
-
     @app.route('/api/packets/stream')
     def api_packets_stream():
         """Stream parsed packets via Server-Sent Events.
 
-        Unlike /api/logs/stream which streams raw logs, this streams
-        already-parsed packets with type, device_id, summary, details, and raw_hex.
+        Streams already-parsed packets with type, device_id, summary, details, and raw_hex.
         """
         global log_subscription_started, log_thread_heartbeat
 
@@ -3459,7 +3562,7 @@ def cmd_serve(args):
             # Initial connection
             yield f"data: {json.dumps({'type': 'connected', 'time': datetime.now().isoformat()})}\n\n"
 
-            # Start log subscription thread if needed (same logic as /api/logs/stream)
+            # Start log subscription thread if needed
             with log_subscription_lock:
                 now = time.time()
                 thread_is_stale = (now - log_thread_heartbeat) > LOG_THREAD_TIMEOUT
@@ -3467,12 +3570,7 @@ def cmd_serve(args):
                 if not log_subscription_started or thread_is_stale:
                     if thread_is_stale and log_subscription_started:
                         print(f"[PACKET STREAM] Log thread appears dead (no heartbeat for {now - log_thread_heartbeat:.0f}s), restarting...", flush=True)
-                        # Clear the queues of stale messages
-                        while not log_queue.empty():
-                            try:
-                                log_queue.get_nowait()
-                            except queue.Empty:
-                                break
+                        # Clear the queue of stale messages
                         while not packet_queue.empty():
                             try:
                                 packet_queue.get_nowait()
@@ -3494,143 +3592,6 @@ def cmd_serve(args):
 
         return Response(generate(), mimetype='text/event-stream',
                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
-
-    @app.route('/api/logs/status')
-    def api_logs_status():
-        """Get log subscription status."""
-        now = time.time()
-        heartbeat_age = now - log_thread_heartbeat if log_thread_heartbeat > 0 else -1
-        last_log_age = now - log_last_received if log_last_received > 0 else -1
-        thread_alive = heartbeat_age >= 0 and heartbeat_age < LOG_THREAD_TIMEOUT
-        receiving_logs = last_log_age >= 0 and last_log_age < LOG_STALE_TIMEOUT
-        return jsonify({
-            'started': log_subscription_started,
-            'heartbeat_age': round(heartbeat_age, 1),
-            'last_log_age': round(last_log_age, 1),
-            'thread_alive': thread_alive,
-            'receiving_logs': receiving_logs,
-            'healthy': thread_alive and receiving_logs
-        })
-
-    @app.route('/api/logs/restart', methods=['POST'])
-    def api_logs_restart():
-        """Force restart the log subscription thread."""
-        global log_subscription_started, log_thread_heartbeat
-        with log_subscription_lock:
-            print("[API] Forcing log thread restart...", flush=True)
-            log_subscription_started = False
-            log_thread_heartbeat = 0
-            # Clear queue
-            while not log_queue.empty():
-                try:
-                    log_queue.get_nowait()
-                except queue.Empty:
-                    break
-        return jsonify({'status': 'ok', 'message': 'Log subscription will restart on next stream connection'})
-
-    @app.route('/api/logs/dump', methods=['POST'])
-    def api_logs_dump():
-        """Dump log history to a temp file.
-
-        Returns the path to the saved file for easy sharing.
-        """
-        import tempfile
-        from datetime import datetime as dt
-
-        with log_history_lock:
-            if not log_history:
-                return jsonify({'status': 'error', 'error': 'No logs in history'}), 400
-
-            # Create temp file with timestamp
-            timestamp = dt.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'esp32_logs_{timestamp}.log'
-            filepath = os.path.join(tempfile.gettempdir(), filename)
-
-            with open(filepath, 'w') as f:
-                for entry in log_history:
-                    time_str = entry.get('time', '')
-                    # Extract just HH:MM:SS from ISO timestamp
-                    if 'T' in time_str:
-                        time_str = time_str.split('T')[1].split('.')[0]
-                    level = entry.get('level', 'I')
-                    msg = entry.get('msg', '')
-                    f.write(f"{time_str} [{level}] {msg}\n")
-
-            log_count = len(log_history)
-
-        return jsonify({
-            'status': 'ok',
-            'filepath': filepath,
-            'filename': filename,
-            'log_count': log_count
-        })
-
-    @app.route('/api/logs/clear', methods=['POST'])
-    def api_logs_clear():
-        """Clear the log history buffer."""
-        with log_history_lock:
-            count = len(log_history)
-            log_history.clear()
-        return jsonify({'status': 'ok', 'cleared': count})
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # MQTT ENDPOINTS
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    @app.route('/api/mqtt/config')
-    def api_mqtt_config_get():
-        """Get MQTT configuration."""
-        config = db.get_mqtt_config()
-        if config:
-            # Don't expose password
-            config = dict(config)
-            if config.get('password'):
-                config['password'] = '********'
-        return jsonify(config or {})
-
-    @app.route('/api/mqtt/config', methods=['POST'])
-    def api_mqtt_config_set():
-        """Update MQTT configuration."""
-        data = request.json or {}
-        db.update_mqtt_config(**data)
-        # Reconnect if settings changed
-        if _mqtt_client:
-            _mqtt_client.reconnect()
-        return jsonify({'status': 'ok'})
-
-    @app.route('/api/mqtt/status')
-    def api_mqtt_status():
-        """Get MQTT connection status."""
-        return jsonify({
-            'connected': _mqtt_client.connected if _mqtt_client else False,
-            'broker': _mqtt_client.config.get('broker_host') if _mqtt_client and _mqtt_client.config else None,
-            'published_count': _mqtt_client.published_count if _mqtt_client else 0
-        })
-
-    @app.route('/api/mqtt/test', methods=['POST'])
-    def api_mqtt_test():
-        """Test MQTT connection with provided settings."""
-        data = request.json or {}
-        try:
-            from mqtt_client import MQTTClient
-            success = MQTTClient.test_connection(
-                host=data.get('host', 'homeassistant.local'),
-                port=data.get('port', 1883),
-                username=data.get('username'),
-                password=data.get('password')
-            )
-            return jsonify({'status': 'ok' if success else 'error', 'connected': success})
-        except Exception as e:
-            return jsonify({'status': 'error', 'error': str(e)}), 500
-
-    @app.route('/api/mqtt/publish-discovery', methods=['POST'])
-    def api_mqtt_publish_discovery():
-        """Force publish Home Assistant discovery for all devices."""
-        if not _mqtt_client or not _mqtt_client.connected:
-            return jsonify({'status': 'error', 'error': 'MQTT not connected'}), 400
-        devices = db.get_all_devices()
-        count = _mqtt_client.publish_all_discovery(devices)
-        return jsonify({'status': 'ok', 'published': count})
 
     # ═══════════════════════════════════════════════════════════════════════════
     # RELAY RULES ENDPOINTS (Low-Latency Packet Relay)
@@ -3823,50 +3784,22 @@ def cmd_serve(args):
                     now = time.time()
                     log_thread_heartbeat = now
                     log_last_received = now  # Reset on new connection
-                    log_queue.put_nowait({
-                        'time': datetime.now().isoformat(),
-                        'level': 'I',
-                        'msg': 'Log subscription connected to ESP32',
-                        'type': 'status',
-                        'status': 'connected'
-                    })
 
                     def on_log(msg):
                         global log_thread_heartbeat, log_last_received
-                        try:
-                            # Update timestamps on every log received
-                            now = time.time()
-                            log_thread_heartbeat = now
-                            log_last_received = now
-                            # msg.level is an int: 0=NONE, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG, 5=VERBOSE
-                            level_map = {0: 'N', 1: 'E', 2: 'W', 3: 'I', 4: 'D', 5: 'V'}
-                            level_int = msg.level if isinstance(msg.level, int) else 3
-                            # msg.message may be bytes
-                            message = msg.message if hasattr(msg, 'message') else str(msg)
-                            if isinstance(message, bytes):
-                                message = message.decode('utf-8', errors='replace')
-                            # Strip ANSI escape codes (color codes from ESP32 logs)
-                            message = re.sub(r'\x1b\[[0-9;]*m', '', message)
+                        # Update timestamps on every log received
+                        now = time.time()
+                        log_thread_heartbeat = now
+                        log_last_received = now
+                        # msg.message may be bytes
+                        message = msg.message if hasattr(msg, 'message') else str(msg)
+                        if isinstance(message, bytes):
+                            message = message.decode('utf-8', errors='replace')
+                        # Strip ANSI escape codes (color codes from ESP32 logs)
+                        message = re.sub(r'\x1b\[[0-9;]*m', '', message)
 
-                            # Parse and store packets in database
-                            _parse_and_store_packet(message)
-
-                            log_entry = {
-                                'time': datetime.now().isoformat(),
-                                'level': level_map.get(level_int, 'I'),
-                                'msg': message
-                            }
-
-                            # Add to history buffer for dump functionality
-                            with log_history_lock:
-                                log_history.append(log_entry)
-                                # Trim if too large
-                                if len(log_history) > LOG_HISTORY_MAX:
-                                    log_history[:] = log_history[-LOG_HISTORY_MAX:]
-
-                            log_queue.put_nowait(log_entry)
-                        except queue.Full:
-                            pass
+                        # Parse and store packets in database
+                        _parse_and_store_packet(message)
 
                     # subscribe_logs returns an unsubscribe callback, not a coroutine
                     unsub = client.subscribe_logs(on_log, log_level=aioesphomeapi.LogLevel.LOG_LEVEL_DEBUG)
@@ -3882,60 +3815,18 @@ def cmd_serve(args):
                             if stale_seconds > LOG_STALE_TIMEOUT:
                                 print(f"[LOG THREAD] Connection stale ({stale_seconds:.0f}s since last log), forcing reconnect", flush=True)
                                 connection_stale = True
-                                try:
-                                    log_queue.put_nowait({
-                                        'time': datetime.now().isoformat(),
-                                        'level': 'W',
-                                        'msg': f'Connection stale ({stale_seconds:.0f}s), reconnecting...',
-                                        'type': 'status',
-                                        'status': 'stale'
-                                    })
-                                except queue.Full:
-                                    pass
                     finally:
                         unsub()
 
                 except asyncio.TimeoutError:
                     print(f"[LOG THREAD] Connection timeout", flush=True)
-                    try:
-                        log_queue.put_nowait({
-                            'time': datetime.now().isoformat(),
-                            'level': 'E',
-                            'msg': 'Connection timeout',
-                            'type': 'status',
-                            'status': 'timeout'
-                        })
-                    except queue.Full:
-                        pass
                 except Exception as e:
                     print(f"[LOG THREAD] Error: {e}", flush=True)
-                    try:
-                        log_queue.put_nowait({
-                            'time': datetime.now().isoformat(),
-                            'level': 'E',
-                            'msg': f'Log subscription error: {e}',
-                            'type': 'status',
-                            'status': 'error'
-                        })
-                    except queue.Full:
-                        pass
                 finally:
                     try:
                         await asyncio.wait_for(client.disconnect(), timeout=5.0)
                     except:
                         pass
-
-                # Send reconnecting status
-                try:
-                    log_queue.put_nowait({
-                        'time': datetime.now().isoformat(),
-                        'level': 'W',
-                        'msg': 'Reconnecting to ESP32 in 3s...',
-                        'type': 'status',
-                        'status': 'reconnecting'
-                    })
-                except queue.Full:
-                    pass
 
                 # Wait before reconnecting (shorter delay)
                 print("[LOG THREAD] Waiting 3s before reconnect...", flush=True)

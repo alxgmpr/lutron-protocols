@@ -100,11 +100,6 @@ class CC1101CCA : public Component,
    */
   void send_pairing_pico(uint32_t device_id, int duration_seconds = 6);
 
-  /**
-   * @brief Send a single test packet for RTL-SDR capture analysis
-   * Sends 5 copies of a 0xB9 pairing packet with 200ms gaps
-   */
-  void send_test_packet(uint32_t device_id);
 
   /**
    * @brief Send pairing beacon packets like a bridge
@@ -186,18 +181,6 @@ class CC1101CCA : public Component,
   void send_bridge_pair_sequence(uint32_t bridge_id, uint32_t target_factory_id,
                                   int beacon_seconds = 20);
 
-  /**
-   * @brief Debug: Send raw alternating bytes (0xAA) to test CC1101
-   * This bypasses the encoder to test if CC1101 is transmitting correctly
-   */
-  void send_debug_pattern();
-
-  /**
-   * @brief Test packet parsing with hex string input
-   * Parses hex bytes and logs result as JSON for test verification
-   * @param hex_bytes Space-separated hex string (e.g., "88 00 8D E6 95 05 ...")
-   */
-  void test_decode_packet(const std::string &hex_bytes);
 
   /**
    * @brief Send Reset/Unpair packet to remove a Pico from a device
@@ -264,57 +247,6 @@ class CC1101CCA : public Component,
    * @param subnet 16-bit subnet
    */
   void stop_bridge_pairing(uint16_t subnet);
-
-  // ========== VIVE PAIRING (experimental fuzzer for RMJS PowPaks) ==========
-
-  /**
-   * @brief Send a single Vive beacon with explicit parameters
-   * @param subnet 16-bit subnet (e.g., 0x2C90)
-   * @param packet_type Beacon packet type (0x90-0x9F, typically 0x91-0x93)
-   * @param protocol Protocol byte (typically 0x21)
-   * @param format Format byte (0x08=initial, 0x0C=active)
-   * @param mode Mode byte (0x01=initial, 0x02=active)
-   */
-  void send_vive_beacon(uint16_t subnet, uint8_t packet_type, uint8_t protocol, uint8_t format, uint8_t mode);
-
-  /**
-   * @brief Start Vive beacon in manual mode - sends beacons with current params
-   * @param subnet 16-bit subnet (e.g., 0x2C90)
-   * @param packet_type Beacon packet type
-   * @param protocol Protocol byte
-   * @param format Format byte
-   * @param mode Mode byte
-   */
-  void start_vive_manual(uint16_t subnet, uint8_t packet_type, uint8_t protocol, uint8_t format, uint8_t mode);
-
-  /**
-   * @brief Start Vive beacon auto-sweep - cycles through all variations
-   * @param subnet 16-bit subnet (e.g., 0x2C90)
-   */
-  void start_vive_sweep(uint16_t subnet);
-
-  /**
-   * @brief Stop Vive beacon (manual or sweep)
-   */
-  void stop_vive_pairing();
-
-  /**
-   * @brief Check if Vive mode is active
-   */
-  bool is_vive_pairing_active() const { return vive_pairing_active_; }
-
-  /**
-   * @brief Check if Vive sweep mode is active
-   */
-  bool is_vive_sweep_active() const { return vive_sweep_active_; }
-
-  /**
-   * @brief Get current Vive parameters for UI display
-   */
-  uint8_t get_vive_packet_type() const { return vive_packet_type_; }
-  uint8_t get_vive_protocol() const { return vive_protocol_; }
-  uint8_t get_vive_format() const { return vive_format_; }
-  uint8_t get_vive_mode() const { return vive_mode_; }
 
   /**
    * @brief Send B0 pairing assignment to claim a device
@@ -462,22 +394,6 @@ class CC1101CCA : public Component,
   uint8_t pairing_seq_{0};
   uint8_t pairing_beacon_type_{0x93};  // Cycle through 0x93 -> 0x91 -> 0x92
   uint8_t pairing_beacon_count_{0};  // Counter for RX gap timing
-
-  // Vive pairing state
-  bool vive_pairing_active_{false};
-  bool vive_sweep_active_{false};      // True if in auto-sweep mode
-  uint16_t vive_subnet_{0};
-  uint8_t vive_seq_{0};
-  uint8_t vive_packet_type_{0x92};     // Current packet type (default 0x92)
-  uint8_t vive_protocol_{0x21};        // Current protocol byte (default 0x21)
-  uint8_t vive_format_{0x0C};          // Current format byte (default 0x0C)
-  uint8_t vive_mode_{0x02};            // Current mode byte (default 0x02)
-  uint8_t vive_sweep_type_idx_{0};     // Index for sweep mode
-  uint8_t vive_sweep_proto_idx_{0};    // Index for sweep mode
-  uint8_t vive_sweep_format_idx_{0};   // Index for sweep mode
-  uint8_t vive_sweep_packets_{0};      // Packets sent with current settings
-  uint32_t vive_variation_count_{0};   // Total variations sent
-  uint32_t last_vive_beacon_{0};
   uint32_t last_rx_check_{0};
   uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
 

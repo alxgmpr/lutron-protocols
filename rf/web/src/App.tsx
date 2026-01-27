@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useApi } from './hooks/useApi'
-import { useLogStream } from './hooks/useLogStream'
 import { usePacketStream } from './hooks/usePacketStream'
 import { DeviceProvider } from './context/DeviceContext'
+import { ProtocolDefinitionProvider } from './context/ProtocolDefinitionContext'
 
 // Layout
 import { Header, StatusBar } from './components/layout'
@@ -15,25 +15,19 @@ import {
   BridgeLevel,
   BridgeUnpair,
   BridgePairing,
-  VivePairing,
   DeviceState,
   DeviceConfig,
   ResetPico
 } from './components/controls'
 
 // Display
-import { PacketDisplay, LogDisplay } from './components/display'
+import { HexPacketDisplay } from './components/display'
 
 // Devices
 import { DeviceList } from './components/devices'
 
-// Relay
-import { RelayConfig } from './components/relay'
-
 import type { Device } from './types'
 import './App.css'
-
-type Tab = 'dashboard' | 'relay'
 
 function App() {
   const { get, postJson, del } = useApi()
@@ -41,23 +35,14 @@ function App() {
   // Packet stream from backend (parsed packets via SSE)
   const {
     txPackets, rxPackets,
-    clearTx, clearRx, clearAll: clearAllPackets,
-    pausedTx, pausedRx, allPaused: allPacketsPaused,
-    togglePauseTx, togglePauseRx, togglePauseAll: togglePauseAllPackets,
+    clearTx, clearRx,
+    pausedTx, pausedRx,
+    togglePauseTx, togglePauseRx,
     connected
   } = usePacketStream()
 
-  // Log stream from backend (raw logs for debugging)
-  const {
-    logs,
-    clearLogs,
-    pausedLogs,
-    togglePauseLogs
-  } = useLogStream()
-
   const [devices, setDevices] = useState<Record<string, Device>>({})
   const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard')
 
   // Resizable column widths (stored in localStorage)
   const [leftWidth, setLeftWidth] = useState(() => {
@@ -166,137 +151,80 @@ function App() {
     showStatus(`Cleared ${unlabeledIds.length} unlabeled device(s)`, 'success')
   }, [devices, del, loadDevices, showStatus])
 
-  const dumpLogs = useCallback(async () => {
-    try {
-      const result = await postJson('/api/logs/dump', {}) as { status: string; filepath?: string; log_count?: number; error?: string }
-      if (result.status === 'ok' && result.filepath) {
-        showStatus(`Logs saved: ${result.filepath} (${result.log_count} entries)`, 'success')
-      } else {
-        showStatus(result.error || 'Failed to dump logs', 'error')
-      }
-    } catch (err) {
-      showStatus(`Failed to dump logs: ${err}`, 'error')
-    }
-  }, [postJson, showStatus])
-
-  // Device registration is now handled by polling only
-  // The backend stores devices when packets are received via the API
-  // Frontend just refreshes the device list periodically (every 10s)
-
   return (
+    <ProtocolDefinitionProvider>
     <DeviceProvider devices={devices}>
     <div className="app">
       <Header connected={connected} />
 
-      <nav className="tab-nav">
-        <button
-          className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'relay' ? 'active' : ''}`}
-          onClick={() => setActiveTab('relay')}
-        >
-          Relay
-        </button>
-      </nav>
+      <main
+        className="main-grid"
+        style={{
+          gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`
+        }}
+      >
+        <section className="panel left-panel">
+          <PicoPairing showStatus={showStatus} />
+          <PicoButtons showStatus={showStatus} />
+          <SaveFavorite showStatus={showStatus} />
+          <BridgeLevel showStatus={showStatus} />
+          <DeviceConfig showStatus={showStatus} />
+          <BridgeUnpair showStatus={showStatus} />
+          <BridgePairing showStatus={showStatus} />
+          <DeviceState showStatus={showStatus} />
+          <ResetPico showStatus={showStatus} />
+        </section>
 
-      {activeTab === 'dashboard' && (
-        <main
-          className="main-grid"
-          style={{
-            gridTemplateColumns: `${leftWidth}px 4px 1fr 4px ${rightWidth}px`
-          }}
-        >
-          <section className="panel left-panel">
-            <PicoPairing showStatus={showStatus} />
-            <PicoButtons showStatus={showStatus} />
-            <SaveFavorite showStatus={showStatus} />
-            <BridgeLevel showStatus={showStatus} />
-            <DeviceConfig showStatus={showStatus} />
-            <BridgeUnpair showStatus={showStatus} />
-            <BridgePairing showStatus={showStatus} />
-            <VivePairing showStatus={showStatus} />
-            <DeviceState showStatus={showStatus} />
-            <ResetPico showStatus={showStatus} />
-          </section>
+        <div
+          className="resize-handle resize-handle-left"
+          onMouseDown={(e) => handleMouseDown('left', e)}
+        />
 
-          <div
-            className="resize-handle resize-handle-left"
-            onMouseDown={(e) => handleMouseDown('left', e)}
+        <section className="panel center-panel">
+          <div className="center-panel-header">
+            <h2>Packet Monitor</h2>
+          </div>
+          <HexPacketDisplay
+            title="TX Packets"
+            packets={txPackets}
+            onClear={clearTx}
+            variant="tx"
+            paused={pausedTx}
+            onTogglePause={togglePauseTx}
+            collapsible
           />
-
-          <section className="panel center-panel">
-            <div className="center-panel-header">
-              <h2>Log Monitor</h2>
-              <div className="center-panel-actions">
-                <button
-                  className={`pause-all-btn ${allPacketsPaused && pausedLogs ? 'paused' : ''}`}
-                  onClick={() => { togglePauseAllPackets(); togglePauseLogs(); }}
-                >
-                  {allPacketsPaused && pausedLogs ? 'Resume All' : 'Pause All'}
-                </button>
-                <button className="dump-logs-btn" onClick={dumpLogs}>Dump Logs</button>
-                <button className="clear-all-btn" onClick={() => { clearAllPackets(); clearLogs(); }}>Clear All</button>
-              </div>
-            </div>
-            <PacketDisplay
-              title="TX Packets"
-              packets={txPackets}
-              onClear={clearTx}
-              variant="tx"
-              paused={pausedTx}
-              onTogglePause={togglePauseTx}
-              collapsible
-            />
-            <PacketDisplay
-              title="RX Packets"
-              packets={rxPackets}
-              onClear={clearRx}
-              variant="rx"
-              paused={pausedRx}
-              onTogglePause={togglePauseRx}
-              collapsible
-            />
-            <LogDisplay
-              logs={logs}
-              onClear={clearLogs}
-              paused={pausedLogs}
-              onTogglePause={togglePauseLogs}
-              collapsible
-              defaultCollapsed
-            />
-          </section>
-
-          <div
-            className="resize-handle resize-handle-right"
-            onMouseDown={(e) => handleMouseDown('right', e)}
+          <HexPacketDisplay
+            title="RX Packets"
+            packets={rxPackets}
+            onClear={clearRx}
+            variant="rx"
+            paused={pausedRx}
+            onTogglePause={togglePauseRx}
+            collapsible
           />
+        </section>
 
-          <section className="panel right-panel">
-            <DeviceList
-              devices={devices}
-              onDelete={deleteDevice}
-              onClear={clearDevices}
-              onClearUnlabeled={clearUnlabeledDevices}
-              onRefresh={loadDevices}
-              showStatus={showStatus}
-            />
-          </section>
-        </main>
-      )}
+        <div
+          className="resize-handle resize-handle-right"
+          onMouseDown={(e) => handleMouseDown('right', e)}
+        />
 
-      {activeTab === 'relay' && (
-        <main className="relay-page">
-          <RelayConfig showStatus={showStatus} devices={devices} />
-        </main>
-      )}
+        <section className="panel right-panel">
+          <DeviceList
+            devices={devices}
+            onDelete={deleteDevice}
+            onClear={clearDevices}
+            onClearUnlabeled={clearUnlabeledDevices}
+            onRefresh={loadDevices}
+            showStatus={showStatus}
+          />
+        </section>
+      </main>
 
       <StatusBar message={status.message} type={status.type} />
     </div>
     </DeviceProvider>
+    </ProtocolDefinitionProvider>
   )
 }
 

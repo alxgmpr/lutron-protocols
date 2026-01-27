@@ -1,0 +1,207 @@
+.hex-packet-row {
+  display: grid;
+  grid-template-columns: 70px 16px auto auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-primary);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  transition: background-color 0.1s;
+}
+
+.hex-packet-row:hover {
+  background: var(--bg-elevated);
+}
+
+.hex-packet-row-tx {
+  border-left: 3px solid var(--accent-green);
+}
+
+.hex-packet-row-rx {
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.hex-packet-bad-crc {
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.hex-packet-time {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.hex-packet-direction {
+  font-weight: bold;
+  width: 12px;
+  text-align: center;
+}
+
+.hex-packet-direction-tx {
+  color: var(--accent-green);
+}
+
+.hex-packet-direction-rx {
+  color: var(--accent-cyan);
+}
+
+.hex-packet-type {
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: white;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.hex-packet-crc-warning {
+  color: var(--accent-red);
+  font-weight: bold;
+  font-size: 14px;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.hex-packet-summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.hex-packet-summary:hover {
+  color: var(--text-primary);
+}
+
+.hex-packet-bytes {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.hex-packet-expand {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hex-packet-expand:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.hex-packet-expand.expanded {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Expanded detail panel */
+.hex-packet-detail-panel {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+}
+
+.hex-packet-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.hex-packet-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.1s;
+  border: 1px solid transparent;
+}
+
+.hex-packet-detail-field:hover {
+  border-color: var(--accent-primary);
+}
+
+.hex-packet-detail-field.selected {
+  border-color: var(--accent-primary);
+  background: var(--bg-elevated);
+}
+
+.hex-packet-detail-name {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hex-packet-detail-value {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hex-packet-detail-value .decoded {
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+.hex-packet-detail-value .raw {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+/* Selected field detail */
+.hex-packet-field-detail {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border-radius: 4px;
+  border: 1px solid var(--accent-primary);
+}
+
+.field-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.field-detail-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.field-detail-format {
+  padding: 2px 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.field-detail-info {
+  font-size: 11px;
+  color: var(--text-secondary);
+}

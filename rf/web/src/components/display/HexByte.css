@@ -1,0 +1,99 @@
+.hex-byte-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  align-items: center;
+}
+
+/* Field container - groups all bytes together */
+.hex-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  position: relative;
+}
+
+/* Known fields have colored left border */
+.hex-field-known {
+  border-left: 3px solid var(--field-color);
+  background: color-mix(in srgb, var(--field-color) 8%, var(--bg-elevated));
+}
+
+/* Unknown/padding fields have subtle dashed border */
+.hex-field-unknown,
+.hex-field-unmapped {
+  border: 1px dashed var(--border-primary);
+  opacity: 0.7;
+  background: var(--bg-secondary);
+}
+
+/* Hex bytes inside field */
+.hex-field-bytes {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Field label (shown on hover) */
+.hex-field-label {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--field-color);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 100;
+  pointer-events: none;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.hex-field-label::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--field-color);
+}
+
+/* Highlighted state (on hover) */
+.hex-field-highlighted {
+  background: color-mix(in srgb, var(--field-color) 25%, var(--bg-elevated));
+  border-color: var(--field-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--field-color) 40%, transparent);
+  z-index: 1;
+  transform: translateY(-1px);
+}
+
+.hex-field-highlighted .hex-field-bytes {
+  color: var(--text-primary);
+}
+
+/* Hover effect for non-highlighted */
+.hex-field:hover:not(.hex-field-highlighted) {
+  background: color-mix(in srgb, var(--field-color) 15%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--field-color) 50%, transparent);
+}
+
+/* Unmapped bytes highlighted */
+.hex-field-unmapped.hex-field-highlighted {
+  background: var(--bg-elevated);
+  border-color: var(--text-muted);
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
+}

@@ -39,13 +39,6 @@ export interface DeviceInfo {
   subnet?: string  // Subnet address in Lutron Designer format (big-endian, e.g., "902C")
 }
 
-export interface LogEntry {
-  time: string
-  level: string
-  msg: string
-  type?: string
-}
-
 export interface ParsedField {
   name: string
   start: number

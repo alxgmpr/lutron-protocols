@@ -30,8 +30,6 @@ except ImportError:
     print("[PacketRelay] Warning: cca module not available, CRC recalculation disabled")
 
 logger = logging.getLogger(__name__)
-# Enable debug logging for packet relay
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)s %(levelname)s: %(message)s')
 
 
 # UDP command bytes

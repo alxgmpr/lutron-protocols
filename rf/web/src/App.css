@@ -51,44 +51,6 @@
   opacity: 0.6;
 }
 
-/* Tab Navigation */
-.tab-nav {
-  display: flex;
-  gap: 0;
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
-  padding: 0 1rem;
-}
-
-.tab-btn {
-  padding: 0.75rem 1.5rem;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.tab-btn:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-}
-
-.tab-btn.active {
-  color: var(--accent-blue);
-  border-bottom-color: var(--accent-blue);
-}
-
-/* Relay Page */
-.relay-page {
-  flex: 1;
-  overflow-y: auto;
-  background: var(--bg-secondary);
-}
-
 .panel {
   display: flex;
   flex-direction: column;
@@ -139,54 +101,6 @@
   color: var(--text-primary);
 }
 
-.center-panel-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.pause-all-btn,
-.clear-all-btn,
-.dump-logs-btn {
-  padding: 4px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-primary);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.pause-all-btn:hover {
-  background: #ff9800;
-  border-color: #ff9800;
-  color: white;
-}
-
-.pause-all-btn.paused {
-  background: #ff9800;
-  border-color: #ff9800;
-  color: white;
-}
-
-.pause-all-btn.paused:hover {
-  background: #4caf50;
-  border-color: #4caf50;
-}
-
-.clear-all-btn:hover {
-  background: #ef5350;
-  border-color: #ef5350;
-  color: white;
-}
-
-.dump-logs-btn:hover {
-  background: #2196f3;
-  border-color: #2196f3;
-  color: white;
-}
-
 .center-panel > *:not(.center-panel-header) {
   flex: 1;
   min-height: 0;
@@ -197,11 +111,25 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.right-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.right-panel::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 3px;
+}
+
+.right-panel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .right-panel > * {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 /* Responsive breakpoints - hide resize handles on smaller screens */

@@ -157,12 +157,6 @@ api:
               strtoul(zone_id_2.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0));
 
-    - service: test_decode
-      variables:
-        hex_bytes: string
-      then:
-        - lambda: id(cca_radio)->test_decode_packet(hex_bytes);
-
     - service: send_led_config
       variables:
         bridge_zone_id: string
@@ -224,30 +218,6 @@ api:
         subnet: string
       then:
         - lambda: id(cca_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
-
-    # Vive pairing (experimental - for RMJS PowPaks)
-    - service: start_vive_manual
-      variables:
-        subnet: string
-        packet_type: int
-        protocol: int
-        format: int
-        mode: int
-      then:
-        - lambda: |-
-            id(cca_radio)->start_vive_manual(
-              strtoul(subnet.c_str(), nullptr, 0),
-              packet_type, protocol, format, mode);
-
-    - service: start_vive_sweep
-      variables:
-        subnet: string
-      then:
-        - lambda: id(cca_radio)->start_vive_sweep(strtoul(subnet.c_str(), nullptr, 0));
-
-    - service: stop_vive_pairing
-      then:
-        - lambda: id(cca_radio)->stop_vive_pairing();
 
     - service: send_pair_assignment
       variables:
