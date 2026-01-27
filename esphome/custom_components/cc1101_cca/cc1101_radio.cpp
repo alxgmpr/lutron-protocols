@@ -275,10 +275,8 @@ bool CC1101Radio::check_rx() {
 
   if (overflow) {
     this->overflow_count_++;
-    // Only log occasionally to avoid flooding
-    if (this->overflow_count_ <= 3 || (this->overflow_count_ % 100) == 0) {
-      ESP_LOGW(TAG, "RX FIFO overflow #%u, flushing", this->overflow_count_);
-    }
+    // Always log overflow - this is critical diagnostic info
+    ESP_LOGW(TAG, "FIFO OVERFLOW #%u - WiFi blocking main loop", this->overflow_count_);
     this->set_idle();
     this->flush_rx();
     this->strobe(CC1101_SRX);

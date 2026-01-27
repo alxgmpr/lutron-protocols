@@ -591,6 +591,13 @@ def _record_tx_packet(packet_type: str, device_id: str = None, source_id: str = 
         pass
 
 
+# Packet counting for diagnostics
+_udp_rx_count = 0
+_udp_tx_count = 0
+_udp_last_log_time = 0
+_UDP_LOG_INTERVAL = 5.0  # Log stats every 5 seconds
+
+
 def _handle_udp_packet(data: bytes, rssi: int, direction: str = 'rx'):
     """
     Handle a CCA packet received via UDP transport.
@@ -603,6 +610,25 @@ def _handle_udp_packet(data: bytes, rssi: int, direction: str = 'rx'):
         rssi: RSSI value from CC1101 (0 for TX packets)
         direction: 'rx' for received packets, 'tx' for transmitted packets
     """
+    global _udp_rx_count, _udp_tx_count, _udp_last_log_time
+
+    # Count packets
+    if direction == 'rx':
+        _udp_rx_count += 1
+    else:
+        _udp_tx_count += 1
+
+    # Periodic logging
+    now = time.time()
+    if now - _udp_last_log_time >= _UDP_LOG_INTERVAL:
+        _udp_last_log_time = now
+        # Get transport stats if available
+        transport_stats = ""
+        if _udp_transport:
+            stats = _udp_transport.get_stats()
+            transport_stats = f" (queue={stats.get('queue_size', 0)}, drop={stats.get('packets_dropped', 0)})"
+        print(f"[BACKEND] Packets: RX={_udp_rx_count} TX={_udp_tx_count}{transport_stats}")
+
     timestamp = datetime.now().isoformat()
 
     # Convert bytes to hex string for parsing
