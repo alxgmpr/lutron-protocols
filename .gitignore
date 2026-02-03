@@ -41,6 +41,9 @@ node_modules/
 *.pcapng
 *.log
 
+# Packet capture / recording output
+*.jsonl
+
 # Lutron project files (in case any escape data/)
 *.ra3
 *.hw

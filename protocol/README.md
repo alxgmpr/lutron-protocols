@@ -60,7 +60,7 @@ npm run codegen
 
 ## Usage in Code
 
-For protocol data in Python (e.g. esp32_controller), load `protocol/cca.yaml` with PyYAML; codegen no longer emits Python.
+For protocol data in Python, load `protocol/cca.yaml` with PyYAML; codegen no longer emits Python.
 
 ### TypeScript (Frontend)
 
