@@ -40,25 +40,23 @@ mod embedded;
 
 // Core modules (no_std compatible)
 pub mod crc;
-pub mod n81;
-pub mod packet;
 pub mod error;
 pub mod ffi;
+pub mod n81;
+pub mod packet;
 
 // std-only modules
+#[cfg(feature = "std")]
+pub mod codegen;
 #[cfg(feature = "std")]
 pub mod decode;
 #[cfg(feature = "std")]
 pub mod live;
-#[cfg(feature = "std")]
-pub mod serve;
-#[cfg(feature = "std")]
-pub mod codegen;
 
 // Re-exports for convenience
-pub use crc::{calc_crc, verify_crc, append_crc};
-pub use packet::{PacketParser, DecodedPacket, PacketType, Button, Action};
+pub use crc::{append_crc, calc_crc, verify_crc};
 pub use error::{CcaError, Result};
+pub use packet::{Action, Button, DecodedPacket, PacketParser, PacketType};
 
 /// Protocol constants
 pub mod constants {

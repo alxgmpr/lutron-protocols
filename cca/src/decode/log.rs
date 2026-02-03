@@ -1,12 +1,12 @@
 //! ESPHome log file decoder
 
-use std::path::Path;
-use std::io::{BufRead, BufReader};
-use std::fs::File;
-use regex::Regex;
-use serde::Deserialize;
 use crate::error::Result;
 use crate::packet::PacketType;
+use regex::Regex;
+use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
 
 /// Parsed log entry
 #[derive(Debug, Clone)]
@@ -68,7 +68,10 @@ fn extract_packet_info(bytes: &[u8]) -> (String, String, Option<String>, Option<
         // B0 - dimmer discovery: hardware ID at bytes 16-19
         0xB0 => {
             if bytes.len() > 19 {
-                format!("{:02X}{:02X}{:02X}{:02X}", bytes[16], bytes[17], bytes[18], bytes[19])
+                format!(
+                    "{:02X}{:02X}{:02X}{:02X}",
+                    bytes[16], bytes[17], bytes[18], bytes[19]
+                )
             } else {
                 String::new()
             }
@@ -76,7 +79,10 @@ fn extract_packet_info(bytes: &[u8]) -> (String, String, Option<String>, Option<
         // 0x80-0x8F, 0xA0-0xAF - standard packets: device ID at bytes 3-6
         _ => {
             if bytes.len() > 6 {
-                format!("{:02X}{:02X}{:02X}{:02X}", bytes[3], bytes[4], bytes[5], bytes[6])
+                format!(
+                    "{:02X}{:02X}{:02X}{:02X}",
+                    bytes[3], bytes[4], bytes[5], bytes[6]
+                )
             } else {
                 String::new()
             }
@@ -108,9 +114,7 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
 
     // Regex for JSON format:
     // RX: {"bytes":"93 01 AD ...","rssi":-59,"len":24,"crc_ok":true}
-    let rx_json = Regex::new(
-        r"\[(\d{2}:\d{2}:\d{2}(?:\.\d{3})?)\].*RX: (\{.+\})"
-    ).unwrap();
+    let rx_json = Regex::new(r"\[(\d{2}:\d{2}:\d{2}(?:\.\d{3})?)\].*RX: (\{.+\})").unwrap();
 
     let mut entries = Vec::new();
 
@@ -119,12 +123,16 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
 
         // Try JSON format first (newer)
         if let Some(caps) = rx_json.captures(&line) {
-            let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let timestamp = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let json_str = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
             if let Ok(pkt) = serde_json::from_str::<JsonRxPacket>(json_str) {
                 let bytes = parse_hex_bytes(&pkt.bytes);
-                let (packet_type, device_id, target_id, level, sequence) = extract_packet_info(&bytes);
+                let (packet_type, device_id, target_id, level, sequence) =
+                    extract_packet_info(&bytes);
 
                 entries.push(LogEntry {
                     timestamp,
@@ -144,13 +152,28 @@ pub fn decode_log_file<P: AsRef<Path>>(path: P) -> Result<Vec<LogEntry>> {
 
         // Fall back to parsed format
         if let Some(caps) = rx_parsed.captures(&line) {
-            let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let packet_type = caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let device_id = caps.get(3).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let timestamp = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let packet_type = caps
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let device_id = caps
+                .get(3)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let target_id = caps.get(4).map(|m| m.as_str().to_string());
             let level = caps.get(5).and_then(|m| m.as_str().parse().ok());
-            let sequence = caps.get(8).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-            let rssi = caps.get(9).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            let sequence = caps
+                .get(8)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
+            let rssi = caps
+                .get(9)
+                .and_then(|m| m.as_str().parse().ok())
+                .unwrap_or(0);
             let crc_ok = caps.get(10).map(|m| m.as_str() == "OK").unwrap_or(false);
 
             entries.push(LogEntry {
@@ -193,7 +216,10 @@ pub fn summarize_log(entries: &[LogEntry]) -> LogSummary {
             summary.invalid_crc += 1;
         }
 
-        *summary.packet_types.entry(entry.packet_type.clone()).or_insert(0) += 1;
+        *summary
+            .packet_types
+            .entry(entry.packet_type.clone())
+            .or_insert(0) += 1;
         *summary.devices.entry(entry.device_id.clone()).or_insert(0) += 1;
     }
 

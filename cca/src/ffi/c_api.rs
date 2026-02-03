@@ -10,13 +10,13 @@ use core::slice;
 #[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
 #[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-#[cfg(not(feature = "std"))]
 use alloc::format;
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 
 use crate::crc;
 use crate::n81;
-use crate::packet::{PacketParser, PacketType, Button};
+use crate::packet::{Button, PacketParser, PacketType};
 
 /// Maximum raw packet size (pairing packets are 53 bytes)
 pub const CCA_MAX_PACKET_LEN: usize = 56;
@@ -353,7 +353,9 @@ pub extern "C" fn cca_packet_type_name(pkt_type: u8) -> *const c_char {
         PacketType::ButtonShortB => "BTN_SHORT_B\0",
         PacketType::ButtonLongB => "BTN_LONG_B\0",
         PacketType::StateReport80 => "STATE_80\0",
-        PacketType::StateReport81 | PacketType::StateReport82 | PacketType::StateReport83 => "STATE_RPT\0",
+        PacketType::StateReport81 | PacketType::StateReport82 | PacketType::StateReport83 => {
+            "STATE_RPT\0"
+        }
         PacketType::ConfigA1 => "CONFIG_A1\0",
         PacketType::Level => "SET_LEVEL\0",
         PacketType::ConfigA3 => "CONFIG_A3\0",
@@ -502,9 +504,8 @@ mod tests {
 
             // Button press packet with valid CRC
             let payload: [u8; 22] = [
-                0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04,
-                0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC, 0xCC, 0xCC,
-                0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC
+                0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+                0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
             ];
             let crc = cca_calc_crc(payload.as_ptr(), payload.len());
             let mut packet_bytes = payload.to_vec();

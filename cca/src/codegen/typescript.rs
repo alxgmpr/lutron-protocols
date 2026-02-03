@@ -10,7 +10,10 @@ pub fn generate_typescript(protocol: &Protocol) -> String {
     out.push_str(" * Auto-generated from protocol/cca.yaml\n");
     out.push_str(" * DO NOT EDIT - regenerate with: cca codegen\n");
     out.push_str(" *\n");
-    out.push_str(&format!(" * {} v{}\n", protocol.meta.name, protocol.meta.version));
+    out.push_str(&format!(
+        " * {} v{}\n",
+        protocol.meta.name, protocol.meta.version
+    ));
     out.push_str(" */\n\n");
 
     // RF Constants
@@ -24,7 +27,10 @@ pub fn generate_typescript(protocol: &Protocol) -> String {
     // CRC Constants
     out.push_str("/** CRC configuration */\n");
     out.push_str("export const CRC = {\n");
-    out.push_str(&format!("  POLYNOMIAL: 0x{:04X},\n", protocol.crc.polynomial));
+    out.push_str(&format!(
+        "  POLYNOMIAL: 0x{:04X},\n",
+        protocol.crc.polynomial
+    ));
     out.push_str(&format!("  WIDTH: {},\n", protocol.crc.width));
     out.push_str(&format!("  INITIAL: 0x{:04X},\n", protocol.crc.initial));
     out.push_str("} as const;\n\n");
@@ -32,27 +38,59 @@ pub fn generate_typescript(protocol: &Protocol) -> String {
     // Framing Constants
     out.push_str("/** Packet framing */\n");
     out.push_str("export const FRAMING = {\n");
-    out.push_str(&format!("  PREAMBLE_BITS: {},\n", protocol.framing.preamble_bits));
-    out.push_str(&format!("  PREAMBLE_PATTERN: 0x{:08X},\n", protocol.framing.preamble_pattern));
-    out.push_str(&format!("  SYNC_BYTE: 0x{:02X},\n", protocol.framing.sync_byte));
+    out.push_str(&format!(
+        "  PREAMBLE_BITS: {},\n",
+        protocol.framing.preamble_bits
+    ));
+    out.push_str(&format!(
+        "  PREAMBLE_PATTERN: 0x{:08X},\n",
+        protocol.framing.preamble_pattern
+    ));
+    out.push_str(&format!(
+        "  SYNC_BYTE: 0x{:02X},\n",
+        protocol.framing.sync_byte
+    ));
     out.push_str("  PREFIX: [");
     for (i, b) in protocol.framing.prefix.iter().enumerate() {
-        if i > 0 { out.push_str(", "); }
+        if i > 0 {
+            out.push_str(", ");
+        }
         out.push_str(&format!("0x{:02X}", b));
     }
     out.push_str("],\n");
-    out.push_str(&format!("  TRAILING_BITS: {},\n", protocol.framing.trailing_bits));
+    out.push_str(&format!(
+        "  TRAILING_BITS: {},\n",
+        protocol.framing.trailing_bits
+    ));
     out.push_str("} as const;\n\n");
 
     // Timing Constants
     out.push_str("/** Timing constants (milliseconds) */\n");
     out.push_str("export const TIMING = {\n");
-    out.push_str(&format!("  BUTTON_REPEAT_MS: {},\n", protocol.timing.button_repeat_ms));
-    out.push_str(&format!("  BEACON_INTERVAL_MS: {},\n", protocol.timing.beacon_interval_ms));
-    out.push_str(&format!("  PAIRING_INTERVAL_MS: {},\n", protocol.timing.pairing_interval_ms));
-    out.push_str(&format!("  LEVEL_REPORT_MS: {},\n", protocol.timing.level_report_ms));
-    out.push_str(&format!("  UNPAIR_INTERVAL_MS: {},\n", protocol.timing.unpair_interval_ms));
-    out.push_str(&format!("  LED_CONFIG_INTERVAL_MS: {},\n", protocol.timing.led_config_interval_ms));
+    out.push_str(&format!(
+        "  BUTTON_REPEAT_MS: {},\n",
+        protocol.timing.button_repeat_ms
+    ));
+    out.push_str(&format!(
+        "  BEACON_INTERVAL_MS: {},\n",
+        protocol.timing.beacon_interval_ms
+    ));
+    out.push_str(&format!(
+        "  PAIRING_INTERVAL_MS: {},\n",
+        protocol.timing.pairing_interval_ms
+    ));
+    out.push_str(&format!(
+        "  LEVEL_REPORT_MS: {},\n",
+        protocol.timing.level_report_ms
+    ));
+    out.push_str(&format!(
+        "  UNPAIR_INTERVAL_MS: {},\n",
+        protocol.timing.unpair_interval_ms
+    ));
+    out.push_str(&format!(
+        "  LED_CONFIG_INTERVAL_MS: {},\n",
+        protocol.timing.led_config_interval_ms
+    ));
     out.push_str("} as const;\n\n");
 
     // Sequence Constants
@@ -102,17 +140,26 @@ fn generate_enum(out: &mut String, name: &str, enum_def: &super::EnumDef) {
             if !variant.description.is_empty() {
                 out.push_str(&format!("  /** {} */\n", variant.description));
             }
-            out.push_str(&format!("  {}: 0x{:02X},\n", variant_name.to_uppercase(), value));
+            out.push_str(&format!(
+                "  {}: 0x{:02X},\n",
+                variant_name.to_uppercase(),
+                value
+            ));
         }
     }
     out.push_str("} as const;\n\n");
 
     // Type alias
-    out.push_str(&format!("export type {} = typeof {}[keyof typeof {}];\n\n",
-        ts_name, ts_name, ts_name));
+    out.push_str(&format!(
+        "export type {} = typeof {}[keyof typeof {}];\n\n",
+        ts_name, ts_name, ts_name
+    ));
 
     // Name lookup
-    out.push_str(&format!("export const {}Names: Record<{}, string> = {{\n", ts_name, ts_name));
+    out.push_str(&format!(
+        "export const {}Names: Record<{}, string> = {{\n",
+        ts_name, ts_name
+    ));
     for (variant_name, variant) in &enum_def.values {
         if let Some(value) = variant.value {
             out.push_str(&format!("  [0x{:02X}]: '{}',\n", value, variant_name));
@@ -126,7 +173,11 @@ fn generate_packet_types(out: &mut String, protocol: &Protocol) {
     out.push_str("export const PacketType = {\n");
     for (name, pkt) in &protocol.packet_types {
         out.push_str(&format!("  /** {} */\n", pkt.description));
-        out.push_str(&format!("  {}: 0x{:02X},\n", name.to_uppercase(), pkt.value));
+        out.push_str(&format!(
+            "  {}: 0x{:02X},\n",
+            name.to_uppercase(),
+            pkt.value
+        ));
     }
     out.push_str("} as const;\n\n");
 
@@ -148,8 +199,14 @@ fn generate_packet_types(out: &mut String, protocol: &Protocol) {
         out.push_str(&format!("    name: '{}',\n", name));
         out.push_str(&format!("    length: {},\n", pkt.length));
         out.push_str(&format!("    category: '{}',\n", pkt.category));
-        out.push_str(&format!("    description: '{}',\n", pkt.description.replace('\'', "\\'")));
-        out.push_str(&format!("    usesBigEndianDeviceId: {},\n", pkt.device_id_endian == "big"));
+        out.push_str(&format!(
+            "    description: '{}',\n",
+            pkt.description.replace('\'', "\\'")
+        ));
+        out.push_str(&format!(
+            "    usesBigEndianDeviceId: {},\n",
+            pkt.device_id_endian == "big"
+        ));
         out.push_str(&format!("    isVirtual: {},\n", pkt.virtual_type));
         out.push_str("  },\n");
 
@@ -159,8 +216,14 @@ fn generate_packet_types(out: &mut String, protocol: &Protocol) {
             out.push_str(&format!("    name: '{}',\n", name));
             out.push_str(&format!("    length: {},\n", pkt.length));
             out.push_str(&format!("    category: '{}',\n", pkt.category));
-            out.push_str(&format!("    description: '{}',\n", pkt.description.replace('\'', "\\'")));
-            out.push_str(&format!("    usesBigEndianDeviceId: {},\n", pkt.device_id_endian == "big"));
+            out.push_str(&format!(
+                "    description: '{}',\n",
+                pkt.description.replace('\'', "\\'")
+            ));
+            out.push_str(&format!(
+                "    usesBigEndianDeviceId: {},\n",
+                pkt.device_id_endian == "big"
+            ));
             out.push_str(&format!("    isVirtual: {},\n", pkt.virtual_type));
             out.push_str("  },\n");
         }
@@ -196,7 +259,10 @@ fn generate_field_defs(out: &mut String, protocol: &Protocol) {
             out.push_str(&format!("      size: {},\n", field.size));
             out.push_str(&format!("      format: '{}',\n", field.format));
             if !field.description.is_empty() {
-                out.push_str(&format!("      description: '{}',\n", field.description.replace('\'', "\\'")));
+                out.push_str(&format!(
+                    "      description: '{}',\n",
+                    field.description.replace('\'', "\\'")
+                ));
             }
             out.push_str("    },\n");
         }
@@ -231,14 +297,22 @@ fn generate_sequences(out: &mut String, protocol: &Protocol) {
     for (name, seq) in &protocol.sequences {
         out.push_str(&format!("  '{}': {{\n", name));
         out.push_str(&format!("    name: '{}',\n", name));
-        out.push_str(&format!("    description: '{}',\n", seq.description.replace('\'', "\\'")));
+        out.push_str(&format!(
+            "    description: '{}',\n",
+            seq.description.replace('\'', "\\'")
+        ));
         out.push_str("    steps: [\n");
 
         for step in &seq.steps {
-            let count = step.count.map(|c| format!("{}", c)).unwrap_or_else(|| "null".to_string());
+            let count = step
+                .count
+                .map(|c| format!("{}", c))
+                .unwrap_or_else(|| "null".to_string());
             let interval = step.interval_ms.unwrap_or(protocol.timing.button_repeat_ms);
-            out.push_str(&format!("      {{ packetType: '{}', count: {}, intervalMs: {} }},\n",
-                step.packet, count, interval));
+            out.push_str(&format!(
+                "      {{ packetType: '{}', count: {}, intervalMs: {} }},\n",
+                step.packet, count, interval
+            ));
         }
 
         out.push_str("    ],\n");
@@ -269,14 +343,18 @@ fn generate_helpers(out: &mut String, _protocol: &Protocol) {
 
     // Category checker
     out.push_str("/** Check if packet type belongs to a category */\n");
-    out.push_str("export function isPacketCategory(typeCode: number, category: string): boolean {\n");
+    out.push_str(
+        "export function isPacketCategory(typeCode: number, category: string): boolean {\n",
+    );
     out.push_str("  return PacketTypeInfo[typeCode]?.category === category;\n");
     out.push_str("}\n\n");
 
     // nextSequence helper
     out.push_str("/** Calculate next sequence number */\n");
     out.push_str("export function nextSequence(seq: number): number {\n");
-    out.push_str(&format!("  return (seq + SEQUENCE.INCREMENT) % SEQUENCE.WRAP;\n"));
+    out.push_str(&format!(
+        "  return (seq + SEQUENCE.INCREMENT) % SEQUENCE.WRAP;\n"
+    ));
     out.push_str("}\n");
 }
 

@@ -43,39 +43,24 @@ device_categories: # Classification of discovered devices
 
 ## Code Generation
 
-Generated code lives in `rf/generated/`:
+Generated code lives in `protocol/generated/`:
 
 ```
-rf/generated/
-  typescript/protocol.ts  # Frontend type definitions
-  python/cca_protocol.py  # Backend protocol module
+protocol/generated/
+  rust/mod.rs
+  typescript/protocol.ts
+  markdown/PROTOCOL.md
 ```
 
-To regenerate:
+To regenerate (from repo root; uses local cca in `cca/`):
 
 ```bash
-cca codegen
+npm run codegen
 ```
 
 ## Usage in Code
 
-### Python (Backend)
-
-```python
-from generated.python.cca_protocol import (
-    PACKET_TYPES,
-    FIELD_FORMATS,
-    ENUMS,
-    get_packet_type,
-    parse_field_value
-)
-
-# Get packet type from first byte
-pkt_type = get_packet_type(0x88)  # -> "BTN_SHORT_A"
-
-# Parse a field value
-level = parse_field_value(bytes_list, 11, 1, "level_byte")  # -> "50%"
-```
+For protocol data in Python (e.g. esp32_controller), load `protocol/cca.yaml` with PyYAML; codegen no longer emits Python.
 
 ### TypeScript (Frontend)
 
@@ -105,5 +90,5 @@ const level = parseFieldValue(bytes, 11, 1, 'level_byte');
    - `length`
    - `device_id_endian` (if applicable)
    - `fields` array with offset/size/format for each field
-3. Run `cca codegen` to regenerate code
+3. Run `npm run codegen` from repo root to regenerate code
 4. Update any UI components that need to display the new type

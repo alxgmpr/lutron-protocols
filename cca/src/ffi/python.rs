@@ -14,11 +14,11 @@
 //! crc = cca.calc_crc(bytes.fromhex("88008DE695052104"))
 //! ```
 
-use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 use crate::crc;
-use crate::packet::{PacketParser, PacketType, Button};
+use crate::packet::{Button, PacketParser, PacketType};
 
 /// Decoded CCA packet
 #[pyclass]
@@ -71,7 +71,8 @@ impl Packet {
 
     /// Get raw bytes as hex string
     fn hex(&self) -> String {
-        self.raw.iter()
+        self.raw
+            .iter()
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<_>>()
             .join(" ")
@@ -95,7 +96,8 @@ impl Decoder {
 
     /// Decode packet from bytes
     fn decode_bytes(&self, data: &[u8]) -> PyResult<Packet> {
-        self.parser.parse_bytes(data)
+        self.parser
+            .parse_bytes(data)
             .map(|p| Packet {
                 packet_type: p.packet_type.name().to_string(),
                 type_byte: p.type_byte,
@@ -114,9 +116,7 @@ impl Decoder {
 
     /// Decode packet from hex string
     fn decode_hex(&self, hex_str: &str) -> PyResult<Packet> {
-        let clean: String = hex_str.chars()
-            .filter(|c| c.is_ascii_hexdigit())
-            .collect();
+        let clean: String = hex_str.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         let bytes = hex::decode(&clean)
             .map_err(|e| PyValueError::new_err(format!("Invalid hex: {}", e)))?;
         self.decode_bytes(&bytes)
@@ -164,8 +164,8 @@ fn button_name(button_code: u8) -> String {
 #[pyfunction]
 fn packet_length(type_byte: u8) -> usize {
     match type_byte {
-        0xB0..=0xBF => 53,  // Pairing packets
-        _ => 24,            // Standard packets
+        0xB0..=0xBF => 53, // Pairing packets
+        _ => 24,           // Standard packets
     }
 }
 

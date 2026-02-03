@@ -5,9 +5,9 @@
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
+use super::types::*;
 use crate::crc;
 use crate::n81;
-use super::types::*;
 
 /// Packet parser with CRC validation
 pub struct PacketParser;
@@ -153,8 +153,10 @@ impl PacketParser {
     /// Parse type-specific fields
     fn parse_type_specific(&self, packet: &mut DecodedPacket, bytes: &[u8]) {
         match packet.packet_type {
-            PacketType::ButtonShortA | PacketType::ButtonLongA |
-            PacketType::ButtonShortB | PacketType::ButtonLongB => {
+            PacketType::ButtonShortA
+            | PacketType::ButtonLongA
+            | PacketType::ButtonShortB
+            | PacketType::ButtonLongB => {
                 self.parse_button_packet(packet, bytes);
             }
             PacketType::StateReport81 | PacketType::StateReport82 | PacketType::StateReport83 => {
@@ -163,17 +165,26 @@ impl PacketParser {
             PacketType::Level | PacketType::ConfigA3 => {
                 self.parse_level_packet(packet, bytes);
             }
-            PacketType::PairingB8 | PacketType::PairingB9 |
-            PacketType::PairingBA | PacketType::PairingBB | PacketType::PairingB0 => {
+            PacketType::PairingB8
+            | PacketType::PairingB9
+            | PacketType::PairingBA
+            | PacketType::PairingBB
+            | PacketType::PairingB0 => {
                 self.parse_pairing_packet(packet, bytes);
             }
-            PacketType::PairRespC0 |
-            PacketType::HandshakeC1 | PacketType::HandshakeC2 |
-            PacketType::HandshakeC7 | PacketType::HandshakeC8 |
-            PacketType::HandshakeCD | PacketType::HandshakeCE |
-            PacketType::HandshakeD3 | PacketType::HandshakeD4 |
-            PacketType::HandshakeD9 | PacketType::HandshakeDA |
-            PacketType::HandshakeDF | PacketType::HandshakeE0 => {
+            PacketType::PairRespC0
+            | PacketType::HandshakeC1
+            | PacketType::HandshakeC2
+            | PacketType::HandshakeC7
+            | PacketType::HandshakeC8
+            | PacketType::HandshakeCD
+            | PacketType::HandshakeCE
+            | PacketType::HandshakeD3
+            | PacketType::HandshakeD4
+            | PacketType::HandshakeD9
+            | PacketType::HandshakeDA
+            | PacketType::HandshakeDF
+            | PacketType::HandshakeE0 => {
                 self.parse_pairing_response(packet, bytes);
             }
             _ => {
@@ -354,10 +365,10 @@ impl PacketParser {
             return 0;
         }
         let slice = &bytes[offsets::DEVICE_ID..offsets::DEVICE_ID + 4];
-        ((slice[0] as u32) << 24) |
-        ((slice[1] as u32) << 16) |
-        ((slice[2] as u32) << 8) |
-        (slice[3] as u32)
+        ((slice[0] as u32) << 24)
+            | ((slice[1] as u32) << 16)
+            | ((slice[2] as u32) << 8)
+            | (slice[3] as u32)
     }
 
     /// Read device ID as little-endian (offset 2-5)
@@ -366,10 +377,10 @@ impl PacketParser {
             return 0;
         }
         let slice = &bytes[offsets::DEVICE_ID..offsets::DEVICE_ID + 4];
-        (slice[0] as u32) |
-        ((slice[1] as u32) << 8) |
-        ((slice[2] as u32) << 16) |
-        ((slice[3] as u32) << 24)
+        (slice[0] as u32)
+            | ((slice[1] as u32) << 8)
+            | ((slice[2] as u32) << 16)
+            | ((slice[3] as u32) << 24)
     }
 
     /// Read u32 big-endian from slice
@@ -377,10 +388,10 @@ impl PacketParser {
         if bytes.len() < 4 {
             return 0;
         }
-        ((bytes[0] as u32) << 24) |
-        ((bytes[1] as u32) << 16) |
-        ((bytes[2] as u32) << 8) |
-        (bytes[3] as u32)
+        ((bytes[0] as u32) << 24)
+            | ((bytes[1] as u32) << 16)
+            | ((bytes[2] as u32) << 8)
+            | (bytes[3] as u32)
     }
 }
 
@@ -397,9 +408,7 @@ mod tests {
     #[test]
     fn test_parse_button_packet() {
         // Example button press: ON button, device 0595E68D
-        let bytes = hex::decode(
-            "88008DE695052104030002000000000000000000000000"
-        ).unwrap();
+        let bytes = hex::decode("88008DE695052104030002000000000000000000000000").unwrap();
 
         let parser = PacketParser::new();
         let packet = parser.parse_bytes(&bytes).unwrap();
@@ -417,9 +426,8 @@ mod tests {
     fn test_crc_validation() {
         // Create a packet with correct CRC
         let payload = vec![
-            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04,
-            0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC, 0xCC, 0xCC,
-            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC
+            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
         ];
         let packet_bytes = crc::append_crc(&payload);
 

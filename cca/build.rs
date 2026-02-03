@@ -17,7 +17,10 @@ fn main() {
             println!("cargo:warning=Generated cca.h");
         }
         Err(e) => {
-            println!("cargo:warning=cbindgen failed (this is OK on stable): {}", e);
+            println!(
+                "cargo:warning=cbindgen failed (this is OK on stable): {}",
+                e
+            );
         }
     }
 

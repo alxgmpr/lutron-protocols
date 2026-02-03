@@ -3,12 +3,12 @@
 //! Parses ESPHome log output and decodes CCA packets in real-time.
 //! Expects JSON-format raw packet logs from the ESP32 controller.
 
-use std::io::{BufRead, Write};
-use std::process::{Command, Stdio, Child};
 use regex::Regex;
+use std::io::{BufRead, Write};
+use std::process::{Child, Command, Stdio};
 
-use crate::packet::PacketParser;
 use crate::error::Result;
+use crate::packet::PacketParser;
 
 /// Parsed packet from log stream
 #[derive(Debug, Clone)]
@@ -64,14 +64,10 @@ pub struct LiveStream {
 impl LiveStream {
     pub fn new() -> Self {
         // RX JSON format from ESP32
-        let rx_pattern = Regex::new(
-            r"(\d{2}:\d{2}:\d{2}) \[.\] .*RX: (\{.+\})"
-        ).unwrap();
+        let rx_pattern = Regex::new(r"(\d{2}:\d{2}:\d{2}) \[.\] .*RX: (\{.+\})").unwrap();
 
         // TX JSON format from ESP32
-        let tx_pattern = Regex::new(
-            r"(\d{2}:\d{2}:\d{2}) \[.\] .*TX: (\{.+\})"
-        ).unwrap();
+        let tx_pattern = Regex::new(r"(\d{2}:\d{2}:\d{2}) \[.\] .*TX: (\{.+\})").unwrap();
 
         Self {
             rx_pattern,
@@ -97,14 +93,18 @@ impl LiveStream {
 
     /// Parse JSON-format RX line with raw packet bytes
     fn parse_rx_json(&self, caps: regex::Captures) -> Option<LivePacket> {
-        let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let timestamp = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
         let json_str = caps.get(2).map(|m| m.as_str())?;
 
         // Parse the JSON payload
         let payload: RxJsonPayload = serde_json::from_str(json_str).ok()?;
 
         // Parse hex bytes from the JSON
-        let bytes: Vec<u8> = payload.bytes
+        let bytes: Vec<u8> = payload
+            .bytes
             .split_whitespace()
             .filter_map(|s| u8::from_str_radix(s, 16).ok())
             .collect();
@@ -135,14 +135,18 @@ impl LiveStream {
 
     /// Parse JSON-format TX line with packet bytes
     fn parse_tx_capture(&self, caps: regex::Captures) -> Option<LivePacket> {
-        let timestamp = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let timestamp = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
         let json_str = caps.get(2).map(|m| m.as_str())?;
 
         // Parse the JSON payload
         let payload: TxJsonPayload = serde_json::from_str(json_str).ok()?;
 
         // Parse hex bytes from the JSON
-        let bytes: Vec<u8> = payload.bytes
+        let bytes: Vec<u8> = payload
+            .bytes
             .split_whitespace()
             .filter_map(|s| u8::from_str_radix(s, 16).ok())
             .collect();
@@ -211,7 +215,11 @@ pub fn spawn_esphome_logs(config_path: &str) -> std::io::Result<Child> {
 }
 
 /// Format a packet for display
-pub fn format_packet<W: Write>(packet: &LivePacket, output: &mut W, show_raw: bool) -> std::io::Result<()> {
+pub fn format_packet<W: Write>(
+    packet: &LivePacket,
+    output: &mut W,
+    show_raw: bool,
+) -> std::io::Result<()> {
     let dir = match packet.direction {
         Direction::Rx => "RX",
         Direction::Tx => "TX",
@@ -220,8 +228,11 @@ pub fn format_packet<W: Write>(packet: &LivePacket, output: &mut W, show_raw: bo
     let crc_status = if packet.crc_ok { "OK" } else { "BAD" };
 
     // Build the output line
-    write!(output, "[{}] {} {} | {} ",
-           packet.timestamp, dir, packet.packet_type, packet.device_id)?;
+    write!(
+        output,
+        "[{}] {} {} | {} ",
+        packet.timestamp, dir, packet.packet_type, packet.device_id
+    )?;
 
     if let Some(ref target) = packet.target_id {
         write!(output, "-> {} ", target)?;
@@ -247,7 +258,9 @@ pub fn format_packet<W: Write>(packet: &LivePacket, output: &mut W, show_raw: bo
     writeln!(output, "| CRC={}", crc_status)?;
 
     if show_raw && !packet.raw_bytes.is_empty() {
-        let hex_str: String = packet.raw_bytes.iter()
+        let hex_str: String = packet
+            .raw_bytes
+            .iter()
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<_>>()
             .join(" ");
@@ -340,7 +353,7 @@ mod tests {
         assert_eq!(packet.type_byte, 0x88);
         assert_eq!(packet.device_id, "0869E74C");
         assert_eq!(packet.button, Some("ON".to_string()));
-        assert_eq!(packet.rssi, None);  // TX packets have no RSSI
+        assert_eq!(packet.rssi, None); // TX packets have no RSSI
         assert_eq!(packet.raw_bytes.len(), 24);
     }
 
@@ -348,8 +361,14 @@ mod tests {
     fn test_ignores_non_packet_lines() {
         let stream = LiveStream::new();
 
-        assert!(stream.parse_line("02:48:56 [W] Connection stale (64s), reconnecting...").is_none());
-        assert!(stream.parse_line("02:48:59 [I] Log subscription connected to ESP32").is_none());
-        assert!(stream.parse_line("02:50:09 [W] Reconnecting to ESP32 in 3s...").is_none());
+        assert!(stream
+            .parse_line("02:48:56 [W] Connection stale (64s), reconnecting...")
+            .is_none());
+        assert!(stream
+            .parse_line("02:48:59 [I] Log subscription connected to ESP32")
+            .is_none());
+        assert!(stream
+            .parse_line("02:50:09 [W] Reconnecting to ESP32 in 3s...")
+            .is_none());
     }
 }

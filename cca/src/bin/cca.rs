@@ -6,12 +6,11 @@ use clap::{Parser, Subcommand};
 use std::io::{self, BufReader};
 use std::path::PathBuf;
 
-use cca::packet::PacketParser;
+use cca::codegen;
+use cca::crc;
 use cca::decode::{decode_log_file, summarize_log, LogEntry};
 use cca::live::LiveStream;
-use cca::serve::{start_server, ServerConfig};
-use cca::crc;
-use cca::codegen;
+use cca::packet::PacketParser;
 
 #[derive(Parser)]
 #[command(name = "cca")]
@@ -65,25 +64,6 @@ enum Commands {
     /// Show protocol information
     Info,
 
-    /// Start unified web server (frontend + API proxy)
-    Serve {
-        /// Port to listen on
-        #[arg(short, long, default_value = "3000")]
-        port: u16,
-
-        /// Backend port (Python server)
-        #[arg(short = 'b', long, default_value = "8080")]
-        backend_port: u16,
-
-        /// ESP32 host IP
-        #[arg(short = 'H', long, default_value = "10.1.4.59")]
-        host: String,
-
-        /// Static files directory (frontend build)
-        #[arg(short, long)]
-        static_dir: Option<PathBuf>,
-    },
-
     /// Generate protocol code from YAML definition
     Codegen {
         /// Protocol YAML file
@@ -94,7 +74,7 @@ enum Commands {
         #[arg(short, long, default_value = "protocol/generated")]
         output: PathBuf,
 
-        /// Target languages (comma-separated: rust,c,ts,py,md)
+        /// Target languages (comma-separated: rust,ts,md)
         #[arg(short, long)]
         targets: Option<String>,
 
@@ -109,7 +89,12 @@ async fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Decode { input, json, raw, summary } => {
+        Commands::Decode {
+            input,
+            json,
+            raw,
+            summary,
+        } => {
             decode_command(&input, json, raw, summary);
         }
         Commands::Live { host, json, raw } => {
@@ -121,27 +106,14 @@ async fn main() {
         Commands::Info => {
             info_command();
         }
-        Commands::Serve { port, backend_port, host, static_dir } => {
-            serve_command(port, backend_port, &host, static_dir).await;
-        }
-        Commands::Codegen { input, output, targets, check } => {
+        Commands::Codegen {
+            input,
+            output,
+            targets,
+            check,
+        } => {
             codegen_command(&input, &output, targets.as_deref(), check);
         }
-    }
-}
-
-async fn serve_command(port: u16, backend_port: u16, esp32_host: &str, static_dir: Option<PathBuf>) {
-    let config = ServerConfig {
-        port,
-        backend_port,
-        esp32_host: esp32_host.to_string(),
-        static_dir,
-        controller_path: None,
-    };
-
-    if let Err(e) = start_server(config).await {
-        eprintln!("Server error: {}", e);
-        std::process::exit(1);
     }
 }
 
@@ -155,22 +127,21 @@ fn live_command(host: &str, json: bool, show_raw: bool) {
     eprintln!("Connecting to ESP32 at {}...", host);
 
     // Spawn python esp32_controller.py logs --host <ip>
-    let controller_path = std::env::var("CCA_CONTROLLER")
-        .unwrap_or_else(|_| {
-            // Try to find it relative to the crate
-            let paths = [
-                "rf/esp32_controller.py",
-                "../rf/esp32_controller.py",
-                "../../rf/esp32_controller.py",
-                "~/lutron-tools/rf/esp32_controller.py",
-            ];
-            for p in paths {
-                if std::path::Path::new(p).exists() {
-                    return p.to_string();
-                }
+    let controller_path = std::env::var("CCA_CONTROLLER").unwrap_or_else(|_| {
+        // Try to find it relative to the crate
+        let paths = [
+            "rf/esp32_controller.py",
+            "../rf/esp32_controller.py",
+            "../../rf/esp32_controller.py",
+            "~/lutron-tools/rf/esp32_controller.py",
+        ];
+        for p in paths {
+            if std::path::Path::new(p).exists() {
+                return p.to_string();
             }
-            "esp32_controller.py".to_string()
-        });
+        }
+        "esp32_controller.py".to_string()
+    });
 
     match Command::new("python3")
         .args([&controller_path, "logs", "--host", host])
@@ -224,18 +195,27 @@ fn decode_command(input: &str, json: bool, show_raw: bool, show_summary: bool) {
                             println!("  {}: {}", device, count);
                         }
                     } else if json {
-                        println!("{}", serde_json::to_string_pretty(&entries.iter().map(|e| {
-                            serde_json::json!({
-                                "timestamp": e.timestamp,
-                                "type": e.packet_type,
-                                "device_id": e.device_id,
-                                "target_id": e.target_id,
-                                "level": e.level,
-                                "sequence": e.sequence,
-                                "rssi": e.rssi,
-                                "crc_ok": e.crc_ok,
-                            })
-                        }).collect::<Vec<_>>()).unwrap());
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(
+                                &entries
+                                    .iter()
+                                    .map(|e| {
+                                        serde_json::json!({
+                                            "timestamp": e.timestamp,
+                                            "type": e.packet_type,
+                                            "device_id": e.device_id,
+                                            "target_id": e.target_id,
+                                            "level": e.level,
+                                            "sequence": e.sequence,
+                                            "rssi": e.rssi,
+                                            "crc_ok": e.crc_ok,
+                                        })
+                                    })
+                                    .collect::<Vec<_>>()
+                            )
+                            .unwrap()
+                        );
                     } else {
                         for entry in &entries {
                             print_log_entry(entry, show_raw);
@@ -254,9 +234,7 @@ fn decode_command(input: &str, json: bool, show_raw: bool, show_summary: bool) {
         }
     } else {
         // Hex string input
-        let hex_clean: String = input.chars()
-            .filter(|c| c.is_ascii_hexdigit())
-            .collect();
+        let hex_clean: String = input.chars().filter(|c| c.is_ascii_hexdigit()).collect();
 
         match hex::decode(&hex_clean) {
             Ok(bytes) => {
@@ -286,7 +264,10 @@ fn decode_command(input: &str, json: bool, show_raw: bool, show_summary: bool) {
 fn print_log_entry(entry: &LogEntry, show_raw: bool) {
     let crc_status = if entry.crc_ok { "OK" } else { "BAD" };
 
-    print!("[{}] {} | {} ", entry.timestamp, entry.packet_type, entry.device_id);
+    print!(
+        "[{}] {} | {} ",
+        entry.timestamp, entry.packet_type, entry.device_id
+    );
 
     if let Some(ref target) = entry.target_id {
         print!("-> {} ", target);
@@ -296,7 +277,10 @@ fn print_log_entry(entry: &LogEntry, show_raw: bool) {
         print!("| Level={}% ", level);
     }
 
-    println!("| Seq={} | RSSI={} | CRC={}", entry.sequence, entry.rssi, crc_status);
+    println!(
+        "| Seq={} | RSSI={} | CRC={}",
+        entry.sequence, entry.rssi, crc_status
+    );
 
     if show_raw {
         println!("  Raw: {}", entry.raw_line);
@@ -306,7 +290,11 @@ fn print_log_entry(entry: &LogEntry, show_raw: bool) {
 fn print_packet(packet: &cca::DecodedPacket, show_raw: bool) {
     let crc_status = if packet.crc_valid { "OK" } else { "BAD" };
 
-    println!("Type: {} (0x{:02X})", packet.packet_type.name(), packet.type_byte);
+    println!(
+        "Type: {} (0x{:02X})",
+        packet.packet_type.name(),
+        packet.type_byte
+    );
     println!("Device ID: {}", packet.device_id_str());
     println!("Sequence: {}", packet.sequence);
 
@@ -329,7 +317,9 @@ fn print_packet(packet: &cca::DecodedPacket, show_raw: bool) {
     println!("CRC: 0x{:04X} ({})", packet.crc, crc_status);
 
     if show_raw {
-        let hex_str: String = packet.raw.iter()
+        let hex_str: String = packet
+            .raw
+            .iter()
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<_>>()
             .join(" ");
@@ -338,9 +328,7 @@ fn print_packet(packet: &cca::DecodedPacket, show_raw: bool) {
 }
 
 fn crc_command(hex: &str) {
-    let hex_clean: String = hex.chars()
-        .filter(|c| c.is_ascii_hexdigit())
-        .collect();
+    let hex_clean: String = hex.chars().filter(|c| c.is_ascii_hexdigit()).collect();
 
     match hex::decode(&hex_clean) {
         Ok(bytes) => {
@@ -379,17 +367,16 @@ fn info_command() {
 fn codegen_command(input: &PathBuf, output: &PathBuf, targets_str: Option<&str>, check: bool) {
     // Parse target list
     let targets: Vec<codegen::Target> = match targets_str {
-        Some(s) => {
-            s.split(',')
-                .filter_map(|t| codegen::Target::from_str(t.trim()))
-                .collect()
-        }
+        Some(s) => s
+            .split(',')
+            .filter_map(|t| codegen::Target::from_str(t.trim()))
+            .collect(),
         None => codegen::Target::all().to_vec(),
     };
 
     if targets.is_empty() {
         eprintln!("No valid targets specified");
-        eprintln!("Valid targets: rust, c, ts, py, md");
+        eprintln!("Valid targets: rust, ts, md");
         std::process::exit(1);
     }
 
@@ -426,9 +413,7 @@ fn codegen_command(input: &PathBuf, output: &PathBuf, targets_str: Option<&str>,
                     let target_dir = output.join(target.output_dir());
                     let filename = match target {
                         codegen::Target::Rust => "mod.rs",
-                        codegen::Target::C => "cca_protocol.h",
                         codegen::Target::TypeScript => "protocol.ts",
-                        codegen::Target::Python => "cca_protocol.py",
                         codegen::Target::Markdown => "PROTOCOL.md",
                     };
                     println!("  {}", target_dir.join(filename).display());

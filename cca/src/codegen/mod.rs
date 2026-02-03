@@ -2,35 +2,25 @@
 //!
 //! This module parses `protocol/cca.yaml` and generates code for multiple targets:
 //! - Rust (constants, enums, packet definitions)
-//! - C (header file for ESPHome)
 //! - TypeScript (for web frontend)
-//! - Python (for backend)
 //! - Markdown (documentation)
 
 #[cfg(feature = "std")]
+mod markdown;
+#[cfg(feature = "std")]
 mod rust;
 #[cfg(feature = "std")]
-mod c;
-#[cfg(feature = "std")]
 mod typescript;
-#[cfg(feature = "std")]
-mod python;
-#[cfg(feature = "std")]
-mod markdown;
 
+#[cfg(feature = "std")]
+pub use markdown::generate_markdown;
 #[cfg(feature = "std")]
 pub use rust::generate_rust;
 #[cfg(feature = "std")]
-pub use c::generate_c;
-#[cfg(feature = "std")]
 pub use typescript::generate_typescript;
-#[cfg(feature = "std")]
-pub use python::generate_python;
-#[cfg(feature = "std")]
-pub use markdown::generate_markdown;
 
-use std::collections::BTreeMap;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 
 /// Root protocol definition
 #[derive(Debug, Deserialize)]
@@ -184,7 +174,7 @@ pub struct SequenceParam {
 #[derive(Debug, Deserialize)]
 pub struct SequenceStep {
     pub packet: String,
-    pub count: Option<u32>,  // None = repeat until stopped
+    pub count: Option<u32>, // None = repeat until stopped
     #[serde(default)]
     pub interval_ms: Option<u32>,
 }
@@ -216,23 +206,19 @@ pub fn load_protocol(path: &std::path::Path) -> Result<Protocol, Box<dyn std::er
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
     Rust,
-    C,
     TypeScript,
-    Python,
     Markdown,
 }
 
 impl Target {
     pub fn all() -> &'static [Target] {
-        &[Target::Rust, Target::C, Target::TypeScript, Target::Python, Target::Markdown]
+        &[Target::Rust, Target::TypeScript, Target::Markdown]
     }
 
     pub fn from_str(s: &str) -> Option<Target> {
         match s.to_lowercase().as_str() {
             "rust" | "rs" => Some(Target::Rust),
-            "c" | "h" => Some(Target::C),
             "typescript" | "ts" => Some(Target::TypeScript),
-            "python" | "py" => Some(Target::Python),
             "markdown" | "md" => Some(Target::Markdown),
             _ => None,
         }
@@ -241,9 +227,7 @@ impl Target {
     pub fn extension(&self) -> &'static str {
         match self {
             Target::Rust => "rs",
-            Target::C => "h",
             Target::TypeScript => "ts",
-            Target::Python => "py",
             Target::Markdown => "md",
         }
     }
@@ -251,9 +235,7 @@ impl Target {
     pub fn output_dir(&self) -> &'static str {
         match self {
             Target::Rust => "rust",
-            Target::C => "c",
             Target::TypeScript => "typescript",
-            Target::Python => "python",
             Target::Markdown => "markdown",
         }
     }
@@ -277,17 +259,9 @@ pub fn generate(
                 let code = generate_rust(protocol);
                 fs::write(target_dir.join("mod.rs"), &code)?;
             }
-            Target::C => {
-                let code = generate_c(protocol);
-                fs::write(target_dir.join("cca_protocol.h"), &code)?;
-            }
             Target::TypeScript => {
                 let code = generate_typescript(protocol);
                 fs::write(target_dir.join("protocol.ts"), &code)?;
-            }
-            Target::Python => {
-                let code = generate_python(protocol);
-                fs::write(target_dir.join("cca_protocol.py"), &code)?;
             }
             Target::Markdown => {
                 let code = generate_markdown(protocol);
@@ -315,9 +289,7 @@ pub fn check(
 
         let (filename, expected) = match target {
             Target::Rust => ("mod.rs", generate_rust(protocol)),
-            Target::C => ("cca_protocol.h", generate_c(protocol)),
             Target::TypeScript => ("protocol.ts", generate_typescript(protocol)),
-            Target::Python => ("cca_protocol.py", generate_python(protocol)),
             Target::Markdown => ("PROTOCOL.md", generate_markdown(protocol)),
         };
 

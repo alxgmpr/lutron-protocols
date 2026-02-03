@@ -1,6 +1,6 @@
 # Lutron Clear Connect Type A (CCA) Protocol Definition
 # Source of truth for all generated code
-# Run: cca codegen
+# Regenerate: npm run codegen (from repo root)
 
 meta:
   name: "Lutron Clear Connect Type A"

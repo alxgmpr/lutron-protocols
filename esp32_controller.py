@@ -37,13 +37,13 @@ except ImportError:
     print("Run: pip install aioesphomeapi")
     sys.exit(1)
 
-# Import database module
+import os
+_repo_root = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _repo_root)
+
 try:
     import database as db
 except ImportError:
-    # If running from different directory, try relative import
-    import os
-    sys.path.insert(0, os.path.dirname(__file__))
     import database as db
 
 # Import UDP transport for direct packet streaming
@@ -1868,7 +1868,7 @@ def cmd_serve(args):
 
     @app.route('/api/protocol')
     def api_protocol():
-        """Get protocol definitions (enums, field formats, packet types)."""
+        """Get protocol definitions (enums, field formats, packet types) from cca.yaml."""
         try:
             import yaml
             protocol_path = os.path.join(os.path.dirname(__file__), 'protocol', 'cca.yaml')
@@ -1876,24 +1876,13 @@ def cmd_serve(args):
                 protocol = yaml.safe_load(f)
             return jsonify(protocol)
         except Exception as e:
-            # Fallback to generated Python module
-            from generated.python import cca_protocol as proto
-            return jsonify({
-                'enums': {
-                    'button': {str(k): v for k, v in proto.BUTTON_NAMES.items()},
-                    'action': {str(k): v for k, v in proto.ACTION_NAMES.items()},
-                },
-                'field_formats': proto.FIELD_FORMATS,
-                'packet_type_map': {str(k): v for k, v in proto.PACKET_TYPE_MAP.items()},
-                'packet_types': proto.PACKET_TYPES,
-            })
+            return jsonify({'error': str(e)}), 500
 
-    # Frontend is served by `cca serve` - this is API-only
     @app.route('/')
     def index():
         return jsonify({
             'service': 'CCA Playground API',
-            'usage': 'Run `cca serve` for the full web UI',
+            'usage': 'Use npm run dev from repo root for full web UI (Bun backend + Vite)',
             'endpoints': '/api/*'
         })
 

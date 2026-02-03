@@ -1,7 +1,7 @@
 //! Packet types and parsing for Lutron CCA protocol
 
-mod types;
 mod parser;
+mod types;
 
-pub use types::*;
 pub use parser::PacketParser;
+pub use types::*;

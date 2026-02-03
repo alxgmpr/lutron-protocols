@@ -1,6 +1,6 @@
 //! Rust code generator
 
-use super::{Protocol, Field};
+use super::{Field, Protocol};
 
 pub fn generate_rust(protocol: &Protocol) -> String {
     let mut out = String::new();
@@ -9,7 +9,10 @@ pub fn generate_rust(protocol: &Protocol) -> String {
     out.push_str("//! Auto-generated from protocol/cca.yaml\n");
     out.push_str("//! DO NOT EDIT - regenerate with: cca codegen\n");
     out.push_str("//!\n");
-    out.push_str(&format!("//! {} v{}\n", protocol.meta.name, protocol.meta.version));
+    out.push_str(&format!(
+        "//! {} v{}\n",
+        protocol.meta.name, protocol.meta.version
+    ));
     out.push_str("\n");
     out.push_str("#![allow(dead_code)]\n");
     out.push_str("\n");
@@ -17,57 +20,122 @@ pub fn generate_rust(protocol: &Protocol) -> String {
     // RF Constants
     out.push_str("/// RF physical layer constants\n");
     out.push_str("pub mod rf {\n");
-    out.push_str(&format!("    pub const FREQUENCY_HZ: u32 = {};\n", protocol.rf.frequency_hz));
-    out.push_str(&format!("    pub const DEVIATION_HZ: u32 = {};\n", protocol.rf.deviation_hz));
-    out.push_str(&format!("    pub const BAUD_RATE: f32 = {:.1};\n", protocol.rf.baud_rate));
+    out.push_str(&format!(
+        "    pub const FREQUENCY_HZ: u32 = {};\n",
+        protocol.rf.frequency_hz
+    ));
+    out.push_str(&format!(
+        "    pub const DEVIATION_HZ: u32 = {};\n",
+        protocol.rf.deviation_hz
+    ));
+    out.push_str(&format!(
+        "    pub const BAUD_RATE: f32 = {:.1};\n",
+        protocol.rf.baud_rate
+    ));
     out.push_str("}\n\n");
 
     // CRC Constants
     out.push_str("/// CRC configuration\n");
     out.push_str("pub mod crc {\n");
-    out.push_str(&format!("    pub const POLYNOMIAL: u16 = 0x{:04X};\n", protocol.crc.polynomial));
-    out.push_str(&format!("    pub const WIDTH: u8 = {};\n", protocol.crc.width));
-    out.push_str(&format!("    pub const INITIAL: u16 = 0x{:04X};\n", protocol.crc.initial));
+    out.push_str(&format!(
+        "    pub const POLYNOMIAL: u16 = 0x{:04X};\n",
+        protocol.crc.polynomial
+    ));
+    out.push_str(&format!(
+        "    pub const WIDTH: u8 = {};\n",
+        protocol.crc.width
+    ));
+    out.push_str(&format!(
+        "    pub const INITIAL: u16 = 0x{:04X};\n",
+        protocol.crc.initial
+    ));
     out.push_str("}\n\n");
 
     // Framing Constants
     out.push_str("/// Packet framing\n");
     out.push_str("pub mod framing {\n");
-    out.push_str(&format!("    pub const PREAMBLE_BITS: u8 = {};\n", protocol.framing.preamble_bits));
-    out.push_str(&format!("    pub const PREAMBLE_PATTERN: u32 = 0x{:08X};\n", protocol.framing.preamble_pattern));
-    out.push_str(&format!("    pub const SYNC_BYTE: u8 = 0x{:02X};\n", protocol.framing.sync_byte));
-    out.push_str(&format!("    pub const PREFIX: [u8; {}] = [", protocol.framing.prefix.len()));
+    out.push_str(&format!(
+        "    pub const PREAMBLE_BITS: u8 = {};\n",
+        protocol.framing.preamble_bits
+    ));
+    out.push_str(&format!(
+        "    pub const PREAMBLE_PATTERN: u32 = 0x{:08X};\n",
+        protocol.framing.preamble_pattern
+    ));
+    out.push_str(&format!(
+        "    pub const SYNC_BYTE: u8 = 0x{:02X};\n",
+        protocol.framing.sync_byte
+    ));
+    out.push_str(&format!(
+        "    pub const PREFIX: [u8; {}] = [",
+        protocol.framing.prefix.len()
+    ));
     for (i, b) in protocol.framing.prefix.iter().enumerate() {
-        if i > 0 { out.push_str(", "); }
+        if i > 0 {
+            out.push_str(", ");
+        }
         out.push_str(&format!("0x{:02X}", b));
     }
     out.push_str("];\n");
-    out.push_str(&format!("    pub const TRAILING_BITS: u8 = {};\n", protocol.framing.trailing_bits));
+    out.push_str(&format!(
+        "    pub const TRAILING_BITS: u8 = {};\n",
+        protocol.framing.trailing_bits
+    ));
     out.push_str("}\n\n");
 
     // Timing Constants
     out.push_str("/// Timing constants (milliseconds)\n");
     out.push_str("pub mod timing {\n");
-    out.push_str(&format!("    pub const BUTTON_REPEAT_MS: u32 = {};\n", protocol.timing.button_repeat_ms));
-    out.push_str(&format!("    pub const BEACON_INTERVAL_MS: u32 = {};\n", protocol.timing.beacon_interval_ms));
-    out.push_str(&format!("    pub const PAIRING_INTERVAL_MS: u32 = {};\n", protocol.timing.pairing_interval_ms));
-    out.push_str(&format!("    pub const LEVEL_REPORT_MS: u32 = {};\n", protocol.timing.level_report_ms));
-    out.push_str(&format!("    pub const UNPAIR_INTERVAL_MS: u32 = {};\n", protocol.timing.unpair_interval_ms));
-    out.push_str(&format!("    pub const LED_CONFIG_INTERVAL_MS: u32 = {};\n", protocol.timing.led_config_interval_ms));
+    out.push_str(&format!(
+        "    pub const BUTTON_REPEAT_MS: u32 = {};\n",
+        protocol.timing.button_repeat_ms
+    ));
+    out.push_str(&format!(
+        "    pub const BEACON_INTERVAL_MS: u32 = {};\n",
+        protocol.timing.beacon_interval_ms
+    ));
+    out.push_str(&format!(
+        "    pub const PAIRING_INTERVAL_MS: u32 = {};\n",
+        protocol.timing.pairing_interval_ms
+    ));
+    out.push_str(&format!(
+        "    pub const LEVEL_REPORT_MS: u32 = {};\n",
+        protocol.timing.level_report_ms
+    ));
+    out.push_str(&format!(
+        "    pub const UNPAIR_INTERVAL_MS: u32 = {};\n",
+        protocol.timing.unpair_interval_ms
+    ));
+    out.push_str(&format!(
+        "    pub const LED_CONFIG_INTERVAL_MS: u32 = {};\n",
+        protocol.timing.led_config_interval_ms
+    ));
     out.push_str("}\n\n");
 
     // Sequence Constants
     out.push_str("/// Sequence number behavior\n");
     out.push_str("pub mod sequence {\n");
-    out.push_str(&format!("    pub const INCREMENT: u8 = {};\n", protocol.sequence.increment));
-    out.push_str(&format!("    pub const WRAP: u8 = 0x{:02X};\n", protocol.sequence.wrap));
+    out.push_str(&format!(
+        "    pub const INCREMENT: u8 = {};\n",
+        protocol.sequence.increment
+    ));
+    out.push_str(&format!(
+        "    pub const WRAP: u8 = 0x{:02X};\n",
+        protocol.sequence.wrap
+    ));
     out.push_str("}\n\n");
 
     // Packet Lengths
     out.push_str("/// Packet lengths\n");
     out.push_str("pub mod lengths {\n");
-    out.push_str(&format!("    pub const STANDARD: usize = {};\n", protocol.lengths.standard));
-    out.push_str(&format!("    pub const PAIRING: usize = {};\n", protocol.lengths.pairing));
+    out.push_str(&format!(
+        "    pub const STANDARD: usize = {};\n",
+        protocol.lengths.standard
+    ));
+    out.push_str(&format!(
+        "    pub const PAIRING: usize = {};\n",
+        protocol.lengths.pairing
+    ));
     out.push_str("}\n\n");
 
     // Generate enums
@@ -102,7 +170,11 @@ fn generate_enum(out: &mut String, name: &str, enum_def: &super::EnumDef) {
             if !variant.description.is_empty() {
                 out.push_str(&format!("    /// {}\n", variant.description));
             }
-            out.push_str(&format!("    {} = 0x{:02X},\n", to_pascal_case(variant_name), value));
+            out.push_str(&format!(
+                "    {} = 0x{:02X},\n",
+                to_pascal_case(variant_name),
+                value
+            ));
         }
     }
 
@@ -114,7 +186,11 @@ fn generate_enum(out: &mut String, name: &str, enum_def: &super::EnumDef) {
     out.push_str("        match b {\n");
     for (variant_name, variant) in &enum_def.values {
         if let Some(value) = variant.value {
-            out.push_str(&format!("            0x{:02X} => Some(Self::{}),\n", value, to_pascal_case(variant_name)));
+            out.push_str(&format!(
+                "            0x{:02X} => Some(Self::{}),\n",
+                value,
+                to_pascal_case(variant_name)
+            ));
         }
     }
     out.push_str("            _ => None,\n");
@@ -125,7 +201,11 @@ fn generate_enum(out: &mut String, name: &str, enum_def: &super::EnumDef) {
     out.push_str("    pub fn name(&self) -> &'static str {\n");
     out.push_str("        match self {\n");
     for variant_name in enum_def.values.keys() {
-        out.push_str(&format!("            Self::{} => \"{}\",\n", to_pascal_case(variant_name), variant_name));
+        out.push_str(&format!(
+            "            Self::{} => \"{}\",\n",
+            to_pascal_case(variant_name),
+            variant_name
+        ));
     }
     out.push_str("        }\n");
     out.push_str("    }\n");
@@ -140,7 +220,11 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
 
     for (name, pkt) in &protocol.packet_types {
         out.push_str(&format!("    /// {}\n", pkt.description));
-        out.push_str(&format!("    {} = 0x{:02X},\n", to_pascal_case(name), pkt.value));
+        out.push_str(&format!(
+            "    {} = 0x{:02X},\n",
+            to_pascal_case(name),
+            pkt.value
+        ));
     }
 
     out.push_str("}\n\n");
@@ -152,10 +236,18 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("    pub fn from_byte(b: u8) -> Option<Self> {\n");
     out.push_str("        match b {\n");
     for (name, pkt) in &protocol.packet_types {
-        out.push_str(&format!("            0x{:02X} => Some(Self::{}),\n", pkt.value, to_pascal_case(name)));
+        out.push_str(&format!(
+            "            0x{:02X} => Some(Self::{}),\n",
+            pkt.value,
+            to_pascal_case(name)
+        ));
         // Handle aliases
         for alias in &pkt.aliases {
-            out.push_str(&format!("            0x{:02X} => Some(Self::{}),\n", alias, to_pascal_case(name)));
+            out.push_str(&format!(
+                "            0x{:02X} => Some(Self::{}),\n",
+                alias,
+                to_pascal_case(name)
+            ));
         }
     }
     out.push_str("            _ => None,\n");
@@ -166,7 +258,11 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("    pub fn name(&self) -> &'static str {\n");
     out.push_str("        match self {\n");
     for name in protocol.packet_types.keys() {
-        out.push_str(&format!("            Self::{} => \"{}\",\n", to_pascal_case(name), name));
+        out.push_str(&format!(
+            "            Self::{} => \"{}\",\n",
+            to_pascal_case(name),
+            name
+        ));
     }
     out.push_str("        }\n");
     out.push_str("    }\n\n");
@@ -175,7 +271,11 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("    pub fn expected_length(&self) -> usize {\n");
     out.push_str("        match self {\n");
     for (name, pkt) in &protocol.packet_types {
-        out.push_str(&format!("            Self::{} => {},\n", to_pascal_case(name), pkt.length));
+        out.push_str(&format!(
+            "            Self::{} => {},\n",
+            to_pascal_case(name),
+            pkt.length
+        ));
     }
     out.push_str("        }\n");
     out.push_str("    }\n\n");
@@ -184,7 +284,11 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("    pub fn category(&self) -> &'static str {\n");
     out.push_str("        match self {\n");
     for (name, pkt) in &protocol.packet_types {
-        out.push_str(&format!("            Self::{} => \"{}\",\n", to_pascal_case(name), pkt.category));
+        out.push_str(&format!(
+            "            Self::{} => \"{}\",\n",
+            to_pascal_case(name),
+            pkt.category
+        ));
     }
     out.push_str("        }\n");
     out.push_str("    }\n\n");
@@ -194,7 +298,11 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("        match self {\n");
     for (name, pkt) in &protocol.packet_types {
         let is_be = pkt.device_id_endian == "big";
-        out.push_str(&format!("            Self::{} => {},\n", to_pascal_case(name), is_be));
+        out.push_str(&format!(
+            "            Self::{} => {},\n",
+            to_pascal_case(name),
+            is_be
+        ));
     }
     out.push_str("        }\n");
     out.push_str("    }\n\n");
@@ -204,7 +312,10 @@ fn generate_packet_type_enum(out: &mut String, protocol: &Protocol) {
     out.push_str("        match self {\n");
     for (name, pkt) in &protocol.packet_types {
         if pkt.virtual_type {
-            out.push_str(&format!("            Self::{} => true,\n", to_pascal_case(name)));
+            out.push_str(&format!(
+                "            Self::{} => true,\n",
+                to_pascal_case(name)
+            ));
         }
     }
     out.push_str("            _ => false,\n");
@@ -301,7 +412,10 @@ fn generate_sequences(out: &mut String, protocol: &Protocol) {
     for (name, seq) in protocol.sequences.iter() {
         let const_name = name.to_uppercase();
         out.push_str(&format!("    /// {}\n", seq.description));
-        out.push_str(&format!("    pub const {}_STEPS: &[Step] = &[\n", const_name));
+        out.push_str(&format!(
+            "    pub const {}_STEPS: &[Step] = &[\n",
+            const_name
+        ));
 
         for step in &seq.steps {
             let pkt_type = to_pascal_case(&step.packet);
@@ -318,7 +432,10 @@ fn generate_sequences(out: &mut String, protocol: &Protocol) {
 
         out.push_str("    ];\n\n");
 
-        out.push_str(&format!("    pub const {}: Sequence = Sequence {{\n", const_name));
+        out.push_str(&format!(
+            "    pub const {}: Sequence = Sequence {{\n",
+            const_name
+        ));
         out.push_str(&format!("        name: \"{}\",\n", name));
         out.push_str(&format!("        description: \"{}\",\n", seq.description));
         out.push_str(&format!("        steps: {}_STEPS,\n", const_name));
@@ -334,7 +451,10 @@ fn to_pascal_case(s: &str) -> String {
             let mut chars = word.chars();
             match chars.next() {
                 None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars.flat_map(|c| c.to_lowercase())).collect(),
+                Some(first) => first
+                    .to_uppercase()
+                    .chain(chars.flat_map(|c| c.to_lowercase()))
+                    .collect(),
             }
         })
         .collect()

@@ -206,7 +206,9 @@ pub fn find_sync_offset(bits: &[u8]) -> Option<usize> {
                 return Some(bit_pos + 20);
             }
             // Direct packet start
-            (Some(pkt_type), Some(seq), _) if pkt_type >= 0x80 && pkt_type <= 0xCF && seq < 0x60 => {
+            (Some(pkt_type), Some(seq), _)
+                if pkt_type >= 0x80 && pkt_type <= 0xCF && seq < 0x60 =>
+            {
                 return Some(bit_pos);
             }
             _ => continue,
@@ -225,13 +227,13 @@ mod tests {
         let mut data = vec![0u8; 2];
 
         // Test setting individual bits
-        set_bit(&mut data, 0, true);  // MSB of first byte
+        set_bit(&mut data, 0, true); // MSB of first byte
         assert_eq!(data[0], 0x80);
 
-        set_bit(&mut data, 7, true);  // LSB of first byte
+        set_bit(&mut data, 7, true); // LSB of first byte
         assert_eq!(data[0], 0x81);
 
-        set_bit(&mut data, 8, true);  // MSB of second byte
+        set_bit(&mut data, 8, true); // MSB of second byte
         assert_eq!(data[1], 0x80);
     }
 
@@ -256,7 +258,12 @@ mod tests {
 
             // Decode back
             let decoded = decode_n81_byte(&packed, 0);
-            assert_eq!(decoded, Some(byte), "Round-trip failed for byte 0x{:02X}", byte);
+            assert_eq!(
+                decoded,
+                Some(byte),
+                "Round-trip failed for byte 0x{:02X}",
+                byte
+            );
         }
     }
 
