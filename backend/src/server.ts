@@ -246,12 +246,26 @@ class PacketServer {
     const url = new URL(req.url);
     const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
     const since = url.searchParams.get("since");
+    const device = url.searchParams.get("device");
+    const direction = url.searchParams.get("direction");
 
     let result = this.packets;
 
     if (since) {
       const sinceTime = new Date(since).getTime();
-      result = result.filter((p) => new Date(p.timestamp).getTime() > sinceTime);
+      result = result.filter((p) => new Date(p.time).getTime() > sinceTime);
+    }
+    if (device) {
+      const normalized = device.replace(/^0x/i, "").toLowerCase();
+      result = result.filter((p) => {
+        const pid = (p.device_id ?? "").toLowerCase();
+        const psrc = (p.source_id ?? "").toLowerCase();
+        const ptarget = (p as Record<string, string | undefined>).target_id?.toLowerCase();
+        return pid === normalized || psrc === normalized || ptarget === normalized;
+      });
+    }
+    if (direction === "rx" || direction === "tx") {
+      result = result.filter((p) => p.direction === direction);
     }
 
     result = result.slice(-limit);

@@ -21,9 +21,8 @@ rf/esphome/secrets.yaml
 # External tools (not part of this repo)
 rtl_433/
 
-# Node.js / Turborepo
+# Node.js
 node_modules/
-.turbo/
 *.tsbuildinfo
 
 # macOS

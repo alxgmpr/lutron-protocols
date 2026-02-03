@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "start": "./start-dev.sh",
+    "start": "vite",
     "test": "vitest run",
     "test:watch": "vitest"
   },

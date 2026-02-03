@@ -237,17 +237,28 @@ export function DeviceList({
     const targetDevice = selectedDevice || selectedGroup?.primaryDevice
     if (!targetDevice) return
 
+    const toUpdate = selectedGroup ? selectedGroup.devices : [[targetDevice.id, targetDevice]] as Array<[string, Device]>
     try {
-      if (selectedGroup) {
-        for (const [id] of selectedGroup.devices) {
-          if (label) await postJson(`/api/devices/${id}/label`, { label })
-          if (deviceType) await postJson(`/api/devices/${id}/type`, { device_type: deviceType })
-          if (model) await postJson(`/api/devices/${id}/model`, { model })
+      const check = (res: unknown) => (res as { status?: string })?.status === 'error'
+      for (const [id] of toUpdate) {
+        if (label) {
+          if (check(await postJson(`/api/devices/${id}/label`, { label }))) {
+            showStatus('Device labels are not persisted (Bun backend). Use Python backend to save.', 'error')
+            return
+          }
         }
-      } else {
-        if (label) await postJson(`/api/devices/${targetDevice.id}/label`, { label })
-        if (deviceType) await postJson(`/api/devices/${targetDevice.id}/type`, { device_type: deviceType })
-        if (model) await postJson(`/api/devices/${targetDevice.id}/model`, { model })
+        if (deviceType) {
+          if (check(await postJson(`/api/devices/${id}/type`, { device_type: deviceType }))) {
+            showStatus('Device labels are not persisted (Bun backend). Use Python backend to save.', 'error')
+            return
+          }
+        }
+        if (model) {
+          if (check(await postJson(`/api/devices/${id}/model`, { model }))) {
+            showStatus('Device labels are not persisted (Bun backend). Use Python backend to save.', 'error')
+            return
+          }
+        }
       }
       onRefresh()
       showStatus(`Device configured: ${label || targetDevice.id}`, 'success')

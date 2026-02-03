@@ -35,14 +35,38 @@ export function PacketInspector({ deviceId, subnet, title, onClose }: PacketInsp
     setLoading(true)
     try {
       const params = new URLSearchParams({ limit: '200' })
-      if (deviceId) params.set('device', deviceId)
-      if (subnet) params.set('subnet', subnet)
+      if (deviceId) params.set('device', deviceId.replace(/^0x/i, ''))
       if (filter !== 'all') params.set('direction', filter)
-      if (typeFilter) params.set('type', typeFilter)
 
-      const response = await fetch(`/api/db/packets?${params}`)
+      const response = await fetch(`/api/packets?${params}`)
       const data = await response.json()
-      setPackets(data)
+      const mapped: DecodedPacket[] = (Array.isArray(data) ? data : []).map((p: Record<string, unknown>, index: number) => {
+        const details = (p.details as Record<string, string> | null) ?? {}
+        const decodedData = Object.fromEntries(
+          Object.entries(details).map(([k, v]) => [k, String(v)])
+        )
+        return {
+          id: index,
+          direction: (p.direction as 'rx' | 'tx') ?? 'rx',
+          packet_type: (p.type as string) ?? 'unknown',
+          device_id: (p.device_id as string) ?? null,
+          source_id: (p.source_id as string) ?? null,
+          target_id: (p.target_id as string) ?? (decodedData.target_id ?? null),
+          level: typeof details.level === 'number' ? details.level : (decodedData.level ? parseInt(decodedData.level, 10) : null),
+          button: (details.button as string) ?? decodedData.button ?? null,
+          rssi: typeof p.rssi === 'number' ? p.rssi : null,
+          timestamp: (p.time as string) ?? (p.timestamp as string) ?? new Date().toISOString(),
+          raw_hex: (p.raw_hex as string) ?? null,
+          decoded_data: Object.keys(decodedData).length > 0 ? decodedData : null
+        }
+      })
+      let filtered = mapped
+      if (typeFilter) filtered = filtered.filter(p => p.packet_type === typeFilter)
+      if (subnet) filtered = filtered.filter(p => {
+        const sid = (p.device_id ?? p.source_id ?? '').toUpperCase()
+        return sid.includes(subnet.replace(/^0x/i, '').toUpperCase())
+      })
+      setPackets(filtered)
     } catch (e) {
       console.error('Failed to load packets:', e)
     } finally {
