@@ -73,24 +73,35 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 #define CCA_DEVICE_CLASS_SWITCH       0x05
 
 /* Packet type codes */
-#define CCA_PKT_BEACON               0x91  /* Pairing beacon */
+#define CCA_PKT_BEACON_91            0x91  /* Pairing beacon */
 #define CCA_PKT_BEACON_92            0x92  /* Beacon stop */
-#define CCA_PKT_BEACON_93            0x93  /* Beacon variant */
+#define CCA_PKT_BEACON_93            0x93  /* Initial pairing beacon */
 #define CCA_PKT_BTN_LONG_A           0x89  /* Button press, long format, group A */
 #define CCA_PKT_BTN_LONG_B           0x8B  /* Button press, long format, group B */
 #define CCA_PKT_BTN_SHORT_A          0x88  /* Button press, short format, group A */
 #define CCA_PKT_BTN_SHORT_B          0x8A  /* Button press, short format, group B */
+#define CCA_PKT_CONFIG_A1            0xA1  /* Configuration packet (pairing) */
+#define CCA_PKT_HS_C1                0xC1  /* Handshake round 1 (dimmer) */
+#define CCA_PKT_HS_C2                0xC2  /* Handshake round 1 (bridge) */
+#define CCA_PKT_HS_C7                0xC7  /* Handshake round 2 (dimmer) */
+#define CCA_PKT_HS_C8                0xC8  /* Handshake round 2 (bridge) */
+#define CCA_PKT_HS_CD                0xCD  /* Handshake round 3 (dimmer) */
+#define CCA_PKT_HS_CE                0xCE  /* Handshake round 3 (bridge) */
+#define CCA_PKT_HS_D3                0xD3  /* Handshake round 4 (dimmer) */
+#define CCA_PKT_HS_D4                0xD4  /* Handshake round 4 (bridge) */
+#define CCA_PKT_HS_D9                0xD9  /* Handshake round 5 (dimmer) */
+#define CCA_PKT_HS_DA                0xDA  /* Handshake round 5 (bridge) */
+#define CCA_PKT_HS_DF                0xDF  /* Handshake round 6 (dimmer) */
+#define CCA_PKT_HS_E0                0xE0  /* Handshake round 6 (bridge) */
 #define CCA_PKT_LED_CONFIG           0xF2  /* LED configuration (derived from STATE_RPT format 0x0A) */
-#define CCA_PKT_PAIR_B0              0xB0  /* Device announcement */
+#define CCA_PKT_PAIR_B0              0xB0  /* Dimmer discovery (announces hardware ID to bridge) */
 #define CCA_PKT_PAIR_B8              0xB8  /* Scene Pico pairing (bridge-only) */
 #define CCA_PKT_PAIR_B9              0xB9  /* Direct-pair Pico pairing */
 #define CCA_PKT_PAIR_BA              0xBA  /* Scene Pico pairing variant */
 #define CCA_PKT_PAIR_BB              0xBB  /* Direct-pair Pico pairing variant */
 #define CCA_PKT_PAIR_RESP_C0         0xC0  /* Pairing response */
-#define CCA_PKT_PAIR_RESP_C1         0xC1  /* Pairing response phase 1 */
-#define CCA_PKT_PAIR_RESP_C2         0xC2  /* Pairing response phase 2 */
-#define CCA_PKT_PAIR_RESP_C8         0xC8  /* Pairing acknowledgment */
 #define CCA_PKT_SET_LEVEL            0xA2  /* Set level command */
+#define CCA_PKT_STATE_80             0x80  /* Dimmer state report (pairing phase) */
 #define CCA_PKT_STATE_RPT_81         0x81  /* State report (type 81) */
 #define CCA_PKT_STATE_RPT_82         0x82  /* State report (type 82) */
 #define CCA_PKT_STATE_RPT_83         0x83  /* State report (type 83) */
@@ -98,13 +109,26 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 #define CCA_PKT_UNPAIR_PREP          0xF1  /* Unpair preparation (derived from STATE_RPT format 0x09) */
 
 /* Packet type lengths */
-#define CCA_PKT_BEACON_LEN           24
+#define CCA_PKT_BEACON_91_LEN        24
 #define CCA_PKT_BEACON_92_LEN        24
 #define CCA_PKT_BEACON_93_LEN        24
 #define CCA_PKT_BTN_LONG_A_LEN       24
 #define CCA_PKT_BTN_LONG_B_LEN       24
 #define CCA_PKT_BTN_SHORT_A_LEN      24
 #define CCA_PKT_BTN_SHORT_B_LEN      24
+#define CCA_PKT_CONFIG_A1_LEN        24
+#define CCA_PKT_HS_C1_LEN            24
+#define CCA_PKT_HS_C2_LEN            24
+#define CCA_PKT_HS_C7_LEN            24
+#define CCA_PKT_HS_C8_LEN            24
+#define CCA_PKT_HS_CD_LEN            24
+#define CCA_PKT_HS_CE_LEN            24
+#define CCA_PKT_HS_D3_LEN            24
+#define CCA_PKT_HS_D4_LEN            24
+#define CCA_PKT_HS_D9_LEN            24
+#define CCA_PKT_HS_DA_LEN            24
+#define CCA_PKT_HS_DF_LEN            24
+#define CCA_PKT_HS_E0_LEN            24
 #define CCA_PKT_LED_CONFIG_LEN       24
 #define CCA_PKT_PAIR_B0_LEN          53
 #define CCA_PKT_PAIR_B8_LEN          53
@@ -112,10 +136,8 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 #define CCA_PKT_PAIR_BA_LEN          53
 #define CCA_PKT_PAIR_BB_LEN          53
 #define CCA_PKT_PAIR_RESP_C0_LEN     24
-#define CCA_PKT_PAIR_RESP_C1_LEN     24
-#define CCA_PKT_PAIR_RESP_C2_LEN     24
-#define CCA_PKT_PAIR_RESP_C8_LEN     24
 #define CCA_PKT_SET_LEVEL_LEN        24
+#define CCA_PKT_STATE_80_LEN         24
 #define CCA_PKT_STATE_RPT_81_LEN     24
 #define CCA_PKT_STATE_RPT_82_LEN     24
 #define CCA_PKT_STATE_RPT_83_LEN     24
@@ -124,7 +146,7 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 
 /* Helper macros */
 #define CCA_IS_BEACON_PKT(t) ( \
-    (t) == CCA_PKT_BEACON || \
+    (t) == CCA_PKT_BEACON_91 || \
     (t) == CCA_PKT_BEACON_92 || \
     (t) == CCA_PKT_BEACON_93 \
 )
@@ -137,6 +159,7 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 )
 
 #define CCA_IS_CONFIG_PKT(t) ( \
+    (t) == CCA_PKT_CONFIG_A1 || \
     (t) == CCA_PKT_LED_CONFIG || \
     (t) == CCA_PKT_SET_LEVEL || \
     (t) == CCA_PKT_UNPAIR || \
@@ -144,10 +167,19 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 )
 
 #define CCA_IS_HANDSHAKE_PKT(t) ( \
-    (t) == CCA_PKT_PAIR_RESP_C0 || \
-    (t) == CCA_PKT_PAIR_RESP_C1 || \
-    (t) == CCA_PKT_PAIR_RESP_C2 || \
-    (t) == CCA_PKT_PAIR_RESP_C8 \
+    (t) == CCA_PKT_HS_C1 || \
+    (t) == CCA_PKT_HS_C2 || \
+    (t) == CCA_PKT_HS_C7 || \
+    (t) == CCA_PKT_HS_C8 || \
+    (t) == CCA_PKT_HS_CD || \
+    (t) == CCA_PKT_HS_CE || \
+    (t) == CCA_PKT_HS_D3 || \
+    (t) == CCA_PKT_HS_D4 || \
+    (t) == CCA_PKT_HS_D9 || \
+    (t) == CCA_PKT_HS_DA || \
+    (t) == CCA_PKT_HS_DF || \
+    (t) == CCA_PKT_HS_E0 || \
+    (t) == CCA_PKT_PAIR_RESP_C0 \
 )
 
 #define CCA_IS_PAIRING_PKT(t) ( \
@@ -159,39 +191,62 @@ static const uint8_t CCA_PREFIX[] = {0xFA, 0xDE};
 )
 
 #define CCA_IS_STATE_PKT(t) ( \
+    (t) == CCA_PKT_STATE_80 || \
     (t) == CCA_PKT_STATE_RPT_81 || \
     (t) == CCA_PKT_STATE_RPT_82 || \
     (t) == CCA_PKT_STATE_RPT_83 \
 )
 
 #define CCA_PKT_USES_BE_DEVICE_ID(t) ( \
-    (t) == CCA_PKT_BEACON || \
+    (t) == CCA_PKT_BEACON_91 || \
     (t) == CCA_PKT_BEACON_92 || \
     (t) == CCA_PKT_BEACON_93 || \
     (t) == CCA_PKT_BTN_LONG_A || \
     (t) == CCA_PKT_BTN_LONG_B || \
     (t) == CCA_PKT_BTN_SHORT_A || \
     (t) == CCA_PKT_BTN_SHORT_B || \
+    (t) == CCA_PKT_HS_C1 || \
+    (t) == CCA_PKT_HS_C2 || \
+    (t) == CCA_PKT_HS_C7 || \
+    (t) == CCA_PKT_HS_C8 || \
+    (t) == CCA_PKT_HS_CD || \
+    (t) == CCA_PKT_HS_CE || \
+    (t) == CCA_PKT_HS_D3 || \
+    (t) == CCA_PKT_HS_D4 || \
+    (t) == CCA_PKT_HS_D9 || \
+    (t) == CCA_PKT_HS_DA || \
+    (t) == CCA_PKT_HS_DF || \
+    (t) == CCA_PKT_HS_E0 || \
     (t) == CCA_PKT_PAIR_B0 || \
     (t) == CCA_PKT_PAIR_B8 || \
     (t) == CCA_PKT_PAIR_B9 || \
     (t) == CCA_PKT_PAIR_BA || \
     (t) == CCA_PKT_PAIR_BB || \
-    (t) == CCA_PKT_PAIR_RESP_C0 || \
-    (t) == CCA_PKT_PAIR_RESP_C1 || \
-    (t) == CCA_PKT_PAIR_RESP_C2 || \
-    (t) == CCA_PKT_PAIR_RESP_C8 \
+    (t) == CCA_PKT_PAIR_RESP_C0 \
 )
 
 static inline uint8_t cca_packet_length(uint8_t type) {
     switch (type) {
-        case CCA_PKT_BEACON: return 24;
+        case CCA_PKT_BEACON_91: return 24;
         case CCA_PKT_BEACON_92: return 24;
         case CCA_PKT_BEACON_93: return 24;
         case CCA_PKT_BTN_LONG_A: return 24;
         case CCA_PKT_BTN_LONG_B: return 24;
         case CCA_PKT_BTN_SHORT_A: return 24;
         case CCA_PKT_BTN_SHORT_B: return 24;
+        case CCA_PKT_CONFIG_A1: return 24;
+        case CCA_PKT_HS_C1: return 24;
+        case CCA_PKT_HS_C2: return 24;
+        case CCA_PKT_HS_C7: return 24;
+        case CCA_PKT_HS_C8: return 24;
+        case CCA_PKT_HS_CD: return 24;
+        case CCA_PKT_HS_CE: return 24;
+        case CCA_PKT_HS_D3: return 24;
+        case CCA_PKT_HS_D4: return 24;
+        case CCA_PKT_HS_D9: return 24;
+        case CCA_PKT_HS_DA: return 24;
+        case CCA_PKT_HS_DF: return 24;
+        case CCA_PKT_HS_E0: return 24;
         case CCA_PKT_LED_CONFIG: return 24;
         case CCA_PKT_PAIR_B0: return 53;
         case CCA_PKT_PAIR_B8: return 53;
@@ -199,10 +254,8 @@ static inline uint8_t cca_packet_length(uint8_t type) {
         case CCA_PKT_PAIR_BA: return 53;
         case CCA_PKT_PAIR_BB: return 53;
         case CCA_PKT_PAIR_RESP_C0: return 24;
-        case CCA_PKT_PAIR_RESP_C1: return 24;
-        case CCA_PKT_PAIR_RESP_C2: return 24;
-        case CCA_PKT_PAIR_RESP_C8: return 24;
         case CCA_PKT_SET_LEVEL: return 24;
+        case CCA_PKT_STATE_80: return 24;
         case CCA_PKT_STATE_RPT_81: return 24;
         case CCA_PKT_STATE_RPT_82: return 24;
         case CCA_PKT_STATE_RPT_83: return 24;
@@ -214,13 +267,26 @@ static inline uint8_t cca_packet_length(uint8_t type) {
 
 static inline const char* cca_packet_name(uint8_t type) {
     switch (type) {
-        case CCA_PKT_BEACON: return "BEACON";
+        case CCA_PKT_BEACON_91: return "BEACON_91";
         case CCA_PKT_BEACON_92: return "BEACON_92";
         case CCA_PKT_BEACON_93: return "BEACON_93";
         case CCA_PKT_BTN_LONG_A: return "BTN_LONG_A";
         case CCA_PKT_BTN_LONG_B: return "BTN_LONG_B";
         case CCA_PKT_BTN_SHORT_A: return "BTN_SHORT_A";
         case CCA_PKT_BTN_SHORT_B: return "BTN_SHORT_B";
+        case CCA_PKT_CONFIG_A1: return "CONFIG_A1";
+        case CCA_PKT_HS_C1: return "HS_C1";
+        case CCA_PKT_HS_C2: return "HS_C2";
+        case CCA_PKT_HS_C7: return "HS_C7";
+        case CCA_PKT_HS_C8: return "HS_C8";
+        case CCA_PKT_HS_CD: return "HS_CD";
+        case CCA_PKT_HS_CE: return "HS_CE";
+        case CCA_PKT_HS_D3: return "HS_D3";
+        case CCA_PKT_HS_D4: return "HS_D4";
+        case CCA_PKT_HS_D9: return "HS_D9";
+        case CCA_PKT_HS_DA: return "HS_DA";
+        case CCA_PKT_HS_DF: return "HS_DF";
+        case CCA_PKT_HS_E0: return "HS_E0";
         case CCA_PKT_LED_CONFIG: return "LED_CONFIG";
         case CCA_PKT_PAIR_B0: return "PAIR_B0";
         case CCA_PKT_PAIR_B8: return "PAIR_B8";
@@ -228,10 +294,8 @@ static inline const char* cca_packet_name(uint8_t type) {
         case CCA_PKT_PAIR_BA: return "PAIR_BA";
         case CCA_PKT_PAIR_BB: return "PAIR_BB";
         case CCA_PKT_PAIR_RESP_C0: return "PAIR_RESP_C0";
-        case CCA_PKT_PAIR_RESP_C1: return "PAIR_RESP_C1";
-        case CCA_PKT_PAIR_RESP_C2: return "PAIR_RESP_C2";
-        case CCA_PKT_PAIR_RESP_C8: return "PAIR_RESP_C8";
         case CCA_PKT_SET_LEVEL: return "SET_LEVEL";
+        case CCA_PKT_STATE_80: return "STATE_80";
         case CCA_PKT_STATE_RPT_81: return "STATE_RPT_81";
         case CCA_PKT_STATE_RPT_82: return "STATE_RPT_82";
         case CCA_PKT_STATE_RPT_83: return "STATE_RPT_83";
@@ -242,23 +306,23 @@ static inline const char* cca_packet_name(uint8_t type) {
 }
 
 /* Field offsets for packet parsing */
-/* BEACON fields */
-#define CCA_BEACON_OFF_TYPE    0
-#define CCA_BEACON_SIZE_TYPE   1
-#define CCA_BEACON_OFF_SEQUENCE    1
-#define CCA_BEACON_SIZE_SEQUENCE   1
-#define CCA_BEACON_OFF_LOAD_ID    2
-#define CCA_BEACON_SIZE_LOAD_ID   4
-#define CCA_BEACON_OFF_PROTOCOL    6
-#define CCA_BEACON_SIZE_PROTOCOL   1
-#define CCA_BEACON_OFF_FORMAT    7
-#define CCA_BEACON_SIZE_FORMAT   1
-#define CCA_BEACON_OFF_FIXED    8
-#define CCA_BEACON_SIZE_FIXED   5
-#define CCA_BEACON_OFF_BROADCAST    13
-#define CCA_BEACON_SIZE_BROADCAST   9
-#define CCA_BEACON_OFF_CRC    22
-#define CCA_BEACON_SIZE_CRC   2
+/* BEACON_91 fields */
+#define CCA_BEACON_91_OFF_TYPE    0
+#define CCA_BEACON_91_SIZE_TYPE   1
+#define CCA_BEACON_91_OFF_SEQUENCE    1
+#define CCA_BEACON_91_SIZE_SEQUENCE   1
+#define CCA_BEACON_91_OFF_LOAD_ID    2
+#define CCA_BEACON_91_SIZE_LOAD_ID   4
+#define CCA_BEACON_91_OFF_PROTOCOL    6
+#define CCA_BEACON_91_SIZE_PROTOCOL   1
+#define CCA_BEACON_91_OFF_FORMAT    7
+#define CCA_BEACON_91_SIZE_FORMAT   1
+#define CCA_BEACON_91_OFF_FIXED    8
+#define CCA_BEACON_91_SIZE_FIXED   5
+#define CCA_BEACON_91_OFF_BROADCAST    13
+#define CCA_BEACON_91_SIZE_BROADCAST   9
+#define CCA_BEACON_91_OFF_CRC    22
+#define CCA_BEACON_91_SIZE_CRC   2
 
 /* BTN_LONG_A fields */
 #define CCA_BTN_LONG_A_OFF_TYPE    0
@@ -306,19 +370,51 @@ static inline const char* cca_packet_name(uint8_t type) {
 #define CCA_BTN_SHORT_A_OFF_CRC    22
 #define CCA_BTN_SHORT_A_SIZE_CRC   2
 
+/* CONFIG_A1 fields */
+#define CCA_CONFIG_A1_OFF_TYPE    0
+#define CCA_CONFIG_A1_SIZE_TYPE   1
+#define CCA_CONFIG_A1_OFF_SEQUENCE    1
+#define CCA_CONFIG_A1_SIZE_SEQUENCE   1
+#define CCA_CONFIG_A1_OFF_DEVICE_ID    2
+#define CCA_CONFIG_A1_SIZE_DEVICE_ID   4
+#define CCA_CONFIG_A1_OFF_PROTOCOL    6
+#define CCA_CONFIG_A1_SIZE_PROTOCOL   1
+#define CCA_CONFIG_A1_OFF_FORMAT    7
+#define CCA_CONFIG_A1_SIZE_FORMAT   1
+#define CCA_CONFIG_A1_OFF_DATA    8
+#define CCA_CONFIG_A1_SIZE_DATA   14
+#define CCA_CONFIG_A1_OFF_CRC    22
+#define CCA_CONFIG_A1_SIZE_CRC   2
+
 /* PAIR_B0 fields */
 #define CCA_PAIR_B0_OFF_TYPE    0
 #define CCA_PAIR_B0_SIZE_TYPE   1
 #define CCA_PAIR_B0_OFF_SEQUENCE    1
 #define CCA_PAIR_B0_SIZE_SEQUENCE   1
-#define CCA_PAIR_B0_OFF_DEVICE_ID    2
-#define CCA_PAIR_B0_SIZE_DEVICE_ID   4
+#define CCA_PAIR_B0_OFF_FLAGS    2
+#define CCA_PAIR_B0_SIZE_FLAGS   1
+#define CCA_PAIR_B0_OFF_ZONE_ID    3
+#define CCA_PAIR_B0_SIZE_ZONE_ID   2
+#define CCA_PAIR_B0_OFF_PAIR_FLAG    5
+#define CCA_PAIR_B0_SIZE_PAIR_FLAG   1
 #define CCA_PAIR_B0_OFF_PROTOCOL    6
 #define CCA_PAIR_B0_SIZE_PROTOCOL   1
 #define CCA_PAIR_B0_OFF_FORMAT    7
 #define CCA_PAIR_B0_SIZE_FORMAT   1
-#define CCA_PAIR_B0_OFF_DATA    8
-#define CCA_PAIR_B0_SIZE_DATA   43
+#define CCA_PAIR_B0_OFF_RESERVED    8
+#define CCA_PAIR_B0_SIZE_RESERVED   1
+#define CCA_PAIR_B0_OFF_BROADCAST    9
+#define CCA_PAIR_B0_SIZE_BROADCAST   5
+#define CCA_PAIR_B0_OFF_FIXED    14
+#define CCA_PAIR_B0_SIZE_FIXED   2
+#define CCA_PAIR_B0_OFF_HARDWARE_ID    16
+#define CCA_PAIR_B0_SIZE_HARDWARE_ID   4
+#define CCA_PAIR_B0_OFF_DEVICE_TYPE    20
+#define CCA_PAIR_B0_SIZE_DEVICE_TYPE   1
+#define CCA_PAIR_B0_OFF_CAPS    21
+#define CCA_PAIR_B0_SIZE_CAPS   10
+#define CCA_PAIR_B0_OFF_PADDING    31
+#define CCA_PAIR_B0_SIZE_PADDING   20
 #define CCA_PAIR_B0_OFF_CRC    51
 #define CCA_PAIR_B0_SIZE_CRC   2
 
@@ -399,6 +495,22 @@ static inline const char* cca_packet_name(uint8_t type) {
 #define CCA_SET_LEVEL_SIZE_PADDING   4
 #define CCA_SET_LEVEL_OFF_CRC    22
 #define CCA_SET_LEVEL_SIZE_CRC   2
+
+/* STATE_80 fields */
+#define CCA_STATE_80_OFF_TYPE    0
+#define CCA_STATE_80_SIZE_TYPE   1
+#define CCA_STATE_80_OFF_SEQUENCE    1
+#define CCA_STATE_80_SIZE_SEQUENCE   1
+#define CCA_STATE_80_OFF_ZONE_ID    3
+#define CCA_STATE_80_SIZE_ZONE_ID   2
+#define CCA_STATE_80_OFF_PROTOCOL    5
+#define CCA_STATE_80_SIZE_PROTOCOL   1
+#define CCA_STATE_80_OFF_FIXED    6
+#define CCA_STATE_80_SIZE_FIXED   2
+#define CCA_STATE_80_OFF_STATE    8
+#define CCA_STATE_80_SIZE_STATE   14
+#define CCA_STATE_80_OFF_CRC    22
+#define CCA_STATE_80_SIZE_CRC   2
 
 /* STATE_RPT_81 fields */
 #define CCA_STATE_RPT_81_OFF_TYPE    0
@@ -497,7 +609,7 @@ static const cca_sequence_t CCA_SEQ_BUTTON_RELEASE = {
 
 /* Pairing beacon broadcast */
 static const cca_sequence_step_t CCA_SEQ_PAIRING_BEACON_STEPS[] = {
-    { CCA_PKT_BEACON, -1, 65 },
+    { CCA_PKT_BEACON_91, -1, 65 },
 };
 
 static const cca_sequence_t CCA_SEQ_PAIRING_BEACON = {

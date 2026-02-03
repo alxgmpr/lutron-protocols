@@ -115,31 +115,42 @@ Device class codes (byte 28 in pairing)
 
 | Type | Code | Length | Category | Description |
 |------|------|--------|----------|-------------|
-| BEACON | `0x91` | 24 | BEACON | Pairing beacon |
+| BEACON_91 | `0x91` | 24 | BEACON | Pairing beacon |
 | BEACON_92 | `0x92` | 24 | BEACON | Beacon stop |
-| BEACON_93 | `0x93` | 24 | BEACON | Beacon variant |
+| BEACON_93 | `0x93` | 24 | BEACON | Initial pairing beacon |
 | BTN_LONG_A | `0x89` | 24 | BUTTON | Button press, long format, group A |
 | BTN_LONG_B | `0x8B` | 24 | BUTTON | Button press, long format, group B |
 | BTN_SHORT_A | `0x88` | 24 | BUTTON | Button press, short format, group A |
 | BTN_SHORT_B | `0x8A` | 24 | BUTTON | Button press, short format, group B |
+| CONFIG_A1 | `0xA1` | 24 | CONFIG | Configuration packet (pairing) |
+| HS_C1 | `0xC1` | 24 | HANDSHAKE | Handshake round 1 (dimmer) |
+| HS_C2 | `0xC2` | 24 | HANDSHAKE | Handshake round 1 (bridge) |
+| HS_C7 | `0xC7` | 24 | HANDSHAKE | Handshake round 2 (dimmer) |
+| HS_C8 | `0xC8` | 24 | HANDSHAKE | Handshake round 2 (bridge) |
+| HS_CD | `0xCD` | 24 | HANDSHAKE | Handshake round 3 (dimmer) |
+| HS_CE | `0xCE` | 24 | HANDSHAKE | Handshake round 3 (bridge) |
+| HS_D3 | `0xD3` | 24 | HANDSHAKE | Handshake round 4 (dimmer) |
+| HS_D4 | `0xD4` | 24 | HANDSHAKE | Handshake round 4 (bridge) |
+| HS_D9 | `0xD9` | 24 | HANDSHAKE | Handshake round 5 (dimmer) |
+| HS_DA | `0xDA` | 24 | HANDSHAKE | Handshake round 5 (bridge) |
+| HS_DF | `0xDF` | 24 | HANDSHAKE | Handshake round 6 (dimmer) |
+| HS_E0 | `0xE0` | 24 | HANDSHAKE | Handshake round 6 (bridge) |
 | LED_CONFIG | `0xF2` | 24 | CONFIG | LED configuration (derived from STATE_RPT format 0x0A) |
-| PAIR_B0 | `0xB0` | 53 | PAIRING | Device announcement |
+| PAIR_B0 | `0xB0` | 53 | PAIRING | Dimmer discovery (announces hardware ID to bridge) |
 | PAIR_B8 | `0xB8` | 53 | PAIRING | Scene Pico pairing (bridge-only) |
 | PAIR_B9 | `0xB9` | 53 | PAIRING | Direct-pair Pico pairing |
 | PAIR_BA | `0xBA` | 53 | PAIRING | Scene Pico pairing variant |
 | PAIR_BB | `0xBB` | 53 | PAIRING | Direct-pair Pico pairing variant |
 | PAIR_RESP_C0 | `0xC0` | 24 | HANDSHAKE | Pairing response |
-| PAIR_RESP_C1 | `0xC1` | 24 | HANDSHAKE | Pairing response phase 1 |
-| PAIR_RESP_C2 | `0xC2` | 24 | HANDSHAKE | Pairing response phase 2 |
-| PAIR_RESP_C8 | `0xC8` | 24 | HANDSHAKE | Pairing acknowledgment |
 | SET_LEVEL | `0xA2` | 24 | CONFIG | Set level command |
+| STATE_80 | `0x80` | 24 | STATE | Dimmer state report (pairing phase) |
 | STATE_RPT_81 | `0x81` | 24 | STATE | State report (type 81) |
 | STATE_RPT_82 | `0x82` | 24 | STATE | State report (type 82) |
 | STATE_RPT_83 | `0x83` | 24 | STATE | State report (type 83) |
 | UNPAIR | `0xF0` | 24 | CONFIG | Unpair command (derived from STATE_RPT format 0x0C) |
 | UNPAIR_PREP | `0xF1` | 24 | CONFIG | Unpair preparation (derived from STATE_RPT format 0x09) |
 
-### BEACON (`0x91`)
+### BEACON_91 (`0x91`)
 
 Pairing beacon
 
@@ -207,9 +218,29 @@ Button press, short format, group A
 | 12 | 10 | padding | hex | - |
 | 22 | 2 | crc | hex | - |
 
+### CONFIG_A1 (`0xA1`)
+
+Configuration packet (pairing)
+
+- **Length:** 24 bytes
+- **Category:** CONFIG
+- **Device ID:** little
+
+#### Fields
+
+| Offset | Size | Field | Format | Description |
+|--------|------|-------|--------|-------------|
+| 0 | 1 | type | hex | - |
+| 1 | 1 | sequence | decimal | - |
+| 2 | 4 | device_id | device_id | - |
+| 6 | 1 | protocol | hex | - |
+| 7 | 1 | format | hex | - |
+| 8 | 14 | data | hex | - |
+| 22 | 2 | crc | hex | - |
+
 ### PAIR_B0 (`0xB0`)
 
-Device announcement
+Dimmer discovery (announces hardware ID to bridge)
 
 - **Length:** 53 bytes
 - **Category:** PAIRING
@@ -221,10 +252,18 @@ Device announcement
 |--------|------|-------|--------|-------------|
 | 0 | 1 | type | hex | - |
 | 1 | 1 | sequence | decimal | - |
-| 2 | 4 | device_id | device_id_be | - |
+| 2 | 1 | flags | hex | - |
+| 3 | 2 | zone_id | hex | Bridge zone ID |
+| 5 | 1 | pair_flag | hex | 0x7F during pairing |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 43 | data | hex | - |
+| 8 | 1 | reserved | hex | - |
+| 9 | 5 | broadcast | hex | FF FF FF FF FF |
+| 14 | 2 | fixed | hex | - |
+| 16 | 4 | hardware_id | device_id_be | Dimmer hardware ID |
+| 20 | 1 | device_type | hex | 0x04=dimmer |
+| 21 | 10 | caps | hex | Device capabilities |
+| 31 | 20 | padding | hex | - |
 | 51 | 2 | crc | hex | - |
 
 ### PAIR_B8 (`0xB8`)
@@ -300,6 +339,26 @@ Set level command
 | 13 | 3 | fixed2 | hex | - |
 | 16 | 2 | level | level_16bit | - |
 | 18 | 4 | padding | hex | - |
+| 22 | 2 | crc | hex | - |
+
+### STATE_80 (`0x80`)
+
+Dimmer state report (pairing phase)
+
+- **Length:** 24 bytes
+- **Category:** STATE
+- **Device ID:** little
+
+#### Fields
+
+| Offset | Size | Field | Format | Description |
+|--------|------|-------|--------|-------------|
+| 0 | 1 | type | hex | - |
+| 1 | 1 | sequence | decimal | - |
+| 3 | 2 | zone_id | hex | - |
+| 5 | 1 | protocol | hex | - |
+| 6 | 2 | fixed | hex | - |
+| 8 | 14 | state | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### STATE_RPT_81 (`0x81`)
@@ -414,7 +473,7 @@ Pairing beacon broadcast
 
 | Step | Packet | Count | Interval |
 |------|--------|-------|----------|
-| 1 | BEACON | infinite | 65 ms |
+| 1 | BEACON_91 | infinite | 65 ms |
 
 **Note:** This sequence runs until explicitly stopped.
 

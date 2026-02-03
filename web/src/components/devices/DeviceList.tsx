@@ -87,7 +87,7 @@ export function DeviceList({
     showStatus(`Bridge command ${level}%...`)
     try {
       const result = await postJson('/api/level', {
-        source: '0x' + sourceId,
+        bridge: '0x' + sourceId,
         target: '0x' + targetId,
         level
       })

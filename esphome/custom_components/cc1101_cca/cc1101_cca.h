@@ -356,6 +356,82 @@ class CC1101CCA : public Component,
    */
   uint8_t send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq);
 
+  // ========== VIVE DEVICE COMMANDS (0x8A/0x8B format 0x0e) ==========
+
+  /**
+   * @brief Send ON/OFF command to a Vive zone
+   * Vive addresses devices by ZONE ID, not device ID!
+   * Zone IDs are assigned during pairing (byte 23 of 0x8D config packet)
+   * @param hub_id Our hub ID (e.g., 0xYYYYYYYY)
+   * @param zone_id Zone/room ID (e.g., 0x4B for room 3)
+   * @param turn_on true=ON (0x8A), false=OFF (0x8B)
+   */
+  void send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on);
+
+  /**
+   * @brief Turn ON a Vive zone
+   */
+  void send_vive_on(uint32_t hub_id, uint8_t zone_id);
+
+  /**
+   * @brief Turn OFF a Vive zone
+   */
+  void send_vive_off(uint32_t hub_id, uint8_t zone_id);
+
+  /**
+   * @brief Raise (dim up) a Vive zone
+   */
+  void send_vive_raise(uint32_t hub_id, uint8_t zone_id);
+
+  /**
+   * @brief Lower (dim down) a Vive zone
+   */
+  void send_vive_lower(uint32_t hub_id, uint8_t zone_id);
+
+  // Deprecated - use zone commands instead
+  void send_vive_command(uint32_t hub_id, uint32_t device_id, uint8_t command, uint8_t subcommand);
+  void send_vive_toggle(uint32_t hub_id, uint32_t device_id);
+
+  // ========== VIVE PAIRING (0xBA/0xBB beacon protocol) ==========
+
+  /**
+   * @brief Start Vive-style pairing mode
+   * Sends 0xBA beacon bursts (~9 packets) every ~30 seconds.
+   * Devices in range will flash their LEDs to indicate pairing mode.
+   * Call stop_vive_pairing() when done.
+   * @param hub_id 32-bit hub ID (e.g., 0xYYYYYYYY)
+   */
+  void start_vive_pairing(uint32_t hub_id);
+
+  /**
+   * @brief Stop Vive pairing mode
+   * Sends 0xBB stop beacon burst (timer=0x00) to exit all devices from pairing mode.
+   */
+  void stop_vive_pairing();
+
+  /**
+   * @brief Check if Vive pairing mode is active
+   */
+  bool is_vive_pairing_active() const { return vive_pairing_active_; }
+
+  /**
+   * @brief Send a single Vive beacon burst (for manual control)
+   * @param hub_id 32-bit hub ID
+   * @param is_stop true for 0xBB stop burst, false for 0xBA enter burst
+   * @param count Number of packets in burst (default 9)
+   */
+  void send_vive_beacon_burst(uint32_t hub_id, bool is_stop = false, int count = 9);
+
+  /**
+   * @brief Send targeted Vive accept packet to pair a specific device
+   * Sends 0xBB with the device ID in the target field instead of broadcast.
+   * Call this when a device sends 0xB8 pairing request.
+   * @param hub_id Our hub ID
+   * @param device_id The device ID that sent 0xB8 request
+   * @param zone_id Zone/room ID to assign (0x38=Room1, 0x47=Room2, 0x4b=Room3, etc.)
+   */
+  void send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zone_id = 0x38);
+
   /**
    * @brief Transmit a raw packet (public for YAML lambda access)
    */
@@ -396,6 +472,12 @@ class CC1101CCA : public Component,
   uint8_t pairing_beacon_count_{0};  // Counter for RX gap timing
   uint32_t last_rx_check_{0};
   uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
+
+  // Vive pairing state
+  bool vive_pairing_active_{false};
+  uint32_t vive_hub_id_{0};
+  uint8_t vive_seq_{0};
+  uint32_t vive_last_burst_{0};  // For ~30s burst interval
 
   // Callbacks for packet reception (used by UDP streaming)
   std::vector<std::function<void(const std::vector<uint8_t> &, int8_t)>> on_packet_callbacks_;

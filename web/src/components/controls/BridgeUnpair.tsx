@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, AutocompleteInput } from '../common'
+import { ControlSection } from './ControlsPanel'
+import { Button, FormGroup, AutocompleteInput } from '../common'
 import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
@@ -12,23 +13,22 @@ export function BridgeUnpair({ showStatus }: Props) {
   const { post } = useApi()
   const { seen } = useDevices()
   const [bridgeSubnet, setBridgeSubnet] = useState('2C90')
-  const [targetId, setTargetId] = useState('0x06F4587E')
-
-  const cleanSubnet = bridgeSubnet.replace(/^0x/i, '').toUpperCase().padStart(4, '0')
-  const zone1 = `0x00${cleanSubnet}AD`
-  const zone2 = `0x00${cleanSubnet}AF`
+  const [targetId, setTargetId] = useState('06F4587E')
 
   const handleUnpair = async () => {
-    showStatus(`Unpairing ${targetId} from bridge ${cleanSubnet}...`)
+    const cleanSubnet = bridgeSubnet.replace(/^0x/i, '').toUpperCase().padStart(4, '0')
+    const zone1 = `0x00${cleanSubnet}AD`
+    const zone2 = `0x00${cleanSubnet}AF`
+
+    showStatus(`Unpairing ${targetId}...`)
     try {
-      const params = {
+      const result = await post('/api/unpair', {
         bridge: zone1,
-        target: targetId,
+        target: '0x' + targetId.replace(/^0x/i, ''),
         zone2: zone2
-      }
-      const result = await post('/api/unpair', params)
+      })
       if (result.status === 'ok') {
-        showStatus(`Unpair: ${bridgeSubnet} -> ${result.target}`, 'success')
+        showStatus(`Unpaired ${targetId}`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
       }
@@ -38,30 +38,26 @@ export function BridgeUnpair({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Unpair" variant="device" collapsible defaultCollapsed>
-      <p className="help-text">
-        Remove a device from bridge network.
-      </p>
-
+    <ControlSection title="Bridge Unpair" storageKey="ctrl-bridge-unpair">
       <div className="form-row">
         <FormGroup label="Subnet">
           <AutocompleteInput
             value={bridgeSubnet}
-            onChange={setBridgeSubnet}
-            suggestions={seen.bridgeSubnets}
-            width={70}
+            onChange={v => setBridgeSubnet(v.replace(/^0x/i, ''))}
+            suggestions={seen.bridgeSubnets.map(s => s.replace(/^0x/i, ''))}
+            width={60}
           />
         </FormGroup>
         <FormGroup label="Target">
           <AutocompleteInput
             value={targetId}
-            onChange={setTargetId}
-            suggestions={seen.dimmers}
-            width={110}
+            onChange={v => setTargetId(v.replace(/^0x/i, ''))}
+            suggestions={seen.dimmers.map(s => s.replace(/^0x/i, ''))}
+            width={90}
           />
         </FormGroup>
         <Button variant="red" onClick={handleUnpair}>Unpair</Button>
       </div>
-    </Card>
+    </ControlSection>
   )
 }

@@ -86,24 +86,35 @@ class DeviceClass(IntEnum):
 
 class PacketType(IntEnum):
     """Packet type codes."""
-    BEACON = 0x91  # Pairing beacon
+    BEACON_91 = 0x91  # Pairing beacon
     BEACON_92 = 0x92  # Beacon stop
-    BEACON_93 = 0x93  # Beacon variant
+    BEACON_93 = 0x93  # Initial pairing beacon
     BTN_LONG_A = 0x89  # Button press, long format, group A
     BTN_LONG_B = 0x8B  # Button press, long format, group B
     BTN_SHORT_A = 0x88  # Button press, short format, group A
     BTN_SHORT_B = 0x8A  # Button press, short format, group B
+    CONFIG_A1 = 0xA1  # Configuration packet (pairing)
+    HS_C1 = 0xC1  # Handshake round 1 (dimmer)
+    HS_C2 = 0xC2  # Handshake round 1 (bridge)
+    HS_C7 = 0xC7  # Handshake round 2 (dimmer)
+    HS_C8 = 0xC8  # Handshake round 2 (bridge)
+    HS_CD = 0xCD  # Handshake round 3 (dimmer)
+    HS_CE = 0xCE  # Handshake round 3 (bridge)
+    HS_D3 = 0xD3  # Handshake round 4 (dimmer)
+    HS_D4 = 0xD4  # Handshake round 4 (bridge)
+    HS_D9 = 0xD9  # Handshake round 5 (dimmer)
+    HS_DA = 0xDA  # Handshake round 5 (bridge)
+    HS_DF = 0xDF  # Handshake round 6 (dimmer)
+    HS_E0 = 0xE0  # Handshake round 6 (bridge)
     LED_CONFIG = 0xF2  # LED configuration (derived from STATE_RPT format 0x0A)
-    PAIR_B0 = 0xB0  # Device announcement
+    PAIR_B0 = 0xB0  # Dimmer discovery (announces hardware ID to bridge)
     PAIR_B8 = 0xB8  # Scene Pico pairing (bridge-only)
     PAIR_B9 = 0xB9  # Direct-pair Pico pairing
     PAIR_BA = 0xBA  # Scene Pico pairing variant
     PAIR_BB = 0xBB  # Direct-pair Pico pairing variant
     PAIR_RESP_C0 = 0xC0  # Pairing response
-    PAIR_RESP_C1 = 0xC1  # Pairing response phase 1
-    PAIR_RESP_C2 = 0xC2  # Pairing response phase 2
-    PAIR_RESP_C8 = 0xC8  # Pairing acknowledgment
     SET_LEVEL = 0xA2  # Set level command
+    STATE_80 = 0x80  # Dimmer state report (pairing phase)
     STATE_RPT_81 = 0x81  # State report (type 81)
     STATE_RPT_82 = 0x82  # State report (type 82)
     STATE_RPT_83 = 0x83  # State report (type 83)
@@ -128,7 +139,7 @@ class FieldDef:
 
 # Field definitions by packet type
 PACKET_FIELDS: dict[str, list[FieldDef]] = {
-    "BEACON": [
+    "BEACON_91": [
         FieldDef(name="type", offset=0, size=1, format="hex"),
         FieldDef(name="sequence", offset=1, size=1, format="decimal"),
         FieldDef(name="load_id", offset=2, size=4, format="device_id_be"),
@@ -163,13 +174,30 @@ PACKET_FIELDS: dict[str, list[FieldDef]] = {
         FieldDef(name="padding", offset=12, size=10, format="hex"),
         FieldDef(name="crc", offset=22, size=2, format="hex"),
     ],
+    "CONFIG_A1": [
+        FieldDef(name="type", offset=0, size=1, format="hex"),
+        FieldDef(name="sequence", offset=1, size=1, format="decimal"),
+        FieldDef(name="device_id", offset=2, size=4, format="device_id"),
+        FieldDef(name="protocol", offset=6, size=1, format="hex"),
+        FieldDef(name="format", offset=7, size=1, format="hex"),
+        FieldDef(name="data", offset=8, size=14, format="hex"),
+        FieldDef(name="crc", offset=22, size=2, format="hex"),
+    ],
     "PAIR_B0": [
         FieldDef(name="type", offset=0, size=1, format="hex"),
         FieldDef(name="sequence", offset=1, size=1, format="decimal"),
-        FieldDef(name="device_id", offset=2, size=4, format="device_id_be"),
+        FieldDef(name="flags", offset=2, size=1, format="hex"),
+        FieldDef(name="zone_id", offset=3, size=2, format="hex", description="Bridge zone ID"),
+        FieldDef(name="pair_flag", offset=5, size=1, format="hex", description="0x7F during pairing"),
         FieldDef(name="protocol", offset=6, size=1, format="hex"),
         FieldDef(name="format", offset=7, size=1, format="hex"),
-        FieldDef(name="data", offset=8, size=43, format="hex"),
+        FieldDef(name="reserved", offset=8, size=1, format="hex"),
+        FieldDef(name="broadcast", offset=9, size=5, format="hex", description="FF FF FF FF FF"),
+        FieldDef(name="fixed", offset=14, size=2, format="hex"),
+        FieldDef(name="hardware_id", offset=16, size=4, format="device_id_be", description="Dimmer hardware ID"),
+        FieldDef(name="device_type", offset=20, size=1, format="hex", description="0x04=dimmer"),
+        FieldDef(name="caps", offset=21, size=10, format="hex", description="Device capabilities"),
+        FieldDef(name="padding", offset=31, size=20, format="hex"),
         FieldDef(name="crc", offset=51, size=2, format="hex"),
     ],
     "PAIR_B8": [
@@ -214,6 +242,15 @@ PACKET_FIELDS: dict[str, list[FieldDef]] = {
         FieldDef(name="padding", offset=18, size=4, format="hex"),
         FieldDef(name="crc", offset=22, size=2, format="hex"),
     ],
+    "STATE_80": [
+        FieldDef(name="type", offset=0, size=1, format="hex"),
+        FieldDef(name="sequence", offset=1, size=1, format="decimal"),
+        FieldDef(name="zone_id", offset=3, size=2, format="hex"),
+        FieldDef(name="protocol", offset=5, size=1, format="hex"),
+        FieldDef(name="fixed", offset=6, size=2, format="hex"),
+        FieldDef(name="state", offset=8, size=14, format="hex"),
+        FieldDef(name="crc", offset=22, size=2, format="hex"),
+    ],
     "STATE_RPT_81": [
         FieldDef(name="type", offset=0, size=1, format="hex"),
         FieldDef(name="sequence", offset=1, size=1, format="decimal"),
@@ -254,7 +291,7 @@ class PacketTypeInfo:
 # Packet type information lookup
 PACKET_TYPE_INFO: dict[int, PacketTypeInfo] = {
     0x91: PacketTypeInfo(
-        name="BEACON",
+        name="BEACON_91",
         length=24,
         category="BEACON",
         description="Pairing beacon",
@@ -273,7 +310,7 @@ PACKET_TYPE_INFO: dict[int, PacketTypeInfo] = {
         name="BEACON_93",
         length=24,
         category="BEACON",
-        description="Beacon variant",
+        description="Initial pairing beacon",
         uses_big_endian_device_id=True,
         is_virtual=False,
     ),
@@ -309,6 +346,110 @@ PACKET_TYPE_INFO: dict[int, PacketTypeInfo] = {
         uses_big_endian_device_id=True,
         is_virtual=False,
     ),
+    0xA1: PacketTypeInfo(
+        name="CONFIG_A1",
+        length=24,
+        category="CONFIG",
+        description="Configuration packet (pairing)",
+        uses_big_endian_device_id=False,
+        is_virtual=False,
+    ),
+    0xC1: PacketTypeInfo(
+        name="HS_C1",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 1 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xC2: PacketTypeInfo(
+        name="HS_C2",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 1 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xC7: PacketTypeInfo(
+        name="HS_C7",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 2 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xC8: PacketTypeInfo(
+        name="HS_C8",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 2 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xCD: PacketTypeInfo(
+        name="HS_CD",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 3 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xCE: PacketTypeInfo(
+        name="HS_CE",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 3 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xD3: PacketTypeInfo(
+        name="HS_D3",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 4 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xD4: PacketTypeInfo(
+        name="HS_D4",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 4 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xD9: PacketTypeInfo(
+        name="HS_D9",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 5 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xDA: PacketTypeInfo(
+        name="HS_DA",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 5 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xDF: PacketTypeInfo(
+        name="HS_DF",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 6 (dimmer)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
+    0xE0: PacketTypeInfo(
+        name="HS_E0",
+        length=24,
+        category="HANDSHAKE",
+        description="Handshake round 6 (bridge)",
+        uses_big_endian_device_id=True,
+        is_virtual=False,
+    ),
     0xF2: PacketTypeInfo(
         name="LED_CONFIG",
         length=24,
@@ -321,7 +462,7 @@ PACKET_TYPE_INFO: dict[int, PacketTypeInfo] = {
         name="PAIR_B0",
         length=53,
         category="PAIRING",
-        description="Device announcement",
+        description="Dimmer discovery (announces hardware ID to bridge)",
         uses_big_endian_device_id=True,
         is_virtual=False,
     ),
@@ -365,35 +506,19 @@ PACKET_TYPE_INFO: dict[int, PacketTypeInfo] = {
         uses_big_endian_device_id=True,
         is_virtual=False,
     ),
-    0xC1: PacketTypeInfo(
-        name="PAIR_RESP_C1",
-        length=24,
-        category="HANDSHAKE",
-        description="Pairing response phase 1",
-        uses_big_endian_device_id=True,
-        is_virtual=False,
-    ),
-    0xC2: PacketTypeInfo(
-        name="PAIR_RESP_C2",
-        length=24,
-        category="HANDSHAKE",
-        description="Pairing response phase 2",
-        uses_big_endian_device_id=True,
-        is_virtual=False,
-    ),
-    0xC8: PacketTypeInfo(
-        name="PAIR_RESP_C8",
-        length=24,
-        category="HANDSHAKE",
-        description="Pairing acknowledgment",
-        uses_big_endian_device_id=True,
-        is_virtual=False,
-    ),
     0xA2: PacketTypeInfo(
         name="SET_LEVEL",
         length=24,
         category="CONFIG",
         description="Set level command",
+        uses_big_endian_device_id=False,
+        is_virtual=False,
+    ),
+    0x80: PacketTypeInfo(
+        name="STATE_80",
+        length=24,
+        category="STATE",
+        description="Dimmer state report (pairing phase)",
         uses_big_endian_device_id=False,
         is_virtual=False,
     ),
@@ -485,7 +610,7 @@ SEQUENCES: dict[str, Sequence] = {
         name="pairing_beacon",
         description="Pairing beacon broadcast",
         steps=[
-            SequenceStep(packet_type="BEACON", count=None, interval_ms=65),
+            SequenceStep(packet_type="BEACON_91", count=None, interval_ms=65),
         ],
     ),
     "pico_pairing": Sequence(

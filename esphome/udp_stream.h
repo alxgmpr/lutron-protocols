@@ -4,10 +4,11 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <ArduinoJson.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esphome/core/log.h"
-#include "custom_components/cc1101_cca/packet_buffer.h"
+#include "esphome/components/cc1101_cca/packet_buffer.h"
 
 /**
  * Bidirectional UDP streaming for CCA packets with async send pipeline.
@@ -36,8 +37,11 @@
 
 class CCAUdpStream {
  public:
-  // TX callback type: called when RX packet requests TX
+  // TX callback type: called when RX packet requests TX (binary)
   using TxCallback = std::function<void(const std::vector<uint8_t>&)>;
+
+  // JSON command callback: called when JSON command is received
+  using JsonCommandCallback = std::function<void(const char* cmd, JsonObject& params)>;
 
   // Log interval in milliseconds
   static constexpr uint32_t LOG_INTERVAL_MS = 5000;
@@ -59,6 +63,10 @@ class CCAUdpStream {
 
   void set_tx_callback(TxCallback callback) {
     tx_callback_ = callback;
+  }
+
+  void set_json_command_callback(JsonCommandCallback callback) {
+    json_command_callback_ = callback;
   }
 
   bool begin() {
@@ -125,12 +133,22 @@ class CCAUdpStream {
       return;  // Too short
     }
 
-    uint8_t buffer[64];  // Max expected command size
-    int len = rx_udp_.read(buffer, std::min(packet_size, (int)sizeof(buffer)));
+    uint8_t buffer[256];  // Larger buffer for JSON commands
+    int len = rx_udp_.read(buffer, std::min(packet_size, (int)sizeof(buffer) - 1));
     if (len < 2) {
       return;
     }
 
+    rx_commands_++;
+
+    // Check if this looks like JSON (starts with '{')
+    if (buffer[0] == '{') {
+      buffer[len] = '\0';  // Null-terminate for JSON parsing
+      handle_json_command((const char*)buffer);
+      return;
+    }
+
+    // Binary command format: [CMD:1][LEN:1][DATA:N]
     uint8_t cmd = buffer[0];
     uint8_t data_len = buffer[1];
 
@@ -139,8 +157,6 @@ class CCAUdpStream {
                data_len, len - 2);
       return;
     }
-
-    rx_commands_++;
 
     switch (cmd) {
       case CCA_UDP_CMD_TX_RAW:
@@ -156,6 +172,31 @@ class CCAUdpStream {
       default:
         ESP_LOGW("udp_stream", "Unknown RX command: 0x%02X", cmd);
         break;
+    }
+  }
+
+  void handle_json_command(const char* json_str) {
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, json_str);
+
+    if (err) {
+      ESP_LOGW("udp_stream", "JSON parse error: %s", err.c_str());
+      return;
+    }
+
+    const char* cmd = doc["cmd"];
+    if (!cmd) {
+      ESP_LOGW("udp_stream", "JSON missing 'cmd' field");
+      return;
+    }
+
+    ESP_LOGD("udp_stream", "JSON command: %s", cmd);
+
+    if (json_command_callback_) {
+      JsonObject params = doc.as<JsonObject>();
+      json_command_callback_(cmd, params);
+    } else {
+      ESP_LOGW("udp_stream", "JSON command received but no callback set");
     }
   }
 
@@ -283,6 +324,7 @@ class CCAUdpStream {
   uint16_t tx_port_;    // Port to send TO (backend RX)
   uint16_t rx_port_;    // Port to listen ON (ESP32 RX)
   TxCallback tx_callback_;
+  JsonCommandCallback json_command_callback_;
 
   // Ring buffer for async packet sending
   esphome::cc1101_cca::PacketRingBuffer<BUFFER_SIZE> packet_buffer_;

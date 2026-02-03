@@ -7,6 +7,8 @@ esphome:
   friendly_name: ${friendly_name}
   includes:
     - udp_stream.h
+  libraries:
+    - ArduinoJson
   on_boot:
     priority: -100
     then:
@@ -24,6 +26,223 @@ esphome:
               id(cca_radio)->transmit_packet(data.data(), data.size());
             } else {
               ESP_LOGW("udp_stream", "TX_RAW packet too short: %d bytes", data.size());
+            }
+          });
+
+          // Set JSON command callback - handle commands from backend
+          cca_udp_stream.set_json_command_callback([](const char* cmd, JsonObject& params) {
+            // Helper to parse hex strings - handles both "0x..." format and plain numbers
+            auto parse_hex = [](JsonVariant v) -> uint32_t {
+              if (v.isNull()) return 0;
+              if (v.is<const char*>()) {
+                const char* s = v.as<const char*>();
+                if (!s) return 0;
+                return strtoul(s, nullptr, 0);
+              }
+              // Handle numeric values directly
+              return v.as<uint32_t>();
+            };
+
+            // Log all received parameters for debugging
+            ESP_LOGD("udp_cmd", "Processing command: %s", cmd);
+
+            if (strcmp(cmd, "button") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              uint32_t button = parse_hex(params["button"]);
+              ESP_LOGD("udp_cmd", "button: device=0x%08X button=0x%02X", device, button);
+              if (device && button) {
+                id(cca_radio)->send_button_press(device, button);
+              }
+            }
+            else if (strcmp(cmd, "level") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              int level = params["level"] | 0;
+              ESP_LOGD("udp_cmd", "level: bridge=0x%08X target=0x%08X level=%d", bridge, target, level);
+              if (bridge && target) {
+                id(cca_radio)->send_bridge_level(bridge, target, level);
+              } else {
+                ESP_LOGW("udp_cmd", "level: missing bridge or target");
+              }
+            }
+            else if (strcmp(cmd, "reset") == 0) {
+              uint32_t pico = parse_hex(params["pico"]);
+              if (pico) {
+                // Reset uses the pico ID for both source and target
+                id(cca_radio)->send_reset(pico, pico);
+              }
+            }
+            else if (strcmp(cmd, "state") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              int level = params["level"] | 0;
+              if (device) {
+                id(cca_radio)->send_state_report(device, level);
+              }
+            }
+            else if (strcmp(cmd, "unpair") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              uint32_t zone2 = parse_hex(params["zone2"]);
+              if (bridge && target) {
+                if (zone2) {
+                  id(cca_radio)->send_bridge_unpair_dual(bridge, zone2, target);
+                } else {
+                  id(cca_radio)->send_bridge_unpair(bridge, target);
+                }
+              }
+            }
+            else if (strcmp(cmd, "save_favorite") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              uint32_t button = parse_hex(params["button"]);
+              int hold = params["hold_seconds"] | 5;
+              if (device && button) {
+                id(cca_radio)->send_save_favorite(device, button, hold);
+              }
+            }
+            else if (strcmp(cmd, "pair_pico") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              int duration = params["duration"] | 10;
+              if (device) {
+                id(cca_radio)->send_pairing_pico(device, duration);
+              }
+            }
+            else if (strcmp(cmd, "config_fade") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              float fade_on = params["fade_on"] | 0.25f;
+              float fade_off = params["fade_off"] | 0.25f;
+              if (bridge && target) {
+                id(cca_radio)->send_fade_config(bridge, target, (int)(fade_on * 4), (int)(fade_off * 4));
+              }
+            }
+            else if (strcmp(cmd, "config_led") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              int mode = params["mode"] | 0;
+              if (bridge && target) {
+                id(cca_radio)->send_led_config(bridge, target, mode);
+              }
+            }
+            else if (strcmp(cmd, "config_trim") == 0 || strcmp(cmd, "config_phase") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              int high = params["high"] | 100;
+              int low = params["low"] | 1;
+              const char* phase_str = params["phase"].as<const char*>();
+              bool phase_reverse = phase_str && strcmp(phase_str, "reverse") == 0;
+              if (bridge && target) {
+                id(cca_radio)->send_device_state(bridge, target, high, low, phase_reverse);
+              }
+            }
+            else if (strcmp(cmd, "pairing_start") == 0) {
+              uint32_t subnet = parse_hex(params["subnet"]);
+              if (subnet) {
+                id(cca_radio)->start_bridge_pairing(subnet);
+              }
+            }
+            else if (strcmp(cmd, "pairing_stop") == 0) {
+              uint32_t subnet = parse_hex(params["subnet"]);
+              if (subnet) {
+                id(cca_radio)->stop_bridge_pairing(subnet);
+              }
+            }
+            else if (strcmp(cmd, "pairing_pair") == 0 || strcmp(cmd, "pairing_assign") == 0) {
+              uint32_t subnet = parse_hex(params["subnet"]);
+              uint32_t factory_id = parse_hex(params["factory_id"]);
+              uint32_t zone_suffix = parse_hex(params["zone_suffix"]);
+              if (subnet && factory_id) {
+                id(cca_radio)->send_pair_assignment(subnet, factory_id, zone_suffix);
+              }
+            }
+            // Vive pairing commands
+            else if (strcmp(cmd, "vive_start") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              if (hub_id) {
+                id(cca_radio)->start_vive_pairing(hub_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_start: missing hub_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_stop") == 0) {
+              id(cca_radio)->stop_vive_pairing();
+            }
+            else if (strcmp(cmd, "vive_beacon") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              bool is_stop = params["stop"] | false;
+              int count = params["count"] | 9;
+              if (hub_id) {
+                id(cca_radio)->send_vive_beacon_burst(hub_id, is_stop, count);
+              }
+            }
+            else if (strcmp(cmd, "vive_accept") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint32_t device_id = parse_hex(params["device_id"]);
+              uint8_t zone_id = params["zone_id"] | 0x38;  // Default to zone 0x38 (Room 1)
+              if (hub_id && device_id) {
+                id(cca_radio)->send_vive_accept(hub_id, device_id, zone_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_accept: missing hub_id or device_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_on") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"] | 0;
+              if (hub_id && zone_id) {
+                id(cca_radio)->send_vive_on(hub_id, zone_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_on: missing hub_id or zone_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_off") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"] | 0;
+              if (hub_id && zone_id) {
+                id(cca_radio)->send_vive_off(hub_id, zone_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_off: missing hub_id or zone_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_raise") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"] | 0;
+              if (hub_id && zone_id) {
+                id(cca_radio)->send_vive_raise(hub_id, zone_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_raise: missing hub_id or zone_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_lower") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"] | 0;
+              if (hub_id && zone_id) {
+                id(cca_radio)->send_vive_lower(hub_id, zone_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_lower: missing hub_id or zone_id");
+              }
+            }
+            // Legacy commands (deprecated)
+            else if (strcmp(cmd, "vive_toggle") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint32_t device_id = parse_hex(params["device_id"]);
+              if (hub_id && device_id) {
+                id(cca_radio)->send_vive_toggle(hub_id, device_id);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_toggle: missing hub_id or device_id");
+              }
+            }
+            else if (strcmp(cmd, "vive_cmd") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint32_t device_id = parse_hex(params["device_id"]);
+              uint8_t command = params["command"] | 0x02;
+              uint8_t subcommand = params["subcommand"] | 0x08;
+              if (hub_id && device_id) {
+                id(cca_radio)->send_vive_command(hub_id, device_id, command, subcommand);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_cmd: missing hub_id or device_id");
+              }
+            }
+            else {
+              ESP_LOGW("udp_cmd", "Unknown command: %s", cmd);
             }
           });
 
@@ -304,6 +523,41 @@ api:
         subnet: string
       then:
         - lambda: id(cca_radio)->send_handshake_response(dimmer_type, strtoul(subnet.c_str(), nullptr, 0));
+
+    # Vive pairing services
+    - service: start_vive_pairing
+      variables:
+        hub_id: string
+      then:
+        - lambda: id(cca_radio)->start_vive_pairing(strtoul(hub_id.c_str(), nullptr, 0));
+
+    - service: stop_vive_pairing
+      then:
+        - lambda: id(cca_radio)->stop_vive_pairing();
+
+    - service: send_vive_beacon_burst
+      variables:
+        hub_id: string
+        is_stop: int
+        count: int
+      then:
+        - lambda: |-
+            id(cca_radio)->send_vive_beacon_burst(
+              strtoul(hub_id.c_str(), nullptr, 0),
+              is_stop != 0,
+              count > 0 ? count : 9);
+
+    - service: send_vive_accept
+      variables:
+        hub_id: string
+        device_id: string
+        zone_id: int  # 0x38=Room1, 0x47=Room2, 0x4b=Room3
+      then:
+        - lambda: |-
+            id(cca_radio)->send_vive_accept(
+              strtoul(hub_id.c_str(), nullptr, 0),
+              strtoul(device_id.c_str(), nullptr, 0),
+              zone_id > 0 ? (uint8_t)zone_id : 0x38);
 
     - service: set_udp_backend
       variables:

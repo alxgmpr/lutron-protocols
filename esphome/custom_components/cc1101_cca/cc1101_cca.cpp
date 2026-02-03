@@ -59,6 +59,33 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
     return;  // Silently ignore undecoded packets
   }
 
+  // Auto-accept Vive pairing requests when in pairing mode
+  // Device sends B9 with format=0x23 (byte 7), command=0x02 (byte 15)
+  // Device ID is in bytes 2-5 (big-endian)
+  if (this->vive_pairing_active_ && pkt.raw_len >= 16) {
+    uint8_t pkt_type = pkt.raw[0];
+    uint8_t format = pkt.raw[7];
+    uint8_t command = pkt.raw[15];
+
+    // B9 with format=0x23 is a device pairing request (not 0x11 which is beacon)
+    // B8 is also a pairing request type
+    if ((pkt_type == 0xB9 && format == 0x23 && command == 0x02) ||
+        (pkt_type == 0xB8)) {
+      // Extract device ID from bytes 2-5 (big-endian)
+      uint32_t device_id = ((uint32_t)pkt.raw[2] << 24) |
+                           ((uint32_t)pkt.raw[3] << 16) |
+                           ((uint32_t)pkt.raw[4] << 8) |
+                           (uint32_t)pkt.raw[5];
+
+      ESP_LOGI(TAG, "=== VIVE PAIRING REQUEST DETECTED ===");
+      ESP_LOGI(TAG, "Device 0x%08X requesting to pair (type=0x%02X, format=0x%02X)",
+               device_id, pkt_type, format);
+
+      // Auto-accept the device
+      this->send_vive_accept(this->vive_hub_id_, device_id);
+    }
+  }
+
   // Call registered callbacks (for UDP streaming)
   // Backend handles all logging and packet processing
   ESP_LOGD(TAG, "RX packet len=%d rssi=%d callbacks=%d", pkt.raw_len, rssi, this->on_packet_callbacks_.size());
@@ -122,6 +149,17 @@ void CC1101CCA::loop() {
       } else {
         this->pairing_beacon_type_ = 0x93;  // Back to initial
       }
+    }
+  }
+
+  // Vive pairing: send beacon bursts every ~30 seconds
+  if (this->vive_pairing_active_) {
+    uint32_t now = millis();
+    // 30 second interval between bursts (Vive doesn't beacon continuously)
+    if (now - this->vive_last_burst_ >= 30000) {
+      ESP_LOGI(TAG, "Vive pairing: sending periodic beacon burst");
+      this->send_vive_beacon_burst(this->vive_hub_id_, false);
+      this->vive_last_burst_ = now;
     }
   }
 }
@@ -1728,6 +1766,606 @@ void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
   }
 
   ESP_LOGI(TAG, "Stop beacons sent. Devices should stop flashing.");
+}
+
+// ========== VIVE DEVICE COMMANDS (0x8A/0x8B/0x89 format 0x0e) ==========
+
+void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on) {
+  // Vive hub controls devices by ZONE/ROOM, not device ID!
+  // Captured from real hub (2026-01-28):
+  //
+  // ON command (0x8A):
+  //   8a [seq] [hub_id:4] 21 0e 00 00 00 00 [zone] ef 40 02 fe ff 00 00 00 00 [crc:2]
+  //
+  // OFF command (0x8B):
+  //   8b [seq] [hub_id:4] 21 0e 00 00 00 00 [zone] ef 40 02 00 00 00 00 00 00 [crc:2]
+  //
+  // Zone IDs from pairing capture:
+  //   0x38 = Room 1 (device 020ae675)
+  //   0x47 = Room 2 (device 09626657)
+  //   0x4b = Room 3 (device 021ad0c3)
+
+  ESP_LOGI(TAG, "=== VIVE ZONE COMMAND ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X, Action: %s",
+           hub_id, zone_id, turn_on ? "ON" : "OFF");
+
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  uint8_t packet[24];
+
+  // Send burst of packets with incrementing sequence (like real hub)
+  // Real hub uses seq: 01, 07, 0d, 13, 19, 1f, 25, 2b, 31, 37, 3d, 43 (increment by 6)
+  static uint8_t vive_cmd_seq = 0x01;
+
+  for (int rep = 0; rep < 12; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = turn_on ? 0x8A : 0x8B;  // 0x8A=ON, 0x8B=OFF
+    packet[1] = vive_cmd_seq;           // Sequence
+    packet[2] = h0;                     // Hub ID
+    packet[3] = h1;
+    packet[4] = h2;
+    packet[5] = h3;
+    packet[6] = 0x21;                   // Protocol
+    packet[7] = 0x0E;                   // Format = 0x0e (NOT 0x0c!)
+    packet[8] = 0x00;
+    packet[9] = 0x00;                   // Zeros (not broadcast FF)
+    packet[10] = 0x00;
+    packet[11] = 0x00;
+    packet[12] = zone_id;               // Zone/room ID!
+    packet[13] = 0xEF;
+    packet[14] = 0x40;
+    packet[15] = 0x02;
+    if (turn_on) {
+      packet[16] = 0xFE;                // ON = fe ff
+      packet[17] = 0xFF;
+    } else {
+      packet[16] = 0x00;                // OFF = 00 00
+      packet[17] = 0x00;
+    }
+    packet[18] = 0x00;
+    packet[19] = 0x00;
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+
+    vive_cmd_seq += 6;  // Increment by 6 like real hub
+    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
+
+    delay(15);  // ~15ms between packets
+  }
+
+  ESP_LOGI(TAG, "Vive zone command sent (12 packets)");
+}
+
+void CC1101CCA::send_vive_on(uint32_t hub_id, uint8_t zone_id) {
+  send_vive_zone_command(hub_id, zone_id, true);
+}
+
+void CC1101CCA::send_vive_off(uint32_t hub_id, uint8_t zone_id) {
+  send_vive_zone_command(hub_id, zone_id, false);
+}
+
+void CC1101CCA::send_vive_raise(uint32_t hub_id, uint8_t zone_id) {
+  // Raise command - needs capture verification
+  // Hypothesis: same format but different packet type or command bytes
+  ESP_LOGI(TAG, "=== VIVE RAISE ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X", hub_id, zone_id);
+
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  uint8_t packet[24];
+  static uint8_t vive_cmd_seq = 0x01;
+
+  for (int rep = 0; rep < 12; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = 0x89;                   // Try 0x89 for raise (BTN_LONG_A)
+    packet[1] = vive_cmd_seq;
+    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;
+    packet[8] = 0x00;
+    packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
+    packet[12] = zone_id;
+    packet[13] = 0xEF;
+    packet[14] = 0x40;
+    packet[15] = 0x02;
+    packet[16] = 0xFE;                  // Raise = fe ff (like ON, held)
+    packet[17] = 0xFF;
+    packet[18] = 0x00; packet[19] = 0x00; packet[20] = 0x00; packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    vive_cmd_seq += 6;
+    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
+    delay(15);
+  }
+  ESP_LOGI(TAG, "Vive raise sent");
+}
+
+void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
+  // Lower command - needs capture verification
+  ESP_LOGI(TAG, "=== VIVE LOWER ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X", hub_id, zone_id);
+
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  uint8_t packet[24];
+  static uint8_t vive_cmd_seq = 0x01;
+
+  for (int rep = 0; rep < 12; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = 0x89;                   // Try 0x89 for lower too
+    packet[1] = vive_cmd_seq;
+    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;
+    packet[8] = 0x00;
+    packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
+    packet[12] = zone_id;
+    packet[13] = 0xEF;
+    packet[14] = 0x40;
+    packet[15] = 0x02;
+    packet[16] = 0x00;                  // Lower = 00 00 (like OFF, held)
+    packet[17] = 0x00;
+    packet[18] = 0x00; packet[19] = 0x00; packet[20] = 0x00; packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    vive_cmd_seq += 6;
+    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
+    delay(15);
+  }
+  ESP_LOGI(TAG, "Vive lower sent");
+}
+
+// Legacy functions - keep for compatibility but they use wrong format
+void CC1101CCA::send_vive_command(uint32_t hub_id, uint32_t device_id, uint8_t command, uint8_t subcommand) {
+  ESP_LOGW(TAG, "send_vive_command is deprecated - use send_vive_zone_command instead");
+  // Try to use zone command with device_id as zone (won't work for real device IDs)
+  send_vive_zone_command(hub_id, device_id & 0xFF, true);
+}
+
+void CC1101CCA::send_vive_toggle(uint32_t hub_id, uint32_t device_id) {
+  ESP_LOGW(TAG, "send_vive_toggle is deprecated - use send_vive_on/send_vive_off instead");
+  send_vive_zone_command(hub_id, device_id & 0xFF, true);
+}
+
+// ========== VIVE PAIRING (0xBA/0xBB beacon protocol) ==========
+
+void CC1101CCA::start_vive_pairing(uint32_t hub_id) {
+  ESP_LOGI(TAG, "=== START VIVE PAIRING MODE ===");
+  ESP_LOGI(TAG, "Hub ID: 0x%08X", hub_id);
+  ESP_LOGI(TAG, "Sending 0xBA beacon bursts every ~30 seconds");
+  ESP_LOGI(TAG, ">>> PUT DEVICE IN PAIRING MODE (hold button 5-10s) <<<");
+
+  this->vive_pairing_active_ = true;
+  this->vive_hub_id_ = hub_id;
+  this->vive_seq_ = 0;
+  this->vive_last_burst_ = 0;  // Force immediate first burst
+
+  // Send first burst immediately
+  this->send_vive_beacon_burst(hub_id, false);
+  this->vive_last_burst_ = millis();
+
+  ESP_LOGI(TAG, "Vive pairing started. Devices in range should flash.");
+}
+
+void CC1101CCA::stop_vive_pairing() {
+  if (!this->vive_pairing_active_) {
+    ESP_LOGW(TAG, "Vive pairing not active");
+    return;
+  }
+
+  ESP_LOGI(TAG, "=== STOP VIVE PAIRING MODE ===");
+
+  // Send stop beacon burst (0xBB with timer=0x00)
+  this->send_vive_beacon_burst(this->vive_hub_id_, true);
+
+  this->vive_pairing_active_ = false;
+  this->vive_hub_id_ = 0;
+
+  ESP_LOGI(TAG, "Vive pairing stopped. Devices should exit pairing mode.");
+}
+
+void CC1101CCA::send_vive_beacon_burst(uint32_t hub_id, bool is_stop, int count) {
+  // Vive beacon packet structure (from real capture 2026-01-27):
+  // ba [seq] [hub_id:4] 21 11 00 ff ff ff ff ff 60 00 [hub_id:4] ff ff ff ff [timer] cc...
+  //
+  // Real Vive hub uses 0xBA for beacon (verified from capture!)
+  // 0xBA = Pairing beacon (timer=0x3C = 60 seconds active, 0x00 = exit)
+  // Sequence increments by 8, wraps at 0x48 (0, 8, 16, 24, 32, 40, 48, 56, 64, 0...)
+
+  uint8_t pkt_type = 0xBA;  // BA for both enter and exit beacon
+  uint8_t timer = is_stop ? 0x00 : 0x3C;  // 0x3C = 60 seconds
+
+  ESP_LOGI(TAG, "Sending 0x%02X burst: hub=0x%08X, timer=0x%02X, count=%d",
+           pkt_type, hub_id, timer, count);
+
+  // Extract hub ID bytes (big-endian)
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  // Real Vive packets: b9 [seq] [hub:4] 21 11 00 [bcast:5] 60 00 [hub:4] [bcast:4] [timer] [cc padding...]
+  // Try exact match to real capture - 53 bytes like other pairing packets
+  uint8_t packet[53];
+
+  for (int i = 0; i < count; i++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    // Packet type - BA for Vive beacon (verified from real hub capture)
+    packet[0] = pkt_type;
+
+    // Sequence (increments by 8 for Vive, wraps at 0x48)
+    packet[1] = this->vive_seq_;
+
+    // Hub ID (big-endian)
+    packet[2] = h0;
+    packet[3] = h1;
+    packet[4] = h2;
+    packet[5] = h3;
+
+    // Protocol and format
+    packet[6] = 0x21;   // Protocol version
+    packet[7] = 0x11;   // Pairing mode format
+    packet[8] = 0x00;   // Unknown
+
+    // Broadcast target (5 bytes)
+    packet[9] = 0xFF;
+    packet[10] = 0xFF;
+    packet[11] = 0xFF;
+    packet[12] = 0xFF;
+    packet[13] = 0xFF;
+
+    // Flags and command
+    packet[14] = 0x60;  // Flags
+    packet[15] = 0x00;  // Command (0x00 for both enter and exit)
+
+    // Hub ID repeated (big-endian)
+    packet[16] = h0;
+    packet[17] = h1;
+    packet[18] = h2;
+    packet[19] = h3;
+
+    // Broadcast target (4 bytes)
+    packet[20] = 0xFF;
+    packet[21] = 0xFF;
+    packet[22] = 0xFF;
+    packet[23] = 0xFF;
+
+    // Timer byte (0x3C=active, 0x00=stop)
+    packet[24] = timer;
+
+    // Bytes 25-50 are CC padding (already set by memset)
+
+    // CRC at bytes 51-52 (standard 53-byte pairing packet format)
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    // Transmit 53-byte packet (standard pairing packet length)
+    this->transmit_packet(packet, 53);
+
+    // Increment sequence by 8 (Vive pattern)
+    this->vive_seq_ = (this->vive_seq_ + 8) % 0x48;
+
+    // ~90ms between packets in burst (based on capture timing)
+    if (i < count - 1) {
+      delay(90);
+    }
+  }
+
+  ESP_LOGD(TAG, "Burst complete, next seq=0x%02X", this->vive_seq_);
+}
+
+void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zone_id) {
+  // Vive pairing accept sequence (from real hub capture 2026-01-28):
+  //
+  // Real hub sends BB accept, then config packets: 87, 99, a5, a9, aa, ab, 8d, 93, 9f, b7, bd, c3
+  // Device keeps retrying B8 until it receives the config packets.
+  //
+  // Zone ID determines which "room" the device responds to:
+  //   0x38 = Room 1, 0x47 = Room 2, 0x4b = Room 3, etc.
+  //
+  // Config packets use same base structure but different type bytes and some have
+  // additional data for zone assignment, function mapping, etc.
+
+  ESP_LOGI(TAG, "=== VIVE ACCEPT DEVICE ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Device: 0x%08X, Zone: 0x%02X", hub_id, device_id, zone_id);
+
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  uint8_t d0 = (device_id >> 24) & 0xFF;
+  uint8_t d1 = (device_id >> 16) & 0xFF;
+  uint8_t d2 = (device_id >> 8) & 0xFF;
+  uint8_t d3 = device_id & 0xFF;
+
+  // Helper to build packet WITH seq byte (used by BB, A9, AA, AB)
+  // Format: type + seq + hub_id + rest...
+  auto build_packet_with_seq = [&](uint8_t* pkt, uint8_t type, uint8_t proto, uint8_t fmt) {
+    memset(pkt, 0xCC, 37);
+    pkt[0] = type;
+    pkt[1] = 0x01;           // Seq=1 for response
+    pkt[2] = h0; pkt[3] = h1; pkt[4] = h2; pkt[5] = h3;  // Hub ID
+    pkt[6] = proto;          // Protocol byte (0x21 for accept, 0x28 for zone)
+    pkt[7] = fmt;            // Format byte
+    pkt[8] = 0x00;
+    pkt[9] = d0; pkt[10] = d1; pkt[11] = d2; pkt[12] = d3;  // Device ID
+    pkt[13] = 0xFE;          // Paired flag
+    pkt[14] = 0x60;          // Flags
+    pkt[15] = 0x0A;          // Accept command
+    pkt[16] = h0; pkt[17] = h1; pkt[18] = h2; pkt[19] = h3;  // Hub ID
+    pkt[20] = h0; pkt[21] = h1; pkt[22] = h2; pkt[23] = h3;  // Hub ID again
+    // Bytes 24-34 are CC padding
+    uint16_t crc = this->encoder_.calc_crc(pkt, 35);
+    pkt[35] = (crc >> 8) & 0xFF;
+    pkt[36] = crc & 0xFF;
+  };
+
+  // Helper to build packet WITHOUT seq byte (used by 87, 99, a5, 8d, 93, 9f, b7, bd, c3)
+  // Format: type + hub_id + rest... (NO seq byte - one byte shorter!)
+  // Real example: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc
+  auto build_packet_no_seq = [&](uint8_t* pkt, uint8_t type, uint8_t proto, uint8_t fmt) {
+    memset(pkt, 0xCC, 36);  // One byte shorter (no seq)
+    pkt[0] = type;
+    pkt[1] = h0; pkt[2] = h1; pkt[3] = h2; pkt[4] = h3;  // Hub ID starts at byte 1!
+    pkt[5] = proto;          // Protocol byte
+    pkt[6] = fmt;            // Format byte
+    pkt[7] = 0x00;
+    pkt[8] = d0; pkt[9] = d1; pkt[10] = d2; pkt[11] = d3;  // Device ID
+    pkt[12] = 0xFE;          // Paired flag
+    pkt[13] = 0x60;          // Flags
+    pkt[14] = 0x0A;          // Accept command
+    pkt[15] = h0; pkt[16] = h1; pkt[17] = h2; pkt[18] = h3;  // Hub ID
+    pkt[19] = h0; pkt[20] = h1; pkt[21] = h2; pkt[22] = h3;  // Hub ID again
+    // Bytes 23-33 are CC padding
+    uint16_t crc = this->encoder_.calc_crc(pkt, 34);
+    pkt[34] = (crc >> 8) & 0xFF;
+    pkt[35] = crc & 0xFF;
+  };
+
+  uint8_t packet[37];
+
+  // Phase 1: Send BB accept burst (like real hub)
+  // BB packets HAVE seq byte: bb 01 01 7d 53 63 21 10 00...
+  ESP_LOGI(TAG, "Phase 1: Sending BB accept packets (with seq)");
+  for (int i = 0; i < 3; i++) {
+    build_packet_with_seq(packet, 0xBB, 0x21, 0x10);
+    this->transmit_packet(packet, 37);
+    delay(70);
+  }
+
+  // Phase 2: Send config packets (87, 99, a5) - NO seq byte!
+  // Real: 87 01 7d 53 63 21 10 00... (hub ID at byte 1, no seq)
+  ESP_LOGI(TAG, "Phase 2: Sending config packets (87, 99, a5) - no seq");
+  uint8_t config_types_1[] = {0x87, 0x99, 0xa5};
+  for (uint8_t type : config_types_1) {
+    build_packet_no_seq(packet, type, 0x21, 0x10);
+    this->transmit_packet(packet, 36);  // 36 bytes (no seq)
+    delay(70);
+  }
+
+  // Phase 3: Send A9 zone assignment packet (format 0x28)
+  // Real captures show: a9 01 01 7d 53 63 28 03 01 39 6c 21 1a 00 [device:4] fe 06 40 00 00 00
+  // Where bytes 8-10 are "01 39 XX" with XX being a zone reference counter
+  // The zone reference (6c, 72, 7a) varies by zone but doesn't need to match exactly
+  ESP_LOGI(TAG, "Phase 3: Sending A9 zone assignment (format 0x28)");
+  {
+    uint8_t a9_pkt[26];
+    memset(a9_pkt, 0x00, sizeof(a9_pkt));
+    a9_pkt[0] = 0xA9;
+    a9_pkt[1] = 0x01;  // seq
+    a9_pkt[2] = h0; a9_pkt[3] = h1; a9_pkt[4] = h2; a9_pkt[5] = h3;
+    a9_pkt[6] = 0x28;  // Zone assignment protocol
+    a9_pkt[7] = 0x03;  // Format
+    a9_pkt[8] = 0x01;  // Constant
+    a9_pkt[9] = 0x39;  // Constant (was incorrectly 0x38!)
+    a9_pkt[10] = zone_id + 0x30;  // Zone reference (derived from zone_id)
+    a9_pkt[11] = 0x21;
+    a9_pkt[12] = 0x1A;
+    a9_pkt[13] = 0x00;
+    a9_pkt[14] = d0; a9_pkt[15] = d1; a9_pkt[16] = d2; a9_pkt[17] = d3;
+    a9_pkt[18] = 0xFE;
+    a9_pkt[19] = 0x06;
+    a9_pkt[20] = 0x40;
+    a9_pkt[21] = 0x00;
+    a9_pkt[22] = 0x00;
+    a9_pkt[23] = 0x00;
+    uint16_t crc = this->encoder_.calc_crc(a9_pkt, 24);
+    a9_pkt[24] = (crc >> 8) & 0xFF;
+    a9_pkt[25] = crc & 0xFF;
+    this->transmit_packet(a9_pkt, 26);
+    delay(70);
+  }
+
+  // Phase 4: Send AA function mapping
+  // Real: aa 01 01 7d 53 63 21 14 00 02 1a d0 c3 fe 06 50 00 0b 09 fe ff 00 00 00
+  ESP_LOGI(TAG, "Phase 4: Sending AA function mapping");
+  {
+    uint8_t aa_pkt[26];
+    memset(aa_pkt, 0x00, sizeof(aa_pkt));
+    aa_pkt[0] = 0xAA;
+    aa_pkt[1] = 0x01;
+    aa_pkt[2] = h0; aa_pkt[3] = h1; aa_pkt[4] = h2; aa_pkt[5] = h3;
+    aa_pkt[6] = 0x21;
+    aa_pkt[7] = 0x14;
+    aa_pkt[8] = 0x00;
+    aa_pkt[9] = d0; aa_pkt[10] = d1; aa_pkt[11] = d2; aa_pkt[12] = d3;
+    aa_pkt[13] = 0xFE;
+    aa_pkt[14] = 0x06;
+    aa_pkt[15] = 0x50;
+    aa_pkt[16] = 0x00;
+    aa_pkt[17] = 0x0B;
+    aa_pkt[18] = 0x09;
+    aa_pkt[19] = 0xFE;
+    aa_pkt[20] = 0xFF;
+    aa_pkt[21] = 0x00;
+    aa_pkt[22] = 0x00;
+    aa_pkt[23] = 0x00;
+    uint16_t crc = this->encoder_.calc_crc(aa_pkt, 24);
+    aa_pkt[24] = (crc >> 8) & 0xFF;
+    aa_pkt[25] = crc & 0xFF;
+    this->transmit_packet(aa_pkt, 26);
+    delay(70);
+  }
+
+  // Phase 4b: Send AB packet (format 0x28, similar to A9 but alternate zone ref)
+  // Real: ab 01 01 7d 53 63 28 03 01 39 7c 21 1a 00 [device:4] fe 06 40 00 00 00
+  // Zone reference byte is slightly different (+2 from A9)
+  ESP_LOGI(TAG, "Phase 4b: Sending AB zone packet (format 0x28)");
+  {
+    uint8_t ab_pkt[26];
+    memset(ab_pkt, 0x00, sizeof(ab_pkt));
+    ab_pkt[0] = 0xAB;
+    ab_pkt[1] = 0x01;  // seq
+    ab_pkt[2] = h0; ab_pkt[3] = h1; ab_pkt[4] = h2; ab_pkt[5] = h3;
+    ab_pkt[6] = 0x28;  // Zone assignment protocol
+    ab_pkt[7] = 0x03;  // Format
+    ab_pkt[8] = 0x01;  // Constant
+    ab_pkt[9] = 0x39;  // Constant (was incorrectly 0x38!)
+    ab_pkt[10] = zone_id + 0x32;  // Zone reference (slightly different from A9)
+    ab_pkt[11] = 0x21;
+    ab_pkt[12] = 0x1A;
+    ab_pkt[13] = 0x00;
+    ab_pkt[14] = d0; ab_pkt[15] = d1; ab_pkt[16] = d2; ab_pkt[17] = d3;
+    ab_pkt[18] = 0xFE;
+    ab_pkt[19] = 0x06;
+    ab_pkt[20] = 0x40;
+    ab_pkt[21] = 0x00;
+    ab_pkt[22] = 0x00;
+    ab_pkt[23] = 0x00;
+    uint16_t crc = this->encoder_.calc_crc(ab_pkt, 24);
+    ab_pkt[24] = (crc >> 8) & 0xFF;
+    ab_pkt[25] = crc & 0xFF;
+    this->transmit_packet(ab_pkt, 26);
+    delay(70);
+  }
+
+  // Phase 5: Send remaining config packets
+  // A9 (second one) HAS seq: a9 01 01 7d 53 63 21 12 00...
+  // 8D, 93, 9F, B7, BD, C3 do NOT have seq: 8d 01 7d 53 63 21 12 00...
+  ESP_LOGI(TAG, "Phase 5: Sending final config packets");
+
+  // First send A9 with seq (format 0x12)
+  {
+    // Real: a9 01 01 7d 53 63 21 12 00 02 1a d0 c3 fe 06 6e 01 00 07 00 02 00 00 00
+    uint8_t a9_final[26];
+    memset(a9_final, 0x00, sizeof(a9_final));
+    a9_final[0] = 0xA9;
+    a9_final[1] = 0x01;  // seq
+    a9_final[2] = h0; a9_final[3] = h1; a9_final[4] = h2; a9_final[5] = h3;
+    a9_final[6] = 0x21;
+    a9_final[7] = 0x12;
+    a9_final[8] = 0x00;
+    a9_final[9] = d0; a9_final[10] = d1; a9_final[11] = d2; a9_final[12] = d3;
+    a9_final[13] = 0xFE;
+    a9_final[14] = 0x06;
+    a9_final[15] = 0x6E;
+    a9_final[16] = 0x01;
+    a9_final[17] = 0x00;
+    a9_final[18] = 0x07;
+    a9_final[19] = 0x00;
+    a9_final[20] = 0x02;
+    a9_final[21] = 0x00;
+    a9_final[22] = 0x00;
+    a9_final[23] = 0x00;
+    uint16_t crc = this->encoder_.calc_crc(a9_final, 24);
+    a9_final[24] = (crc >> 8) & 0xFF;
+    a9_final[25] = crc & 0xFF;
+    this->transmit_packet(a9_final, 26);
+    delay(50);
+  }
+
+  // Then send 8D, 93, 9F, C3 WITHOUT seq byte (24 bytes data, no extra suffix)
+  // Real: 8d 01 7d 53 63 21 12 00 [device:4] fe 06 6e 01 00 07 00 02 00 00 00 [ZONE]
+  // And B7, BD with 0xef suffix (25 bytes data)
+  // Real: b7 01 7d 53 63 21 12 00 [device:4] fe 06 6e 01 00 07 00 02 00 00 00 [ZONE] ef
+  // ZONE at byte 23 is the zone ID the device will respond to!
+  ESP_LOGI(TAG, "Sending format 0x12 config packets with zone=0x%02X", zone_id);
+  {
+    uint8_t final_pkt[28];  // Max size needed
+    memset(final_pkt, 0x00, sizeof(final_pkt));
+    // No seq byte - hub ID starts at byte 1
+    final_pkt[1] = h0; final_pkt[2] = h1; final_pkt[3] = h2; final_pkt[4] = h3;
+    final_pkt[5] = 0x21;
+    final_pkt[6] = 0x12;
+    final_pkt[7] = 0x00;
+    final_pkt[8] = d0; final_pkt[9] = d1; final_pkt[10] = d2; final_pkt[11] = d3;
+    final_pkt[12] = 0xFE;
+    final_pkt[13] = 0x06;
+    final_pkt[14] = 0x6E;
+    final_pkt[15] = 0x01;
+    final_pkt[16] = 0x00;
+    final_pkt[17] = 0x07;
+    final_pkt[18] = 0x00;
+    final_pkt[19] = 0x02;
+    final_pkt[20] = 0x00;
+    final_pkt[21] = 0x00;
+    final_pkt[22] = 0x00;
+    final_pkt[23] = zone_id;  // ZONE ID - was hardcoded to 0x38!
+
+    // Send in correct order: 8d, 93, 9f, b7, bd, c3
+    // 8D, 93, 9F: 24 bytes data + 2 bytes CRC = 26 bytes total
+    uint8_t first_types[] = {0x8D, 0x93, 0x9F};
+    for (uint8_t type : first_types) {
+      final_pkt[0] = type;
+      uint16_t crc = this->encoder_.calc_crc(final_pkt, 24);
+      final_pkt[24] = (crc >> 8) & 0xFF;
+      final_pkt[25] = crc & 0xFF;
+      this->transmit_packet(final_pkt, 26);
+      delay(50);
+    }
+
+    // B7, BD: 25 bytes data (with 0xef suffix) + 2 bytes CRC = 27 bytes total
+    final_pkt[24] = 0xEF;  // Extra byte for B7/BD
+    uint8_t long_types[] = {0xB7, 0xBD};
+    for (uint8_t type : long_types) {
+      final_pkt[0] = type;
+      uint16_t crc = this->encoder_.calc_crc(final_pkt, 25);
+      final_pkt[25] = (crc >> 8) & 0xFF;
+      final_pkt[26] = crc & 0xFF;
+      this->transmit_packet(final_pkt, 27);
+      delay(50);
+    }
+
+    // C3: 24 bytes data + 2 bytes CRC = 26 bytes total (back to short format)
+    // Note: CRC is calculated on bytes 0-23, so final_pkt[24] (still 0xEF) doesn't affect it
+    final_pkt[0] = 0xC3;
+    uint16_t crc_c3 = this->encoder_.calc_crc(final_pkt, 24);
+    final_pkt[24] = (crc_c3 >> 8) & 0xFF;
+    final_pkt[25] = crc_c3 & 0xFF;
+    this->transmit_packet(final_pkt, 26);
+    delay(50);
+  }
+
+  ESP_LOGI(TAG, "Accept + config sequence complete for device 0x%08X", device_id);
 }
 
 void CC1101CCA::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {

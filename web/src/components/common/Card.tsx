@@ -10,6 +10,7 @@ interface CardProps {
   className?: string
   collapsible?: boolean
   defaultCollapsed?: boolean
+  storageKey?: string  // If provided, persist collapsed state to localStorage
 }
 
 export function Card({
@@ -20,13 +21,26 @@ export function Card({
   children,
   className = '',
   collapsible = false,
-  defaultCollapsed = false
+  defaultCollapsed = false,
+  storageKey
 }: CardProps) {
-  const [collapsed, setCollapsed] = useState(defaultCollapsed)
+  const [collapsed, setCollapsed] = useState(() => {
+    if (storageKey) {
+      const saved = localStorage.getItem(storageKey)
+      if (saved !== null) {
+        return saved === 'true'
+      }
+    }
+    return defaultCollapsed
+  })
 
   const handleHeaderClick = () => {
     if (collapsible) {
-      setCollapsed(!collapsed)
+      const newValue = !collapsed
+      setCollapsed(newValue)
+      if (storageKey) {
+        localStorage.setItem(storageKey, String(newValue))
+      }
     }
   }
 

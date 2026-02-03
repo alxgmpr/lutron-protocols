@@ -1,0 +1,68 @@
+data: {"type":"connected","clients":2}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:44.777Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":0},"raw_hex":"bb 00 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-44}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:44.873Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":8},"raw_hex":"bb 08 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:44.977Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":16},"raw_hex":"bb 10 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc","rssi":-44}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.140Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":24},"raw_hex":"bb 18 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.172Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":32},"raw_hex":"bb 20 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-43}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.285Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":40},"raw_hex":"bb 28 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.373Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":48},"raw_hex":"bb 30 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-43}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.471Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":56},"raw_hex":"bb 38 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.664Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":64},"raw_hex":"bb 40 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-43}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.978Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":0},"raw_hex":"bb 00 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:45.998Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":8},"raw_hex":"bb 08 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc","rssi":-43}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:46.199Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":24},"raw_hex":"bb 18 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-44}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:46.295Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":32},"raw_hex":"bb 20 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:46.399Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":40},"raw_hex":"bb 28 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-44}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:46.496Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":48},"raw_hex":"bb 30 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:32:46.713Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":64},"raw_hex":"bb 40 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"type":"connected","clients":2}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:48.563Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":8},"raw_hex":"bb 08 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:48.646Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":16},"raw_hex":"bb 10 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:48.873Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":24},"raw_hex":"bb 18 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:48.874Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":32},"raw_hex":"bb 20 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-42}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:48.953Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":40},"raw_hex":"bb 28 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.148Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":56},"raw_hex":"bb 38 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.245Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":64},"raw_hex":"bb 40 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.499Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":0},"raw_hex":"bb 00 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.598Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":8},"raw_hex":"bb 08 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.698Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":16},"raw_hex":"bb 10 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.922Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":24},"raw_hex":"bb 18 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.923Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":32},"raw_hex":"bb 20 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:49.997Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":40},"raw_hex":"bb 28 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:50.095Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":48},"raw_hex":"bb 30 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:50.198Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":56},"raw_hex":"bb 38 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-41}
+
+data: {"direction":"rx","type":"VIVE_ACCEPT","time":"2026-01-28T16:34:50.449Z","device_id":"yyyyyyyy","summary":"yyyyyyyy","details":{"seq":64},"raw_hex":"bb 40 01 7d 53 63 21 11 00 ff ff ff ff ff 60 00 01 7d 53 63 ff ff ff ff 3c cc cc cc cc cc cc cc cc cc cc cc cc cc cc cc","rssi":-33}
+

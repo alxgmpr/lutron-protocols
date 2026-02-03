@@ -5,5 +5,6 @@ export { Card } from './Card'
 export { FormGroup } from './FormGroup'
 export { FormInput } from './FormInput'
 export { FormSelect } from './FormSelect'
+export { Modal } from './Modal'
 export { QuickButtons, QuickButtonDivider } from './QuickButtons'
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Card, Button, FormGroup, AutocompleteInput } from '../common'
+import { ControlSection } from './ControlsPanel'
+import { Button, FormGroup, AutocompleteInput } from '../common'
 import { useDevices } from '../../context/DeviceContext'
 import { useApi } from '../../hooks/useApi'
 import './ControlPanel.css'
@@ -11,14 +12,14 @@ interface Props {
 export function ResetPico({ showStatus }: Props) {
   const { post } = useApi()
   const { seen } = useDevices()
-  const [picoId, setPicoId] = useState('0x05851117')
+  const [picoId, setPicoId] = useState('05851117')
 
   const handleReset = async () => {
     showStatus(`Sending reset for ${picoId}...`)
     try {
-      const result = await post('/api/reset', { pico: picoId })
+      const result = await post('/api/reset', { pico: '0x' + picoId.replace(/^0x/i, '') })
       if (result.status === 'ok') {
-        showStatus(`Reset broadcast: ${result.pico} "forget me"`, 'success')
+        showStatus(`Reset broadcast sent`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
       }
@@ -28,15 +29,18 @@ export function ResetPico({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Reset Pico" variant="device" collapsible defaultCollapsed>
-      <p className="help-text">Broadcasts "forget me" to unpair this Pico from all devices.</p>
+    <ControlSection title="Reset Pico" storageKey="ctrl-reset-pico">
       <div className="form-row">
         <FormGroup label="Pico ID">
-          <AutocompleteInput value={picoId} onChange={setPicoId} suggestions={seen.picos} width={110} />
+          <AutocompleteInput
+            value={picoId}
+            onChange={v => setPicoId(v.replace(/^0x/i, ''))}
+            suggestions={seen.picos.map(s => s.replace(/^0x/i, ''))}
+            width={90}
+          />
         </FormGroup>
         <Button variant="red" onClick={handleReset}>Reset</Button>
       </div>
-    </Card>
+    </ControlSection>
   )
 }
-

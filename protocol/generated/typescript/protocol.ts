@@ -139,10 +139,10 @@ export const DeviceClassNames: Record<DeviceClass, string> = {
 /** Packet type codes */
 export const PacketType = {
   /** Pairing beacon */
-  BEACON: 0x91,
+  BEACON_91: 0x91,
   /** Beacon stop */
   BEACON_92: 0x92,
-  /** Beacon variant */
+  /** Initial pairing beacon */
   BEACON_93: 0x93,
   /** Button press, long format, group A */
   BTN_LONG_A: 0x89,
@@ -152,9 +152,35 @@ export const PacketType = {
   BTN_SHORT_A: 0x88,
   /** Button press, short format, group B */
   BTN_SHORT_B: 0x8A,
+  /** Configuration packet (pairing) */
+  CONFIG_A1: 0xA1,
+  /** Handshake round 1 (dimmer) */
+  HS_C1: 0xC1,
+  /** Handshake round 1 (bridge) */
+  HS_C2: 0xC2,
+  /** Handshake round 2 (dimmer) */
+  HS_C7: 0xC7,
+  /** Handshake round 2 (bridge) */
+  HS_C8: 0xC8,
+  /** Handshake round 3 (dimmer) */
+  HS_CD: 0xCD,
+  /** Handshake round 3 (bridge) */
+  HS_CE: 0xCE,
+  /** Handshake round 4 (dimmer) */
+  HS_D3: 0xD3,
+  /** Handshake round 4 (bridge) */
+  HS_D4: 0xD4,
+  /** Handshake round 5 (dimmer) */
+  HS_D9: 0xD9,
+  /** Handshake round 5 (bridge) */
+  HS_DA: 0xDA,
+  /** Handshake round 6 (dimmer) */
+  HS_DF: 0xDF,
+  /** Handshake round 6 (bridge) */
+  HS_E0: 0xE0,
   /** LED configuration (derived from STATE_RPT format 0x0A) */
   LED_CONFIG: 0xF2,
-  /** Device announcement */
+  /** Dimmer discovery (announces hardware ID to bridge) */
   PAIR_B0: 0xB0,
   /** Scene Pico pairing (bridge-only) */
   PAIR_B8: 0xB8,
@@ -166,14 +192,10 @@ export const PacketType = {
   PAIR_BB: 0xBB,
   /** Pairing response */
   PAIR_RESP_C0: 0xC0,
-  /** Pairing response phase 1 */
-  PAIR_RESP_C1: 0xC1,
-  /** Pairing response phase 2 */
-  PAIR_RESP_C2: 0xC2,
-  /** Pairing acknowledgment */
-  PAIR_RESP_C8: 0xC8,
   /** Set level command */
   SET_LEVEL: 0xA2,
+  /** Dimmer state report (pairing phase) */
+  STATE_80: 0x80,
   /** State report (type 81) */
   STATE_RPT_81: 0x81,
   /** State report (type 82) */
@@ -199,7 +221,7 @@ export interface PacketTypeInfo {
 
 export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
   [0x91]: {
-    name: 'BEACON',
+    name: 'BEACON_91',
     length: 24,
     category: 'BEACON',
     description: 'Pairing beacon',
@@ -218,7 +240,7 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     name: 'BEACON_93',
     length: 24,
     category: 'BEACON',
-    description: 'Beacon variant',
+    description: 'Initial pairing beacon',
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
@@ -254,6 +276,110 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
+  [0xA1]: {
+    name: 'CONFIG_A1',
+    length: 24,
+    category: 'CONFIG',
+    description: 'Configuration packet (pairing)',
+    usesBigEndianDeviceId: false,
+    isVirtual: false,
+  },
+  [0xC1]: {
+    name: 'HS_C1',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 1 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xC2]: {
+    name: 'HS_C2',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 1 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xC7]: {
+    name: 'HS_C7',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 2 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xC8]: {
+    name: 'HS_C8',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 2 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xCD]: {
+    name: 'HS_CD',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 3 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xCE]: {
+    name: 'HS_CE',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 3 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xD3]: {
+    name: 'HS_D3',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 4 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xD4]: {
+    name: 'HS_D4',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 4 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xD9]: {
+    name: 'HS_D9',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 5 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xDA]: {
+    name: 'HS_DA',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 5 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xDF]: {
+    name: 'HS_DF',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 6 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0xE0]: {
+    name: 'HS_E0',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 6 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
   [0xF2]: {
     name: 'LED_CONFIG',
     length: 24,
@@ -266,7 +392,7 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     name: 'PAIR_B0',
     length: 53,
     category: 'PAIRING',
-    description: 'Device announcement',
+    description: 'Dimmer discovery (announces hardware ID to bridge)',
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
@@ -310,35 +436,19 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
-  [0xC1]: {
-    name: 'PAIR_RESP_C1',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Pairing response phase 1',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC2]: {
-    name: 'PAIR_RESP_C2',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Pairing response phase 2',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC8]: {
-    name: 'PAIR_RESP_C8',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Pairing acknowledgment',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
   [0xA2]: {
     name: 'SET_LEVEL',
     length: 24,
     category: 'CONFIG',
     description: 'Set level command',
+    usesBigEndianDeviceId: false,
+    isVirtual: false,
+  },
+  [0x80]: {
+    name: 'STATE_80',
+    length: 24,
+    category: 'STATE',
+    description: 'Dimmer state report (pairing phase)',
     usesBigEndianDeviceId: false,
     isVirtual: false,
   },
@@ -397,7 +507,7 @@ export interface FieldDef {
 
 /** Field definitions by packet type */
 export const PacketFields: Record<string, FieldDef[]> = {
-  'BEACON': [
+  'BEACON_91': [
     {
       name: 'type',
       offset: 0,
@@ -580,7 +690,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'PAIR_B0': [
+  'CONFIG_A1': [
     {
       name: 'type',
       offset: 0,
@@ -597,7 +707,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       name: 'device_id',
       offset: 2,
       size: 4,
-      format: 'device_id_be',
+      format: 'device_id',
     },
     {
       name: 'protocol',
@@ -614,7 +724,105 @@ export const PacketFields: Record<string, FieldDef[]> = {
     {
       name: 'data',
       offset: 8,
-      size: 43,
+      size: 14,
+      format: 'hex',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'PAIR_B0': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'flags',
+      offset: 2,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'zone_id',
+      offset: 3,
+      size: 2,
+      format: 'hex',
+      description: 'Bridge zone ID',
+    },
+    {
+      name: 'pair_flag',
+      offset: 5,
+      size: 1,
+      format: 'hex',
+      description: '0x7F during pairing',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'reserved',
+      offset: 8,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'broadcast',
+      offset: 9,
+      size: 5,
+      format: 'hex',
+      description: 'FF FF FF FF FF',
+    },
+    {
+      name: 'fixed',
+      offset: 14,
+      size: 2,
+      format: 'hex',
+    },
+    {
+      name: 'hardware_id',
+      offset: 16,
+      size: 4,
+      format: 'device_id_be',
+      description: 'Dimmer hardware ID',
+    },
+    {
+      name: 'device_type',
+      offset: 20,
+      size: 1,
+      format: 'hex',
+      description: '0x04=dimmer',
+    },
+    {
+      name: 'caps',
+      offset: 21,
+      size: 10,
+      format: 'hex',
+      description: 'Device capabilities',
+    },
+    {
+      name: 'padding',
+      offset: 31,
+      size: 20,
       format: 'hex',
     },
     {
@@ -847,6 +1055,50 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
+  'STATE_80': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'zone_id',
+      offset: 3,
+      size: 2,
+      format: 'hex',
+    },
+    {
+      name: 'protocol',
+      offset: 5,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'fixed',
+      offset: 6,
+      size: 2,
+      format: 'hex',
+    },
+    {
+      name: 'state',
+      offset: 8,
+      size: 14,
+      format: 'hex',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
   'STATE_RPT_81': [
     {
       name: 'type',
@@ -1011,7 +1263,7 @@ export const Sequences: Record<string, Sequence> = {
     name: 'pairing_beacon',
     description: 'Pairing beacon broadcast',
     steps: [
-      { packetType: 'BEACON', count: null, intervalMs: 65 },
+      { packetType: 'BEACON_91', count: null, intervalMs: 65 },
     ],
   },
   'pico_pairing': {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ConnectionModal } from './ConnectionModal'
+import { ConfigModal } from './ConfigModal'
 import { ProtocolGuide, DeviceReference } from '../docs'
 import './Header.css'
 
@@ -17,14 +17,16 @@ export function Header({ connected }: HeaderProps) {
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/esp/config')
-        const data = await response.json()
-        setEspHost(data.host)
+        if (response.ok) {
+          const data = await response.json()
+          setEspHost(data.host)
+        }
       } catch {
-        // ignore
+        // ignore - backend may not be running
       }
     }
     fetchConfig()
-    const interval = setInterval(fetchConfig, 10000)
+    const interval = setInterval(fetchConfig, 5000)
     return () => clearInterval(interval)
   }, [])
 
@@ -52,7 +54,7 @@ export function Header({ connected }: HeaderProps) {
       </header>
 
       {showModal && (
-        <ConnectionModal onClose={() => setShowModal(false)} />
+        <ConfigModal onClose={() => setShowModal(false)} />
       )}
 
       {showProtocolGuide && (

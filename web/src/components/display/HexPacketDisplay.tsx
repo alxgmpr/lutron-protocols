@@ -13,6 +13,7 @@ interface HexPacketDisplayProps {
   onTogglePause?: () => void
   collapsible?: boolean
   defaultCollapsed?: boolean
+  storageKey?: string
 }
 
 export function HexPacketDisplay({
@@ -23,7 +24,8 @@ export function HexPacketDisplay({
   paused = false,
   onTogglePause,
   collapsible = false,
-  defaultCollapsed = false
+  defaultCollapsed = false,
+  storageKey
 }: HexPacketDisplayProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -67,6 +69,7 @@ export function HexPacketDisplay({
       badge={`${packets.length}${paused ? ' (paused)' : ''}`}
       collapsible={collapsible}
       defaultCollapsed={defaultCollapsed}
+      storageKey={storageKey}
       actions={
         <>
           {onTogglePause && (

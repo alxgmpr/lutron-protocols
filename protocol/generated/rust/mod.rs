@@ -206,10 +206,10 @@ impl DeviceClass {
 #[repr(u8)]
 pub enum PacketType {
     /// Pairing beacon
-    Beacon = 0x91,
+    Beacon91 = 0x91,
     /// Beacon stop
     Beacon92 = 0x92,
-    /// Beacon variant
+    /// Initial pairing beacon
     Beacon93 = 0x93,
     /// Button press, long format, group A
     BtnLongA = 0x89,
@@ -219,9 +219,35 @@ pub enum PacketType {
     BtnShortA = 0x88,
     /// Button press, short format, group B
     BtnShortB = 0x8A,
+    /// Configuration packet (pairing)
+    ConfigA1 = 0xA1,
+    /// Handshake round 1 (dimmer)
+    HsC1 = 0xC1,
+    /// Handshake round 1 (bridge)
+    HsC2 = 0xC2,
+    /// Handshake round 2 (dimmer)
+    HsC7 = 0xC7,
+    /// Handshake round 2 (bridge)
+    HsC8 = 0xC8,
+    /// Handshake round 3 (dimmer)
+    HsCd = 0xCD,
+    /// Handshake round 3 (bridge)
+    HsCe = 0xCE,
+    /// Handshake round 4 (dimmer)
+    HsD3 = 0xD3,
+    /// Handshake round 4 (bridge)
+    HsD4 = 0xD4,
+    /// Handshake round 5 (dimmer)
+    HsD9 = 0xD9,
+    /// Handshake round 5 (bridge)
+    HsDa = 0xDA,
+    /// Handshake round 6 (dimmer)
+    HsDf = 0xDF,
+    /// Handshake round 6 (bridge)
+    HsE0 = 0xE0,
     /// LED configuration (derived from STATE_RPT format 0x0A)
     LedConfig = 0xF2,
-    /// Device announcement
+    /// Dimmer discovery (announces hardware ID to bridge)
     PairB0 = 0xB0,
     /// Scene Pico pairing (bridge-only)
     PairB8 = 0xB8,
@@ -233,14 +259,10 @@ pub enum PacketType {
     PairBb = 0xBB,
     /// Pairing response
     PairRespC0 = 0xC0,
-    /// Pairing response phase 1
-    PairRespC1 = 0xC1,
-    /// Pairing response phase 2
-    PairRespC2 = 0xC2,
-    /// Pairing acknowledgment
-    PairRespC8 = 0xC8,
     /// Set level command
     SetLevel = 0xA2,
+    /// Dimmer state report (pairing phase)
+    State80 = 0x80,
     /// State report (type 81)
     StateRpt81 = 0x81,
     /// State report (type 82)
@@ -256,13 +278,26 @@ pub enum PacketType {
 impl PacketType {
     pub fn from_byte(b: u8) -> Option<Self> {
         match b {
-            0x91 => Some(Self::Beacon),
+            0x91 => Some(Self::Beacon91),
             0x92 => Some(Self::Beacon92),
             0x93 => Some(Self::Beacon93),
             0x89 => Some(Self::BtnLongA),
             0x8B => Some(Self::BtnLongB),
             0x88 => Some(Self::BtnShortA),
             0x8A => Some(Self::BtnShortB),
+            0xA1 => Some(Self::ConfigA1),
+            0xC1 => Some(Self::HsC1),
+            0xC2 => Some(Self::HsC2),
+            0xC7 => Some(Self::HsC7),
+            0xC8 => Some(Self::HsC8),
+            0xCD => Some(Self::HsCd),
+            0xCE => Some(Self::HsCe),
+            0xD3 => Some(Self::HsD3),
+            0xD4 => Some(Self::HsD4),
+            0xD9 => Some(Self::HsD9),
+            0xDA => Some(Self::HsDa),
+            0xDF => Some(Self::HsDf),
+            0xE0 => Some(Self::HsE0),
             0xF2 => Some(Self::LedConfig),
             0xB0 => Some(Self::PairB0),
             0xB8 => Some(Self::PairB8),
@@ -270,10 +305,8 @@ impl PacketType {
             0xBA => Some(Self::PairBa),
             0xBB => Some(Self::PairBb),
             0xC0 => Some(Self::PairRespC0),
-            0xC1 => Some(Self::PairRespC1),
-            0xC2 => Some(Self::PairRespC2),
-            0xC8 => Some(Self::PairRespC8),
             0xA2 => Some(Self::SetLevel),
+            0x80 => Some(Self::State80),
             0x81 => Some(Self::StateRpt81),
             0x82 => Some(Self::StateRpt82),
             0x83 => Some(Self::StateRpt83),
@@ -285,13 +318,26 @@ impl PacketType {
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Beacon => "BEACON",
+            Self::Beacon91 => "BEACON_91",
             Self::Beacon92 => "BEACON_92",
             Self::Beacon93 => "BEACON_93",
             Self::BtnLongA => "BTN_LONG_A",
             Self::BtnLongB => "BTN_LONG_B",
             Self::BtnShortA => "BTN_SHORT_A",
             Self::BtnShortB => "BTN_SHORT_B",
+            Self::ConfigA1 => "CONFIG_A1",
+            Self::HsC1 => "HS_C1",
+            Self::HsC2 => "HS_C2",
+            Self::HsC7 => "HS_C7",
+            Self::HsC8 => "HS_C8",
+            Self::HsCd => "HS_CD",
+            Self::HsCe => "HS_CE",
+            Self::HsD3 => "HS_D3",
+            Self::HsD4 => "HS_D4",
+            Self::HsD9 => "HS_D9",
+            Self::HsDa => "HS_DA",
+            Self::HsDf => "HS_DF",
+            Self::HsE0 => "HS_E0",
             Self::LedConfig => "LED_CONFIG",
             Self::PairB0 => "PAIR_B0",
             Self::PairB8 => "PAIR_B8",
@@ -299,10 +345,8 @@ impl PacketType {
             Self::PairBa => "PAIR_BA",
             Self::PairBb => "PAIR_BB",
             Self::PairRespC0 => "PAIR_RESP_C0",
-            Self::PairRespC1 => "PAIR_RESP_C1",
-            Self::PairRespC2 => "PAIR_RESP_C2",
-            Self::PairRespC8 => "PAIR_RESP_C8",
             Self::SetLevel => "SET_LEVEL",
+            Self::State80 => "STATE_80",
             Self::StateRpt81 => "STATE_RPT_81",
             Self::StateRpt82 => "STATE_RPT_82",
             Self::StateRpt83 => "STATE_RPT_83",
@@ -313,13 +357,26 @@ impl PacketType {
 
     pub fn expected_length(&self) -> usize {
         match self {
-            Self::Beacon => 24,
+            Self::Beacon91 => 24,
             Self::Beacon92 => 24,
             Self::Beacon93 => 24,
             Self::BtnLongA => 24,
             Self::BtnLongB => 24,
             Self::BtnShortA => 24,
             Self::BtnShortB => 24,
+            Self::ConfigA1 => 24,
+            Self::HsC1 => 24,
+            Self::HsC2 => 24,
+            Self::HsC7 => 24,
+            Self::HsC8 => 24,
+            Self::HsCd => 24,
+            Self::HsCe => 24,
+            Self::HsD3 => 24,
+            Self::HsD4 => 24,
+            Self::HsD9 => 24,
+            Self::HsDa => 24,
+            Self::HsDf => 24,
+            Self::HsE0 => 24,
             Self::LedConfig => 24,
             Self::PairB0 => 53,
             Self::PairB8 => 53,
@@ -327,10 +384,8 @@ impl PacketType {
             Self::PairBa => 53,
             Self::PairBb => 53,
             Self::PairRespC0 => 24,
-            Self::PairRespC1 => 24,
-            Self::PairRespC2 => 24,
-            Self::PairRespC8 => 24,
             Self::SetLevel => 24,
+            Self::State80 => 24,
             Self::StateRpt81 => 24,
             Self::StateRpt82 => 24,
             Self::StateRpt83 => 24,
@@ -341,13 +396,26 @@ impl PacketType {
 
     pub fn category(&self) -> &'static str {
         match self {
-            Self::Beacon => "BEACON",
+            Self::Beacon91 => "BEACON",
             Self::Beacon92 => "BEACON",
             Self::Beacon93 => "BEACON",
             Self::BtnLongA => "BUTTON",
             Self::BtnLongB => "BUTTON",
             Self::BtnShortA => "BUTTON",
             Self::BtnShortB => "BUTTON",
+            Self::ConfigA1 => "CONFIG",
+            Self::HsC1 => "HANDSHAKE",
+            Self::HsC2 => "HANDSHAKE",
+            Self::HsC7 => "HANDSHAKE",
+            Self::HsC8 => "HANDSHAKE",
+            Self::HsCd => "HANDSHAKE",
+            Self::HsCe => "HANDSHAKE",
+            Self::HsD3 => "HANDSHAKE",
+            Self::HsD4 => "HANDSHAKE",
+            Self::HsD9 => "HANDSHAKE",
+            Self::HsDa => "HANDSHAKE",
+            Self::HsDf => "HANDSHAKE",
+            Self::HsE0 => "HANDSHAKE",
             Self::LedConfig => "CONFIG",
             Self::PairB0 => "PAIRING",
             Self::PairB8 => "PAIRING",
@@ -355,10 +423,8 @@ impl PacketType {
             Self::PairBa => "PAIRING",
             Self::PairBb => "PAIRING",
             Self::PairRespC0 => "HANDSHAKE",
-            Self::PairRespC1 => "HANDSHAKE",
-            Self::PairRespC2 => "HANDSHAKE",
-            Self::PairRespC8 => "HANDSHAKE",
             Self::SetLevel => "CONFIG",
+            Self::State80 => "STATE",
             Self::StateRpt81 => "STATE",
             Self::StateRpt82 => "STATE",
             Self::StateRpt83 => "STATE",
@@ -369,13 +435,26 @@ impl PacketType {
 
     pub fn uses_big_endian_device_id(&self) -> bool {
         match self {
-            Self::Beacon => true,
+            Self::Beacon91 => true,
             Self::Beacon92 => true,
             Self::Beacon93 => true,
             Self::BtnLongA => true,
             Self::BtnLongB => true,
             Self::BtnShortA => true,
             Self::BtnShortB => true,
+            Self::ConfigA1 => false,
+            Self::HsC1 => true,
+            Self::HsC2 => true,
+            Self::HsC7 => true,
+            Self::HsC8 => true,
+            Self::HsCd => true,
+            Self::HsCe => true,
+            Self::HsD3 => true,
+            Self::HsD4 => true,
+            Self::HsD9 => true,
+            Self::HsDa => true,
+            Self::HsDf => true,
+            Self::HsE0 => true,
             Self::LedConfig => false,
             Self::PairB0 => true,
             Self::PairB8 => true,
@@ -383,10 +462,8 @@ impl PacketType {
             Self::PairBa => true,
             Self::PairBb => true,
             Self::PairRespC0 => true,
-            Self::PairRespC1 => true,
-            Self::PairRespC2 => true,
-            Self::PairRespC8 => true,
             Self::SetLevel => false,
+            Self::State80 => false,
             Self::StateRpt81 => false,
             Self::StateRpt82 => false,
             Self::StateRpt83 => false,
@@ -428,7 +505,7 @@ pub enum FieldFormat {
 pub mod fields {
     use super::{FieldDef, FieldFormat};
 
-    pub const BEACON: &[FieldDef] = &[
+    pub const BEACON_91: &[FieldDef] = &[
         FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
         FieldDef { name: "load_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
@@ -466,13 +543,31 @@ pub mod fields {
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
+    pub const CONFIG_A1: &[FieldDef] = &[
+        FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
+        FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceId },
+        FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "data", offset: 8, size: 14, format: FieldFormat::Hex },
+        FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
+    ];
+
     pub const PAIR_B0: &[FieldDef] = &[
         FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
-        FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
+        FieldDef { name: "flags", offset: 2, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "zone_id", offset: 3, size: 2, format: FieldFormat::Hex },
+        FieldDef { name: "pair_flag", offset: 5, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "data", offset: 8, size: 43, format: FieldFormat::Hex },
+        FieldDef { name: "reserved", offset: 8, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "broadcast", offset: 9, size: 5, format: FieldFormat::Hex },
+        FieldDef { name: "fixed", offset: 14, size: 2, format: FieldFormat::Hex },
+        FieldDef { name: "hardware_id", offset: 16, size: 4, format: FieldFormat::DeviceIdBe },
+        FieldDef { name: "device_type", offset: 20, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "caps", offset: 21, size: 10, format: FieldFormat::Hex },
+        FieldDef { name: "padding", offset: 31, size: 20, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 51, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -518,6 +613,16 @@ pub mod fields {
         FieldDef { name: "fixed2", offset: 13, size: 3, format: FieldFormat::Hex },
         FieldDef { name: "level", offset: 16, size: 2, format: FieldFormat::Level16bit },
         FieldDef { name: "padding", offset: 18, size: 4, format: FieldFormat::Hex },
+        FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
+    ];
+
+    pub const STATE_80: &[FieldDef] = &[
+        FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
+        FieldDef { name: "zone_id", offset: 3, size: 2, format: FieldFormat::Hex },
+        FieldDef { name: "protocol", offset: 5, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "fixed", offset: 6, size: 2, format: FieldFormat::Hex },
+        FieldDef { name: "state", offset: 8, size: 14, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -605,7 +710,7 @@ pub mod sequences {
 
     /// Pairing beacon broadcast
     pub const PAIRING_BEACON_STEPS: &[Step] = &[
-        Step { packet_type: PacketType::Beacon, count: None, interval_ms: 65 },
+        Step { packet_type: PacketType::Beacon91, count: None, interval_ms: 65 },
     ];
 
     pub const PAIRING_BEACON: Sequence = Sequence {
