@@ -45,31 +45,59 @@ pub fn calc_crc(data: &[u8]) -> u16 {
     crc_reg
 }
 
-/// Verify CRC of a complete Lutron packet
+/// Find the true packet boundary by scanning for a valid CRC-16 match.
+///
+/// Computes CRC-16 over bytes[0..L-2] for each candidate length L and checks
+/// if it matches the big-endian u16 at bytes[L-2..L]. The first (shortest)
+/// match is the true packet boundary.
 ///
 /// # Arguments
-/// * `packet` - Complete packet including CRC (24 or 53 bytes)
+/// * `bytes` - Decoded packet bytes (potentially with trailing data beyond CRC)
 ///
 /// # Returns
-/// `true` if CRC is valid
-pub fn verify_crc(packet: &[u8]) -> bool {
-    if packet.len() < 4 {
-        return false;
+/// `Some(length)` if a valid CRC boundary was found, `None` otherwise
+pub fn find_packet_boundary(bytes: &[u8]) -> Option<usize> {
+    // Minimum: type + seq + device_id(4) + protocol + format + CRC(2) = 10
+    let min_len = 10;
+    if bytes.len() < min_len {
+        return None;
     }
 
-    // Determine CRC location based on packet length
-    let (crc_offset, data_len) = if packet.len() >= 53 {
-        (51, 51) // Pairing packet
-    } else if packet.len() >= 24 {
-        (22, 22) // Standard packet
-    } else {
-        return false;
-    };
+    let mut crc_reg: u16 = 0;
+    // Pre-compute CRC incrementally up to min_len - 2
+    for &byte in &bytes[..min_len - 2] {
+        let crc_upper = (crc_reg >> 8) as usize;
+        crc_reg = (((crc_reg << 8) & 0xFF00) + byte as u16) ^ CRC_TABLE[crc_upper];
+    }
 
-    let calculated = calc_crc(&packet[..data_len]);
-    let received = ((packet[crc_offset] as u16) << 8) | (packet[crc_offset + 1] as u16);
+    for len in min_len..=bytes.len() {
+        // crc_reg is the CRC over bytes[0..len-2]
+        let crc_offset = len - 2;
+        let received = ((bytes[crc_offset] as u16) << 8) | (bytes[crc_offset + 1] as u16);
+        if crc_reg == received {
+            return Some(len);
+        }
 
-    calculated == received
+        // Extend CRC by one byte for next iteration
+        if len < bytes.len() {
+            let next_byte = bytes[len - 2];
+            let crc_upper = (crc_reg >> 8) as usize;
+            crc_reg = (((crc_reg << 8) & 0xFF00) + next_byte as u16) ^ CRC_TABLE[crc_upper];
+        }
+    }
+
+    None
+}
+
+/// Verify CRC of a complete Lutron packet using boundary scanning.
+///
+/// # Arguments
+/// * `packet` - Complete packet including CRC
+///
+/// # Returns
+/// `true` if CRC is valid at any position
+pub fn verify_crc(packet: &[u8]) -> bool {
+    find_packet_boundary(packet).is_some()
 }
 
 /// Append CRC-16 to payload (big-endian)
@@ -125,5 +153,52 @@ mod tests {
         let packet = append_crc(&payload);
         assert_eq!(packet.len(), 24);
         assert!(verify_crc(&packet));
+    }
+
+    #[test]
+    fn test_find_packet_boundary_exact() {
+        // 22-byte payload + 2-byte CRC = 24 bytes, no trailing data
+        let payload = vec![
+            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+        ];
+        let packet = append_crc(&payload);
+        assert_eq!(find_packet_boundary(&packet), Some(24));
+    }
+
+    #[test]
+    fn test_find_packet_boundary_with_trailing() {
+        // 24-byte packet followed by trailing junk bytes
+        let payload = vec![
+            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+        ];
+        let mut packet = append_crc(&payload);
+        // Append trailing garbage
+        packet.extend_from_slice(&[0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC]);
+        assert_eq!(find_packet_boundary(&packet), Some(24));
+    }
+
+    #[test]
+    fn test_find_packet_boundary_53_byte() {
+        // 51-byte payload + 2-byte CRC = 53 bytes
+        let mut payload = vec![0xB9; 51]; // Pairing packet type
+        payload[1] = 0x00; // seq
+        let packet = append_crc(&payload);
+        assert_eq!(packet.len(), 53);
+        assert_eq!(find_packet_boundary(&packet), Some(53));
+    }
+
+    #[test]
+    fn test_find_packet_boundary_no_match() {
+        // Random data with no valid CRC
+        let data = vec![0x88, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A];
+        assert_eq!(find_packet_boundary(&data), None);
+    }
+
+    #[test]
+    fn test_find_packet_boundary_too_short() {
+        let data = vec![0x88, 0x00, 0x01];
+        assert_eq!(find_packet_boundary(&data), None);
     }
 }

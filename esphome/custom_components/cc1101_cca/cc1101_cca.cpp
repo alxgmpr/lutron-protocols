@@ -2083,10 +2083,11 @@ void CC1101CCA::send_vive_beacon_burst(uint32_t hub_id, bool is_stop, int count)
 }
 
 void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zone_id) {
-  // Vive pairing accept sequence (from real hub capture 2026-01-28):
+  // Vive pairing accept sequence (from real hub capture 2026-02-03):
   //
-  // Real hub sends BB accept, then config packets: 87, 99, a5, a9, aa, ab, 8d, 93, 9f, b7, bd, c3
-  // Device keeps retrying B8 until it receives the config packets.
+  // Real hub sends B9 accept, then multi-type retransmissions: 87, 93, 9f, ab
+  // Then config packets: a9, aa, ab, 8d, 93, 9f, b7, bd, c3
+  // Device keeps retrying B8 until it receives the accept + config packets.
   //
   // Zone ID determines which "room" the device responds to:
   //   0x38 = Room 1, 0x47 = Room 2, 0x4b = Room 3, etc.
@@ -2107,7 +2108,7 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
   uint8_t d2 = (device_id >> 8) & 0xFF;
   uint8_t d3 = device_id & 0xFF;
 
-  // Helper to build packet WITH seq byte (used by BB, A9, AA, AB)
+  // Helper to build packet WITH seq byte (used by B9, A9, AA, AB)
   // Format: type + seq + hub_id + rest...
   auto build_packet_with_seq = [&](uint8_t* pkt, uint8_t type, uint8_t proto, uint8_t fmt) {
     memset(pkt, 0xCC, 37);
@@ -2129,7 +2130,7 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     pkt[36] = crc & 0xFF;
   };
 
-  // Helper to build packet WITHOUT seq byte (used by 87, 99, a5, 8d, 93, 9f, b7, bd, c3)
+  // Helper to build packet WITHOUT seq byte (used by 87, 93, 9f, ab, 8d, b7, bd, c3)
   // Format: type + hub_id + rest... (NO seq byte - one byte shorter!)
   // Real example: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc
   auto build_packet_no_seq = [&](uint8_t* pkt, uint8_t type, uint8_t proto, uint8_t fmt) {
@@ -2151,21 +2152,41 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     pkt[35] = crc & 0xFF;
   };
 
-  uint8_t packet[37];
+  uint8_t packet[53];  // Max size for 53-byte pairing packets
 
-  // Phase 1: Send BB accept burst (like real hub)
-  // BB packets HAVE seq byte: bb 01 01 7d 53 63 21 10 00...
-  ESP_LOGI(TAG, "Phase 1: Sending BB accept packets (with seq)");
-  for (int i = 0; i < 3; i++) {
-    build_packet_with_seq(packet, 0xBB, 0x21, 0x10);
-    this->transmit_packet(packet, 37);
+  // Phase 1: Send B9 accept (like real hub)
+  // Real hub sends B9 (not BB!) as the directed accept to the device
+  // B9 accept is a 53-byte pairing-format packet (51 data + 2 CRC),
+  // same size as the device's B8/B9 request and the BA beacon.
+  // Real: b9 01 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 [CC x27] [CRC:2]
+  ESP_LOGI(TAG, "Phase 1: Sending B9 accept packet (53 bytes, with seq)");
+  {
+    memset(packet, 0xCC, 53);
+    packet[0] = 0xB9;
+    packet[1] = 0x01;           // Seq=1 for response
+    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;  // Hub ID
+    packet[6] = 0x21;           // Protocol
+    packet[7] = 0x10;           // Format (accept)
+    packet[8] = 0x00;
+    packet[9] = d0; packet[10] = d1; packet[11] = d2; packet[12] = d3;  // Device ID
+    packet[13] = 0xFE;          // Paired flag
+    packet[14] = 0x60;          // Flags
+    packet[15] = 0x0A;          // Accept command
+    packet[16] = h0; packet[17] = h1; packet[18] = h2; packet[19] = h3;  // Hub ID
+    packet[20] = h0; packet[21] = h1; packet[22] = h2; packet[23] = h3;  // Hub ID again
+    // Bytes 24-50 are CC padding (already set by memset)
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+    this->transmit_packet(packet, 53);
     delay(70);
   }
 
-  // Phase 2: Send config packets (87, 99, a5) - NO seq byte!
-  // Real: 87 01 7d 53 63 21 10 00... (hub ID at byte 1, no seq)
-  ESP_LOGI(TAG, "Phase 2: Sending config packets (87, 99, a5) - no seq");
-  uint8_t config_types_1[] = {0x87, 0x99, 0xa5};
+  // Phase 2: Multi-type retransmissions of accept (87, 93, 9f, ab) - NO seq byte!
+  // These are shorter packets (the no-seq format), matching real hub captures
+  // Real: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc
+  ESP_LOGI(TAG, "Phase 2: Sending accept retransmissions (87, 93, 9f, ab) - no seq");
+  uint8_t config_types_1[] = {0x87, 0x93, 0x9f, 0xab};
   for (uint8_t type : config_types_1) {
     build_packet_no_seq(packet, type, 0x21, 0x10);
     this->transmit_packet(packet, 36);  // 36 bytes (no seq)

@@ -18,12 +18,15 @@ impl PacketParser {
         Self
     }
 
+    /// Maximum bytes to attempt decoding from FIFO
+    const MAX_DECODE_LEN: usize = 56;
+
     /// Decode raw CC1101 FIFO data to Lutron packet
     ///
     /// The CC1101 captures bits after sync word detection. This function:
     /// 1. Finds N81 frame alignment
-    /// 2. Decodes bytes from N81 format
-    /// 3. Parses packet structure
+    /// 2. Decodes as many bytes as possible from N81 format
+    /// 3. Uses CRC scanning to find the true packet boundary
     pub fn decode_fifo(&self, fifo_data: &[u8]) -> Option<DecodedPacket> {
         let total_bits = fifo_data.len() * 8;
         if total_bits < 200 {
@@ -31,12 +34,12 @@ impl PacketParser {
         }
 
         // Find sync pattern and decode N81 bytes
-        let mut best_decoded: Vec<u8> = Vec::new();
+        let mut best_unverified: Option<DecodedPacket> = None;
 
         // Optimized search: CC1101 syncs on 0xAAAA preamble, so N81 data starts
         // within first ~20 bits
         for bit_pos in 0..20 {
-            if bit_pos + 270 >= total_bits {
+            if bit_pos + 100 >= total_bits {
                 break;
             }
 
@@ -64,36 +67,32 @@ impl PacketParser {
                 continue;
             };
 
-            // Decode first byte to get packet type
-            let type_byte = match n81::decode_n81_byte(fifo_data, data_start) {
-                Some(b) => b,
-                None => continue,
-            };
+            // Decode as many bytes as possible (CRC scanning will find the boundary)
+            let decoded = n81::decode_n81_stream(fifo_data, data_start, Self::MAX_DECODE_LEN);
 
-            // Determine expected length
-            let expected_len = get_packet_length(type_byte).unwrap_or(53);
-
-            // Decode all bytes
-            let decoded = n81::decode_n81_stream(fifo_data, data_start, expected_len);
-
-            // Need at least minimum bytes for packet type
-            let min_required = if expected_len >= 53 { 24 } else { expected_len };
-            if decoded.len() >= min_required && type_byte >= 0x80 && type_byte <= 0xCF {
-                best_decoded = decoded;
-                break;
+            if decoded.len() < 10 {
+                continue;
             }
 
-            // Keep track of best partial decode
-            if decoded.len() > best_decoded.len() {
-                best_decoded = decoded;
+            // Parse with CRC boundary scanning
+            if let Some(packet) = self.parse_bytes(&decoded) {
+                if packet.crc_valid {
+                    return Some(packet); // CRC-verified packet, done
+                }
+                // Keep best unverified candidate
+                if best_unverified
+                    .as_ref()
+                    .map_or(true, |p| decoded.len() > p.raw.len())
+                {
+                    best_unverified = Some(packet);
+                }
             }
         }
 
         // Extended search if quick search failed
-        if best_decoded.len() < 10 {
-            for bit_pos in 20..(total_bits.saturating_sub(270)) {
-                let b1 = n81::decode_n81_byte(fifo_data, bit_pos);
-                let b1 = match b1 {
+        if best_unverified.as_ref().map_or(true, |p| p.raw.len() < 10) {
+            for bit_pos in 20..(total_bits.saturating_sub(100)) {
+                let _b1 = match n81::decode_n81_byte(fifo_data, bit_pos) {
                     Some(b) if b >= 0x80 && b <= 0xCF => b,
                     _ => continue,
                 };
@@ -103,48 +102,65 @@ impl PacketParser {
                     _ => continue,
                 };
 
-                // Found potential packet start
-                let expected_len = get_packet_length(b1).unwrap_or(53);
-                let decoded = n81::decode_n81_stream(fifo_data, bit_pos, expected_len);
+                let decoded =
+                    n81::decode_n81_stream(fifo_data, bit_pos, Self::MAX_DECODE_LEN);
 
-                let min_required = if expected_len >= 53 { 24 } else { expected_len };
-                if decoded.len() >= min_required {
-                    best_decoded = decoded;
+                if decoded.len() < 10 {
+                    continue;
+                }
+
+                if let Some(packet) = self.parse_bytes(&decoded) {
+                    if packet.crc_valid {
+                        return Some(packet);
+                    }
+                    if best_unverified
+                        .as_ref()
+                        .map_or(true, |p| decoded.len() > p.raw.len())
+                    {
+                        best_unverified = Some(packet);
+                    }
                     break;
                 }
             }
         }
 
-        if best_decoded.len() < 10 {
-            return None;
-        }
-
-        // Parse the decoded bytes
-        self.parse_bytes(&best_decoded)
+        best_unverified
     }
 
     /// Parse already-decoded packet bytes
     ///
-    /// Use this when you have raw packet bytes (not N81 encoded)
+    /// Uses CRC-16 boundary scanning to determine the true packet length.
+    /// Bytes beyond the CRC are stripped. If no CRC match is found,
+    /// the packet is still returned with `crc_valid = false`.
     pub fn parse_bytes(&self, bytes: &[u8]) -> Option<DecodedPacket> {
         if bytes.len() < 10 {
             return None;
         }
 
+        // Find true packet boundary via CRC scan
+        let (packet_bytes, crc_valid, crc_value) = match crc::find_packet_boundary(bytes) {
+            Some(len) => {
+                let crc_offset = len - 2;
+                let crc_val =
+                    ((bytes[crc_offset] as u16) << 8) | (bytes[crc_offset + 1] as u16);
+                (&bytes[..len], true, crc_val)
+            }
+            None => (bytes, false, 0u16),
+        };
+
         let mut packet = DecodedPacket::empty();
-        packet.raw = bytes.to_vec();
-        packet.type_byte = bytes[offsets::TYPE];
+        packet.raw = packet_bytes.to_vec();
+        packet.type_byte = packet_bytes[offsets::TYPE];
         packet.packet_type = PacketType::from_byte(packet.type_byte);
-        packet.sequence = bytes[offsets::SEQUENCE];
+        packet.sequence = packet_bytes[offsets::SEQUENCE];
+        packet.crc = crc_value;
+        packet.crc_valid = crc_valid;
 
         // Get format byte if available
-        packet.format_byte = bytes.get(offsets::FORMAT).copied();
+        packet.format_byte = packet_bytes.get(offsets::FORMAT).copied();
 
         // Parse based on packet type
-        self.parse_type_specific(&mut packet, bytes);
-
-        // Validate CRC
-        self.validate_crc(&mut packet, bytes);
+        self.parse_type_specific(&mut packet, packet_bytes);
 
         packet.valid = true;
         Some(packet)
@@ -292,71 +308,6 @@ impl PacketParser {
     fn parse_pairing_response(&self, packet: &mut DecodedPacket, bytes: &[u8]) {
         // Pairing responses use big-endian device ID
         packet.device_id = self.read_device_id_be(bytes);
-    }
-
-    /// Validate CRC and update packet
-    fn validate_crc(&self, packet: &mut DecodedPacket, bytes: &[u8]) {
-        if packet.packet_type == PacketType::LedConfig {
-            // LED config: CRC location uncertain, try multiple positions
-            self.validate_crc_led_config(packet, bytes);
-            return;
-        }
-
-        let expected_len = packet.packet_type.expected_length();
-        let (crc_offset, data_len) = if expected_len == PKT_PAIRING_LEN {
-            (offsets::CRC_53, 51)
-        } else {
-            (offsets::CRC_24, 22)
-        };
-
-        if bytes.len() >= crc_offset + 2 {
-            packet.crc = ((bytes[crc_offset] as u16) << 8) | (bytes[crc_offset + 1] as u16);
-            let calculated = crc::calc_crc(&bytes[..data_len]);
-            packet.crc_valid = calculated == packet.crc;
-        } else if expected_len == PKT_PAIRING_LEN && bytes.len() >= 24 {
-            // Truncated pairing packet - don't mark as CRC fail
-            packet.crc = 0;
-            packet.crc_valid = true;
-        } else if bytes.len() >= 24 {
-            // Standard packet fallback
-            packet.crc = ((bytes[22] as u16) << 8) | (bytes[23] as u16);
-            let calculated = crc::calc_crc(&bytes[..22]);
-            packet.crc_valid = calculated == packet.crc;
-        } else {
-            packet.crc = 0;
-            packet.crc_valid = false;
-        }
-    }
-
-    /// Special CRC validation for LED config packets
-    fn validate_crc_led_config(&self, packet: &mut DecodedPacket, bytes: &[u8]) {
-        packet.crc = 0;
-        packet.crc_valid = false;
-
-        if bytes.len() >= 24 {
-            // Try standard CRC at 22-23
-            let pkt_crc = ((bytes[22] as u16) << 8) | (bytes[23] as u16);
-            let calc_crc = crc::calc_crc(&bytes[..22]);
-            if calc_crc == pkt_crc {
-                packet.crc = pkt_crc;
-                packet.crc_valid = true;
-                return;
-            }
-
-            // Try CRC at 16-17 (LE)
-            if bytes.len() >= 18 {
-                let pkt_crc = (bytes[16] as u16) | ((bytes[17] as u16) << 8);
-                let calc_crc = crc::calc_crc(&bytes[..16]);
-                if calc_crc == pkt_crc {
-                    packet.crc = pkt_crc;
-                    packet.crc_valid = true;
-                    return;
-                }
-            }
-
-            // Store CRC at standard position even if invalid
-            packet.crc = ((bytes[22] as u16) << 8) | (bytes[23] as u16);
-        }
     }
 
     /// Read device ID as big-endian (offset 2-5)

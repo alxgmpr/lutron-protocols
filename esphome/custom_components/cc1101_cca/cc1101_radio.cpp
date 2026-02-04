@@ -224,10 +224,13 @@ void CC1101Radio::start_rx() {
   // PKTCTRL1: No address check, no append status
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
-  // Set packet length for RX - use 64 bytes (full FIFO)
-  // Button packets: ~30 bytes encoded, Pairing packets: ~66 bytes
-  // We poll RXBYTES and read when enough data is available
-  this->write_register(CC1101_PKTLEN, 64);
+  // Set packet length for RX - 80 bytes to capture full pairing packets
+  // Button packets: ~30 raw bytes, Pairing packets: 53 decoded = ~67 raw N81 bytes
+  // 80 bytes exceeds the 64-byte FIFO, so check_rx() drains mid-packet
+  this->write_register(CC1101_PKTLEN, 80);
+
+  // Reset accumulation buffer
+  this->rx_accum_pos_ = 0;
 
   // GDO0: Assert when sync word detected, deassert on end of packet
   this->write_register(CC1101_IOCFG0, 0x06);
@@ -260,6 +263,7 @@ void CC1101Radio::stop_rx() {
   // Reset GDO0 to default (TX mode signal)
   this->write_register(CC1101_IOCFG0, 0x06);
 
+  this->rx_accum_pos_ = 0;
   this->rx_active_ = false;
 }
 
@@ -275,54 +279,104 @@ bool CC1101Radio::check_rx() {
 
   if (overflow) {
     this->overflow_count_++;
-    // Always log overflow - this is critical diagnostic info
-    ESP_LOGW(TAG, "FIFO OVERFLOW #%u - WiFi blocking main loop", this->overflow_count_);
+    ESP_LOGW(TAG, "FIFO OVERFLOW #%u (accum=%u) - delivering partial data",
+             this->overflow_count_, this->rx_accum_pos_);
+    // Deliver whatever we accumulated before the overflow
+    bool had_data = this->rx_accum_pos_ > 0;
+    if (had_data && this->rx_callback_ != nullptr) {
+      uint8_t rssi_raw = this->read_status_register(CC1101_RSSI_REG);
+      int8_t rssi = (rssi_raw >= 128) ? ((rssi_raw - 256) / 2 - 74) : (rssi_raw / 2 - 74);
+      this->rx_callback_(this->rx_accum_, this->rx_accum_pos_, rssi);
+    }
+    this->rx_accum_pos_ = 0;
+    this->set_idle();
+    this->flush_rx();
+    this->strobe(CC1101_SRX);
+    return had_data;
+  }
+
+  if (rx_bytes == 0 && this->rx_accum_pos_ == 0) {
+    return false;
+  }
+
+  // PKTLEN is 80. At 62.5 kbaud (7812.5 bytes/s), 80 bytes takes ~10.2ms.
+  // The 64-byte FIFO fills in ~8.2ms, so we must drain mid-packet.
+  // Strategy: once we see bytes, enter a tight loop accumulating into rx_accum_
+  // until we have 80 bytes, the FIFO goes idle for >2ms, or 20ms timeout.
+  const size_t PKTLEN = 80;
+  const uint32_t IDLE_TIMEOUT_US = 2000;   // 2ms with no new bytes = end of packet
+  const uint32_t TOTAL_TIMEOUT_MS = 20;    // 20ms safety timeout
+
+  uint32_t loop_start = millis();
+  uint32_t last_byte_time = micros();
+
+  while (this->rx_accum_pos_ < PKTLEN) {
+    rx_bytes_raw = this->read_status_register(CC1101_RXBYTES);
+    overflow = (rx_bytes_raw & 0x80) != 0;
+    rx_bytes = rx_bytes_raw & 0x7F;
+
+    if (overflow) {
+      this->overflow_count_++;
+      ESP_LOGW(TAG, "FIFO OVERFLOW mid-accumulation #%u (accum=%u)",
+               this->overflow_count_, this->rx_accum_pos_);
+      break;  // Deliver what we have
+    }
+
+    if (rx_bytes > 0) {
+      // Read available bytes into accumulation buffer
+      size_t space = RX_ACCUM_SIZE - this->rx_accum_pos_;
+      size_t to_read = (rx_bytes < space) ? rx_bytes : space;
+      if (to_read > 0) {
+        this->read_burst(CC1101_RXFIFO, this->rx_accum_ + this->rx_accum_pos_, to_read);
+        this->rx_accum_pos_ += to_read;
+      }
+      last_byte_time = micros();
+
+      if (space == 0) {
+        break;  // Accumulation buffer full
+      }
+    } else {
+      // No bytes available - check if transmission ended
+      if (this->rx_accum_pos_ > 0 && (micros() - last_byte_time) > IDLE_TIMEOUT_US) {
+        break;  // No new bytes for 2ms, packet is done
+      }
+    }
+
+    // Safety timeout
+    if ((millis() - loop_start) > TOTAL_TIMEOUT_MS) {
+      ESP_LOGW(TAG, "RX accumulation timeout (accum=%u)", this->rx_accum_pos_);
+      break;
+    }
+
+    delayMicroseconds(50);  // Brief yield between FIFO polls
+  }
+
+  // Minimum viable packet: 35 raw bytes = 280 bits (decoder needs bit_pos + 270 < total)
+  const size_t MIN_PACKET_LEN = 35;
+  if (this->rx_accum_pos_ < MIN_PACKET_LEN) {
+    // Not enough data for a valid packet - reset and continue
+    this->rx_accum_pos_ = 0;
     this->set_idle();
     this->flush_rx();
     this->strobe(CC1101_SRX);
     return false;
   }
 
-  if (rx_bytes == 0) {
-    return false;
-  }
-
-  // Lutron N81 encoding: 10 bits per data byte
-  // Decoder search loop needs bit_pos + 270 < total_bits
-  // 35 bytes = 280 bits, provides margin for the 270-bit requirement
-  const uint8_t MIN_PACKET_LEN = 35;
-
-  // If FIFO is getting close to full (>48 bytes), process immediately
-  // to prevent overflow, even if packet might be incomplete
-  bool fifo_pressure = rx_bytes > 48;
-
-  if (rx_bytes < MIN_PACKET_LEN && !fifo_pressure) {
-    return false;
-  }
-
-  // Read all available data
-  uint8_t buffer[64];
-  uint8_t payload_length = (rx_bytes > 64) ? 64 : rx_bytes;
-  this->read_burst(CC1101_RXFIFO, buffer, payload_length);
-
-  // Read RSSI and LQI from registers
+  // Read RSSI from status register
   uint8_t rssi_raw = this->read_status_register(CC1101_RSSI_REG);
-  uint8_t lqi_raw = this->read_status_register(CC1101_LQI_REG);
   int8_t rssi = (rssi_raw >= 128) ? ((rssi_raw - 256) / 2 - 74) : (rssi_raw / 2 - 74);
-  bool crc_ok = (lqi_raw & 0x80) != 0;
 
-  // Call callback if set
+  ESP_LOGV(TAG, "RX accumulated %u bytes (RSSI=%d)", this->rx_accum_pos_, rssi);
+
+  // Deliver accumulated packet
   if (this->rx_callback_ != nullptr) {
-    this->rx_callback_(buffer, payload_length, rssi);
+    this->rx_callback_(this->rx_accum_, this->rx_accum_pos_, rssi);
   }
 
-  // Only do full reset if FIFO might have more data or after overflow
-  // This reduces the time spent out of RX mode
-  uint8_t remaining = this->read_status_register(CC1101_RXBYTES) & 0x7F;
-  if (remaining > 0 || fifo_pressure) {
-    this->set_idle();
-    this->flush_rx();
-  }
+  // Reset accumulator and re-enter RX
+  this->rx_accum_pos_ = 0;
+  this->set_idle();
+  this->flush_rx();
   this->strobe(CC1101_SRX);
 
   return true;

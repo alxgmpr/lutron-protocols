@@ -35,6 +35,11 @@
 #define CRC_POLY 51727
 
 /**
+ * Maximum raw packet size (pairing packets are 53 bytes)
+ */
+#define CCA_MAX_PACKET_LEN 56
+
+/**
  * Standard packet sizes
  */
 #define PKT_STANDARD_LEN 24
@@ -58,11 +63,6 @@
 #define CRC_24 22
 
 #define CRC_53 51
-
-/**
- * Maximum raw packet size (pairing packets are 53 bytes)
- */
-#define CCA_MAX_PACKET_LEN 56
 
 /**
  * RF frequency in Hz

@@ -150,6 +150,12 @@ class CC1101Radio {
   bool rx_active_{false};
   RxCallback rx_callback_{nullptr};
   uint32_t overflow_count_{0};  // Track FIFO overflow events
+
+  // RX accumulation buffer for packets exceeding 64-byte FIFO
+  // Pairing packets are 53 decoded bytes = ~67 raw N81-encoded bytes
+  static const size_t RX_ACCUM_SIZE = 128;
+  uint8_t rx_accum_[RX_ACCUM_SIZE];
+  size_t rx_accum_pos_{0};
 };
 
 /**
