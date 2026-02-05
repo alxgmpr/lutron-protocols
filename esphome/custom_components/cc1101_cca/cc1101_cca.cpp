@@ -1991,14 +1991,15 @@ void CC1101CCA::stop_vive_pairing() {
 }
 
 void CC1101CCA::send_vive_beacon_burst(uint32_t hub_id, bool is_stop, int count) {
-  // Vive beacon packet structure (from real capture 2026-01-27):
-  // ba [seq] [hub_id:4] 21 11 00 ff ff ff ff ff 60 00 [hub_id:4] ff ff ff ff [timer] cc...
+  // Vive beacon packet structure (from RTL-SDR capture of REAL hub 2026-02-05):
+  // b9 [seq] [hub_id:4] 21 11 00 ff ff ff ff ff 60 00 [hub_id:4] ff ff ff ff [timer] cc...
   //
-  // Real Vive hub uses 0xBA for beacon (verified from capture!)
-  // 0xBA = Pairing beacon (timer=0x3C = 60 seconds active, 0x00 = exit)
+  // Real Vive hub uses 0xB9 for beacon (format 0x11), NOT 0xBA!
+  // 0xB9 = Pairing beacon (timer=0x3C = 60 seconds active, 0x00 = exit)
+  // 0xBA = Accept packet (format 0x10) - different packet type!
   // Sequence increments by 8, wraps at 0x48 (0, 8, 16, 24, 32, 40, 48, 56, 64, 0...)
 
-  uint8_t pkt_type = 0xBA;  // BA for both enter and exit beacon
+  uint8_t pkt_type = 0xB9;  // B9 for beacon (NOT BA - that's for accept!)
   uint8_t timer = is_stop ? 0x00 : 0x3C;  // 0x3C = 60 seconds
 
   ESP_LOGI(TAG, "Sending 0x%02X burst: hub=0x%08X, timer=0x%02X, count=%d",
@@ -2154,15 +2155,15 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
 
   uint8_t packet[53];  // Max size for 53-byte pairing packets
 
-  // Phase 1: Send B9 accept (like real hub)
-  // Real hub sends B9 (not BB!) as the directed accept to the device
-  // B9 accept is a 53-byte pairing-format packet (51 data + 2 CRC),
-  // same size as the device's B8/B9 request and the BA beacon.
-  // Real: b9 01 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 [CC x27] [CRC:2]
-  ESP_LOGI(TAG, "Phase 1: Sending B9 accept packet (53 bytes, with seq)");
+  // Phase 1: Send BA accept (like real hub)
+  // Real hub sends BA with format 0x10 as the directed accept to the device
+  // BA is used for BOTH beacons (format 0x11) AND accept packets (format 0x10)
+  // The difference is the FORMAT byte at position 7, not the packet type
+  // Real: ba 8d 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 [CC x27] [CRC:2]
+  ESP_LOGI(TAG, "Phase 1: Sending BA accept packet (53 bytes, with seq)");
   {
     memset(packet, 0xCC, 53);
-    packet[0] = 0xB9;
+    packet[0] = 0xBA;  // BA for accept (same type as beacon, different format byte)
     packet[1] = 0x01;           // Seq=1 for response
     packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;  // Hub ID
     packet[6] = 0x21;           // Protocol
@@ -2207,8 +2208,8 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     a9_pkt[6] = 0x28;  // Zone assignment protocol
     a9_pkt[7] = 0x03;  // Format
     a9_pkt[8] = 0x01;  // Constant
-    a9_pkt[9] = 0x39;  // Constant (was incorrectly 0x38!)
-    a9_pkt[10] = zone_id + 0x30;  // Zone reference (derived from zone_id)
+    a9_pkt[9] = zone_id;  // Zone ID (0x38 in real capture)
+    a9_pkt[10] = 0x5b;  // Reference counter (from real hub capture)
     a9_pkt[11] = 0x21;
     a9_pkt[12] = 0x1A;
     a9_pkt[13] = 0x00;
@@ -2257,21 +2258,20 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     delay(70);
   }
 
-  // Phase 4b: Send AB packet (format 0x28, similar to A9 but alternate zone ref)
-  // Real: ab 01 01 7d 53 63 28 03 01 39 7c 21 1a 00 [device:4] fe 06 40 00 00 00
-  // Zone reference byte is slightly different (+2 from A9)
-  ESP_LOGI(TAG, "Phase 4b: Sending AB zone packet (format 0x28)");
+  // Phase 4b: Send AB packet (format 0x28) - 53 bytes like real hub!
+  // Real: ab 8d 01 7d 53 63 28 03 01 38 5b 21 1a 00 02 1a d0 c3 fe 06 40 00 00 00 01 ef 20 00 03 09 2b ff 00 ff 00 00 b4 00 00 cc...
+  ESP_LOGI(TAG, "Phase 4b: Sending AB zone packet (format 0x28, 53 bytes)");
   {
-    uint8_t ab_pkt[26];
-    memset(ab_pkt, 0x00, sizeof(ab_pkt));
+    uint8_t ab_pkt[53];
+    memset(ab_pkt, 0xCC, sizeof(ab_pkt));  // CC padding
     ab_pkt[0] = 0xAB;
     ab_pkt[1] = 0x01;  // seq
     ab_pkt[2] = h0; ab_pkt[3] = h1; ab_pkt[4] = h2; ab_pkt[5] = h3;
     ab_pkt[6] = 0x28;  // Zone assignment protocol
     ab_pkt[7] = 0x03;  // Format
     ab_pkt[8] = 0x01;  // Constant
-    ab_pkt[9] = 0x39;  // Constant (was incorrectly 0x38!)
-    ab_pkt[10] = zone_id + 0x32;  // Zone reference (slightly different from A9)
+    ab_pkt[9] = zone_id;  // Zone ID (0x38 in real capture)
+    ab_pkt[10] = 0x5b;  // Reference counter
     ab_pkt[11] = 0x21;
     ab_pkt[12] = 0x1A;
     ab_pkt[13] = 0x00;
@@ -2282,108 +2282,69 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     ab_pkt[21] = 0x00;
     ab_pkt[22] = 0x00;
     ab_pkt[23] = 0x00;
-    uint16_t crc = this->encoder_.calc_crc(ab_pkt, 24);
-    ab_pkt[24] = (crc >> 8) & 0xFF;
-    ab_pkt[25] = crc & 0xFF;
-    this->transmit_packet(ab_pkt, 26);
+    // Additional config data from real hub capture
+    ab_pkt[24] = 0x01;
+    ab_pkt[25] = 0xEF;
+    ab_pkt[26] = 0x20;
+    ab_pkt[27] = 0x00;
+    ab_pkt[28] = 0x03;
+    ab_pkt[29] = 0x09;
+    ab_pkt[30] = 0x2B;
+    ab_pkt[31] = 0xFF;
+    ab_pkt[32] = 0x00;
+    ab_pkt[33] = 0xFF;
+    ab_pkt[34] = 0x00;
+    ab_pkt[35] = 0x00;
+    ab_pkt[36] = 0xB4;
+    ab_pkt[37] = 0x00;
+    ab_pkt[38] = 0x00;
+    // Bytes 39-50 are CC padding (already set)
+    uint16_t crc = this->encoder_.calc_crc(ab_pkt, 51);
+    ab_pkt[51] = (crc >> 8) & 0xFF;
+    ab_pkt[52] = crc & 0xFF;
+    this->transmit_packet(ab_pkt, 53);
     delay(70);
   }
 
-  // Phase 5: Send remaining config packets
-  // A9 (second one) HAS seq: a9 01 01 7d 53 63 21 12 00...
-  // 8D, 93, 9F, B7, BD, C3 do NOT have seq: 8d 01 7d 53 63 21 12 00...
-  ESP_LOGI(TAG, "Phase 5: Sending final config packets");
-
-  // First send A9 with seq (format 0x12)
+  // Phase 5: Send format 0x12 config packets - ALL 53 bytes like real hub!
+  // Real: ab ab 01 7d 53 63 21 12 00 02 1a d0 c3 fe 06 6e 01 00 07 00 02 00 00 00 38 ef cc cc cc... [CRC:2]
+  // All packets are 53 bytes with CC padding (51 data + 2 CRC)
+  ESP_LOGI(TAG, "Phase 5: Sending format 0x12 config packets (53 bytes each) with zone=0x%02X", zone_id);
   {
-    // Real: a9 01 01 7d 53 63 21 12 00 02 1a d0 c3 fe 06 6e 01 00 07 00 02 00 00 00
-    uint8_t a9_final[26];
-    memset(a9_final, 0x00, sizeof(a9_final));
-    a9_final[0] = 0xA9;
-    a9_final[1] = 0x01;  // seq
-    a9_final[2] = h0; a9_final[3] = h1; a9_final[4] = h2; a9_final[5] = h3;
-    a9_final[6] = 0x21;
-    a9_final[7] = 0x12;
-    a9_final[8] = 0x00;
-    a9_final[9] = d0; a9_final[10] = d1; a9_final[11] = d2; a9_final[12] = d3;
-    a9_final[13] = 0xFE;
-    a9_final[14] = 0x06;
-    a9_final[15] = 0x6E;
-    a9_final[16] = 0x01;
-    a9_final[17] = 0x00;
-    a9_final[18] = 0x07;
-    a9_final[19] = 0x00;
-    a9_final[20] = 0x02;
-    a9_final[21] = 0x00;
-    a9_final[22] = 0x00;
-    a9_final[23] = 0x00;
-    uint16_t crc = this->encoder_.calc_crc(a9_final, 24);
-    a9_final[24] = (crc >> 8) & 0xFF;
-    a9_final[25] = crc & 0xFF;
-    this->transmit_packet(a9_final, 26);
-    delay(50);
-  }
-
-  // Then send 8D, 93, 9F, C3 WITHOUT seq byte (24 bytes data, no extra suffix)
-  // Real: 8d 01 7d 53 63 21 12 00 [device:4] fe 06 6e 01 00 07 00 02 00 00 00 [ZONE]
-  // And B7, BD with 0xef suffix (25 bytes data)
-  // Real: b7 01 7d 53 63 21 12 00 [device:4] fe 06 6e 01 00 07 00 02 00 00 00 [ZONE] ef
-  // ZONE at byte 23 is the zone ID the device will respond to!
-  ESP_LOGI(TAG, "Sending format 0x12 config packets with zone=0x%02X", zone_id);
-  {
-    uint8_t final_pkt[28];  // Max size needed
-    memset(final_pkt, 0x00, sizeof(final_pkt));
-    // No seq byte - hub ID starts at byte 1
-    final_pkt[1] = h0; final_pkt[2] = h1; final_pkt[3] = h2; final_pkt[4] = h3;
-    final_pkt[5] = 0x21;
-    final_pkt[6] = 0x12;
-    final_pkt[7] = 0x00;
-    final_pkt[8] = d0; final_pkt[9] = d1; final_pkt[10] = d2; final_pkt[11] = d3;
-    final_pkt[12] = 0xFE;
-    final_pkt[13] = 0x06;
-    final_pkt[14] = 0x6E;
-    final_pkt[15] = 0x01;
-    final_pkt[16] = 0x00;
-    final_pkt[17] = 0x07;
-    final_pkt[18] = 0x00;
-    final_pkt[19] = 0x02;
-    final_pkt[20] = 0x00;
+    uint8_t final_pkt[53];
+    memset(final_pkt, 0xCC, sizeof(final_pkt));  // CC padding
+    // WITH seq byte - hub ID starts at byte 2
+    final_pkt[1] = 0x01;  // Seq byte
+    final_pkt[2] = h0; final_pkt[3] = h1; final_pkt[4] = h2; final_pkt[5] = h3;
+    final_pkt[6] = 0x21;
+    final_pkt[7] = 0x12;
+    final_pkt[8] = 0x00;
+    final_pkt[9] = d0; final_pkt[10] = d1; final_pkt[11] = d2; final_pkt[12] = d3;
+    final_pkt[13] = 0xFE;
+    final_pkt[14] = 0x06;
+    final_pkt[15] = 0x6E;
+    final_pkt[16] = 0x01;
+    final_pkt[17] = 0x00;
+    final_pkt[18] = 0x07;
+    final_pkt[19] = 0x00;
+    final_pkt[20] = 0x02;
     final_pkt[21] = 0x00;
     final_pkt[22] = 0x00;
-    final_pkt[23] = zone_id;  // ZONE ID - was hardcoded to 0x38!
+    final_pkt[23] = 0x00;
+    final_pkt[24] = zone_id;  // ZONE ID at byte 24
+    final_pkt[25] = 0xEF;     // EF suffix
+    // Bytes 26-50 are CC padding (already set by memset)
 
-    // Send in correct order: 8d, 93, 9f, b7, bd, c3
-    // 8D, 93, 9F: 24 bytes data + 2 bytes CRC = 26 bytes total
-    uint8_t first_types[] = {0x8D, 0x93, 0x9F};
-    for (uint8_t type : first_types) {
+    // Send all config packets as 53 bytes: A9, 8D, 93, 9F, AB, B7, BD, C3
+    uint8_t config_types[] = {0xA9, 0x8D, 0x93, 0x9F, 0xAB, 0xB7, 0xBD, 0xC3};
+    for (uint8_t type : config_types) {
       final_pkt[0] = type;
-      uint16_t crc = this->encoder_.calc_crc(final_pkt, 24);
-      final_pkt[24] = (crc >> 8) & 0xFF;
-      final_pkt[25] = crc & 0xFF;
-      this->transmit_packet(final_pkt, 26);
+      uint16_t crc = this->encoder_.calc_crc(final_pkt, 51);
+      final_pkt[51] = (crc >> 8) & 0xFF;
+      final_pkt[52] = crc & 0xFF;
+      this->transmit_packet(final_pkt, 53);
       delay(50);
     }
-
-    // B7, BD: 25 bytes data (with 0xef suffix) + 2 bytes CRC = 27 bytes total
-    final_pkt[24] = 0xEF;  // Extra byte for B7/BD
-    uint8_t long_types[] = {0xB7, 0xBD};
-    for (uint8_t type : long_types) {
-      final_pkt[0] = type;
-      uint16_t crc = this->encoder_.calc_crc(final_pkt, 25);
-      final_pkt[25] = (crc >> 8) & 0xFF;
-      final_pkt[26] = crc & 0xFF;
-      this->transmit_packet(final_pkt, 27);
-      delay(50);
-    }
-
-    // C3: 24 bytes data + 2 bytes CRC = 26 bytes total (back to short format)
-    // Note: CRC is calculated on bytes 0-23, so final_pkt[24] (still 0xEF) doesn't affect it
-    final_pkt[0] = 0xC3;
-    uint16_t crc_c3 = this->encoder_.calc_crc(final_pkt, 24);
-    final_pkt[24] = (crc_c3 >> 8) & 0xFF;
-    final_pkt[25] = crc_c3 & 0xFF;
-    this->transmit_packet(final_pkt, 26);
-    delay(50);
   }
 
   ESP_LOGI(TAG, "Accept + config sequence complete for device 0x%08X", device_id);

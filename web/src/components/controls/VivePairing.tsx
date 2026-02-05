@@ -17,8 +17,8 @@ interface ViveDevice {
 
 export function VivePairing({ showStatus }: Props) {
   const { postJson } = useApi()
-  const [hubId, setHubId] = useState('YYYYYYYY')
-  const [zoneId, setZoneId] = useState('38')  // Hex string for zone ID
+  const [hubId, setHubId] = useState('')
+  const [zoneId, setZoneId] = useState('')
   const [isActive, setIsActive] = useState(false)
   const [discoveredDevices, setDiscoveredDevices] = useState<ViveDevice[]>([])
   const [elapsedTime, setElapsedTime] = useState(0)
@@ -41,10 +41,19 @@ export function VivePairing({ showStatus }: Props) {
   }, [isActive])
 
   const handleStart = async () => {
+    if (!hubId.trim() || !zoneId.trim()) {
+      showStatus('Hub ID and Zone ID are required', 'error')
+      return
+    }
     const fullHubId = '0x' + hubId.replace(/^0x/i, '')
-    showStatus(`Starting Vive pairing with hub ${fullHubId}...`)
+    const zoneNum = parseInt(zoneId, 16)
+    if (isNaN(zoneNum) || zoneNum < 1 || zoneNum > 255) {
+      showStatus('Invalid zone ID (must be 01-FF hex)', 'error')
+      return
+    }
+    showStatus(`Starting Vive pairing with hub ${fullHubId}, zone 0x${zoneId.toUpperCase()}...`)
     try {
-      const result = await postJson('/api/vive/start', { hub_id: fullHubId })
+      const result = await postJson('/api/vive/start', { hub_id: fullHubId, zone_id: zoneNum })
       if (result.status === 'ok') {
         setIsActive(true)
         setDiscoveredDevices([])
@@ -112,7 +121,7 @@ export function VivePairing({ showStatus }: Props) {
           <FormInput
             value={hubId}
             onChange={v => setHubId(v.replace(/^0x/i, ''))}
-            placeholder="YYYYYYYY"
+            placeholder="AABBCCDD"
             width={80}
             disabled={isActive}
           />
