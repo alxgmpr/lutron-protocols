@@ -223,14 +223,12 @@ async function main() {
 
       packetCount++;
 
-      if (jsonOutput) {
+      if (relayMode) {
+        relayPacket(pkt);
+      } else if (jsonOutput) {
         console.log(JSON.stringify(pkt));
       } else {
         console.log(formatPacket(pkt));
-      }
-
-      if (relayMode) {
-        relayPacket(pkt);
       }
     }
   });
@@ -251,7 +249,9 @@ async function main() {
       const pkt = processLine(buffer);
       if (pkt) {
         packetCount++;
-        if (jsonOutput) {
+        if (relayMode) {
+          relayPacket(pkt);
+        } else if (jsonOutput) {
           console.log(JSON.stringify(pkt));
         } else {
           console.log(formatPacket(pkt));
@@ -259,7 +259,7 @@ async function main() {
       }
     }
 
-    if (!jsonOutput) {
+    if (!jsonOutput && !relayMode) {
       console.log(`\n${packetCount} CCX packets decoded.`);
     }
 

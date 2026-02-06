@@ -133,7 +133,6 @@ class PacketServer {
         const json = JSON.parse(msg.toString());
         const pkt = this.parseCcxPacket(json);
         if (pkt) {
-          console.log(`CCX: ${pkt.type} from ${pkt.device_id}`);
           this.handlePacket(pkt);
         }
       } catch (e) {
