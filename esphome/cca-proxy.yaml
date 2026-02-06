@@ -157,8 +157,10 @@ esphome:
             // Vive pairing commands
             else if (strcmp(cmd, "vive_start") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"];
+              if (!zone_id) zone_id = 0x38;
               if (hub_id) {
-                id(cca_radio)->start_vive_pairing(hub_id);
+                id(cca_radio)->start_vive_pairing(hub_id, zone_id);
               } else {
                 ESP_LOGW("udp_cmd", "vive_start: missing hub_id");
               }
@@ -177,7 +179,8 @@ esphome:
             else if (strcmp(cmd, "vive_accept") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);
               uint32_t device_id = parse_hex(params["device_id"]);
-              uint8_t zone_id = params["zone_id"] | 0x38;  // Default to zone 0x38 (Room 1)
+              uint8_t zone_id = params["zone_id"];  // Zone ID from request
+              if (!zone_id) zone_id = 0x38;  // Default to 0x38 if not specified
               if (hub_id && device_id) {
                 id(cca_radio)->send_vive_accept(hub_id, device_id, zone_id);
               } else {
@@ -528,8 +531,12 @@ api:
     - service: start_vive_pairing
       variables:
         hub_id: string
+        zone_id: int  # 0x38=Room1, 0x46=Room2, 0x61=Room3, 0x4b=Room4
       then:
-        - lambda: id(cca_radio)->start_vive_pairing(strtoul(hub_id.c_str(), nullptr, 0));
+        - lambda: |-
+            id(cca_radio)->start_vive_pairing(
+              strtoul(hub_id.c_str(), nullptr, 0),
+              zone_id > 0 ? (uint8_t)zone_id : 0x38);
 
     - service: stop_vive_pairing
       then:

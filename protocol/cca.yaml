@@ -29,6 +29,22 @@ meta:
 # The zone_bytes portion (e.g., 2C 90 = 902C big-endian) is shared between
 # the bridge and all devices paired to that zone.
 
+# Vive Zone Encoding
+#
+# In Vive pairing and control packets, zone IDs are accompanied by a "zone reference"
+# byte that encodes the zone using a fixed offset. The device uses this reference
+# as the authoritative zone identifier:
+#
+# Format 0x28 packets (A9, AB zone assignment):
+#   zone_ref = zone_id + 0x23
+#   Example: zone 0x38 -> zone_ref 0x5b
+#
+# Format 0x12 packets (config) and Format 0x0E packets (control):
+#   zone_ref = zone_id + 0xB7
+#   Example: zone 0x38 -> zone_ref 0xef
+#
+# Both the zone_id and zone_ref bytes must be correctly set for proper pairing.
+
 # RF Physical Layer
 rf:
   frequency_hz: 433602844

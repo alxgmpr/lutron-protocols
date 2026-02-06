@@ -78,11 +78,11 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
                            (uint32_t)pkt.raw[5];
 
       ESP_LOGI(TAG, "=== VIVE PAIRING REQUEST DETECTED ===");
-      ESP_LOGI(TAG, "Device 0x%08X requesting to pair (type=0x%02X, format=0x%02X)",
-               device_id, pkt_type, format);
+      ESP_LOGI(TAG, "Device 0x%08X requesting to pair (type=0x%02X, format=0x%02X), zone=0x%02X",
+               device_id, pkt_type, format, this->vive_zone_id_);
 
-      // Auto-accept the device
-      this->send_vive_accept(this->vive_hub_id_, device_id);
+      // Auto-accept the device with the zone specified at pairing start
+      this->send_vive_accept(this->vive_hub_id_, device_id, this->vive_zone_id_);
     }
   }
 
@@ -1816,7 +1816,7 @@ void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool tu
     packet[10] = 0x00;
     packet[11] = 0x00;
     packet[12] = zone_id;               // Zone/room ID!
-    packet[13] = 0xEF;
+    packet[13] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
     packet[14] = 0x40;
     packet[15] = 0x02;
     if (turn_on) {
@@ -1879,7 +1879,7 @@ void CC1101CCA::send_vive_raise(uint32_t hub_id, uint8_t zone_id) {
     packet[8] = 0x00;
     packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
     packet[12] = zone_id;
-    packet[13] = 0xEF;
+    packet[13] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
     packet[14] = 0x40;
     packet[15] = 0x02;
     packet[16] = 0xFE;                  // Raise = fe ff (like ON, held)
@@ -1922,7 +1922,7 @@ void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
     packet[8] = 0x00;
     packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
     packet[12] = zone_id;
-    packet[13] = 0xEF;
+    packet[13] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
     packet[14] = 0x40;
     packet[15] = 0x02;
     packet[16] = 0x00;                  // Lower = 00 00 (like OFF, held)
@@ -1955,14 +1955,15 @@ void CC1101CCA::send_vive_toggle(uint32_t hub_id, uint32_t device_id) {
 
 // ========== VIVE PAIRING (0xBA/0xBB beacon protocol) ==========
 
-void CC1101CCA::start_vive_pairing(uint32_t hub_id) {
+void CC1101CCA::start_vive_pairing(uint32_t hub_id, uint8_t zone_id) {
   ESP_LOGI(TAG, "=== START VIVE PAIRING MODE ===");
-  ESP_LOGI(TAG, "Hub ID: 0x%08X", hub_id);
+  ESP_LOGI(TAG, "Hub ID: 0x%08X, Zone: 0x%02X", hub_id, zone_id);
   ESP_LOGI(TAG, "Sending 0xBA beacon bursts every ~30 seconds");
   ESP_LOGI(TAG, ">>> PUT DEVICE IN PAIRING MODE (hold button 5-10s) <<<");
 
   this->vive_pairing_active_ = true;
   this->vive_hub_id_ = hub_id;
+  this->vive_zone_id_ = zone_id;
   this->vive_seq_ = 0;
   this->vive_last_burst_ = 0;  // Force immediate first burst
 
@@ -2208,8 +2209,8 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     a9_pkt[6] = 0x28;  // Zone assignment protocol
     a9_pkt[7] = 0x03;  // Format
     a9_pkt[8] = 0x01;  // Constant
-    a9_pkt[9] = zone_id;  // Zone ID (0x38 in real capture)
-    a9_pkt[10] = 0x5b;  // Reference counter (from real hub capture)
+    a9_pkt[9] = 0x38;  // Always 0x38 (constant in real hub captures)
+    a9_pkt[10] = zone_id + 0x23;  // Zone reference (zone + 0x23)
     a9_pkt[11] = 0x21;
     a9_pkt[12] = 0x1A;
     a9_pkt[13] = 0x00;
@@ -2270,8 +2271,8 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     ab_pkt[6] = 0x28;  // Zone assignment protocol
     ab_pkt[7] = 0x03;  // Format
     ab_pkt[8] = 0x01;  // Constant
-    ab_pkt[9] = zone_id;  // Zone ID (0x38 in real capture)
-    ab_pkt[10] = 0x5b;  // Reference counter
+    ab_pkt[9] = 0x38;  // Always 0x38 (constant in real hub captures)
+    ab_pkt[10] = zone_id + 0x23;  // Zone reference (zone + 0x23)
     ab_pkt[11] = 0x21;
     ab_pkt[12] = 0x1A;
     ab_pkt[13] = 0x00;
@@ -2284,7 +2285,7 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     ab_pkt[23] = 0x00;
     // Additional config data from real hub capture
     ab_pkt[24] = 0x01;
-    ab_pkt[25] = 0xEF;
+    ab_pkt[25] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
     ab_pkt[26] = 0x20;
     ab_pkt[27] = 0x00;
     ab_pkt[28] = 0x03;
@@ -2332,7 +2333,7 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     final_pkt[22] = 0x00;
     final_pkt[23] = 0x00;
     final_pkt[24] = zone_id;  // ZONE ID at byte 24
-    final_pkt[25] = 0xEF;     // EF suffix
+    final_pkt[25] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
     // Bytes 26-50 are CC padding (already set by memset)
 
     // Send all config packets as 53 bytes: A9, 8D, 93, 9F, AB, B7, BD, C3

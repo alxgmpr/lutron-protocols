@@ -400,8 +400,9 @@ class CC1101CCA : public Component,
    * Devices in range will flash their LEDs to indicate pairing mode.
    * Call stop_vive_pairing() when done.
    * @param hub_id 32-bit hub ID (e.g., 0xYYYYYYYY)
+   * @param zone_id Zone/room ID to assign to discovered devices (default 0x38 = Room 1)
    */
-  void start_vive_pairing(uint32_t hub_id);
+  void start_vive_pairing(uint32_t hub_id, uint8_t zone_id = 0x38);
 
   /**
    * @brief Stop Vive pairing mode
@@ -476,6 +477,7 @@ class CC1101CCA : public Component,
   // Vive pairing state
   bool vive_pairing_active_{false};
   uint32_t vive_hub_id_{0};
+  uint8_t vive_zone_id_{0x38};
   uint8_t vive_seq_{0};
   uint32_t vive_last_burst_{0};  // For ~30s burst interval
 
