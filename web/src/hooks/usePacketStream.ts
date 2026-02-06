@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Packet, ParsedField } from '../types'
 
 const MAX_PACKETS = 10000
+const FLUSH_INTERVAL_MS = 250
 
 interface BackendPacket {
   direction: 'rx' | 'tx'
@@ -36,6 +37,11 @@ export function usePacketStream() {
   const [allSnapshot, setAllSnapshot] = useState<Packet[]>([])
 
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  // Batch buffer — packets accumulate here and flush to state on interval
+  const batchRef = useRef<{ tx: Packet[]; rx: Packet[]; all: Packet[] }>({
+    tx: [], rx: [], all: []
+  })
 
   // Unified pause toggle
   const togglePause = useCallback(() => {
@@ -76,11 +82,13 @@ export function usePacketStream() {
   const clearTx = useCallback(() => {
     setTxPackets([])
     setTxSnapshot([])
+    batchRef.current.tx = []
   }, [])
 
   const clearRx = useCallback(() => {
     setRxPackets([])
     setRxSnapshot([])
+    batchRef.current.rx = []
   }, [])
 
   const clearAll = useCallback(() => {
@@ -90,9 +98,29 @@ export function usePacketStream() {
     setTxSnapshot([])
     setRxSnapshot([])
     setAllSnapshot([])
+    batchRef.current = { tx: [], rx: [], all: [] }
   }, [])
 
   useEffect(() => {
+    // Flush batched packets to state on interval
+    const flushInterval = setInterval(() => {
+      const batch = batchRef.current
+      if (batch.all.length === 0) return
+
+      const newTx = batch.tx
+      const newRx = batch.rx
+      const newAll = batch.all
+      batchRef.current = { tx: [], rx: [], all: [] }
+
+      if (newTx.length > 0) {
+        setTxPackets(prev => [...prev, ...newTx].slice(-MAX_PACKETS))
+      }
+      if (newRx.length > 0) {
+        setRxPackets(prev => [...prev, ...newRx].slice(-MAX_PACKETS))
+      }
+      setAllPackets(prev => [...prev, ...newAll].sort((a, b) => a.time.localeCompare(b.time)).slice(-MAX_PACKETS))
+    }, FLUSH_INTERVAL_MS)
+
     const connect = () => {
       const eventSource = new EventSource('/api/packets/stream')
       eventSourceRef.current = eventSource
@@ -115,7 +143,6 @@ export function usePacketStream() {
         const pkt = data as BackendPacket
 
         // Convert backend packet to frontend Packet format
-        // Extract crc_ok before formatting details (it's sent as string from backend)
         const crcOk = pkt.details?.crc_ok === undefined ? undefined :
                       pkt.details.crc_ok === 'true' || pkt.details.crc_ok === true
 
@@ -127,22 +154,20 @@ export function usePacketStream() {
           details: formatDetails(pkt.details, pkt.rssi),
           rawBytes: pkt.raw_hex,
           direction: pkt.direction,
-          fields: pkt.fields,  // Pass through backend-parsed fields
-          crcOk  // CRC validation status for RX packets
+          fields: pkt.fields,
+          crcOk
         }
 
+        // Filter out bad CRC packets
+        if (packet.crcOk === false) return
+
+        // Push into batch buffer (no state update, no re-render)
         if (pkt.direction === 'tx') {
-          setTxPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
+          batchRef.current.tx.push(packet)
         } else {
-          // Filter out bad CRC packets - they're likely corrupted
-          if (packet.crcOk === false) {
-            return
-          }
-          setRxPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
+          batchRef.current.rx.push(packet)
         }
-
-        // Always add to combined stream
-        setAllPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
+        batchRef.current.all.push(packet)
       }
 
       eventSource.onerror = () => {
@@ -155,6 +180,7 @@ export function usePacketStream() {
     connect()
 
     return () => {
+      clearInterval(flushInterval)
       eventSourceRef.current?.close()
     }
   }, [])
@@ -186,7 +212,6 @@ function formatDetails(details?: Record<string, string | boolean>, rssi?: number
 
   if (details) {
     for (const [key, value] of Object.entries(details)) {
-      // Skip crc_ok - it's shown as an icon, not in details
       if (key === 'crc_ok') continue
 
       if (key === 'button') {
