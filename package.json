@@ -16,6 +16,7 @@
     "cca": "cargo run --manifest-path cca/Cargo.toml --release --",
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
+    "leap:dump": "bun run tools/leap-dump.ts",
     "clean": "rm -rf node_modules web/node_modules backend/node_modules"
   },
   "dependencies": {

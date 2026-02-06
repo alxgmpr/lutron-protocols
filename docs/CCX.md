@@ -285,27 +285,31 @@ The device broadcasts the button press, and the dimmer internally executes the a
 ```cbor
 [1, {
     0: {
-        0: <device_id>,       # 4 bytes: [cmd_type, zone_low, 0xEF, 0x20]
+        0: <device_id>,       # 4 bytes: [preset_hi, preset_lo, 0xEF, 0x20]
         1: [cnt1, cnt2, cnt3] # Frame counters (replay protection)
     },
     5: <sequence>
 }]
 ```
 
-**Device ID Format**: `[cmd_type, zone_low, 0xEF, 0x20]`
-- Byte 0: Command type (0x03 = button press)
-- Byte 1: Button/scene zone ID (low byte)
-- Bytes 2-3: Fixed suffix `0xEF 0x20`
+**Device ID = LEAP Preset ID**: Bytes 0-1 encode the LEAP Preset ID as a big-endian uint16.
+Bytes 2-3 are always `0xEF 0x20`.
 
-**Example** ("Relax" scene button sets light to 10%):
+| Byte | Meaning |
+|------|---------|
+| 0 | Preset ID high byte |
+| 1 | Preset ID low byte |
+| 2 | 0xEF (constant) |
+| 3 | 0x20 (constant) |
+
+**Example**: Pressing "Office" on the Office Doorway keypad sends preset 1093 (secondary):
 ```
-Hex: 8201a200a2004403b3ef2001831a0003e1483a0002fe66192c88051882
-Decoded: CCXButtonPress(id=03b3ef20, zone=179, counters=[254280, -196199, 11400], seq=130)
+device_id = 04 45 EF 20  →  (0x04 << 8) | 0x45 = 1093 = SecondaryPreset of "Office" button
 ```
 
-**Key Observation**: Button presses don't contain level values. The scene/preset is stored
-on the device itself. Pressing the button triggers the device to recall and execute its
-stored scene configuration.
+**Toggle behavior**: `AdvancedToggleProgrammingModel` buttons send different preset IDs
+depending on toggle state — PrimaryPreset when turning off/recalling, SecondaryPreset when
+activating. This is how the same physical button sends two different CCX messages.
 
 **ACK Response**: Button presses receive ACK with response byte `0x55` ('U'):
 ```
@@ -336,7 +340,7 @@ First of a raise/lower pair. Always paired with a DIM_STEP (type 3). Uses even s
 ```cbor
 [2, {
     0: {
-        0: <device_id>,  # 4 bytes: [cmd_type, button_zone, 0xEF, 0x20]
+        0: <device_id>,  # 4 bytes: [preset_hi, preset_lo, 0xEF, 0x20]
         1: <action>      # 3 = raise/lower action
     },
     5: <sequence>         # Even number
@@ -425,11 +429,76 @@ The `zone_id` in CCX messages (e.g., 961) is an **internal Lutron index**, not t
 udp.port == 9190
 ```
 
-### TypeScript Decoder & Tools
+## LEAP API Access
+
+The RA3 processor exposes a read-only JSON API on port 8081 via mutual TLS. This is used by
+`tools/leap-dump.ts` to enumerate the full device database.
+
+### Connection
+
+Requires product certificates extracted from Lutron Designer:
+
+```bash
+# Using pylutron-caseta CLI (pip install pylutron_caseta[cli])
+leap --cacert lutron-ra3-ca.pem --cert lutron-ra3-cert.pem --key lutron-ra3-key.pem \
+  "10.0.0.1/area"
+
+# Using the leap-dump tool (walks full hierarchy automatically)
+bun run tools/leap-dump.ts
+```
+
+Certificate files in project root:
+- `lutron-ra3-cert.pem` — Client certificate (from Designer)
+- `lutron-ra3-key.pem` — Client private key
+- `lutron-ra3-ca.pem` — CA chain
+
+### Key Endpoints
+
+| Endpoint | Returns |
+|----------|---------|
+| `/area` | All areas/rooms |
+| `/area/{id}/associatedzone` | Zones (dimmers/switches) in an area |
+| `/area/{id}/associatedcontrolstation` | Control stations (keypads, picos) in an area |
+| `/device/{id}` | Device details (serial, model, firmware) |
+| `/device/{id}/buttongroup` | Button groups on a device |
+| `/button/{id}` | Button definition with engraving and programming model |
+| `/programmingmodel/{id}` | Programming model with preset references |
+| `/preset/{id}` | Preset definition |
+| `/zone/{id}/status` | Current zone level and lock state |
+| `/link/{id}` | RF network config including Thread encryption keys |
+
+### Control Station → Device Hierarchy
+
+```
+Area
+└── ControlStation (named location, e.g., "Doorway")
+    └── AssociatedGangedDevices[]
+        └── Device (href, DeviceType)
+            └── ButtonGroup
+                └── Button (engraving, ProgrammingModel)
+                    └── ProgrammingModel
+                        └── Preset(s)
+```
+
+### Programming Model Types
+
+| Type | Preset Structure |
+|------|-----------------|
+| `AdvancedToggleProgrammingModel` | `.AdvancedToggleProperties.PrimaryPreset` + `.SecondaryPreset` |
+| `SingleActionProgrammingModel` | `.Preset` (singular) |
+| `SingleSceneRaiseProgrammingModel` | `.Preset` (singular) |
+| `SingleSceneLowerProgrammingModel` | `.Preset` (singular) |
+
+### Limitations
+
+- **Read-only** — all write attempts return 500 or 405
+- Write access requires port 443 (WSS) with project-specific certificates from Designer pairing
+
+## TypeScript Decoder & Tools
 
 The CCX tooling lives in `ccx/` (decoder library) and `tools/` (CLI tools).
 
-#### Decode a message
+### Decode a message
 
 ```typescript
 import { decodeAndParse, formatMessage } from "./ccx/decoder";
@@ -439,7 +508,7 @@ console.log(formatMessage(msg));
 // LEVEL_CONTROL(FULL_ON, level=0xfeff, zone=961, seq=92)
 ```
 
-#### CCX Sniffer (tshark-based capture pipeline)
+### CCX Sniffer (tshark-based capture pipeline)
 
 ```bash
 # Process a pcapng capture file
@@ -463,7 +532,7 @@ then decodes the Lutron CBOR application layer in TypeScript.
 - For live capture: nRF 802.15.4 sniffer extcap plugin installed in Wireshark
 - Thread master key configured in `ccx/config.ts` or via `--key` flag
 
-#### CCX Analyzer (reverse engineering helper)
+### CCX Analyzer (reverse engineering helper)
 
 ```bash
 # Decode a single CBOR message with annotated dump
@@ -491,14 +560,87 @@ npm run ccx:analyze -- unknown --file captures/ccx-onoff.pcapng
 npm run ccx:analyze -- stats --file captures/ccx-onoff.pcapng
 ```
 
-#### Configuration
+### LEAP Dump (system enumeration)
+
+Enumerates all devices, buttons, presets, and zones from the LEAP API. Re-run this when
+the system configuration changes to refresh the CCX preset mapping.
+
+```bash
+# Human-readable output
+npm run leap:dump
+
+# JSON output (for scripting / external tools)
+npm run leap:dump -- --json
+
+# TypeScript config fragments (paste into ccx/config.ts)
+npm run leap:dump -- --config
+
+# Custom host
+npm run leap:dump -- --host 10.0.0.1
+```
+
+Output includes:
+- **28 zones** with area names and control types
+- **39 devices** with serial numbers, types, and control station locations
+- **93 preset mappings** linking LEAP preset IDs to button names and devices
+- CCX device_id encoding for every button in the system
+
+### Configuration
 
 Edit `ccx/config.ts` to set your Thread network parameters:
 - Channel, PAN ID, Extended PAN ID
 - Thread master key
 - Known device IPv6 addresses and zone names
+- Known presets (generated by `leap-dump --config`)
 
-### nRF 802.15.4 Sniffer Setup
+## Button → Preset Encoding (CRACKED)
+
+The CCX `device_id` in BUTTON_PRESS, DIM_HOLD, and DIM_STEP messages encodes the
+LEAP Preset ID:
+
+```
+device_id[0:1] = LEAP Preset ID (big-endian uint16)
+device_id[2:3] = 0xEF20 (constant)
+```
+
+### LEAP Button Hierarchy
+
+```
+Device (e.g., SunnataHybridKeypad)
+└── ButtonGroup
+    └── Button (engraving text)
+        └── ProgrammingModel
+            ├── AdvancedToggleProgrammingModel
+            │   ├── PrimaryPreset   (sent on OFF/recall press)
+            │   └── SecondaryPreset (sent on ON/activate press)
+            ├── SingleActionProgrammingModel
+            │   └── Preset (sent on every press)
+            ├── SingleSceneRaiseProgrammingModel
+            │   └── Preset (sent on raise)
+            └── SingleSceneLowerProgrammingModel
+                └── Preset (sent on lower)
+```
+
+### Example Mapping (Office Doorway Keypad)
+
+| Button | Action | Preset ID | CCX Bytes | PM Type |
+|--------|--------|-----------|-----------|---------|
+| Office | ON (secondary) | 1093 | `0445 EF20` | AdvancedToggle |
+| Office | OFF (primary) | 939 | `03AB EF20` | AdvancedToggle |
+| Lamps | ON (secondary) | 1223 | `04C7 EF20` | AdvancedToggle |
+| Lamps | OFF (primary) | 943 | `03AF EF20` | AdvancedToggle |
+| Relax | ON (secondary) | 2011 | `07DB EF20` | AdvancedToggle |
+| Relax | OFF (primary) | 947 | `03B3 EF20` | AdvancedToggle |
+| Lower | press | 984 | `03D8 EF20` | SingleSceneLower |
+| Raise | press | 987 | `03DB EF20` | SingleSceneRaise |
+
+### Shared Scenes
+
+Some presets are shared across multiple devices. For example, preset 2507 ("Relax" primary)
+appears on 5 different keypads across the house. When any of these buttons is pressed,
+the same preset ID is sent over CCX.
+
+## nRF 802.15.4 Sniffer Setup
 
 1. Download the nRF Sniffer for 802.15.4 from [Nordic's site](https://www.nordicsemi.com/Products/Development-tools/nRF-Sniffer-for-802154)
 2. Flash the sniffer firmware onto an nRF52840 dongle
@@ -515,23 +657,16 @@ Edit `ccx/config.ts` to set your Thread network parameters:
 |------|----------|
 | `captures/ccx-activity.pcapng` | 67 LEVEL_CONTROL packets (ON/OFF zone 961) |
 | `captures/ccx-full-exercise.pcapng` | 1212 decoded packets, all 8 active message types |
+| `captures/ccx-button-mapping.pcapng` | Office keypad button press sequence (preset ID verification) |
 
 ## Known Zones (from LEAP database)
 
-See `ccx/config.ts` for the full mapping. Example zones:
-
-| Zone ID | Name |
-|---------|------|
-| 961 | Office Light |
-| 840 | Living Room Mantle |
-| 1843 | Living Room Lights |
-| 2000 | Kitchen Lights |
-| 1688 | Foyer Lights |
+See `ccx/config.ts` for the full mapping (28 zones, 84 presets, 27 device serials).
+Regenerate with `npm run leap:dump -- --config`.
 
 ## Remaining Unknowns
 
-- **Button device_id encoding**: Format is `[b0, b1, 0xEF, 0x20]` where bytes 0-1 correlate with LEAP button IDs but the exact encoding isn't fully cracked (observed ~+2 offset from LEAP button ID as BE16)
+- **Type 34**: Observed from keypads, structure `{0: {0:7, 1:0}, 2: [1, serial]}` — possibly button activity acknowledgment
 - **COMPONENT_CMD params**: `[10, 4800]` meaning not yet determined (likely shade position)
 - **SCENE_RECALL params**: `[5, 60]` meaning not yet determined
 - **STATUS inner data**: Raw bytes not yet decoded
-

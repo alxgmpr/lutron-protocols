@@ -34,6 +34,7 @@ import {
   Level,
   levelToPercent,
 } from "./constants";
+import { CCX_CONFIG, getPresetInfo, presetIdFromDeviceId } from "./config";
 
 /** Decode raw CBOR bytes into message type + body */
 function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
@@ -334,7 +335,12 @@ export function formatMessage(msg: CCXMessage): string {
       const idHex = Array.from(msg.deviceId)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      return `BUTTON_PRESS(id=${idHex}, zone=${msg.buttonZone}, counters=[${msg.counters.join(", ")}], seq=${msg.sequence})`;
+      const presetId = presetIdFromDeviceId(msg.deviceId);
+      const preset = getPresetInfo(presetId);
+      const label = preset
+        ? `"${preset.name}" [${preset.device}] (${preset.role})`
+        : `preset=${presetId}`;
+      return `BUTTON_PRESS(${label}, id=${idHex}, seq=${msg.sequence})`;
     }
     case "ACK": {
       const respHex = Array.from(msg.response)
@@ -353,16 +359,25 @@ export function formatMessage(msg: CCXMessage): string {
       const idHex = Array.from(msg.deviceId)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      return `DIM_HOLD(id=${idHex}, zone=${msg.buttonZone}, action=${msg.action}, seq=${msg.sequence})`;
+      const presetId = presetIdFromDeviceId(msg.deviceId);
+      const preset = getPresetInfo(presetId);
+      const label = preset ? `"${preset.name}" [${preset.device}]` : `preset=${presetId}`;
+      return `DIM_HOLD(${label}, id=${idHex}, action=${msg.action}, seq=${msg.sequence})`;
     }
     case "DIM_STEP": {
       const idHex = Array.from(msg.deviceId)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      return `DIM_STEP(id=${idHex}, zone=${msg.buttonZone}, step=${msg.stepValue}, seq=${msg.sequence})`;
+      const presetId = presetIdFromDeviceId(msg.deviceId);
+      const preset = getPresetInfo(presetId);
+      const label = preset ? `"${preset.name}" [${preset.device}]` : `preset=${presetId}`;
+      return `DIM_STEP(${label}, id=${idHex}, step=${msg.stepValue}, seq=${msg.sequence})`;
     }
-    case "DEVICE_REPORT":
-      return `DEVICE_REPORT(serial=0x${msg.deviceSerial.toString(16).padStart(8, "0")}, group=${msg.groupId})`;
+    case "DEVICE_REPORT": {
+      const serialName = CCX_CONFIG.knownSerials[msg.deviceSerial]?.name;
+      const serialLabel = serialName ? `"${serialName}"` : `0x${msg.deviceSerial.toString(16).padStart(8, "0")}`;
+      return `DEVICE_REPORT(${serialLabel}, serial=${msg.deviceSerial}, group=${msg.groupId})`;
+    }
     case "SCENE_RECALL":
       return `SCENE_RECALL(scene=${msg.sceneId}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
     case "COMPONENT_CMD":
