@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { ControlSection } from './ControlsPanel'
-import { Button, FormGroup, AutocompleteInput } from '../common'
-import { useDevices } from '../../context/DeviceContext'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
@@ -11,7 +10,6 @@ interface Props {
 
 export function ResetPico({ showStatus }: Props) {
   const { post } = useApi()
-  const { seen } = useDevices()
   const [picoId, setPicoId] = useState('05851117')
 
   const handleReset = async () => {
@@ -30,16 +28,17 @@ export function ResetPico({ showStatus }: Props) {
 
   return (
     <ControlSection title="Reset Pico" storageKey="ctrl-reset-pico">
-      <div className="form-row">
-        <FormGroup label="Pico ID">
-          <AutocompleteInput
-            value={picoId}
-            onChange={v => setPicoId(v.replace(/^0x/i, ''))}
-            suggestions={seen.picos.map(s => s.replace(/^0x/i, ''))}
-            width={90}
-          />
-        </FormGroup>
-        <Button variant="red" onClick={handleReset}>Reset</Button>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">pico:</span>
+        <Input
+          value={picoId}
+          onChange={e => setPicoId(e.target.value.replace(/^0x/i, ''))}
+          className="w-[100px]"
+        />
+        <Button variant="red" onClick={handleReset}>
+          <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M1.5 2v3h3"/><path d="M2 5a4 4 0 1 1 .5 3"/></svg>
+          Reset
+        </Button>
       </div>
     </ControlSection>
   )

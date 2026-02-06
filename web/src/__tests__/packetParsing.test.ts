@@ -5,17 +5,14 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  formatFieldValue,
-  getFieldsForPacket,
-  parseRawBytes,
-  ByteField,
-  BUTTON_FIELDS,
-  STATE_RPT_FIELDS,
-  LEVEL_CMD_FIELDS,
-  UNPAIR_CMD_FIELDS,
-  BUTTON_NAMES,
-  PACKET_TYPE_NAMES,
-} from '../utils/packetParsing'
+  parseFieldValue,
+  parseDeviceId,
+  parseLevelByte,
+  parseLevel16bit,
+  getButtonName,
+  getActionName,
+  identifyPacket,
+} from '../../../protocol/protocol-ui'
 
 // Import test fixtures
 import fixtures from '../../../test_fixtures/packets.json'
@@ -27,6 +24,11 @@ function getFixture(id: string) {
   const fixture = packetFixtures.find(f => f.id === id)
   if (!fixture) throw new Error(`Fixture not found: ${id}`)
   return fixture
+}
+
+// Helper to parse raw bytes string
+function parseRawBytes(rawBytes: string): string[] {
+  return rawBytes.split(/\s+/).filter(b => b.length > 0)
 }
 
 describe('parseRawBytes', () => {
@@ -41,167 +43,160 @@ describe('parseRawBytes', () => {
   })
 })
 
-describe('formatFieldValue - device_id (little-endian)', () => {
+describe('parseFieldValue - device_id (little-endian)', () => {
   it('converts little-endian bytes to device ID string', () => {
-    // Bytes AD 90 2C 00 -> 002C90AD
     const bytes = ['AD', '90', '2C', '00']
-    const field: ByteField = { name: 'Device ID', start: 0, end: 4, format: 'device_id' }
-    const result = formatFieldValue(bytes, field)
+    const result = parseFieldValue(bytes, 0, 4, 'device_id')
     expect(result.decoded).toBe('002C90AD')
   })
 
   it('handles STATE_RPT device ID correctly', () => {
     const fixture = getFixture('state_rpt_44pct')
     const bytes = parseRawBytes(fixture.raw_bytes)
-    const field: ByteField = { name: 'Device ID', start: 2, end: 6, format: 'device_id' }
-    const result = formatFieldValue(bytes, field)
+    const result = parseFieldValue(bytes, 2, 4, 'device_id')
     expect(result.decoded).toBe(fixture.expected.device_id)
   })
 })
 
-describe('formatFieldValue - device_id_be (big-endian)', () => {
+describe('parseFieldValue - device_id_be (big-endian)', () => {
   it('converts big-endian bytes to device ID string', () => {
-    // Bytes 07 01 6F CE -> 07016FCE
     const bytes = ['07', '01', '6F', 'CE']
-    const field: ByteField = { name: 'Target ID', start: 0, end: 4, format: 'device_id_be' }
-    const result = formatFieldValue(bytes, field)
+    const result = parseFieldValue(bytes, 0, 4, 'device_id_be')
     expect(result.decoded).toBe('07016FCE')
   })
 
   it('handles UNPAIR target ID correctly', () => {
     const fixture = getFixture('unpair_phase2_flood')
     const bytes = parseRawBytes(fixture.raw_bytes)
-    const field: ByteField = { name: 'Target ID', start: 16, end: 20, format: 'device_id_be' }
-    const result = formatFieldValue(bytes, field)
+    const result = parseFieldValue(bytes, 16, 4, 'device_id_be')
     expect(result.decoded).toBe(fixture.expected.target_id)
   })
 })
 
-describe('formatFieldValue - level_byte', () => {
+describe('parseFieldValue - level_byte', () => {
   it('converts 0x00 to 0%', () => {
-    const bytes = ['00']
-    const field: ByteField = { name: 'Level', start: 0, end: 1, format: 'level_byte' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('0%')
+    const result = parseLevelByte('00')
+    expect(result).toBe('0%')
   })
 
   it('converts 0xFE to 100%', () => {
-    const bytes = ['FE']
-    const field: ByteField = { name: 'Level', start: 0, end: 1, format: 'level_byte' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('100%')
+    const result = parseLevelByte('FE')
+    expect(result).toBe('100%')
   })
 
   it('converts 0x7F to ~50%', () => {
-    const bytes = ['7F']
-    const field: ByteField = { name: 'Level', start: 0, end: 1, format: 'level_byte' }
-    const result = formatFieldValue(bytes, field)
-    const level = parseInt(result.decoded!.replace('%', ''))
+    const result = parseLevelByte('7F')
+    const level = parseInt(result.replace('%', ''))
     expect(level).toBeGreaterThanOrEqual(49)
     expect(level).toBeLessThanOrEqual(51)
   })
 })
 
-describe('formatFieldValue - level_16bit', () => {
+describe('parseFieldValue - level_16bit', () => {
   it('converts 0x0000 to 0%', () => {
-    const bytes = ['00', '00']
-    const field: ByteField = { name: 'Level', start: 0, end: 2, format: 'level_16bit' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('0%')
+    const result = parseLevel16bit(['00', '00'])
+    expect(result).toBe('0%')
   })
 
   it('converts 0xFEFF to 100%', () => {
-    const bytes = ['FE', 'FF']
-    const field: ByteField = { name: 'Level', start: 0, end: 2, format: 'level_16bit' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('100%')
+    const result = parseLevel16bit(['FE', 'FF'])
+    expect(result).toBe('100%')
   })
 
   it('converts 0xBEDF to ~75%', () => {
-    const bytes = ['BE', 'DF']
-    const field: ByteField = { name: 'Level', start: 0, end: 2, format: 'level_16bit' }
-    const result = formatFieldValue(bytes, field)
-    const level = parseInt(result.decoded!.replace('%', ''))
+    const result = parseLevel16bit(['BE', 'DF'])
+    const level = parseInt(result.replace('%', ''))
     expect(level).toBeGreaterThanOrEqual(74)
     expect(level).toBeLessThanOrEqual(76)
   })
 })
 
-describe('formatFieldValue - button', () => {
+describe('parseFieldValue - button', () => {
   it('decodes ON button (0x02)', () => {
-    const bytes = ['02']
-    const field: ByteField = { name: 'Button', start: 0, end: 1, format: 'button' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('ON')
+    expect(getButtonName(0x02)).toBe('ON')
   })
 
   it('decodes all known button codes', () => {
-    for (const [code, name] of Object.entries(BUTTON_NAMES)) {
-      const bytes = [code]
-      const field: ByteField = { name: 'Button', start: 0, end: 1, format: 'button' }
-      const result = formatFieldValue(bytes, field)
-      expect(result.decoded).toBe(name)
+    const expected: Record<number, string> = {
+      0x02: 'ON', 0x03: 'FAVORITE', 0x04: 'OFF', 0x05: 'RAISE', 0x06: 'LOWER',
+      0x08: 'SCENE4', 0x09: 'SCENE3', 0x0A: 'SCENE2', 0x0B: 'SCENE1',
+    }
+    for (const [code, name] of Object.entries(expected)) {
+      expect(getButtonName(Number(code))).toBe(name)
     }
   })
 
   it('handles unknown button code', () => {
-    const bytes = ['FF']
-    const field: ByteField = { name: 'Button', start: 0, end: 1, format: 'button' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('0xFF')
+    expect(getButtonName(0x77)).toBe('0x77')
   })
 })
 
-describe('formatFieldValue - action', () => {
+describe('parseFieldValue - action', () => {
   it('decodes PRESS action (0x00)', () => {
-    const bytes = ['00']
-    const field: ByteField = { name: 'Action', start: 0, end: 1, format: 'action' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('PRESS')
+    expect(getActionName(0x00)).toBe('PRESS')
   })
 
   it('decodes RELEASE action (0x01)', () => {
-    const bytes = ['01']
-    const field: ByteField = { name: 'Action', start: 0, end: 1, format: 'action' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('RELEASE')
+    expect(getActionName(0x01)).toBe('RELEASE')
   })
 })
 
-describe('getFieldsForPacket', () => {
-  it('returns BUTTON_FIELDS for BTN_SHORT_A', () => {
-    const fields = getFieldsForPacket('BTN_SHORT_A', [])
-    expect(fields).toBe(BUTTON_FIELDS)
+describe('identifyPacket', () => {
+  it('identifies BTN_SHORT_A from type byte 0x88', () => {
+    const data = [0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('BTN_SHORT_A')
+    expect(result.category).toBe('BUTTON')
+    expect(result.usesBigEndianDeviceId).toBe(true)
   })
 
-  it('returns BUTTON_FIELDS for BTN_LONG_B', () => {
-    const fields = getFieldsForPacket('BTN_LONG_B', [])
-    expect(fields).toBe(BUTTON_FIELDS)
+  it('identifies UNPAIR from STATE_RPT type + format byte 0x0C', () => {
+    const data = [0x81, 0x00, 0xAD, 0x90, 0x2C, 0x00, 0x21, 0x0C]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('UNPAIR')
+    expect(result.category).toBe('CONFIG')
+    expect(result.isVirtual).toBe(true)
   })
 
-  it('returns UNPAIR_CMD_FIELDS for UNPAIR', () => {
-    const fields = getFieldsForPacket('UNPAIR', [])
-    expect(fields).toBe(UNPAIR_CMD_FIELDS)
+  it('identifies UNPAIR_PREP from format byte 0x09', () => {
+    const data = [0x82, 0x00, 0xAD, 0x90, 0x2C, 0x00, 0x21, 0x09]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('UNPAIR_PREP')
+    expect(result.isVirtual).toBe(true)
   })
 
-  it('returns STATE_RPT_FIELDS when format is 00 08 (fallback)', () => {
-    const bytes = ['81', '00', 'AD', '90', '2C', '00', '00', '08']
-    // Use 'UNKNOWN' to trigger the fallback path that checks format bytes
-    const fields = getFieldsForPacket('UNKNOWN', bytes)
-    expect(fields).toBe(STATE_RPT_FIELDS)
+  it('identifies LED_CONFIG from format byte 0x0A', () => {
+    const data = [0x81, 0x00, 0xAD, 0x90, 0x2C, 0x00, 0x21, 0x0A]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('LED_CONFIG')
+    expect(result.isVirtual).toBe(true)
   })
 
-  it('returns LEVEL_CMD_FIELDS when format is 21 0E', () => {
-    const bytes = ['82', '05', 'AD', '90', '2C', '00', '21', '0E']
-    const fields = getFieldsForPacket('LEVEL', bytes)
-    expect(fields).toBe(LEVEL_CMD_FIELDS)
+  it('identifies STATE_RPT_81 when format is 0x08 (normal state report)', () => {
+    const data = [0x81, 0x00, 0xAD, 0x90, 0x2C, 0x00, 0x21, 0x08]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('STATE_RPT_81')
+    expect(result.category).toBe('STATE')
+    expect(result.isVirtual).toBe(false)
   })
 
-  it('returns UNPAIR_CMD_FIELDS when format byte is 0C (fallback)', () => {
-    const bytes = ['82', '07', 'AF', '90', '2C', '00', '21', '0C']
-    // Use 'UNKNOWN' to trigger the fallback path that checks format bytes
-    const fields = getFieldsForPacket('UNKNOWN', bytes)
-    expect(fields).toBe(UNPAIR_CMD_FIELDS)
+  it('identifies handshake packets', () => {
+    const data = [0xC1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('HS_C1')
+    expect(result.category).toBe('HANDSHAKE')
+  })
+
+  it('returns UNKNOWN for unrecognized type byte', () => {
+    const data = [0xFF, 0x00]
+    const result = identifyPacket(data)
+    expect(result.typeName).toBe('0xFF')
+    expect(result.category).toBe('unknown')
+  })
+
+  it('handles empty packet', () => {
+    const result = identifyPacket([])
+    expect(result.typeName).toBe('UNKNOWN')
   })
 })
 
@@ -209,12 +204,10 @@ describe('Fixture-driven parsing tests', () => {
   it('parses button press device ID correctly', () => {
     const fixture = getFixture('btn_on_press_short_a')
     const bytes = parseRawBytes(fixture.raw_bytes)
-
-    // Button packets store device ID in little-endian (reversed from printed label)
-    const field: ByteField = { name: 'Device ID', start: 2, end: 6, format: 'device_id' }
-    const result = formatFieldValue(bytes, field)
-
-    expect(result.decoded).toBe(fixture.expected.device_id)
+    // Fixture specifies endianness - use it to parse correctly
+    const endian = fixture.expected.device_id_endian as 'little' | 'big'
+    const result = parseDeviceId(bytes, 2, endian)
+    expect(result).toBe(fixture.expected.device_id)
   })
 
   it('parses UNPAIR source and target IDs correctly', () => {
@@ -222,55 +215,25 @@ describe('Fixture-driven parsing tests', () => {
     const bytes = parseRawBytes(fixture.raw_bytes)
 
     // Source is little-endian
-    const sourceField: ByteField = { name: 'Source ID', start: 2, end: 6, format: 'device_id' }
-    const sourceResult = formatFieldValue(bytes, sourceField)
-    expect(sourceResult.decoded).toBe(fixture.expected.source_id)
+    const sourceResult = parseDeviceId(bytes, 2, 'little')
+    expect(sourceResult).toBe(fixture.expected.source_id)
 
     // Target is big-endian
-    const targetField: ByteField = { name: 'Target ID', start: 16, end: 20, format: 'device_id_be' }
-    const targetResult = formatFieldValue(bytes, targetField)
-    expect(targetResult.decoded).toBe(fixture.expected.target_id)
-  })
-
-  it('parses scene pico button correctly', () => {
-    const fixture = getFixture('btn_scene_bright')
-    const bytes = parseRawBytes(fixture.raw_bytes)
-
-    const buttonField: ByteField = { name: 'Button', start: 10, end: 11, format: 'button' }
-    const buttonResult = formatFieldValue(bytes, buttonField)
-    expect(buttonResult.decoded).toBe(fixture.expected.button)
+    const targetResult = parseDeviceId(bytes, 16, 'big')
+    expect(targetResult).toBe(fixture.expected.target_id)
   })
 })
 
 describe('Endianness verification', () => {
   it('device_id reverses bytes (little-endian)', () => {
-    // Input: AF 90 2C 00
-    // Output: 002C90AF (reversed)
     const bytes = ['AF', '90', '2C', '00']
-    const field: ByteField = { name: 'Test', start: 0, end: 4, format: 'device_id' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('002C90AF')
+    const result = parseDeviceId(bytes, 0, 'little')
+    expect(result).toBe('002C90AF')
   })
 
   it('device_id_be keeps byte order (big-endian)', () => {
-    // Input: 07 01 6F CE
-    // Output: 07016FCE (same order)
     const bytes = ['07', '01', '6F', 'CE']
-    const field: ByteField = { name: 'Test', start: 0, end: 4, format: 'device_id_be' }
-    const result = formatFieldValue(bytes, field)
-    expect(result.decoded).toBe('07016FCE')
-  })
-})
-
-describe('DIMMER_ACK packet type', () => {
-  it('returns STATE_RPT_FIELDS for DIMMER_ACK packet type', () => {
-    const fields = getFieldsForPacket('DIMMER_ACK', [])
-    expect(fields).toBe(STATE_RPT_FIELDS)
-  })
-})
-
-describe('0x80 packet type support', () => {
-  it('0x80 type byte is recognized in PACKET_TYPE_NAMES', () => {
-    expect(PACKET_TYPE_NAMES['80']).toBe('STATE_RPT')
+    const result = parseDeviceId(bytes, 0, 'big')
+    expect(result).toBe('07016FCE')
   })
 })

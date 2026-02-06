@@ -17,6 +17,7 @@
     "clean": "rm -rf node_modules web/node_modules backend/node_modules"
   },
   "devDependencies": {
-    "concurrently": "^9"
+    "concurrently": "^9",
+    "shadcn": "^3.8.3"
   }
 }

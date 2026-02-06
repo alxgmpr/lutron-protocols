@@ -1,15 +1,14 @@
 import { useState } from 'react'
-import { ControlSection } from './ControlsPanel'
-import { Button, FormGroup, FormSelect, AutocompleteInput } from '../common'
-import { useDevices } from '../../context/DeviceContext'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
+import { Select } from '../ui/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
-
-type ConfigTab = 'fade' | 'led' | 'trim' | 'phase'
 
 const FADE_RATES = ['0.25', '0.75', '2.5', '3', '5', '15']
 const LED_MODES = [
@@ -21,8 +20,6 @@ const LED_MODES = [
 
 export function DeviceConfig({ showStatus }: Props) {
   const { post } = useApi()
-  const { seen } = useDevices()
-  const [activeTab, setActiveTab] = useState<ConfigTab>('fade')
   const [subnet, setSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('06FE8006')
   const [fadeOn, setFadeOn] = useState('0.25')
@@ -65,89 +62,91 @@ export function DeviceConfig({ showStatus }: Props) {
 
   return (
     <ControlSection title="Device Config" storageKey="ctrl-device-config">
-      <div className="form-row">
-        <FormGroup label="Subnet">
-          <AutocompleteInput
-            value={subnet}
-            onChange={v => setSubnet(v.replace(/^0x/i, ''))}
-            suggestions={seen.bridgeSubnets.map(s => s.replace(/^0x/i, ''))}
-            width={60}
-          />
-        </FormGroup>
-        <FormGroup label="Target">
-          <AutocompleteInput
-            value={targetId}
-            onChange={v => setTargetId(v.replace(/^0x/i, ''))}
-            suggestions={seen.dimmers.map(s => s.replace(/^0x/i, ''))}
-            width={90}
-          />
-        </FormGroup>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">subnet:</span>
+        <Input
+          value={subnet}
+          onChange={e => setSubnet(e.target.value.replace(/^0x/i, ''))}
+          className="w-[64px]"
+        />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">target:</span>
+        <Input
+          value={targetId}
+          onChange={e => setTargetId(e.target.value.replace(/^0x/i, ''))}
+          className="w-[100px]"
+        />
       </div>
 
-      <div className="config-tabs">
-        {(['fade', 'led', 'trim', 'phase'] as ConfigTab[]).map(tab => (
-          <button
-            key={tab}
-            className={`config-tab ${activeTab === tab ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
-      </div>
+      <Tabs defaultValue="fade" className="gap-0">
+        <TabsList className="h-auto w-full rounded bg-[var(--bg-tertiary)] p-[2px]">
+          {(['fade', 'led', 'trim', 'phase'] as const).map(tab => (
+            <TabsTrigger
+              key={tab}
+              value={tab}
+              className="flex-1 rounded-sm border-0 px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] data-[state=active]:bg-[var(--accent-blue)] data-[state=active]:text-white data-[state=active]:shadow-none"
+            >
+              {tab}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div className="config-tab-content">
-        {activeTab === 'fade' && (
-          <div className="form-row">
-            <FormGroup label="On">
-              <FormSelect value={fadeOn} onChange={setFadeOn} width={65}>
-                {FADE_RATES.map(r => <option key={r} value={r}>{r}s</option>)}
-              </FormSelect>
-            </FormGroup>
-            <FormGroup label="Off">
-              <FormSelect value={fadeOff} onChange={setFadeOff} width={65}>
-                {FADE_RATES.map(r => <option key={r} value={r}>{r}s</option>)}
-              </FormSelect>
-            </FormGroup>
-            <Button variant="blue" onClick={handleFade}>Apply</Button>
+        <TabsContent value="fade" className="mt-3">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">on:</span>
+            <Select value={fadeOn} onChange={e => setFadeOn(e.target.value)} className="w-[72px]">
+              {FADE_RATES.map(r => <option key={r} value={r}>{r}s</option>)}
+            </Select>
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">off:</span>
+            <Select value={fadeOff} onChange={e => setFadeOff(e.target.value)} className="w-[72px]">
+              {FADE_RATES.map(r => <option key={r} value={r}>{r}s</option>)}
+            </Select>
+            <Button variant="blue" onClick={handleFade}>
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+              Apply
+            </Button>
           </div>
-        )}
+        </TabsContent>
 
-        {activeTab === 'led' && (
-          <div className="form-row">
-            <FormGroup label="Mode">
-              <FormSelect value={ledMode} onChange={setLedMode} width={140}>
-                {LED_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </FormSelect>
-            </FormGroup>
-            <Button variant="blue" onClick={handleLed}>Apply</Button>
+        <TabsContent value="led" className="mt-3">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">mode:</span>
+            <Select value={ledMode} onChange={e => setLedMode(e.target.value)} className="w-[150px]">
+              {LED_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </Select>
+            <Button variant="blue" onClick={handleLed}>
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+              Apply
+            </Button>
           </div>
-        )}
+        </TabsContent>
 
-        {activeTab === 'trim' && (
-          <div className="form-row">
-            <FormGroup label="Low %">
-              <input type="number" className="form-input" value={lowTrim} onChange={e => setLowTrim(e.target.value)} min={1} max={50} style={{ width: 50 }} />
-            </FormGroup>
-            <FormGroup label="High %">
-              <input type="number" className="form-input" value={highTrim} onChange={e => setHighTrim(e.target.value)} min={50} max={100} style={{ width: 50 }} />
-            </FormGroup>
-            <Button variant="blue" onClick={handleTrim}>Apply</Button>
+        <TabsContent value="trim" className="mt-3">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">low:</span>
+            <Input type="number" value={lowTrim} onChange={e => setLowTrim(e.target.value)} min={1} max={50} className="w-[52px]" />
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">high:</span>
+            <Input type="number" value={highTrim} onChange={e => setHighTrim(e.target.value)} min={50} max={100} className="w-[52px]" />
+            <Button variant="blue" onClick={handleTrim}>
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+              Apply
+            </Button>
           </div>
-        )}
+        </TabsContent>
 
-        {activeTab === 'phase' && (
-          <div className="form-row">
-            <FormGroup label="Phase">
-              <FormSelect value={phase} onChange={setPhase} width={90}>
-                <option value="forward">Forward</option>
-                <option value="reverse">Reverse</option>
-              </FormSelect>
-            </FormGroup>
-            <Button variant="blue" onClick={handlePhase}>Apply</Button>
+        <TabsContent value="phase" className="mt-3">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">phase:</span>
+            <Select value={phase} onChange={e => setPhase(e.target.value)} className="w-[96px]">
+              <option value="forward">forward</option>
+              <option value="reverse">reverse</option>
+            </Select>
+            <Button variant="blue" onClick={handlePhase}>
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+              Apply
+            </Button>
           </div>
-        )}
-      </div>
+        </TabsContent>
+      </Tabs>
     </ControlSection>
   )
 }

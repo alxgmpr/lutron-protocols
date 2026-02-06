@@ -7,23 +7,10 @@ import { ProtocolDefinitionProvider } from './context/ProtocolDefinitionContext'
 import { Header, StatusBar } from './components/layout'
 
 // Controls
-import {
-  ControlsPanel,
-  PicoPairing,
-  PicoButtons,
-  SaveFavorite,
-  BridgeLevel,
-  BridgeUnpair,
-  BridgePairing,
-  VivePairing,
-  ViveControl,
-  DeviceState,
-  DeviceConfig,
-  ResetPico
-} from './components/controls'
+import { ControlTabs } from './components/controls'
 
 // Display
-import { HexPacketDisplay } from './components/display'
+import { PacketDataTable } from './components/display'
 
 import type { Device } from './types'
 import './App.css'
@@ -31,71 +18,43 @@ import './App.css'
 function App() {
   // Packet stream from backend (parsed packets via SSE)
   const {
-    txPackets, rxPackets,
-    clearTx, clearRx,
-    pausedTx, pausedRx,
-    togglePauseTx, togglePauseRx,
+    allPackets,
+    paused, togglePause,
+    clearAll,
     connected
   } = usePacketStream()
 
   const [devices] = useState<Record<string, Device>>({})
-  const [status, setStatus] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
+  const [lastTx, setLastTx] = useState<{ message: string; type: 'success' | 'error' | '' }>({ message: 'Ready', type: '' })
 
   const showStatus = useCallback((message: string, type: 'success' | 'error' | '' = '') => {
-    setStatus({ message, type })
+    setLastTx({ message, type })
   }, [])
 
   return (
     <ProtocolDefinitionProvider>
     <DeviceProvider devices={devices}>
     <div className="app">
-      <Header connected={connected} />
+      <Header />
 
       <main className="main-layout">
-        {/* Packet displays on top */}
+        {/* Packet data table - left column */}
         <section className="packets-section">
-          <HexPacketDisplay
-            title="RX Packets"
-            packets={rxPackets}
-            onClear={clearRx}
-            variant="rx"
-            paused={pausedRx}
-            onTogglePause={togglePauseRx}
-            collapsible
-            storageKey="cca-rx-collapsed"
-          />
-          <HexPacketDisplay
-            title="TX Packets"
-            packets={txPackets}
-            onClear={clearTx}
-            variant="tx"
-            paused={pausedTx}
-            onTogglePause={togglePauseTx}
-            collapsible
-            defaultCollapsed
-            storageKey="cca-tx-collapsed"
+          <PacketDataTable
+            packets={allPackets}
+            paused={paused}
+            onTogglePause={togglePause}
+            onClear={clearAll}
           />
         </section>
 
-        {/* Controls on bottom */}
+        {/* Controls - right column */}
         <section className="controls-section">
-          <ControlsPanel showStatus={showStatus}>
-            <PicoButtons showStatus={showStatus} />
-            <BridgeLevel showStatus={showStatus} />
-            <PicoPairing showStatus={showStatus} />
-            <BridgePairing showStatus={showStatus} />
-            <VivePairing showStatus={showStatus} />
-            <ViveControl showStatus={showStatus} />
-            <SaveFavorite showStatus={showStatus} />
-            <DeviceConfig showStatus={showStatus} />
-            <BridgeUnpair showStatus={showStatus} />
-            <DeviceState showStatus={showStatus} />
-            <ResetPico showStatus={showStatus} />
-          </ControlsPanel>
+          <ControlTabs showStatus={showStatus} />
         </section>
       </main>
 
-      <StatusBar message={status.message} type={status.type} />
+      <StatusBar connected={connected} lastTx={lastTx} />
     </div>
     </DeviceProvider>
     </ProtocolDefinitionProvider>

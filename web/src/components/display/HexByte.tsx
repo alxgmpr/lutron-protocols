@@ -1,7 +1,27 @@
 import { useCallback, useState, useMemo } from 'react'
-import type { FieldDef, FieldFormatType } from '../../context/ProtocolDefinitionContext'
+import type { FieldDef, FieldFormat } from '../../context/ProtocolDefinitionContext'
 import { useProtocolDefinition } from '../../context/ProtocolDefinitionContext'
 import './HexByte.css'
+
+/** Rotating color palette for defined fields */
+const FIELD_COLORS = [
+  '#E91E63', // pink - type byte
+  '#FFC107', // amber - sequence
+  '#2196F3', // blue - device id
+  '#4CAF50', // green
+  '#FF9800', // orange
+  '#9C27B0', // purple
+  '#00BCD4', // cyan
+  '#FF5722', // deep orange
+  '#8BC34A', // light green
+  '#3F51B5', // indigo
+  '#CDDC39', // lime
+  '#795548', // brown
+]
+
+function getFieldColor(fieldIndex: number): string {
+  return FIELD_COLORS[fieldIndex % FIELD_COLORS.length]
+}
 
 interface HexFieldProps {
   field: FieldDef
@@ -20,7 +40,7 @@ function HexField({
   onHover,
   onClick
 }: HexFieldProps) {
-  const { getFieldColor, parseFieldValue } = useProtocolDefinition()
+  const { parseFieldValue } = useProtocolDefinition()
 
   const handleMouseEnter = useCallback(() => {
     onHover(fieldIndex)
@@ -30,17 +50,17 @@ function HexField({
     onHover(null)
   }, [onHover])
 
-  const color = getFieldColor(field.format as FieldFormatType)
-  const isKnown = field.name !== 'Payload' && field.name !== 'Padding' && field.name !== 'Fixed' && field.name !== 'Unknown'
-  const isUnknown = field.name === 'Payload' || field.name === 'Padding' || field.name === 'Unknown'
+  const color = getFieldColor(fieldIndex)
 
   // Get decoded value for tooltip
-  const { decoded } = parseFieldValue(bytes, 0, bytes.length, field.format)
+  const { decoded } = parseFieldValue(bytes, 0, bytes.length, field.format as FieldFormat)
+
+  // Check if this is a broadcast field
+  const isBroadcast = field.name === 'broadcast' && decoded === 'BROADCAST'
 
   const className = [
     'hex-field',
-    isKnown && 'hex-field-known',
-    isUnknown && 'hex-field-unknown',
+    'hex-field-known',
     isHighlighted && 'hex-field-highlighted',
   ].filter(Boolean).join(' ')
 
@@ -48,6 +68,7 @@ function HexField({
     '--field-color': color,
   } as React.CSSProperties
 
+  const label = isBroadcast ? 'BCAST' : field.name
   const tooltipText = decoded
     ? `${field.name}: ${decoded} (${bytes.join(' ')})`
     : `${field.name}: ${bytes.join(' ')}`
@@ -66,7 +87,7 @@ function HexField({
         {bytes.join('')}
       </span>
       {isHighlighted && (
-        <span className="hex-field-label">{field.name}</span>
+        <span className="hex-field-label">{label}</span>
       )}
     </span>
   )
@@ -99,17 +120,17 @@ function UnmappedBytes({ bytes, startIndex, isHighlighted, onHover }: UnmappedBy
 
 interface HexByteRowProps {
   bytes: string[]
-  packetType: string
+  packetType?: string  // Optional - we identify from bytes now
   onFieldClick?: (field: FieldDef, bytes: string[]) => void
 }
 
-export function HexByteRow({ bytes, packetType, onFieldClick }: HexByteRowProps) {
-  const { getPacketTypeDef } = useProtocolDefinition()
+export function HexByteRow({ bytes, onFieldClick }: HexByteRowProps) {
+  const { identifyPacketFromHex } = useProtocolDefinition()
   const [highlightedField, setHighlightedField] = useState<number | string | null>(null)
 
-  // Get field definitions for this packet type
-  const packetDef = getPacketTypeDef(packetType)
-  const fields = packetDef.fields
+  // Identify packet and get field definitions from bytes
+  const identified = useMemo(() => identifyPacketFromHex(bytes), [bytes, identifyPacketFromHex])
+  const fields = identified.fields
 
   // Build segments: either a field or unmapped bytes
   const segments = useMemo(() => {
@@ -123,7 +144,8 @@ export function HexByteRow({ bytes, packetType, onFieldClick }: HexByteRowProps)
 
     let currentIndex = 0
 
-    for (const field of sortedFields) {
+    for (let fi = 0; fi < sortedFields.length; fi++) {
+      const field = sortedFields[fi]
       // Add unmapped bytes before this field
       if (currentIndex < field.offset) {
         const unmappedBytes = bytes.slice(currentIndex, field.offset)
@@ -143,7 +165,7 @@ export function HexByteRow({ bytes, packetType, onFieldClick }: HexByteRowProps)
           type: 'field',
           field,
           bytes: fieldBytes,
-          fieldIndex: fields.indexOf(field)
+          fieldIndex: fi
         })
       }
 

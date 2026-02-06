@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Card, FormGroup, FormInput, Button } from '../common'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
@@ -10,7 +11,6 @@ interface Props {
 export function BridgeBeacon({ showStatus }: Props) {
   const { postJson } = useApi()
 
-  // Subnet-based inputs (simpler than full bridge ID)
   const [subnet, setSubnet] = useState('2C90')
   const [factoryId, setFactoryId] = useState('0707DF6A')
   const [zoneSuffix, setZoneSuffix] = useState('8F')
@@ -19,19 +19,15 @@ export function BridgeBeacon({ showStatus }: Props) {
   const [loading, setLoading] = useState(false)
   const beaconActiveRef = useRef(beaconActive)
 
-  // Keep ref in sync
   useEffect(() => {
     beaconActiveRef.current = beaconActive
   }, [beaconActive])
 
-  // Computed zone ID for display
   const computedZone = `06${subnet}${zoneSuffix}`
 
   const startBeacon = async () => {
     try {
-      const result = await postJson('/api/pairing/start', {
-        subnet: `0x${subnet}`
-      })
+      const result = await postJson('/api/pairing/start', { subnet: `0x${subnet}` })
       if (result.status !== 'ok') {
         showStatus(`Error: ${result.error}`, 'error')
         return false
@@ -45,9 +41,7 @@ export function BridgeBeacon({ showStatus }: Props) {
 
   const stopBeacon = async () => {
     try {
-      const result = await postJson('/api/pairing/stop', {
-        subnet: `0x${subnet}`
-      })
+      const result = await postJson('/api/pairing/stop', { subnet: `0x${subnet}` })
       if (result.status !== 'ok') {
         showStatus(`Error: ${result.error}`, 'error')
         return false
@@ -83,7 +77,6 @@ export function BridgeBeacon({ showStatus }: Props) {
   const handlePairDevice = async () => {
     setLoading(true)
     try {
-      // Briefly stop beacon during assignment
       const wasActive = beaconActiveRef.current
       if (wasActive) {
         await stopBeacon()
@@ -97,10 +90,9 @@ export function BridgeBeacon({ showStatus }: Props) {
 
       if (result.status === 'ok') {
         setBeaconActive(false)
-        showStatus(`Paired! Device should respond to zone 0x${computedZone}`, 'success')
+        showStatus(`Paired! Zone: 0x${computedZone}`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
-        // Resume beacon if it was active
         if (wasActive) {
           await startBeacon()
           setBeaconActive(true)
@@ -116,7 +108,6 @@ export function BridgeBeacon({ showStatus }: Props) {
   const handleSendAssignment = async () => {
     setLoading(true)
     try {
-      // Briefly pause beacon during assignment
       const wasActive = beaconActiveRef.current
       if (wasActive) {
         await stopBeacon()
@@ -134,7 +125,6 @@ export function BridgeBeacon({ showStatus }: Props) {
         showStatus(`Error: ${result.error}`, 'error')
       }
 
-      // Resume beacon if it was active
       if (wasActive) {
         await startBeacon()
       }
@@ -146,51 +136,48 @@ export function BridgeBeacon({ showStatus }: Props) {
   }
 
   return (
-    <Card title="Bridge Pairing" variant="bridge">
-      <p className="help-text">
+    <ControlSection title="Bridge Beacon" storageKey="ctrl-bridge-beacon">
+      <div className="text-[11px] font-mono text-[var(--text-muted)] leading-snug">
         Pair devices to ESP32 as bridge. Toggle beacon, hold OFF on device 10s, then pair.
-      </p>
-
-      <div className="form-row">
-        <FormGroup label="Subnet">
-          <FormInput value={subnet} onChange={setSubnet} width={70} />
-        </FormGroup>
-        <FormGroup label="Factory ID">
-          <FormInput value={factoryId} onChange={setFactoryId} width={90} />
-        </FormGroup>
-        <FormGroup label="Zone">
-          <FormInput value={zoneSuffix} onChange={setZoneSuffix} width={50} />
-        </FormGroup>
       </div>
 
-      <div className="form-row">
-        <div className="beacon-toggle-container">
-          <span className="beacon-toggle-label">Pairing Beacon</span>
-          <button
-            className={`beacon-toggle ${beaconActive ? 'active' : ''} ${loading ? 'loading' : ''}`}
-            onClick={handleToggleBeacon}
-            disabled={loading}
-          >
-            <div className="toggle-track">
-              <div className="toggle-thumb" />
-            </div>
-            <span className="toggle-text">{beaconActive ? 'ON' : 'OFF'}</span>
-          </button>
-        </div>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">subnet:</span>
+        <Input value={subnet} onChange={e => setSubnet(e.target.value)} className="w-[64px]" />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">factory:</span>
+        <Input value={factoryId} onChange={e => setFactoryId(e.target.value)} className="w-[100px]" />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">zone:</span>
+        <Input value={zoneSuffix} onChange={e => setZoneSuffix(e.target.value)} className="w-[48px]" />
       </div>
 
-      <div className="form-row">
-        <Button variant="primary" onClick={handlePairDevice} disabled={loading}>Pair</Button>
-        <Button variant="blue" onClick={handleSendAssignment} disabled={loading}>Assign Only</Button>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">beacon:</span>
+        <button
+          className={`relative h-[20px] w-[36px] rounded-full border transition-all duration-200 cursor-pointer shrink-0 ${beaconActive ? 'bg-[var(--accent-green)] border-[var(--accent-green)]' : 'bg-[var(--bg-tertiary)] border-[var(--border-primary)]'} ${loading ? 'opacity-60 cursor-not-allowed' : ''}`}
+          onClick={handleToggleBeacon}
+          disabled={loading}
+        >
+          <div className={`absolute top-[2px] size-3.5 rounded-full transition-all duration-200 ${beaconActive ? 'left-[17px] bg-white' : 'left-[2px] bg-[var(--text-secondary)]'} ${loading ? 'animate-pulse' : ''}`} />
+        </button>
+        <span className={`text-[11px] font-mono font-semibold ${beaconActive ? 'text-[var(--accent-green)]' : 'text-[var(--text-muted)]'}`}>
+          {beaconActive ? 'ON' : 'OFF'}
+        </span>
+        <div className="flex-1" />
+        <Button variant="green" onClick={handlePairDevice} disabled={loading}>
+          <svg className="size-3" viewBox="0 0 12 12" fill="currentColor"><path d="M7 1L3 7h3l-1 4 4-6H6z"/></svg>
+          Pair
+        </Button>
+        <Button variant="blue" onClick={handleSendAssignment} disabled={loading}>
+          <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+          Assign
+        </Button>
       </div>
 
       {beaconActive && (
-        <p className="info-line" style={{ color: 'var(--accent-green)', borderTop: 'none', paddingTop: 0 }}>
-          Beaconing active - hold OFF on device 10s, then click Pair
-        </p>
+        <div className="text-[11px] font-mono text-[var(--accent-green)]">
+          beaconing active - hold OFF on device 10s, then click Pair
+        </div>
       )}
-    </Card>
+    </ControlSection>
   )
 }
-
-

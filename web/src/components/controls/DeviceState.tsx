@@ -1,9 +1,8 @@
 import { useState } from 'react'
-import { ControlSection } from './ControlsPanel'
-import { Button, FormGroup, FormInput, AutocompleteInput } from '../common'
-import { useDevices } from '../../context/DeviceContext'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
@@ -11,7 +10,6 @@ interface Props {
 
 export function DeviceState({ showStatus }: Props) {
   const { post } = useApi()
-  const { seen } = useDevices()
   const [deviceId, setDeviceId] = useState('8F902C08')
   const [level, setLevel] = useState(50)
 
@@ -34,26 +32,26 @@ export function DeviceState({ showStatus }: Props) {
 
   return (
     <ControlSection title="Device State" storageKey="ctrl-device-state">
-      <div className="form-row">
-        <FormGroup label="Device">
-          <AutocompleteInput
-            value={deviceId}
-            onChange={v => setDeviceId(v.replace(/^0x/i, ''))}
-            suggestions={seen.dimmers.map(s => s.replace(/^0x/i, ''))}
-            width={90}
-          />
-        </FormGroup>
-        <FormGroup label="%">
-          <FormInput
-            type="number"
-            value={level}
-            onChange={v => setLevel(parseInt(v) || 0)}
-            width={45}
-            min={0}
-            max={100}
-          />
-        </FormGroup>
-        <Button variant="orange" onClick={handleSend}>Report</Button>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
+        <Input
+          value={deviceId}
+          onChange={e => setDeviceId(e.target.value.replace(/^0x/i, ''))}
+          className="w-[100px]"
+        />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">level:</span>
+        <Input
+          type="number"
+          value={level}
+          onChange={e => setLevel(parseInt(e.target.value) || 0)}
+          min={0}
+          max={100}
+          className="w-[48px]"
+        />
+        <Button variant="orange" onClick={handleSend}>
+          <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="6" cy="6" r="1.5"/><path d="M3.5 3.5a3.5 3.5 0 0 0 0 5M8.5 3.5a3.5 3.5 0 0 1 0 5"/></svg>
+          Report
+        </Button>
       </div>
     </ControlSection>
   )

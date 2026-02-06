@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { ControlSection } from './ControlsPanel'
-import { Button, FormGroup, FormInput } from '../common'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
@@ -91,50 +91,55 @@ export function BridgePairing({ showStatus }: Props) {
 
   return (
     <ControlSection title="Bridge Pairing" storageKey="ctrl-bridge-pairing">
-      <div className="form-row">
-        <FormGroup label="Subnet">
-          <FormInput
-            value={subnet}
-            onChange={v => setSubnet(v.replace(/^0x/i, ''))}
-            width={60}
-            disabled={!!isActive}
-          />
-        </FormGroup>
-        <FormGroup label="Timeout">
-          <FormInput
-            type="number"
-            value={duration}
-            onChange={v => setDuration(parseInt(v) || 60)}
-            width={45}
-            disabled={!!isActive}
-          />
-        </FormGroup>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">subnet:</span>
+        <Input
+          value={subnet}
+          onChange={e => setSubnet(e.target.value.replace(/^0x/i, ''))}
+          disabled={!!isActive}
+          className="w-[64px]"
+        />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">timeout:</span>
+        <Input
+          type="number"
+          value={duration}
+          onChange={e => setDuration(parseInt(e.target.value) || 60)}
+          disabled={!!isActive}
+          className="w-[48px]"
+        />
         {!isActive ? (
-          <Button variant="green" onClick={handleStart}>Start</Button>
+          <Button variant="green" onClick={handleStart}>
+            <svg className="size-3" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7.5-4.5z"/></svg>
+            Start
+          </Button>
         ) : (
-          <Button variant="red" onClick={handleStop}>Stop</Button>
+          <Button variant="red" onClick={handleStop}>
+            <svg className="size-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+            Stop
+          </Button>
         )}
       </div>
 
       {status && status.state !== 'IDLE' && (
-        <div className="advanced-panel">
-          <div className="advanced-title">
-            {status.state} {status.state === 'HANDSHAKE' && `(${status.handshake_round}/6)`}
+        <div className="border border-[var(--border-primary)] rounded p-3 font-mono text-[11px]">
+          <div className="text-[var(--text-muted)] mb-2">
+            state: <span className="text-[var(--accent-cyan)]">{status.state}</span>
+            {status.state === 'HANDSHAKE' && <span className="text-[var(--text-muted)]"> ({status.handshake_round}/6)</span>}
           </div>
           {status.discovered_devices.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div className="flex flex-col gap-1.5">
               {status.discovered_devices.map(d => (
-                <div key={d.hw_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
-                  <span style={{ fontFamily: 'monospace' }}>{d.hw_id_hex.replace(/^0x/i, '')}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{DEVICE_TYPES[d.device_type] || 'Unknown'}</span>
+                <div key={d.hw_id} className="flex items-center gap-3">
+                  <span className="text-[var(--text-primary)]">{d.hw_id_hex.replace(/^0x/i, '')}</span>
+                  <span className="text-[var(--text-muted)]">{DEVICE_TYPES[d.device_type] || `type:${d.device_type}`}</span>
                   {canSelect && (
-                    <Button size="sm" variant="blue" onClick={() => handleSelect(d)}>Select</Button>
+                    <Button size="xs" variant="blue" onClick={() => handleSelect(d)}>Select</Button>
                   )}
                 </div>
               ))}
             </div>
           )}
-          {status.error && <div style={{ color: 'var(--accent-red)', fontSize: 11 }}>{status.error}</div>}
+          {status.error && <div className="text-[var(--accent-red)] mt-1">{status.error}</div>}
         </div>
       )}
     </ControlSection>

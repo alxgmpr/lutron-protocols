@@ -5,4 +5,4 @@ export {
   usePacketFields,
   useByteFieldMapping
 } from './ProtocolDefinitionContext'
-export type { PacketTypeDef, FieldDef, FieldFormatType } from './ProtocolDefinitionContext'
+export type { FieldDef, FieldFormat, IdentifiedPacket } from './ProtocolDefinitionContext'

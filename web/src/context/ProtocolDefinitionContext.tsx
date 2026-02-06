@@ -1,37 +1,31 @@
-import { createContext, useContext, useState, useEffect, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import {
-  PACKET_TYPES,
-  FIELD_FORMATS,
-  PACKET_TYPE_MAP,
-  BUTTON_NAMES,
-  ACTION_NAMES,
-  getPacketTypeDef,
+  PacketTypeInfo,
+  PacketFields,
+  ButtonNames,
+  ActionNames,
+  identifyPacket,
   parseFieldValue,
-  type PacketTypeDef,
+  getCategoryColor,
   type FieldDef,
-  type FieldFormatType
-} from '../generated/protocol'
+  type FieldFormat,
+  type IdentifiedPacket,
+} from '../../../protocol/protocol-ui'
 
 // Re-export types for convenience
-export type { PacketTypeDef, FieldDef, FieldFormatType }
+export type { FieldDef, FieldFormat, IdentifiedPacket }
 
 interface ProtocolDefinitionContextType {
-  // Protocol data
-  packetTypes: Record<string, PacketTypeDef>
-  fieldFormats: Record<string, typeof FIELD_FORMATS[keyof typeof FIELD_FORMATS]>
-  packetTypeMap: Record<number, string>
+  // Utilities
+  identifyPacket: (data: Uint8Array | number[]) => IdentifiedPacket
+  identifyPacketFromHex: (bytes: string[]) => IdentifiedPacket
+  getFieldsForType: (typeName: string) => FieldDef[]
+  parseFieldValue: typeof parseFieldValue
+  getCategoryColor: (category: string) => string
+
+  // Enums
   buttonNames: Record<number, string>
   actionNames: Record<number, string>
-
-  // Utilities
-  getPacketType: (typeByte: number) => string
-  getPacketTypeDef: (packetType: string) => PacketTypeDef
-  getFieldColor: (format: FieldFormatType) => string
-  parseFieldValue: typeof parseFieldValue
-
-  // Loading state
-  loaded: boolean
-  error: string | null
 }
 
 const ProtocolDefinitionContext = createContext<ProtocolDefinitionContextType | null>(null)
@@ -41,31 +35,25 @@ interface ProtocolDefinitionProviderProps {
 }
 
 export function ProtocolDefinitionProvider({ children }: ProtocolDefinitionProviderProps) {
-  const [loaded, setLoaded] = useState(true)  // Using bundled definitions
-  const [error] = useState<string | null>(null)
-
-  // Try to fetch from API for any updates (optional enhancement)
-  useEffect(() => {
-    // The bundled definitions are the source of truth for now
-    // In the future, this could fetch from /api/protocol for live updates
-    setLoaded(true)
-  }, [])
-
   const value = useMemo<ProtocolDefinitionContextType>(() => ({
-    packetTypes: PACKET_TYPES,
-    fieldFormats: FIELD_FORMATS,
-    packetTypeMap: PACKET_TYPE_MAP,
-    buttonNames: BUTTON_NAMES,
-    actionNames: ACTION_NAMES,
-
-    getPacketType: (typeByte: number) => PACKET_TYPE_MAP[typeByte] ?? 'UNKNOWN',
-    getPacketTypeDef,
-    getFieldColor: (format: FieldFormatType) => FIELD_FORMATS[format]?.color ?? '#9E9E9E',
+    identifyPacket,
+    identifyPacketFromHex: (bytes: string[]) => {
+      const data = bytes.map(b => parseInt(b, 16))
+      return identifyPacket(data)
+    },
+    getFieldsForType: (typeName: string) => {
+      // Check direct match first
+      if (PacketFields[typeName]) return PacketFields[typeName]
+      // Check if any PacketTypeInfo has this name and try its fields
+      const info = Object.values(PacketTypeInfo).find(i => i.name === typeName)
+      if (info && PacketFields[info.name]) return PacketFields[info.name]
+      return []
+    },
     parseFieldValue,
-
-    loaded,
-    error,
-  }), [loaded, error])
+    getCategoryColor,
+    buttonNames: ButtonNames as Record<number, string>,
+    actionNames: ActionNames as Record<number, string>,
+  }), [])
 
   return (
     <ProtocolDefinitionContext.Provider value={value}>
@@ -83,18 +71,21 @@ export function useProtocolDefinition() {
 }
 
 /**
- * Hook to get field definitions for a specific packet type
+ * Hook to get field definitions for a packet identified by hex bytes
  */
-export function usePacketFields(packetType: string) {
-  const { getPacketTypeDef } = useProtocolDefinition()
-  return useMemo(() => getPacketTypeDef(packetType).fields, [packetType, getPacketTypeDef])
+export function usePacketFields(bytes: string[]) {
+  const { identifyPacketFromHex } = useProtocolDefinition()
+  return useMemo(() => {
+    const identified = identifyPacketFromHex(bytes)
+    return identified.fields
+  }, [bytes, identifyPacketFromHex])
 }
 
 /**
  * Hook to compute which field a byte belongs to
  */
-export function useByteFieldMapping(packetType: string, byteCount: number) {
-  const fields = usePacketFields(packetType)
+export function useByteFieldMapping(bytes: string[], byteCount: number) {
+  const fields = usePacketFields(bytes)
 
   return useMemo(() => {
     const mapping: Array<{ field: FieldDef; fieldIndex: number } | null> = []

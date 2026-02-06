@@ -167,8 +167,7 @@ Pairing beacon
 | 2 | 4 | load_id | device_id_be | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 5 | fixed | hex | - |
-| 13 | 9 | broadcast | hex | - |
+| 9 | 5 | broadcast | hex | FF FF FF FF FF |
 | 22 | 2 | crc | hex | - |
 
 ### BTN_LONG_A (`0x89`)
@@ -188,11 +187,9 @@ Button press, long format, group A
 | 2 | 4 | device_id | device_id_be | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | 0x0E for long |
-| 8 | 2 | fixed | hex | - |
 | 10 | 1 | button | button | - |
 | 11 | 1 | action | action | - |
 | 12 | 4 | device_repeat | device_id_be | - |
-| 16 | 6 | button_data | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### BTN_SHORT_A (`0x88`)
@@ -212,10 +209,8 @@ Button press, short format, group A
 | 2 | 4 | device_id | device_id_be | - |
 | 6 | 1 | protocol | hex | Always 0x21 |
 | 7 | 1 | format | hex | 0x04 for short |
-| 8 | 2 | fixed | hex | - |
 | 10 | 1 | button | button | - |
 | 11 | 1 | action | action | - |
-| 12 | 10 | padding | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### CONFIG_A1 (`0xA1`)
@@ -257,13 +252,9 @@ Dimmer discovery (announces hardware ID to bridge)
 | 5 | 1 | pair_flag | hex | 0x7F during pairing |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 1 | reserved | hex | - |
 | 9 | 5 | broadcast | hex | FF FF FF FF FF |
-| 14 | 2 | fixed | hex | - |
 | 16 | 4 | hardware_id | device_id_be | Dimmer hardware ID |
 | 20 | 1 | device_type | hex | 0x04=dimmer |
-| 21 | 10 | caps | hex | Device capabilities |
-| 31 | 20 | padding | hex | - |
 | 51 | 2 | crc | hex | - |
 
 ### PAIR_B8 (`0xB8`)
@@ -283,18 +274,11 @@ Scene Pico pairing (bridge-only)
 | 2 | 4 | device_id | device_id_be | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 2 | fixed | hex | - |
 | 10 | 1 | btn_scheme | hex | Button scheme byte |
-| 11 | 2 | fixed2 | hex | - |
-| 13 | 5 | broadcast | hex | - |
-| 18 | 2 | fixed3 | hex | - |
+| 13 | 5 | broadcast | hex | FF FF FF FF FF |
 | 20 | 4 | device_id2 | device_id_be | - |
 | 24 | 4 | device_id3 | device_id_be | - |
 | 28 | 1 | device_class | hex | - |
-| 29 | 1 | device_sub | hex | - |
-| 30 | 11 | caps | hex | - |
-| 41 | 4 | broadcast2 | hex | - |
-| 45 | 6 | padding | hex | - |
 | 51 | 2 | crc | hex | - |
 
 ### PAIR_RESP_C0 (`0xC0`)
@@ -334,11 +318,8 @@ Set level command
 | 2 | 4 | source_id | device_id | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 1 | fixed | hex | - |
 | 9 | 4 | target_id | device_id_be | - |
-| 13 | 3 | fixed2 | hex | - |
 | 16 | 2 | level | level_16bit | - |
-| 18 | 4 | padding | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### STATE_80 (`0x80`)
@@ -357,8 +338,6 @@ Dimmer state report (pairing phase)
 | 1 | 1 | sequence | decimal | - |
 | 3 | 2 | zone_id | hex | - |
 | 5 | 1 | protocol | hex | - |
-| 6 | 2 | fixed | hex | - |
-| 8 | 14 | state | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### STATE_RPT_81 (`0x81`)
@@ -378,9 +357,7 @@ State report (type 81)
 | 2 | 4 | device_id | device_id | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | - |
-| 8 | 3 | fixed | hex | - |
 | 11 | 1 | level | level_byte | - |
-| 12 | 10 | padding | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ### UNPAIR (`0xF0`)
@@ -400,10 +377,8 @@ Unpair command (derived from STATE_RPT format 0x0C)
 | 2 | 4 | source_id | device_id | - |
 | 6 | 1 | protocol | hex | - |
 | 7 | 1 | format | hex | 0x0C for unpair |
-| 8 | 3 | fixed | hex | - |
-| 11 | 5 | command | hex | - |
+| 9 | 5 | broadcast | hex | FF FF FF FF FF |
 | 16 | 4 | target_id | device_id_be | - |
-| 20 | 2 | padding | hex | - |
 | 22 | 2 | crc | hex | - |
 
 ## Transmission Sequences

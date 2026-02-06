@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { ControlSection } from './ControlsPanel'
-import { Button, FormGroup, FormInput } from '../common'
+import { ControlSection } from './ControlSection'
+import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { useApi } from '../../hooks/useApi'
-import './ControlPanel.css'
 
 interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
@@ -25,7 +25,6 @@ export function VivePairing({ showStatus }: Props) {
   const timerRef = useRef<number | null>(null)
   const startTimeRef = useRef<number>(0)
 
-  // Timer for elapsed time display
   useEffect(() => {
     if (isActive) {
       startTimeRef.current = Date.now()
@@ -102,7 +101,7 @@ export function VivePairing({ showStatus }: Props) {
         device_id: deviceId,
         zone_id: zoneNum
       })
-      showStatus(`Accept sent: ${deviceId} → zone 0x${zoneId.toUpperCase()}`, 'success')
+      showStatus(`Accept sent: ${deviceId} -> zone 0x${zoneId.toUpperCase()}`, 'success')
     } catch (e) {
       showStatus(`Error: ${e}`, 'error')
     }
@@ -116,70 +115,69 @@ export function VivePairing({ showStatus }: Props) {
 
   return (
     <ControlSection title="Vive Pairing" storageKey="ctrl-vive-pairing">
-      <div className="form-row">
-        <FormGroup label="Hub ID">
-          <FormInput
-            value={hubId}
-            onChange={v => setHubId(v.replace(/^0x/i, ''))}
-            placeholder="AABBCCDD"
-            width={80}
-            disabled={isActive}
-          />
-        </FormGroup>
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">hub:</span>
+        <Input
+          value={hubId}
+          onChange={e => setHubId(e.target.value.replace(/^0x/i, ''))}
+          placeholder="AABBCCDD"
+          disabled={isActive}
+          className="w-[100px]"
+        />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">zone:</span>
+        <Input
+          value={zoneId}
+          onChange={e => setZoneId(e.target.value.replace(/^0x/i, '').slice(0, 2))}
+          placeholder="38"
+          className="w-[48px]"
+        />
         {!isActive ? (
-          <Button variant="green" onClick={handleStart}>Start</Button>
+          <Button variant="green" onClick={handleStart}>
+            <svg className="size-3" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7.5-4.5z"/></svg>
+            Start
+          </Button>
         ) : (
-          <Button variant="red" onClick={handleStop}>Stop</Button>
+          <Button variant="red" onClick={handleStop}>
+            <svg className="size-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1"/></svg>
+            Stop
+          </Button>
         )}
       </div>
 
-      {/* Zone selection */}
-      <div className="form-row">
-        <FormGroup label="Zone ID (hex)">
-          <FormInput
-            value={zoneId}
-            onChange={v => setZoneId(v.replace(/^0x/i, '').slice(0, 2))}
-            placeholder="38"
-            width={50}
-          />
-        </FormGroup>
-      </div>
-
       {isActive && (
-        <div className="advanced-panel">
-          <div className="advanced-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Pairing Active</span>
-            <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{formatTime(elapsedTime)}</span>
+        <div className="border border-[var(--border-primary)] rounded p-3 font-mono text-[11px]">
+          <div className="flex justify-between items-center text-[var(--text-muted)] mb-2">
+            <span>status: <span className="text-[var(--accent-green)]">ACTIVE</span></span>
+            <span>{formatTime(elapsedTime)}</span>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
-            Beacons sent every 30s. Hold device button 5-10s to pair.
+          <div className="text-[var(--text-muted)] mb-2">
+            beacons every 30s. hold device button 5-10s to pair.
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button size="sm" variant="blue" onClick={handleSendBurst}>
-              Send Burst Now
-            </Button>
-          </div>
+          <Button size="sm" variant="blue" onClick={handleSendBurst}>
+            <svg className="size-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="6" cy="6" r="1.5"/><path d="M3.5 3.5a3.5 3.5 0 0 0 0 5M8.5 3.5a3.5 3.5 0 0 1 0 5"/></svg>
+            Burst Now
+          </Button>
         </div>
       )}
 
-      {/* Manual device accept section */}
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-          Manual Accept (enter device ID from B8 packet):
+      <div className="border-t border-[var(--border-primary)] pt-2">
+        <div className="text-[11px] font-mono text-[var(--text-muted)] mb-2">
+          manual accept (device ID from B8 packet):
         </div>
         <ManualAccept onAccept={handleAccept} />
       </div>
 
       {discoveredDevices.length > 0 && (
-        <div className="advanced-panel" style={{ marginTop: 8 }}>
-          <div className="advanced-title">Discovered Devices</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="border border-[var(--border-primary)] rounded p-3 font-mono text-[11px]">
+          <div className="text-[var(--text-muted)] mb-2">discovered:</div>
+          <div className="flex flex-col gap-1.5">
             {discoveredDevices.map(d => (
-              <div key={d.device_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
-                <span style={{ fontFamily: 'monospace' }}>{d.device_id}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{d.device_type}</span>
-                {d.rssi && <span style={{ color: 'var(--text-muted)' }}>{d.rssi}dBm</span>}
-                <Button size="sm" variant="green" onClick={() => handleAccept(d.device_id)}>
+              <div key={d.device_id} className="flex items-center gap-3">
+                <span className="text-[var(--text-primary)]">{d.device_id}</span>
+                <span className="text-[var(--text-muted)]">{d.device_type}</span>
+                {d.rssi && <span className="text-[var(--text-muted)]">{d.rssi}dBm</span>}
+                <Button size="xs" variant="green" onClick={() => handleAccept(d.device_id)}>
+                  <svg className="size-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6l2.5 3 5-6"/></svg>
                   Accept
                 </Button>
               </div>
@@ -191,7 +189,6 @@ export function VivePairing({ showStatus }: Props) {
   )
 }
 
-// Sub-component for manual device accept
 function ManualAccept({ onAccept }: { onAccept: (id: string) => void }) {
   const [deviceId, setDeviceId] = useState('')
 
@@ -203,14 +200,15 @@ function ManualAccept({ onAccept }: { onAccept: (id: string) => void }) {
   }
 
   return (
-    <div className="form-row">
-      <FormInput
+    <div className="flex items-center gap-3">
+      <Input
         value={deviceId}
-        onChange={setDeviceId}
+        onChange={e => setDeviceId(e.target.value)}
         placeholder="021AD0C3"
-        width={80}
+        className="w-[100px]"
       />
       <Button size="sm" variant="green" onClick={handleSubmit} disabled={!deviceId.trim()}>
+        <svg className="size-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6l2.5 3 5-6"/></svg>
         Accept
       </Button>
     </div>

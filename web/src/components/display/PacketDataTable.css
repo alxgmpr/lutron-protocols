@@ -1,0 +1,263 @@
+/* PacketDataTable - Dark theme overrides for shadcn table */
+
+.packet-data-table {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+/* Toolbar */
+.pdt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.pdt-toolbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pdt-filter-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pdt-filter-btn:hover {
+  background: var(--bg-elevated);
+  filter: none;
+}
+
+.pdt-filter-btn[data-active="true"] {
+  background: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+}
+
+.pdt-filter-btn[data-active="true"][data-variant="rx"] {
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+}
+
+.pdt-filter-btn[data-active="true"][data-variant="tx"] {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+
+.pdt-type-filter {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 3px 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  min-width: 100px;
+}
+
+.pdt-spacer {
+  flex: 1;
+}
+
+.pdt-count {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: 0 8px;
+}
+
+.pdt-action-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: var(--font-sans);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pdt-action-btn:hover {
+  background: var(--bg-elevated);
+  filter: none;
+}
+
+.pdt-action-btn[data-active="true"] {
+  background: var(--accent-orange);
+  color: white;
+  border-color: var(--accent-orange);
+}
+
+.pdt-action-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Table container */
+.pdt-scroll-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Override shadcn table styles for our dark theme */
+.pdt-scroll-container [data-slot="table-container"] {
+  overflow-x: visible;
+}
+
+.pdt-scroll-container table {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.pdt-scroll-container thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-primary);
+}
+
+.pdt-scroll-container th {
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-accent);
+  cursor: pointer;
+  user-select: none;
+  height: auto;
+  white-space: nowrap;
+}
+
+.pdt-scroll-container th:hover {
+  color: var(--text-secondary);
+}
+
+.pdt-scroll-container tr {
+  border-bottom: 1px solid var(--border-primary);
+  transition: background-color 0.1s;
+}
+
+.pdt-scroll-container tbody tr:hover {
+  background: var(--bg-elevated) !important;
+}
+
+.pdt-scroll-container td {
+  padding: 4px 8px;
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+/* Column widths */
+.pdt-col-time { width: 85px; }
+.pdt-col-dir { width: 36px; text-align: center; }
+.pdt-col-type { width: 100px; }
+.pdt-col-hex { width: auto; }
+
+/* Direction badge */
+.pdt-dir-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pdt-dir-badge[data-dir="rx"] {
+  background: color-mix(in srgb, var(--accent-cyan) 20%, transparent);
+  color: var(--accent-cyan);
+}
+
+.pdt-dir-badge[data-dir="tx"] {
+  background: color-mix(in srgb, var(--accent-green) 20%, transparent);
+  color: var(--accent-green);
+}
+
+/* Row border by direction */
+.pdt-row-tx {
+  border-left: 3px solid var(--accent-green);
+}
+
+.pdt-row-rx {
+  border-left: 3px solid var(--accent-cyan);
+}
+
+/* Type badge */
+.pdt-type-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  color: white;
+  text-transform: uppercase;
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Timestamp */
+.pdt-time {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* Hex bytes cell */
+.pdt-hex-cell {
+  overflow: hidden;
+}
+
+.pdt-hex-cell .hex-byte-row {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+/* Sort indicator */
+.pdt-sort-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 8px;
+  color: var(--accent-blue);
+}
+
+/* Empty state */
+.pdt-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}

@@ -1,4 +1,10 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
 :root {
+  /* Existing app theme variables */
   --bg-primary: #0a0c10;
   --bg-secondary: #12161c;
   --bg-tertiary: #1a1f28;
@@ -16,6 +22,32 @@
   --accent-cyan: #06b6d4;
   --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
   --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* shadcn theme variables - always dark, mapped to our palette */
+  --radius: 0.5rem;
+  --background: var(--bg-secondary);
+  --foreground: var(--text-primary);
+  --card: var(--bg-tertiary);
+  --card-foreground: var(--text-primary);
+  --popover: var(--bg-elevated);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--accent-blue);
+  --primary-foreground: #ffffff;
+  --secondary: var(--bg-elevated);
+  --secondary-foreground: var(--text-secondary);
+  --muted: var(--bg-tertiary);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--bg-elevated);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--accent-red);
+  --border: var(--border-primary);
+  --input: var(--border-primary);
+  --ring: var(--accent-blue);
+  --chart-1: var(--accent-blue);
+  --chart-2: var(--accent-green);
+  --chart-3: var(--accent-orange);
+  --chart-4: var(--accent-purple);
+  --chart-5: var(--accent-cyan);
 }
 
 *, *::before, *::after {
@@ -67,20 +99,6 @@ button:active {
   transform: scale(0.98);
 }
 
-input, select {
-  font-family: var(--font-mono);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  color: var(--text-primary);
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-}
-
-input:focus, select:focus {
-  outline: none;
-  border-color: var(--accent-blue);
-}
 
 ::-webkit-scrollbar {
   width: 8px;
@@ -98,4 +116,41 @@ input:focus, select:focus {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 }

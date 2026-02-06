@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, ChangeEvent, KeyboardEvent } from 'react'
-import './AutocompleteInput.css'
 
 interface AutocompleteInputProps {
   value: string
@@ -104,9 +103,9 @@ export function AutocompleteInput({
     : undefined
 
   return (
-    <div className="autocomplete-wrapper" ref={wrapperRef} style={style}>
-      <div className={`form-input-with-prefix ${disabled ? 'disabled' : ''}`}>
-        {prefix && <span className="form-input-prefix">{prefix}</span>}
+    <div className="relative inline-block" ref={wrapperRef} style={style}>
+      <div className={`flex items-center ${disabled ? 'opacity-50' : ''}`}>
+        {prefix && <span className="text-[11px] font-mono text-[var(--text-muted)] pr-0.5">{prefix}</span>}
         <input
           ref={inputRef}
           type="text"
@@ -116,19 +115,19 @@ export function AutocompleteInput({
           onFocus={() => filteredSuggestions.length > 0 && setIsOpen(true)}
           placeholder={placeholder}
           disabled={disabled}
-          className={`form-input ${prefix ? 'form-input-prefixed' : ''} ${className}`}
+          className={`block h-7 w-full rounded border border-[var(--border-primary)] bg-[var(--bg-primary)] px-2 font-mono text-[11px] text-[var(--text-primary)] focus:border-[var(--accent-blue)] focus:outline-none ${className}`}
         />
       </div>
       {isOpen && filteredSuggestions.length > 0 && (
-        <ul className="autocomplete-dropdown">
+        <ul className="absolute top-full left-0 right-0 z-[1000] m-0 list-none rounded-b border border-t-0 border-[var(--border-primary)] bg-[var(--bg-secondary)] p-0 max-h-[200px] overflow-y-auto shadow-[0_4px_8px_rgba(0,0,0,0.3)]">
           {filteredSuggestions.map((suggestion, index) => (
             <li
               key={suggestion}
-              className={`autocomplete-item ${index === highlightedIndex ? 'highlighted' : ''}`}
+              className={`cursor-pointer px-2 py-1.5 font-mono text-[11px] text-[var(--text-primary)] ${index === highlightedIndex ? 'bg-[var(--bg-elevated)]' : 'hover:bg-[var(--bg-elevated)]'}`}
               onClick={() => handleSelect(suggestion)}
               onMouseEnter={() => setHighlightedIndex(index)}
             >
-              {prefix && <span className="autocomplete-prefix">{prefix}</span>}
+              {prefix && <span className="text-[var(--text-muted)]">{prefix}</span>}
               {suggestion}
             </li>
           ))}

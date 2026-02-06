@@ -539,16 +539,11 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
     {
-      name: 'fixed',
-      offset: 8,
+      name: 'broadcast',
+      offset: 9,
       size: 5,
       format: 'hex',
-    },
-    {
-      name: 'broadcast',
-      offset: 13,
-      size: 9,
-      format: 'hex',
+      description: 'FF FF FF FF FF',
     },
     {
       name: 'crc',
@@ -590,12 +585,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       description: '0x0E for long',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 2,
-      format: 'hex',
-    },
-    {
       name: 'button',
       offset: 10,
       size: 1,
@@ -612,12 +601,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       offset: 12,
       size: 4,
       format: 'device_id_be',
-    },
-    {
-      name: 'button_data',
-      offset: 16,
-      size: 6,
-      format: 'hex',
     },
     {
       name: 'crc',
@@ -660,12 +643,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       description: '0x04 for short',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 2,
-      format: 'hex',
-    },
-    {
       name: 'button',
       offset: 10,
       size: 1,
@@ -676,12 +653,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       offset: 11,
       size: 1,
       format: 'action',
-    },
-    {
-      name: 'padding',
-      offset: 12,
-      size: 10,
-      format: 'hex',
     },
     {
       name: 'crc',
@@ -780,23 +751,11 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
     {
-      name: 'reserved',
-      offset: 8,
-      size: 1,
-      format: 'hex',
-    },
-    {
       name: 'broadcast',
       offset: 9,
       size: 5,
       format: 'hex',
       description: 'FF FF FF FF FF',
-    },
-    {
-      name: 'fixed',
-      offset: 14,
-      size: 2,
-      format: 'hex',
     },
     {
       name: 'hardware_id',
@@ -811,19 +770,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       size: 1,
       format: 'hex',
       description: '0x04=dimmer',
-    },
-    {
-      name: 'caps',
-      offset: 21,
-      size: 10,
-      format: 'hex',
-      description: 'Device capabilities',
-    },
-    {
-      name: 'padding',
-      offset: 31,
-      size: 20,
-      format: 'hex',
     },
     {
       name: 'crc',
@@ -864,12 +810,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 2,
-      format: 'hex',
-    },
-    {
       name: 'btn_scheme',
       offset: 10,
       size: 1,
@@ -877,22 +817,11 @@ export const PacketFields: Record<string, FieldDef[]> = {
       description: 'Button scheme byte',
     },
     {
-      name: 'fixed2',
-      offset: 11,
-      size: 2,
-      format: 'hex',
-    },
-    {
       name: 'broadcast',
       offset: 13,
       size: 5,
       format: 'hex',
-    },
-    {
-      name: 'fixed3',
-      offset: 18,
-      size: 2,
-      format: 'hex',
+      description: 'FF FF FF FF FF',
     },
     {
       name: 'device_id2',
@@ -910,30 +839,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       name: 'device_class',
       offset: 28,
       size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'device_sub',
-      offset: 29,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'caps',
-      offset: 30,
-      size: 11,
-      format: 'hex',
-    },
-    {
-      name: 'broadcast2',
-      offset: 41,
-      size: 4,
-      format: 'hex',
-    },
-    {
-      name: 'padding',
-      offset: 45,
-      size: 6,
       format: 'hex',
     },
     {
@@ -1019,34 +924,16 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 1,
-      format: 'hex',
-    },
-    {
       name: 'target_id',
       offset: 9,
       size: 4,
       format: 'device_id_be',
     },
     {
-      name: 'fixed2',
-      offset: 13,
-      size: 3,
-      format: 'hex',
-    },
-    {
       name: 'level',
       offset: 16,
       size: 2,
       format: 'level_16bit',
-    },
-    {
-      name: 'padding',
-      offset: 18,
-      size: 4,
-      format: 'hex',
     },
     {
       name: 'crc',
@@ -1078,18 +965,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       name: 'protocol',
       offset: 5,
       size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'fixed',
-      offset: 6,
-      size: 2,
-      format: 'hex',
-    },
-    {
-      name: 'state',
-      offset: 8,
-      size: 14,
       format: 'hex',
     },
     {
@@ -1131,22 +1006,10 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 3,
-      format: 'hex',
-    },
-    {
       name: 'level',
       offset: 11,
       size: 1,
       format: 'level_byte',
-    },
-    {
-      name: 'padding',
-      offset: 12,
-      size: 10,
-      format: 'hex',
     },
     {
       name: 'crc',
@@ -1188,28 +1051,17 @@ export const PacketFields: Record<string, FieldDef[]> = {
       description: '0x0C for unpair',
     },
     {
-      name: 'fixed',
-      offset: 8,
-      size: 3,
-      format: 'hex',
-    },
-    {
-      name: 'command',
-      offset: 11,
+      name: 'broadcast',
+      offset: 9,
       size: 5,
       format: 'hex',
+      description: 'FF FF FF FF FF',
     },
     {
       name: 'target_id',
       offset: 16,
       size: 4,
       format: 'device_id_be',
-    },
-    {
-      name: 'padding',
-      offset: 20,
-      size: 2,
-      format: 'hex',
     },
     {
       name: 'crc',

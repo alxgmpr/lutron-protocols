@@ -511,8 +511,7 @@ pub mod fields {
         FieldDef { name: "load_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 5, format: FieldFormat::Hex },
-        FieldDef { name: "broadcast", offset: 13, size: 9, format: FieldFormat::Hex },
+        FieldDef { name: "broadcast", offset: 9, size: 5, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -522,11 +521,9 @@ pub mod fields {
         FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "button", offset: 10, size: 1, format: FieldFormat::Button },
         FieldDef { name: "action", offset: 11, size: 1, format: FieldFormat::Action },
         FieldDef { name: "device_repeat", offset: 12, size: 4, format: FieldFormat::DeviceIdBe },
-        FieldDef { name: "button_data", offset: 16, size: 6, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -536,10 +533,8 @@ pub mod fields {
         FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "button", offset: 10, size: 1, format: FieldFormat::Button },
         FieldDef { name: "action", offset: 11, size: 1, format: FieldFormat::Action },
-        FieldDef { name: "padding", offset: 12, size: 10, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -561,13 +556,9 @@ pub mod fields {
         FieldDef { name: "pair_flag", offset: 5, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "reserved", offset: 8, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "broadcast", offset: 9, size: 5, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 14, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "hardware_id", offset: 16, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "device_type", offset: 20, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "caps", offset: 21, size: 10, format: FieldFormat::Hex },
-        FieldDef { name: "padding", offset: 31, size: 20, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 51, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -577,18 +568,11 @@ pub mod fields {
         FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "btn_scheme", offset: 10, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed2", offset: 11, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "broadcast", offset: 13, size: 5, format: FieldFormat::Hex },
-        FieldDef { name: "fixed3", offset: 18, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "device_id2", offset: 20, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "device_id3", offset: 24, size: 4, format: FieldFormat::DeviceIdBe },
         FieldDef { name: "device_class", offset: 28, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "device_sub", offset: 29, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "caps", offset: 30, size: 11, format: FieldFormat::Hex },
-        FieldDef { name: "broadcast2", offset: 41, size: 4, format: FieldFormat::Hex },
-        FieldDef { name: "padding", offset: 45, size: 6, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 51, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -608,11 +592,8 @@ pub mod fields {
         FieldDef { name: "source_id", offset: 2, size: 4, format: FieldFormat::DeviceId },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "target_id", offset: 9, size: 4, format: FieldFormat::DeviceIdBe },
-        FieldDef { name: "fixed2", offset: 13, size: 3, format: FieldFormat::Hex },
         FieldDef { name: "level", offset: 16, size: 2, format: FieldFormat::Level16bit },
-        FieldDef { name: "padding", offset: 18, size: 4, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -621,8 +602,6 @@ pub mod fields {
         FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
         FieldDef { name: "zone_id", offset: 3, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "protocol", offset: 5, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 6, size: 2, format: FieldFormat::Hex },
-        FieldDef { name: "state", offset: 8, size: 14, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -632,9 +611,7 @@ pub mod fields {
         FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceId },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 3, format: FieldFormat::Hex },
         FieldDef { name: "level", offset: 11, size: 1, format: FieldFormat::LevelByte },
-        FieldDef { name: "padding", offset: 12, size: 10, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -644,10 +621,8 @@ pub mod fields {
         FieldDef { name: "source_id", offset: 2, size: 4, format: FieldFormat::DeviceId },
         FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "fixed", offset: 8, size: 3, format: FieldFormat::Hex },
-        FieldDef { name: "command", offset: 11, size: 5, format: FieldFormat::Hex },
+        FieldDef { name: "broadcast", offset: 9, size: 5, format: FieldFormat::Hex },
         FieldDef { name: "target_id", offset: 16, size: 4, format: FieldFormat::DeviceIdBe },
-        FieldDef { name: "padding", offset: 20, size: 2, format: FieldFormat::Hex },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 

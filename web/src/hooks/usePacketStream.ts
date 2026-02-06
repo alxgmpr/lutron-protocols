@@ -20,17 +20,28 @@ interface BackendPacket {
 export function usePacketStream() {
   const [txPackets, setTxPackets] = useState<Packet[]>([])
   const [rxPackets, setRxPackets] = useState<Packet[]>([])
+  const [allPackets, setAllPackets] = useState<Packet[]>([])
   const [connected, setConnected] = useState(false)
 
   // Pause states
   const [pausedTx, setPausedTx] = useState(false)
   const [pausedRx, setPausedRx] = useState(false)
+  const [paused, setPaused] = useState(false)
 
   // Snapshots for paused views
   const [txSnapshot, setTxSnapshot] = useState<Packet[]>([])
   const [rxSnapshot, setRxSnapshot] = useState<Packet[]>([])
+  const [allSnapshot, setAllSnapshot] = useState<Packet[]>([])
 
   const eventSourceRef = useRef<EventSource | null>(null)
+
+  // Unified pause toggle
+  const togglePause = useCallback(() => {
+    setPaused(prev => {
+      if (!prev) setAllSnapshot(allPackets)
+      return !prev
+    })
+  }, [allPackets])
 
   // Pause toggle functions
   const togglePauseTx = useCallback(() => {
@@ -73,8 +84,10 @@ export function usePacketStream() {
   const clearAll = useCallback(() => {
     setTxPackets([])
     setRxPackets([])
+    setAllPackets([])
     setTxSnapshot([])
     setRxSnapshot([])
+    setAllSnapshot([])
   }, [])
 
   useEffect(() => {
@@ -120,6 +133,9 @@ export function usePacketStream() {
           }
           setRxPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
         }
+
+        // Always add to combined stream
+        setAllPackets(prev => [...prev.slice(-(MAX_PACKETS - 1)), packet])
       }
 
       eventSource.onerror = () => {
@@ -141,16 +157,19 @@ export function usePacketStream() {
   return {
     txPackets: pausedTx ? txSnapshot : txPackets,
     rxPackets: pausedRx ? rxSnapshot : rxPackets,
+    allPackets: paused ? allSnapshot : allPackets,
     connected,
     clearTx,
     clearRx,
     clearAll,
     pausedTx,
     pausedRx,
+    paused,
     allPaused,
     togglePauseTx,
     togglePauseRx,
-    togglePauseAll
+    togglePauseAll,
+    togglePause
   }
 }
 
