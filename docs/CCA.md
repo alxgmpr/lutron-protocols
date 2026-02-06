@@ -712,9 +712,11 @@ Lutron Vive uses the same CCA radio layer but addresses devices by **hub ID + zo
 
 See **[docs/vive-protocol.md](vive-protocol.md)** for complete Vive documentation including:
 - Pairing protocol (53-byte config packets)
-- ON/OFF, raise/lower command formats
+- ON/OFF, raise/lower, and **arbitrary set-level** command formats
 - FCJS-010 dimmer-specific configuration
 - Universal dimming command class (0x42) shared between Pico and Vive
+
+**Discovery**: The format 0x0E level field (bytes 16-17) accepts arbitrary values `0x0000`-`0xFEFF`, enabling direct set-level control even though Vive natively only supports on/off/raise/lower.
 
 ### Dimming Command Class 0x42
 

@@ -223,6 +223,16 @@ esphome:
                 ESP_LOGW("udp_cmd", "vive_lower: missing hub_id or zone_id");
               }
             }
+            else if (strcmp(cmd, "vive_level") == 0) {
+              uint32_t hub_id = parse_hex(params["hub_id"]);
+              uint8_t zone_id = params["zone_id"] | 0;
+              uint8_t level = params["level"] | 0;
+              if (hub_id && zone_id) {
+                id(cca_radio)->send_vive_level(hub_id, zone_id, level);
+              } else {
+                ESP_LOGW("udp_cmd", "vive_level: missing hub_id or zone_id");
+              }
+            }
             // Legacy commands (deprecated)
             else if (strcmp(cmd, "vive_toggle") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);

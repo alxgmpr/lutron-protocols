@@ -389,6 +389,11 @@ class CC1101CCA : public Component,
   void send_vive_lower(uint32_t hub_id, uint8_t zone_id);
 
   /**
+   * @brief Set a Vive zone to a specific level (0-100%)
+   */
+  void send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent);
+
+  /**
    * @brief Send dim step command (shared by raise/lower)
    * @param direction 0x03 = raise, 0x02 = lower
    */

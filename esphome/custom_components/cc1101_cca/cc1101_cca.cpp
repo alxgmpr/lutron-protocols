@@ -1868,6 +1868,61 @@ void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
   send_vive_dim_command(hub_id, zone_id, 0x02);
 }
 
+void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent) {
+  // Set Vive zone to a specific level (0-100%)
+  // Uses the same format 0x0E as ON/OFF but with an arbitrary level value
+  // ON = 0xFEFF (100%), OFF = 0x0000 (0%) — we interpolate between them
+  ESP_LOGI(TAG, "=== VIVE SET LEVEL ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X, Level: %u%%", hub_id, zone_id, level_percent);
+
+  if (level_percent > 100) level_percent = 100;
+
+  // Level encoding: 0% = 0x0000, 100% = 0xFEFF (same as bridge SET_LEVEL)
+  uint16_t level16 = (level_percent == 0) ? 0x0000 :
+                     (level_percent >= 100) ? 0xFEFF :
+                     (uint16_t)((uint32_t)level_percent * 0xFEFF / 100);
+
+  uint8_t h0 = (hub_id >> 24) & 0xFF;
+  uint8_t h1 = (hub_id >> 16) & 0xFF;
+  uint8_t h2 = (hub_id >> 8) & 0xFF;
+  uint8_t h3 = hub_id & 0xFF;
+
+  uint8_t packet[24];
+  static uint8_t vive_cmd_seq = 0x01;
+
+  for (int rep = 0; rep < 12; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = 0x89 + (rep % 3);       // Rotate 89/8a/8b
+    packet[1] = vive_cmd_seq;
+    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;                   // Format 0x0E (same as ON/OFF)
+    packet[8] = 0x00;
+    packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
+    packet[12] = zone_id;
+    packet[13] = 0xEF;
+    packet[14] = 0x40;                  // Command class: on/off/level
+    packet[15] = 0x02;
+    packet[16] = (level16 >> 8) & 0xFF; // Level high byte
+    packet[17] = level16 & 0xFF;        // Level low byte
+    packet[18] = 0x00;
+    packet[19] = 0x01;                  // Dimmer variant
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    vive_cmd_seq += 6;
+    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
+    delay(15);
+  }
+  ESP_LOGI(TAG, "Vive set level sent (12 packets, level=0x%04X)", level16);
+}
+
 void CC1101CCA::send_vive_dim_command(uint32_t hub_id, uint8_t zone_id, uint8_t direction) {
   // Vive dim command: hold-start (format 0x09) then dim steps (format 0x0b)
   // Direction: 0x03 = raise, 0x02 = lower

@@ -64,7 +64,7 @@ Vive commands use **hub ID** (4 bytes) + **zone ID** (1 byte) instead of device 
 
 ## Command Formats
 
-### ON/OFF (format 0x0E)
+### ON/OFF/Level (format 0x0E)
 
 ```
 [type] [seq] [hub_id:4] 21 0e 00 00 00 00 [zone] ef 40 02 [level:2] 00 01 00 00 [CRC:2]
@@ -76,13 +76,22 @@ Vive commands use **hub ID** (4 bytes) + **zone ID** (1 byte) instead of device 
 | Format | 7 | 0x0E |
 | Zone ID | 12 | Room zone |
 | Constant | 13 | 0xEF |
-| Command class | 14 | 0x40 (on/off) |
+| Command class | 14 | 0x40 (on/off/level) |
 | Subcommand | 15 | 0x02 |
-| Level ON | 16-17 | 0xFE 0xFF |
-| Level OFF | 16-17 | 0x00 0x00 |
+| Level | 16-17 | 0x0000 (off) to 0xFEFF (100%) |
 | Byte 19 | 19 | 0x01 (dimmer), 0x00 (relay) |
 
-12 packets per command, type 0x8A (ON) or 0x8B (OFF), seq increments by 6.
+12 packets per command, type rotates 0x89/0x8A/0x8B, seq increments by 6.
+
+**Arbitrary level setting**: The level field at bytes 16-17 accepts any value in the range `0x0000`-`0xFEFF`, not just the ON/OFF extremes. This enables direct set-level control even though the Vive app only exposes on/off/raise/lower. The level encoding matches the bridge SET_LEVEL format: `level16 = percent * 0xFEFF / 100`.
+
+| Level | Bytes 16-17 |
+|-------|-------------|
+| OFF (0%) | 0x00 0x00 |
+| 25% | 0x3F 0xBF |
+| 50% | 0x7F 0x7F |
+| 75% | 0xBF 0x3F |
+| ON (100%) | 0xFE 0xFF |
 
 ### Hold-Start (format 0x09)
 
@@ -303,6 +312,7 @@ data:
 {"cmd": "vive_off",   "hub_id": "0xYYYYYYYY", "zone_id": 70}
 {"cmd": "vive_raise", "hub_id": "0xYYYYYYYY", "zone_id": 70}
 {"cmd": "vive_lower", "hub_id": "0xYYYYYYYY", "zone_id": 70}
+{"cmd": "vive_level", "hub_id": "0xYYYYYYYY", "zone_id": 70, "level": 50}
 ```
 
 ---
