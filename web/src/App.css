@@ -10,13 +10,12 @@
 
 .main-layout {
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: 7fr 3fr;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Packet displays section - fills left column */
 .packets-section {
   display: flex;
   flex-direction: column;
@@ -24,7 +23,6 @@
   overflow: hidden;
 }
 
-/* Controls section - right column */
 .controls-section {
   display: flex;
   flex-direction: column;

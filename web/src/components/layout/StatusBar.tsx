@@ -84,7 +84,7 @@ export function StatusBar({ connected, lastTx, lastHeartbeat }: StatusBarProps) 
       <span className="status-divider" />
 
       <div className="status-section">
-        <span className="status-label">Last RX</span>
+        <span className="status-label">Last Packet</span>
         <span className={`status-value ${receivingPackets ? '' : 'status-stale'}`}>
           {config ? formatAge(packetAge) : '—'}
         </span>
