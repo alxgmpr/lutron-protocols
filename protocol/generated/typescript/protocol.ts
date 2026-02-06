@@ -144,14 +144,14 @@ export const PacketType = {
   BEACON_92: 0x92,
   /** Initial pairing beacon */
   BEACON_93: 0x93,
-  /** Button press, long format, group A */
-  BTN_LONG_A: 0x89,
-  /** Button press, long format, group B */
-  BTN_LONG_B: 0x8B,
-  /** Button press, short format, group A */
-  BTN_SHORT_A: 0x88,
-  /** Button press, short format, group B */
-  BTN_SHORT_B: 0x8A,
+  /** Button press, group A */
+  BTN_PRESS_A: 0x88,
+  /** Button press, group B */
+  BTN_PRESS_B: 0x8A,
+  /** Button release, group A */
+  BTN_RELEASE_A: 0x89,
+  /** Button release, group B */
+  BTN_RELEASE_B: 0x8B,
   /** Configuration packet (pairing) */
   CONFIG_A1: 0xA1,
   /** Handshake round 1 (dimmer) */
@@ -244,35 +244,35 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
-  [0x89]: {
-    name: 'BTN_LONG_A',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button press, long format, group A',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x8B]: {
-    name: 'BTN_LONG_B',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button press, long format, group B',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
   [0x88]: {
-    name: 'BTN_SHORT_A',
+    name: 'BTN_PRESS_A',
     length: 24,
     category: 'BUTTON',
-    description: 'Button press, short format, group A',
+    description: 'Button press, group A',
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
   [0x8A]: {
-    name: 'BTN_SHORT_B',
+    name: 'BTN_PRESS_B',
     length: 24,
     category: 'BUTTON',
-    description: 'Button press, short format, group B',
+    description: 'Button press, group B',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0x89]: {
+    name: 'BTN_RELEASE_A',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button release, group A',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+  },
+  [0x8B]: {
+    name: 'BTN_RELEASE_B',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button release, group B',
     usesBigEndianDeviceId: true,
     isVirtual: false,
   },
@@ -552,64 +552,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'BTN_LONG_A': [
-    {
-      name: 'type',
-      offset: 0,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'sequence',
-      offset: 1,
-      size: 1,
-      format: 'decimal',
-    },
-    {
-      name: 'device_id',
-      offset: 2,
-      size: 4,
-      format: 'device_id_be',
-    },
-    {
-      name: 'protocol',
-      offset: 6,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'format',
-      offset: 7,
-      size: 1,
-      format: 'hex',
-      description: '0x0E for long',
-    },
-    {
-      name: 'button',
-      offset: 10,
-      size: 1,
-      format: 'button',
-    },
-    {
-      name: 'action',
-      offset: 11,
-      size: 1,
-      format: 'action',
-    },
-    {
-      name: 'device_repeat',
-      offset: 12,
-      size: 4,
-      format: 'device_id_be',
-    },
-    {
-      name: 'crc',
-      offset: 22,
-      size: 2,
-      format: 'hex',
-    },
-  ],
-  'BTN_SHORT_A': [
+  'BTN_PRESS_A': [
     {
       name: 'type',
       offset: 0,
@@ -640,7 +583,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       offset: 7,
       size: 1,
       format: 'hex',
-      description: '0x04 for short',
+      description: '0x04 for press',
     },
     {
       name: 'button',
@@ -653,6 +596,63 @@ export const PacketFields: Record<string, FieldDef[]> = {
       offset: 11,
       size: 1,
       format: 'action',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'BTN_RELEASE_A': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'device_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+      description: '0x0E for release',
+    },
+    {
+      name: 'button',
+      offset: 10,
+      size: 1,
+      format: 'button',
+    },
+    {
+      name: 'action',
+      offset: 11,
+      size: 1,
+      format: 'action',
+    },
+    {
+      name: 'device_repeat',
+      offset: 12,
+      size: 4,
+      format: 'device_id_be',
     },
     {
       name: 'crc',
@@ -1092,23 +1092,23 @@ export const Sequences: Record<string, Sequence> = {
     name: 'button_hold',
     description: 'Dimming hold (raise/lower)',
     steps: [
-      { packetType: 'BTN_SHORT_A', count: null, intervalMs: 65 },
+      { packetType: 'BTN_PRESS_A', count: null, intervalMs: 65 },
     ],
   },
   'button_press': {
     name: 'button_press',
     description: 'Standard 5-button Pico press',
     steps: [
-      { packetType: 'BTN_SHORT_A', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_LONG_A', count: 1, intervalMs: 70 },
+      { packetType: 'BTN_PRESS_A', count: 3, intervalMs: 70 },
+      { packetType: 'BTN_RELEASE_A', count: 1, intervalMs: 70 },
     ],
   },
   'button_release': {
     name: 'button_release',
     description: 'Button release (sent after press)',
     steps: [
-      { packetType: 'BTN_SHORT_B', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_LONG_B', count: 1, intervalMs: 70 },
+      { packetType: 'BTN_PRESS_B', count: 3, intervalMs: 70 },
+      { packetType: 'BTN_RELEASE_B', count: 1, intervalMs: 70 },
     ],
   },
   'pairing_beacon': {

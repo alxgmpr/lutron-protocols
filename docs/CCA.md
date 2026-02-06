@@ -124,22 +124,34 @@ CRC is calculated over payload bytes (excluding CRC) and stored big-endian.
 
 | Type | Name | Size | Description |
 |------|------|------|-------------|
-| 0x88 | BTN_SHORT_A | 24 | Button press, short format, group A |
-| 0x89 | BTN_LONG_A | 24 | Button press, long format, group A |
-| 0x8A | BTN_SHORT_B | 24 | Button press, short format, group B |
-| 0x8B | BTN_LONG_B | 24 | Button press, long format, group B |
+| 0x88 | BTN_PRESS_A | 24 | Button press, group A |
+| 0x89 | BTN_RELEASE_A | 24 | Button release, group A |
+| 0x8A | BTN_PRESS_B | 24 | Button press, group B |
+| 0x8B | BTN_RELEASE_B | 24 | Button release, group B |
 | 0x81-0x83 | LEVEL | 24 | Level command or dimmer state report |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
 | 0xA1-0xA7 | CONFIG | 24+ | Configuration/extended commands |
 | 0xB0 | DEVICE_ANNOUNCE | 46 | Device announcement during bridge pairing |
-| 0xB8 | PAIR_B8 | 53 | Bridge-only pairing (scene pico) |
+| 0xB8 | PAIR_B8 | 53 | Bridge-only pairing |
 | 0xB9 | PAIR_B9 | 53 | Direct-pair capable |
-| 0xBA | PAIR_BA | 53 | Bridge-only pairing (scene pico) |
+| 0xBA | PAIR_BA | 53 | Bridge-only pairing |
 | 0xBB | PAIR_BB | 53 | Direct-pair capable |
 
-Type bit pattern for 0x88-0x8B:
-- Bit 0: Format (0=Short, 1=Long)
-- Bit 1: Group (0=A, 1=B) - alternates between button presses
+### Button Type Bit Pattern (0x88-0x8B)
+
+Base 0x88, with two flag bits:
+- Bit 0: Action (0=press, 1=release)
+- Bit 1: Group (0=A, 1=B)
+
+Picos alternate between group A and group B on successive button events.
+Each event produces a press (0x88/0x8A) followed by a release (0x89/0x8B).
+The group alternation enables double-tap detection: the receiver can distinguish
+a new press from retransmissions of the same press.
+
+Example sequence for two quick taps:
+1. Tap 1: 0x88 (press A) -> 0x89 (release A)
+2. Tap 2: 0x8A (press B) -> 0x8B (release B)
+3. Tap 3: 0x88 (press A) -> 0x89 (release A) ...
 
 ## Button Codes
 
@@ -655,17 +667,37 @@ Byte 51-52: CRC-16
 
 | Pico Type | Pkt Types | byte10 | byte30 | byte31 | byte37 | byte38 |
 |-----------|-----------|--------|--------|--------|--------|--------|
-| 2-button paddle | B9/BB | 0x04 | 0x03 | 0x08 | 0x01 | 0x01 |
+| 2-button ON/OFF | B9/BB | 0x04 | 0x03 | 0x08 | 0x01 | 0x01 |
 | 5-button | B9/BB | 0x04 | 0x03 | 0x00 | 0x02 | 0x06 |
 | 4-button R/L | B9/BB | 0x0B | 0x02 | 0x00 | 0x02 | 0x21 |
-| 4-button scene (std) | B8/BA | 0x0B | 0x04 | 0x00 | 0x02 | 0x27 |
-| 4-button scene (custom) | B9/BB | 0x0B | 0x04 | 0x00 | 0x02 | 0x28 |
+| 2-button HOME/AWAY | B9/BB | 0x04 | 0x03 | 0x00 | 0x02 | 0x23 |
+| 4-button COOKING | B9/BB | 0x0B | 0x04 | 0x00 | 0x02 | 0x25 |
+| 4-button MOVIE | B9/BB | 0x0B | 0x04 | 0x00 | 0x02 | 0x26 |
+| 4-button RELAX | **B8/BA** | 0x0B | 0x04 | 0x00 | 0x02 | 0x27 |
+| 4-button custom | B9/BB | 0x0B | 0x04 | 0x00 | 0x02 | 0x28 |
 
 Byte 10 (button scheme) tells receiver what button codes to expect:
-- 0x04: 5-button scheme (codes 0x02-0x06)
+- 0x04: 5-button / 2-button scheme (codes 0x02-0x06)
 - 0x0B: 4-button scheme (codes 0x08-0x0B)
 
-Bytes 37-38 advertise button range for 5-button scheme picos.
+### Engraving Codes (byte 38)
+
+Byte 38 uniquely identifies the factory engraving on the Pico remote.
+The Lutron app reads this byte during pairing to display the correct button labels.
+
+| Code | Engraving | Pair Type | Button Scheme |
+|------|-----------|-----------|---------------|
+| 0x01 | ON / OFF (generic paddle) | Direct | 0x04 |
+| 0x06 | ON / FAV / OFF / RAISE / LOWER | Direct | 0x04 |
+| 0x21 | ON / RAISE / LOWER / OFF | Direct | 0x0B |
+| 0x23 | HOME / AWAY | Direct | 0x04 |
+| 0x25 | BRIGHT / COOKING / DINING / OFF | Direct | 0x0B |
+| 0x26 | BRIGHT / ENTERTAIN / MOVIE / OFF | Direct | 0x0B |
+| 0x27 | BRIGHT / ENTERTAIN / RELAX / OFF | Bridge-only | 0x0B |
+| 0x28 | (custom engraved) | Direct | 0x0B |
+
+Note: The RELAX engraving (0x27) is the only factory-engraved pico that
+is bridge-only (B8/BA). All other factory engravings are direct-pair (B9/BB).
 
 ### Pairing Timing
 

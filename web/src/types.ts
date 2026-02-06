@@ -49,7 +49,7 @@ export interface ParsedField {
 
 export interface Packet {
   time: string
-  type: string        // e.g., "LEVEL", "BTN_SHORT_A", "BEACON", "PAIRING"
+  type: string        // e.g., "LEVEL", "BTN_PRESS_A", "BEACON", "PAIRING"
   summary: string     // Short description for display
   details: string[]   // Additional info parts
   rawBytes?: string   // Hex bytes if available
@@ -75,11 +75,18 @@ export interface PairingPreset {
 }
 
 export const PAIRING_PRESETS: Record<string, PairingPreset> = {
-  '5btn': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'Direct pair, FAV button works' },
-  '2btn': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x08', b37: '0x01', b38: '0x01', desc: 'Direct pair, FAV acts as ON' },
-  '4btn-rl': { pkt: 'B9', b10: '0x0B', b30: '0x02', b31: '0x00', b37: '0x02', b38: '0x21', desc: 'Direct pair, raise/lower' },
-  '4btn-scene-custom': { pkt: 'B9', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x28', desc: 'Direct pair scene (custom engraved)' },
-  '4btn-scene-std': { pkt: 'BA', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x27', desc: 'Bridge-only scene pico' },
+  // 5-button picos
+  '5btn': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'ON / FAV / OFF / RAISE / LOWER' },
+  // 2-button picos
+  '2btn': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x08', b37: '0x01', b38: '0x01', desc: 'ON / OFF (FAV acts as ON)' },
+  '2btn-home': { pkt: 'BB', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x23', desc: 'HOME / AWAY' },
+  // 4-button raise/lower
+  '4btn-rl': { pkt: 'B9', b10: '0x0B', b30: '0x02', b31: '0x00', b37: '0x02', b38: '0x21', desc: 'ON / RAISE / LOWER / OFF' },
+  // 4-button scene picos (factory engraved)
+  '4btn-cooking': { pkt: 'B9', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x25', desc: 'BRIGHT / COOKING / DINING / OFF' },
+  '4btn-movie': { pkt: 'B9', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x26', desc: 'BRIGHT / ENTERTAIN / MOVIE / OFF' },
+  '4btn-relax': { pkt: 'B8', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x27', desc: 'BRIGHT / ENTERTAIN / RELAX / OFF (bridge-only)' },
+  '4btn-scene-custom': { pkt: 'B9', b10: '0x0B', b30: '0x04', b31: '0x00', b37: '0x02', b38: '0x28', desc: 'Custom engraved 4-button scene' },
   'custom': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'Custom parameters' }
 }
 

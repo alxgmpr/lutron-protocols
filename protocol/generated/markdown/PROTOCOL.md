@@ -118,10 +118,10 @@ Device class codes (byte 28 in pairing)
 | BEACON_91 | `0x91` | 24 | BEACON | Pairing beacon |
 | BEACON_92 | `0x92` | 24 | BEACON | Beacon stop |
 | BEACON_93 | `0x93` | 24 | BEACON | Initial pairing beacon |
-| BTN_LONG_A | `0x89` | 24 | BUTTON | Button press, long format, group A |
-| BTN_LONG_B | `0x8B` | 24 | BUTTON | Button press, long format, group B |
-| BTN_SHORT_A | `0x88` | 24 | BUTTON | Button press, short format, group A |
-| BTN_SHORT_B | `0x8A` | 24 | BUTTON | Button press, short format, group B |
+| BTN_PRESS_A | `0x88` | 24 | BUTTON | Button press, group A |
+| BTN_PRESS_B | `0x8A` | 24 | BUTTON | Button press, group B |
+| BTN_RELEASE_A | `0x89` | 24 | BUTTON | Button release, group A |
+| BTN_RELEASE_B | `0x8B` | 24 | BUTTON | Button release, group B |
 | CONFIG_A1 | `0xA1` | 24 | CONFIG | Configuration packet (pairing) |
 | HS_C1 | `0xC1` | 24 | HANDSHAKE | Handshake round 1 (dimmer) |
 | HS_C2 | `0xC2` | 24 | HANDSHAKE | Handshake round 1 (bridge) |
@@ -170,31 +170,9 @@ Pairing beacon
 | 9 | 5 | broadcast | hex | FF FF FF FF FF |
 | 22 | 2 | crc | hex | - |
 
-### BTN_LONG_A (`0x89`)
+### BTN_PRESS_A (`0x88`)
 
-Button press, long format, group A
-
-- **Length:** 24 bytes
-- **Category:** BUTTON
-- **Device ID:** Big-endian
-
-#### Fields
-
-| Offset | Size | Field | Format | Description |
-|--------|------|-------|--------|-------------|
-| 0 | 1 | type | hex | - |
-| 1 | 1 | sequence | decimal | - |
-| 2 | 4 | device_id | device_id_be | - |
-| 6 | 1 | protocol | hex | - |
-| 7 | 1 | format | hex | 0x0E for long |
-| 10 | 1 | button | button | - |
-| 11 | 1 | action | action | - |
-| 12 | 4 | device_repeat | device_id_be | - |
-| 22 | 2 | crc | hex | - |
-
-### BTN_SHORT_A (`0x88`)
-
-Button press, short format, group A
+Button press, group A
 
 - **Length:** 24 bytes
 - **Category:** BUTTON
@@ -208,9 +186,31 @@ Button press, short format, group A
 | 1 | 1 | sequence | decimal | - |
 | 2 | 4 | device_id | device_id_be | - |
 | 6 | 1 | protocol | hex | Always 0x21 |
-| 7 | 1 | format | hex | 0x04 for short |
+| 7 | 1 | format | hex | 0x04 for press |
 | 10 | 1 | button | button | - |
 | 11 | 1 | action | action | - |
+| 22 | 2 | crc | hex | - |
+
+### BTN_RELEASE_A (`0x89`)
+
+Button release, group A
+
+- **Length:** 24 bytes
+- **Category:** BUTTON
+- **Device ID:** Big-endian
+
+#### Fields
+
+| Offset | Size | Field | Format | Description |
+|--------|------|-------|--------|-------------|
+| 0 | 1 | type | hex | - |
+| 1 | 1 | sequence | decimal | - |
+| 2 | 4 | device_id | device_id_be | - |
+| 6 | 1 | protocol | hex | - |
+| 7 | 1 | format | hex | 0x0E for release |
+| 10 | 1 | button | button | - |
+| 11 | 1 | action | action | - |
+| 12 | 4 | device_repeat | device_id_be | - |
 | 22 | 2 | crc | hex | - |
 
 ### CONFIG_A1 (`0xA1`)
@@ -396,7 +396,7 @@ Dimming hold (raise/lower)
 
 | Step | Packet | Count | Interval |
 |------|--------|-------|----------|
-| 1 | BTN_SHORT_A | infinite | 65 ms |
+| 1 | BTN_PRESS_A | infinite | 65 ms |
 
 **Note:** This sequence runs until explicitly stopped.
 
@@ -413,8 +413,8 @@ Standard 5-button Pico press
 
 | Step | Packet | Count | Interval |
 |------|--------|-------|----------|
-| 1 | BTN_SHORT_A | 3 | 70 ms |
-| 2 | BTN_LONG_A | 1 | 70 ms |
+| 1 | BTN_PRESS_A | 3 | 70 ms |
+| 2 | BTN_RELEASE_A | 1 | 70 ms |
 
 **Total:** 4 packets, ~280 ms
 
@@ -431,8 +431,8 @@ Button release (sent after press)
 
 | Step | Packet | Count | Interval |
 |------|--------|-------|----------|
-| 1 | BTN_SHORT_B | 3 | 70 ms |
-| 2 | BTN_LONG_B | 1 | 70 ms |
+| 1 | BTN_PRESS_B | 3 | 70 ms |
+| 2 | BTN_RELEASE_B | 1 | 70 ms |
 
 **Total:** 4 packets, ~280 ms
 

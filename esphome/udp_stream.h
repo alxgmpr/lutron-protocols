@@ -46,6 +46,9 @@ class CCAUdpStream {
   // Log interval in milliseconds
   static constexpr uint32_t LOG_INTERVAL_MS = 5000;
 
+  // Heartbeat interval in milliseconds
+  static constexpr uint32_t HEARTBEAT_INTERVAL_MS = 5000;
+
   // Ring buffer size (must be power of 2)
   static constexpr size_t BUFFER_SIZE = 256;
 
@@ -278,6 +281,22 @@ class CCAUdpStream {
     }
   }
 
+  // Send a 2-byte heartbeat packet [0xFF, 0x00] to the backend
+  void send_heartbeat_now() {
+    if (!initialized_ || host_.empty()) {
+      return;
+    }
+
+    uint8_t heartbeat[2] = {0xFF, 0x00};
+    IPAddress addr;
+    if (addr.fromString(host_.c_str())) {
+      tx_udp_.beginPacket(addr, tx_port_);
+      tx_udp_.write(heartbeat, 2);
+      tx_udp_.endPacket();
+      last_heartbeat_ms_ = millis();
+    }
+  }
+
   // Start the FreeRTOS task for async UDP sending
   void start_udp_task() {
     if (udp_task_handle_ != nullptr) {
@@ -312,6 +331,11 @@ class CCAUdpStream {
         // Use 1 tick delay (~1ms) to avoid busy-spinning
         vTaskDelay(1);
       }
+
+      // Send heartbeat if interval has elapsed
+      if (millis() - self->last_heartbeat_ms_ >= HEARTBEAT_INTERVAL_MS) {
+        self->send_heartbeat_now();
+      }
     }
   }
 
@@ -341,6 +365,9 @@ class CCAUdpStream {
   uint32_t slow_sends_ = 0;             // Sends taking > 1ms
   uint32_t failed_sends_ = 0;           // Failed UDP sends
   uint32_t max_send_time_us_ = 0;       // Max send time in microseconds
+
+  // Heartbeat tracking
+  uint32_t last_heartbeat_ms_ = 0;
 };
 
 // Global instance (inline ensures single instance across all translation units)

@@ -211,14 +211,14 @@ pub enum PacketType {
     Beacon92 = 0x92,
     /// Initial pairing beacon
     Beacon93 = 0x93,
-    /// Button press, long format, group A
-    BtnLongA = 0x89,
-    /// Button press, long format, group B
-    BtnLongB = 0x8B,
-    /// Button press, short format, group A
-    BtnShortA = 0x88,
-    /// Button press, short format, group B
-    BtnShortB = 0x8A,
+    /// Button press, group A
+    BtnPressA = 0x88,
+    /// Button press, group B
+    BtnPressB = 0x8A,
+    /// Button release, group A
+    BtnReleaseA = 0x89,
+    /// Button release, group B
+    BtnReleaseB = 0x8B,
     /// Configuration packet (pairing)
     ConfigA1 = 0xA1,
     /// Handshake round 1 (dimmer)
@@ -281,10 +281,10 @@ impl PacketType {
             0x91 => Some(Self::Beacon91),
             0x92 => Some(Self::Beacon92),
             0x93 => Some(Self::Beacon93),
-            0x89 => Some(Self::BtnLongA),
-            0x8B => Some(Self::BtnLongB),
-            0x88 => Some(Self::BtnShortA),
-            0x8A => Some(Self::BtnShortB),
+            0x88 => Some(Self::BtnPressA),
+            0x8A => Some(Self::BtnPressB),
+            0x89 => Some(Self::BtnReleaseA),
+            0x8B => Some(Self::BtnReleaseB),
             0xA1 => Some(Self::ConfigA1),
             0xC1 => Some(Self::HsC1),
             0xC2 => Some(Self::HsC2),
@@ -321,10 +321,10 @@ impl PacketType {
             Self::Beacon91 => "BEACON_91",
             Self::Beacon92 => "BEACON_92",
             Self::Beacon93 => "BEACON_93",
-            Self::BtnLongA => "BTN_LONG_A",
-            Self::BtnLongB => "BTN_LONG_B",
-            Self::BtnShortA => "BTN_SHORT_A",
-            Self::BtnShortB => "BTN_SHORT_B",
+            Self::BtnPressA => "BTN_PRESS_A",
+            Self::BtnPressB => "BTN_PRESS_B",
+            Self::BtnReleaseA => "BTN_RELEASE_A",
+            Self::BtnReleaseB => "BTN_RELEASE_B",
             Self::ConfigA1 => "CONFIG_A1",
             Self::HsC1 => "HS_C1",
             Self::HsC2 => "HS_C2",
@@ -360,10 +360,10 @@ impl PacketType {
             Self::Beacon91 => 24,
             Self::Beacon92 => 24,
             Self::Beacon93 => 24,
-            Self::BtnLongA => 24,
-            Self::BtnLongB => 24,
-            Self::BtnShortA => 24,
-            Self::BtnShortB => 24,
+            Self::BtnPressA => 24,
+            Self::BtnPressB => 24,
+            Self::BtnReleaseA => 24,
+            Self::BtnReleaseB => 24,
             Self::ConfigA1 => 24,
             Self::HsC1 => 24,
             Self::HsC2 => 24,
@@ -399,10 +399,10 @@ impl PacketType {
             Self::Beacon91 => "BEACON",
             Self::Beacon92 => "BEACON",
             Self::Beacon93 => "BEACON",
-            Self::BtnLongA => "BUTTON",
-            Self::BtnLongB => "BUTTON",
-            Self::BtnShortA => "BUTTON",
-            Self::BtnShortB => "BUTTON",
+            Self::BtnPressA => "BUTTON",
+            Self::BtnPressB => "BUTTON",
+            Self::BtnReleaseA => "BUTTON",
+            Self::BtnReleaseB => "BUTTON",
             Self::ConfigA1 => "CONFIG",
             Self::HsC1 => "HANDSHAKE",
             Self::HsC2 => "HANDSHAKE",
@@ -438,10 +438,10 @@ impl PacketType {
             Self::Beacon91 => true,
             Self::Beacon92 => true,
             Self::Beacon93 => true,
-            Self::BtnLongA => true,
-            Self::BtnLongB => true,
-            Self::BtnShortA => true,
-            Self::BtnShortB => true,
+            Self::BtnPressA => true,
+            Self::BtnPressB => true,
+            Self::BtnReleaseA => true,
+            Self::BtnReleaseB => true,
             Self::ConfigA1 => false,
             Self::HsC1 => true,
             Self::HsC2 => true,
@@ -515,7 +515,18 @@ pub mod fields {
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
-    pub const BTN_LONG_A: &[FieldDef] = &[
+    pub const BTN_PRESS_A: &[FieldDef] = &[
+        FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
+        FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
+        FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
+        FieldDef { name: "button", offset: 10, size: 1, format: FieldFormat::Button },
+        FieldDef { name: "action", offset: 11, size: 1, format: FieldFormat::Action },
+        FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
+    ];
+
+    pub const BTN_RELEASE_A: &[FieldDef] = &[
         FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
         FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
         FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
@@ -524,17 +535,6 @@ pub mod fields {
         FieldDef { name: "button", offset: 10, size: 1, format: FieldFormat::Button },
         FieldDef { name: "action", offset: 11, size: 1, format: FieldFormat::Action },
         FieldDef { name: "device_repeat", offset: 12, size: 4, format: FieldFormat::DeviceIdBe },
-        FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
-    ];
-
-    pub const BTN_SHORT_A: &[FieldDef] = &[
-        FieldDef { name: "type", offset: 0, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "sequence", offset: 1, size: 1, format: FieldFormat::Decimal },
-        FieldDef { name: "device_id", offset: 2, size: 4, format: FieldFormat::DeviceIdBe },
-        FieldDef { name: "protocol", offset: 6, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "format", offset: 7, size: 1, format: FieldFormat::Hex },
-        FieldDef { name: "button", offset: 10, size: 1, format: FieldFormat::Button },
-        FieldDef { name: "action", offset: 11, size: 1, format: FieldFormat::Action },
         FieldDef { name: "crc", offset: 22, size: 2, format: FieldFormat::Hex },
     ];
 
@@ -650,7 +650,7 @@ pub mod sequences {
 
     /// Dimming hold (raise/lower)
     pub const BUTTON_HOLD_STEPS: &[Step] = &[
-        Step { packet_type: PacketType::BtnShortA, count: None, interval_ms: 65 },
+        Step { packet_type: PacketType::BtnPressA, count: None, interval_ms: 65 },
     ];
 
     pub const BUTTON_HOLD: Sequence = Sequence {
@@ -661,8 +661,8 @@ pub mod sequences {
 
     /// Standard 5-button Pico press
     pub const BUTTON_PRESS_STEPS: &[Step] = &[
-        Step { packet_type: PacketType::BtnShortA, count: Some(3), interval_ms: 70 },
-        Step { packet_type: PacketType::BtnLongA, count: Some(1), interval_ms: 70 },
+        Step { packet_type: PacketType::BtnPressA, count: Some(3), interval_ms: 70 },
+        Step { packet_type: PacketType::BtnReleaseA, count: Some(1), interval_ms: 70 },
     ];
 
     pub const BUTTON_PRESS: Sequence = Sequence {
@@ -673,8 +673,8 @@ pub mod sequences {
 
     /// Button release (sent after press)
     pub const BUTTON_RELEASE_STEPS: &[Step] = &[
-        Step { packet_type: PacketType::BtnShortB, count: Some(3), interval_ms: 70 },
-        Step { packet_type: PacketType::BtnLongB, count: Some(1), interval_ms: 70 },
+        Step { packet_type: PacketType::BtnPressB, count: Some(3), interval_ms: 70 },
+        Step { packet_type: PacketType::BtnReleaseB, count: Some(1), interval_ms: 70 },
     ];
 
     pub const BUTTON_RELEASE: Sequence = Sequence {

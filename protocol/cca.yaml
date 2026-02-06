@@ -163,54 +163,67 @@ enums:
 # Packet Type Definitions
 packet_types:
   # Button packets (24 bytes)
-  BTN_SHORT_A:
+  # Picos alternate between group A (0x88/0x89) and group B (0x8A/0x8B)
+  # on successive button events. This alternation enables double-tap detection:
+  # the receiver can distinguish a new press from retransmissions of the same press.
+  #
+  # Within each group, SHORT = press, LONG = release:
+  #   Group A press:   0x88 (BTN_PRESS_A)    - short format
+  #   Group A release: 0x89 (BTN_RELEASE_A)  - long format
+  #   Group B press:   0x8A (BTN_PRESS_B)    - short format
+  #   Group B release: 0x8B (BTN_RELEASE_B)  - long format
+  #
+  # Bit pattern: base 0x88 | bit 1 = group (0=A, 1=B) | bit 0 = action (0=press, 1=release)
+  BTN_PRESS_A:
     value: 0x88
     length: 24
     category: BUTTON
-    description: "Button press, short format, group A"
+    description: "Button press, group A"
     device_id_endian: big
     fields:
       - { name: type,      offset: 0,  size: 1, format: hex }
       - { name: sequence,  offset: 1,  size: 1, format: decimal }
       - { name: device_id, offset: 2,  size: 4, format: device_id_be }
       - { name: protocol,  offset: 6,  size: 1, format: hex, description: "Always 0x21" }
-      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for short" }
+      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for press" }
       - { name: button,    offset: 10, size: 1, format: button }
       - { name: action,    offset: 11, size: 1, format: action }
       - { name: crc,       offset: 22, size: 2, format: hex }
 
-  BTN_LONG_A:
+  BTN_RELEASE_A:
     value: 0x89
     length: 24
     category: BUTTON
-    description: "Button press, long format, group A"
+    description: "Button release, group A"
     device_id_endian: big
     fields:
       - { name: type,          offset: 0,  size: 1, format: hex }
       - { name: sequence,      offset: 1,  size: 1, format: decimal }
       - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
       - { name: protocol,      offset: 6,  size: 1, format: hex }
-      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for long" }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for release" }
       - { name: button,        offset: 10, size: 1, format: button }
       - { name: action,        offset: 11, size: 1, format: action }
       - { name: device_repeat, offset: 12, size: 4, format: device_id_be }
       - { name: crc,           offset: 22, size: 2, format: hex }
 
-  BTN_SHORT_B:
+  BTN_PRESS_B:
     value: 0x8A
     length: 24
     category: BUTTON
-    description: "Button press, short format, group B"
+    description: "Button press, group B"
     device_id_endian: big
-    inherits: BTN_SHORT_A
+    inherits: BTN_PRESS_A
+    # Legacy alias: BTN_SHORT_B
 
-  BTN_LONG_B:
+  BTN_RELEASE_B:
     value: 0x8B
     length: 24
     category: BUTTON
-    description: "Button press, long format, group B"
+    description: "Button release, group B"
     device_id_endian: big
-    inherits: BTN_LONG_A
+    inherits: BTN_RELEASE_A
+    # Legacy alias: BTN_LONG_B
 
   # State report packets (24 bytes)
   STATE_RPT_81:
@@ -553,8 +566,8 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_SHORT_A, count: 3, interval_ms: 70 }
-      - { packet: BTN_LONG_A, count: 1 }
+      - { packet: BTN_PRESS_A, count: 3, interval_ms: 70 }
+      - { packet: BTN_RELEASE_A, count: 1 }
 
   button_release:
     description: "Button release (sent after press)"
@@ -562,8 +575,8 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_SHORT_B, count: 3, interval_ms: 70 }
-      - { packet: BTN_LONG_B, count: 1 }
+      - { packet: BTN_PRESS_B, count: 3, interval_ms: 70 }
+      - { packet: BTN_RELEASE_B, count: 1 }
 
   button_hold:
     description: "Dimming hold (raise/lower)"
@@ -571,7 +584,7 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_SHORT_A, count: null, interval_ms: 65 }  # Repeat until stop
+      - { packet: BTN_PRESS_A, count: null, interval_ms: 65 }  # Repeat until stop
 
   set_level:
     description: "Set dimmer level"
@@ -606,9 +619,10 @@ sequences:
       - { packet: UNPAIR, count: 20, interval_ms: 60 }
 
 # Pairing Presets (button schemes and capability bytes)
+# Byte 38 is the engraving code — unique per factory engraving.
 pairing_presets:
   5btn:
-    description: "5-button Pico"
+    description: "5-button Pico (ON/FAV/OFF/RAISE/LOWER)"
     packet: PAIR_B9
     btn_scheme: 0x04
     bytes:
@@ -617,28 +631,8 @@ pairing_presets:
       37: 0x02
       38: 0x06
 
-  4btn-scene:
-    description: "4-button scene Pico"
-    packet: PAIR_BA
-    btn_scheme: 0x0B
-    bytes:
-      30: 0x02
-      31: 0x00
-      37: 0x02
-      38: 0x21
-
-  4btn-rl:
-    description: "4-button raise/lower Pico"
-    packet: PAIR_B9
-    btn_scheme: 0x0B
-    bytes:
-      30: 0x02
-      31: 0x00
-      37: 0x02
-      38: 0x21
-
   2btn:
-    description: "2-button Pico"
+    description: "2-button Pico (ON/OFF)"
     packet: PAIR_B9
     btn_scheme: 0x04
     bytes:
@@ -646,3 +640,63 @@ pairing_presets:
       31: 0x08
       37: 0x01
       38: 0x01
+
+  2btn-home:
+    description: "2-button Pico (HOME/AWAY)"
+    packet: PAIR_BB
+    btn_scheme: 0x04
+    bytes:
+      30: 0x03
+      31: 0x00
+      37: 0x02
+      38: 0x23
+
+  4btn-rl:
+    description: "4-button raise/lower Pico (ON/RAISE/LOWER/OFF)"
+    packet: PAIR_B9
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x02
+      31: 0x00
+      37: 0x02
+      38: 0x21
+
+  4btn-cooking:
+    description: "4-button scene Pico (BRIGHT/COOKING/DINING/OFF)"
+    packet: PAIR_B9
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x04
+      31: 0x00
+      37: 0x02
+      38: 0x25
+
+  4btn-movie:
+    description: "4-button scene Pico (BRIGHT/ENTERTAIN/MOVIE/OFF)"
+    packet: PAIR_B9
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x04
+      31: 0x00
+      37: 0x02
+      38: 0x26
+
+  4btn-relax:
+    description: "4-button scene Pico (BRIGHT/ENTERTAIN/RELAX/OFF) - bridge-only"
+    packet: PAIR_B8
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x04
+      31: 0x00
+      37: 0x02
+      38: 0x27
+
+  4btn-scene-custom:
+    description: "4-button scene Pico (custom engraved)"
+    packet: PAIR_B9
+    btn_scheme: 0x0B
+    bytes:
+      30: 0x04
+      31: 0x00
+      37: 0x02
+      38: 0x28

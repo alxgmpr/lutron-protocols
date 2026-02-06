@@ -139,22 +139,16 @@ esphome:
             }
             else if (strcmp(cmd, "pairing_start") == 0) {
               uint32_t subnet = parse_hex(params["subnet"]);
+              uint32_t load_id = parse_hex(params["load_id"]);
+              uint8_t counter = params["counter"] | 0x06;
               if (subnet) {
-                id(cca_radio)->start_bridge_pairing(subnet);
+                id(cca_radio)->start_bridge_pairing(subnet, load_id, counter);
               }
             }
             else if (strcmp(cmd, "pairing_stop") == 0) {
               uint32_t subnet = parse_hex(params["subnet"]);
               if (subnet) {
                 id(cca_radio)->stop_bridge_pairing(subnet);
-              }
-            }
-            else if (strcmp(cmd, "pairing_pair") == 0 || strcmp(cmd, "pairing_assign") == 0) {
-              uint32_t subnet = parse_hex(params["subnet"]);
-              uint32_t factory_id = parse_hex(params["factory_id"]);
-              uint32_t zone_suffix = parse_hex(params["zone_suffix"]);
-              if (subnet && factory_id) {
-                id(cca_radio)->send_pair_assignment(subnet, factory_id, zone_suffix);
               }
             }
             // Vive pairing commands
@@ -439,41 +433,23 @@ api:
               strtoul(target_device_id.c_str(), nullptr, 0),
               high_trim, low_trim, phase_reverse != 0);
 
-    - service: pair_device
-      variables:
-        subnet: string
-        factory_id: string
-        zone_suffix: string
-      then:
-        - lambda: |-
-            id(cca_radio)->pair_device(
-              strtoul(subnet.c_str(), nullptr, 0),
-              strtoul(factory_id.c_str(), nullptr, 0),
-              strtoul(zone_suffix.c_str(), nullptr, 0));
-
     - service: start_pairing
       variables:
         subnet: string
+        load_id: string
+        counter: int
       then:
-        - lambda: id(cca_radio)->start_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
+        - lambda: |-
+            id(cca_radio)->start_bridge_pairing(
+              strtoul(subnet.c_str(), nullptr, 0),
+              strtoul(load_id.c_str(), nullptr, 0),
+              counter > 0 ? (uint8_t)counter : 0x06);
 
     - service: stop_pairing
       variables:
         subnet: string
       then:
         - lambda: id(cca_radio)->stop_bridge_pairing(strtoul(subnet.c_str(), nullptr, 0));
-
-    - service: send_pair_assignment
-      variables:
-        subnet: string
-        factory_id: string
-        zone_suffix: string
-      then:
-        - lambda: |-
-            id(cca_radio)->send_pair_assignment(
-              strtoul(subnet.c_str(), nullptr, 0),
-              strtoul(factory_id.c_str(), nullptr, 0),
-              strtoul(zone_suffix.c_str(), nullptr, 0));
 
     - service: send_bridge_beacon
       variables:

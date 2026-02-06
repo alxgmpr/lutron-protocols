@@ -41,6 +41,7 @@ interface Stats {
   clientsConnected: number;
   uptimeMs: number;
   lastPacketTime: number;
+  lastHeartbeatTime: number;
   espHost: string;
   udpPort: number;
 }
@@ -50,7 +51,7 @@ let espHost = process.env.ESP_HOST || "";
 
 class PacketServer {
   private packets: Packet[] = [];
-  private maxPackets = 1000; // Keep last 1000 packets
+  private maxPackets = 10000; // Keep last 10k packets
   private clients = new Set<WritableStreamDefaultWriter>();
   private startTime = Date.now();
   private txSocket: Socket;
@@ -60,6 +61,7 @@ class PacketServer {
     clientsConnected: 0,
     uptimeMs: 0,
     lastPacketTime: 0,
+    lastHeartbeatTime: 0,
     espHost: espHost,
     udpPort: 9433,
   };
@@ -90,6 +92,17 @@ class PacketServer {
         if (espHost !== rinfo.address) {
           espHost = rinfo.address;
           this.stats.espHost = rinfo.address;
+        }
+
+        // Heartbeat packet: [0xFF, 0x00] (FLAGS=0xFF, LEN=0)
+        if (msg.length === 2 && msg[0] === 0xFF && msg[1] === 0x00) {
+          this.stats.lastHeartbeatTime = Date.now();
+          // Push to SSE clients so frontend knows immediately
+          const hbData = `data: ${JSON.stringify({ type: "heartbeat" })}\n\n`;
+          for (const client of this.clients) {
+            client.write(hbData).catch(() => {});
+          }
+          return;
         }
 
         const pkt = this.parsePacket(msg);
@@ -278,15 +291,22 @@ class PacketServer {
     const lastPacketAge = this.stats.lastPacketTime > 0
       ? (now - this.stats.lastPacketTime) / 1000
       : null;
+    const lastHeartbeatAge = this.stats.lastHeartbeatTime > 0
+      ? (now - this.stats.lastHeartbeatTime) / 1000
+      : null;
 
-    // Consider healthy if we received a packet in the last 30 seconds
+    // RF traffic indicator (unchanged)
     const receivingPackets = lastPacketAge !== null && lastPacketAge < 30;
-    const healthy = receivingPackets && this.stats.clientsConnected > 0;
+    // Healthy = heartbeat received within 15s, with fallback to packet age
+    const healthy = lastHeartbeatAge !== null
+      ? lastHeartbeatAge < 15       // heartbeat-based (preferred)
+      : receivingPackets;            // fallback if no heartbeats yet
 
     return Response.json({
       host: espHost || null,
       port: 9433,
       last_packet_age: lastPacketAge,
+      last_heartbeat_age: lastHeartbeatAge,
       packets_received: this.stats.packetsReceived,
       clients_connected: this.stats.clientsConnected,
       receiving_packets: receivingPackets,
@@ -422,10 +442,6 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("pairing_start", allParams);
           case "/api/pairing/stop":
             return server.handleTxCommand("pairing_stop", allParams);
-          case "/api/pairing/pair":
-            return server.handleTxCommand("pairing_pair", allParams);
-          case "/api/pairing/assign":
-            return server.handleTxCommand("pairing_assign", allParams);
           case "/api/bridge/pair":
             return server.handleTxCommand("bridge_pair", allParams);
           case "/api/bridge/pair/stop":

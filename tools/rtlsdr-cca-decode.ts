@@ -535,10 +535,10 @@ function hexByte(b: number): string {
 
 function getTypeName(type: number): string {
   const names: Record<number, string> = {
-    0x88: "BTN_SHORT_A",
-    0x89: "BTN_LONG_A",
-    0x8a: "BTN_SHORT_B",
-    0x8b: "BTN_LONG_B",
+    0x88: "BTN_PRESS_A",
+    0x89: "BTN_RELEASE_A",
+    0x8a: "BTN_PRESS_B",
+    0x8b: "BTN_RELEASE_B",
     0x8c: "STATE_RPT",
     0x8d: "RETX_8D",
     0x8e: "BTN_RELEASE",

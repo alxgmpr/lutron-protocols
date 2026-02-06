@@ -236,10 +236,13 @@ class CC1101CCA : public Component,
   /**
    * @brief Start bridge pairing mode - sends active beacons that make devices flash
    * Uses 0x92 packets with format=0x0C and mode=0x02 (active pairing)
-   * Call stop_bridge_pairing() when done
+   * When a device announces itself (B0/B2), auto-runs full config sequence.
+   * Call stop_bridge_pairing() when done.
    * @param subnet 16-bit subnet (e.g., 0x2C90)
+   * @param load_id Load address (0 = auto-generate from subnet)
+   * @param counter Monotonic pairing counter (increments each pairing)
    */
-  void start_bridge_pairing(uint16_t subnet);
+  void start_bridge_pairing(uint16_t subnet, uint32_t load_id = 0, uint8_t counter = 0x06);
 
   /**
    * @brief Stop bridge pairing mode - sends stop beacon
@@ -249,24 +252,22 @@ class CC1101CCA : public Component,
   void stop_bridge_pairing(uint16_t subnet);
 
   /**
-   * @brief Send B0 pairing assignment to claim a device
-   * Based on real RadioRA3 captures - sends factory ID -> zone ID mapping
-   * @param subnet 16-bit subnet (e.g., 0x2C90)
-   * @param factory_id Device's factory ID from label (e.g., 0x0707DF6A)
-   * @param zone_suffix Zone suffix byte (e.g., 0x8F for zone 062C908F)
+   * @brief Run the full bridge config sequence after B0/B2 device discovery
+   * Phases 3-8: targeted beacon, unpair, config, zone binding, LED, handshake
+   * Called automatically from handle_rx_packet() when device announces.
+   * @param hw_id Device hardware ID (from B0/B2 bytes 16-19)
+   * @param subtype Device subtype (0x63=dimmer, 0x64=switch)
    */
-  void send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix);
+  void send_bridge_pair_config(uint32_t hw_id, uint8_t subtype);
 
   /**
-   * @brief Complete bridge pairing sequence for a device with known IDs
-   * 1. Sends active pairing beacon (10 packets)
-   * 2. Sends B0 assignment packets (30 packets)
-   * 3. Sends stop beacon (5 packets)
-   * @param subnet 16-bit subnet (e.g., 0x2C90)
-   * @param factory_id Device's factory ID (e.g., 0x0707DF6A)
-   * @param zone_suffix Zone suffix byte (e.g., 0x8F)
+   * @brief Send zone binding packets (format 0x1A, subcmd 0x40)
+   * Sends A3/A1/A2 in one round, called twice (byte 20 = 0x20, then 0x22)
+   * @param bridge_zone_id Bridge zone ID (little-endian)
+   * @param target_hw_id Device HW ID (big-endian)
+   * @param round 0 for first round (byte20=0x20), 1 for second (byte20=0x22)
    */
-  void pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix);
+  void send_zone_binding(uint32_t bridge_zone_id, uint32_t target_hw_id, uint8_t round);
 
   /**
    * @brief Check if pairing mode is active
@@ -487,6 +488,14 @@ class CC1101CCA : public Component,
   uint8_t pairing_beacon_count_{0};  // Counter for RX gap timing
   uint32_t last_rx_check_{0};
   uint32_t last_pairing_beacon_{0};  // For continuous beacon timing
+
+  // Bridge auto-pairing state (set by start_bridge_pairing)
+  uint32_t pairing_load_id_{0};         // Load address (e.g., 0x902C1A04)
+  uint8_t pairing_counter_{0x06};       // Monotonic counter, increments each pairing
+  uint32_t pairing_integ_ids_[4]{0};    // 4 integration IDs for this load
+  bool pairing_is_dimmer_{false};       // Set from B0/B2 subtype
+  uint32_t pairing_device_hw_id_{0};    // Filled from B0/B2 detection
+  uint8_t pairing_instance_{0x01};      // Device instance counter
 
   // Vive pairing state
   bool vive_pairing_active_{false};

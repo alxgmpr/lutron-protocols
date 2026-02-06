@@ -21,7 +21,8 @@ function App() {
     allPackets,
     paused, togglePause,
     clearAll,
-    connected
+    connected,
+    lastHeartbeat
   } = usePacketStream()
 
   const [devices] = useState<Record<string, Device>>({})
@@ -54,7 +55,7 @@ function App() {
         </section>
       </main>
 
-      <StatusBar connected={connected} lastTx={lastTx} />
+      <StatusBar connected={connected} lastTx={lastTx} lastHeartbeat={lastHeartbeat} />
     </div>
     </DeviceProvider>
     </ProtocolDefinitionProvider>

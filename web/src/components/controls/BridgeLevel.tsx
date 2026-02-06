@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function BridgeLevel({ showStatus }: Props) {
-  const { post } = useApi()
+  const { postJson } = useApi()
   const [subnet, setSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('06FDEFF4')
   const [level, setLevel] = useState(50)
@@ -21,7 +21,7 @@ export function BridgeLevel({ showStatus }: Props) {
     const targetLevel = lvl ?? level
     showStatus(`Setting ${targetId} to ${targetLevel}%...`)
     try {
-      const result = await post('/api/level', {
+      const result = await postJson('/api/level', {
         bridge: sourceId,
         target: '0x' + targetId.replace(/^0x/i, ''),
         level: targetLevel,
@@ -52,6 +52,8 @@ export function BridgeLevel({ showStatus }: Props) {
           onChange={e => setTargetId(e.target.value.replace(/^0x/i, ''))}
           className="w-[100px]"
         />
+      </div>
+      <div className="flex items-center gap-3">
         <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">level:</span>
         <Input
           type="number"
@@ -72,6 +74,7 @@ export function BridgeLevel({ showStatus }: Props) {
           className="w-[52px]"
         />
         <span className="text-[10px] text-[var(--text-muted)]">sec</span>
+        <div className="flex-1" />
         <Button variant="blue" onClick={() => handleSend()}>
           <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
           Set

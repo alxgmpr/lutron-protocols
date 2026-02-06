@@ -5,7 +5,6 @@ import { PicoPairing } from './PicoPairing'
 import { SaveFavorite } from './SaveFavorite'
 import { ResetPico } from './ResetPico'
 import { BridgeLevel } from './BridgeLevel'
-import { BridgePairing } from './BridgePairing'
 import { BridgeBeacon } from './BridgeBeacon'
 import { DeviceConfig } from './DeviceConfig'
 import { DeviceState } from './DeviceState'
@@ -49,7 +48,6 @@ export function ControlTabs({ showStatus }: ControlTabsProps) {
 
         <TabsContent value="bridge" className="mt-0">
           <BridgeLevel showStatus={showStatus} />
-          <BridgePairing showStatus={showStatus} />
           <BridgeBeacon showStatus={showStatus} />
           <DeviceConfig showStatus={showStatus} />
           <DeviceState showStatus={showStatus} />

@@ -142,10 +142,10 @@ describe('parseFieldValue - action', () => {
 })
 
 describe('identifyPacket', () => {
-  it('identifies BTN_SHORT_A from type byte 0x88', () => {
+  it('identifies BTN_PRESS_A from type byte 0x88', () => {
     const data = [0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04]
     const result = identifyPacket(data)
-    expect(result.typeName).toBe('BTN_SHORT_A')
+    expect(result.typeName).toBe('BTN_PRESS_A')
     expect(result.category).toBe('BUTTON')
     expect(result.usesBigEndianDeviceId).toBe(true)
   })

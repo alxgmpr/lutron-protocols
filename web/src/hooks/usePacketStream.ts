@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Packet, ParsedField } from '../types'
 
-const MAX_PACKETS = 500
+const MAX_PACKETS = 10000
 
 interface BackendPacket {
   direction: 'rx' | 'tx'
@@ -22,6 +22,7 @@ export function usePacketStream() {
   const [rxPackets, setRxPackets] = useState<Packet[]>([])
   const [allPackets, setAllPackets] = useState<Packet[]>([])
   const [connected, setConnected] = useState(false)
+  const [lastHeartbeat, setLastHeartbeat] = useState<number | null>(null)
 
   // Pause states
   const [pausedTx, setPausedTx] = useState(false)
@@ -102,7 +103,11 @@ export function usePacketStream() {
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data) as BackendPacket | { type: 'heartbeat' | 'connected' }
 
-        if ('type' in data && (data.type === 'heartbeat' || data.type === 'connected')) {
+        if ('type' in data && data.type === 'heartbeat') {
+          setLastHeartbeat(Date.now())
+          return
+        }
+        if ('type' in data && data.type === 'connected') {
           return
         }
 
@@ -159,6 +164,7 @@ export function usePacketStream() {
     rxPackets: pausedRx ? rxSnapshot : rxPackets,
     allPackets: paused ? allSnapshot : allPackets,
     connected,
+    lastHeartbeat,
     clearTx,
     clearRx,
     clearAll,

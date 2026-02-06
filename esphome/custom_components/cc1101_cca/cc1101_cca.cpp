@@ -59,6 +59,45 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
     return;  // Silently ignore undecoded packets
   }
 
+  // Auto-detect B0/B2 device announce during bridge pairing
+  // Device sends B0 (switch) or B2 (dimmer) with format 0x17
+  // HW ID is in bytes 16-19, subtype at byte 21
+  if (this->pairing_active_ && pkt.raw_len >= 22) {
+    uint8_t pkt_type = pkt.raw[0];
+    // B0-B3 all used for device announce (type rotates like 91/92/93 for beacons)
+    // Check format=0x17 to distinguish announces from beacons in same type range
+    if (pkt_type >= 0xB0 && pkt_type <= 0xB3 && pkt.raw[7] == 0x17) {
+      uint32_t hw_id = ((uint32_t)pkt.raw[16] << 24) |
+                       ((uint32_t)pkt.raw[17] << 16) |
+                       ((uint32_t)pkt.raw[18] << 8) |
+                       (uint32_t)pkt.raw[19];
+      uint8_t subtype = pkt.raw[21];  // 0x63=dimmer, 0x64=switch
+
+      // Only trigger once per pairing session
+      if (this->pairing_device_hw_id_ == 0 && hw_id != 0) {
+        this->pairing_device_hw_id_ = hw_id;
+        this->pairing_is_dimmer_ = (subtype == 0x63);
+        ESP_LOGI(TAG, "=== DEVICE DISCOVERED (B%d) ===", pkt_type == 0xB0 ? 0 : 2);
+        ESP_LOGI(TAG, "HW ID: 0x%08X, Type: %s (subtype=0x%02X)",
+                 hw_id, subtype == 0x63 ? "dimmer" : "switch", subtype);
+
+        // Run the full config sequence (blocking)
+        this->send_bridge_pair_config(hw_id, subtype);
+      }
+    }
+  }
+
+  // Auto-respond to handshake packets during bridge pairing
+  // Device sends odd types (C1, C7, CD, D3, D9, DF), bridge responds with even (+1)
+  if (this->pairing_active_ && pkt.raw_len >= 4) {
+    uint8_t pkt_type = pkt.raw[0];
+    if (pkt_type >= 0xC1 && pkt_type <= 0xDF && (pkt_type % 2 == 1)) {
+      ESP_LOGI(TAG, "Handshake request 0x%02X detected, responding with 0x%02X",
+               pkt_type, pkt_type + 1);
+      this->send_handshake_response(pkt_type, this->pairing_subnet_);
+    }
+  }
+
   // Auto-accept Vive pairing requests when in pairing mode
   // Device sends B9 with format=0x23 (byte 7), command=0x02 (byte 15)
   // Device ID is in bytes 2-5 (big-endian)
@@ -1692,7 +1731,7 @@ void CC1101CCA::send_bridge_unpair_dual(uint32_t zone_id_1, uint32_t zone_id_2, 
 
 // ========== BRIDGE PAIRING (based on real RadioRA3 captures) ==========
 
-void CC1101CCA::start_bridge_pairing(uint16_t subnet) {
+void CC1101CCA::start_bridge_pairing(uint16_t subnet, uint32_t load_id, uint8_t counter) {
   ESP_LOGI(TAG, "=== START BRIDGE PAIRING MODE ===");
   ESP_LOGI(TAG, "Subnet: 0x%04X", subnet);
   ESP_LOGI(TAG, "Beacon rotation: 0x93 (initial) -> 0x91 (active) -> 0x92 (continue)");
@@ -1705,8 +1744,35 @@ void CC1101CCA::start_bridge_pairing(uint16_t subnet) {
   this->pairing_beacon_count_ = 0;
   this->last_pairing_beacon_ = 0;  // Force immediate first beacon
 
+  // Initialize auto-pairing state
+  this->pairing_device_hw_id_ = 0;  // Reset - will be filled by B0/B2 detection
+  this->pairing_is_dimmer_ = false;
+  this->pairing_counter_ = counter;
+
+  // Auto-generate load_id from subnet if not provided: (subnet_hi << 24) | (subnet_lo << 16) | 0x1A04
+  if (load_id == 0) {
+    this->pairing_load_id_ = ((uint32_t)(subnet & 0xFF) << 24) |
+                              ((uint32_t)(subnet >> 8) << 16) |
+                              0x1A04;
+  } else {
+    this->pairing_load_id_ = load_id;
+  }
+
+  // Generate default integration IDs from subnet hash
+  // These are load-specific and reused when re-pairing different devices
+  uint32_t seed = ((uint32_t)subnet << 16) | 0xCC11;
+  this->pairing_integ_ids_[0] = 0x08512400 | (seed & 0xFF);       // Integration ID 1
+  this->pairing_integ_ids_[1] = 0x04D0B500 | ((seed >> 8) & 0xFF); // Integration ID 2
+  this->pairing_integ_ids_[2] = 0x02EE9400 | ((seed >> 4) & 0xFF); // Integration ID 3
+  this->pairing_integ_ids_[3] = 0x01D48D00 | ((seed >> 12) & 0xFF);// Integration ID 4
+
+  ESP_LOGI(TAG, "Load ID: 0x%08X, Counter: 0x%02X", this->pairing_load_id_, this->pairing_counter_);
+  ESP_LOGI(TAG, "Integration IDs: 0x%08X, 0x%08X, 0x%08X, 0x%08X",
+           this->pairing_integ_ids_[0], this->pairing_integ_ids_[1],
+           this->pairing_integ_ids_[2], this->pairing_integ_ids_[3]);
   ESP_LOGI(TAG, "Continuous pairing beacons started. Devices should flash.");
   ESP_LOGI(TAG, ">>> HOLD OFF BUTTON ON DEVICE FOR 10 SECONDS <<<");
+  ESP_LOGI(TAG, "Device will be auto-paired when B0/B2 announce is detected.");
 }
 
 void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
@@ -2487,182 +2553,500 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
   ESP_LOGI(TAG, "Accept + config sequence complete for device 0x%08X", device_id);
 }
 
-void CC1101CCA::send_pair_assignment(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
-  ESP_LOGI(TAG, "=== SEND PAIR ASSIGNMENT (B1) ===");
-  ESP_LOGI(TAG, "Subnet: 0x%04X, Factory ID: 0x%08X, Zone: 0x06%04X%02X",
-           subnet, factory_id, subnet, zone_suffix);
+// ========== AUTO-PAIRING: Full config sequence triggered by B0/B2 detection ==========
 
-  // Real bridge pattern analysis from real_bridge_repair_06fe43b1.cu8:
-  // - Uses B1 packet type (NOT B0!)
-  // - Starts at seq=0 with A0 prefix
-  // - Pattern: 0,2,6,7,8,0C,0E,12,13,14,18,1A,1E,1F,20,24,26,2A,2B,2C,30,32,36,37,38,3C,3E,42,43,44
-  // - Prefix: A0 for seq=0, A2 for seq=2,6, then AF for rest
+void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
+  ESP_LOGI(TAG, "=== BRIDGE AUTO-PAIR CONFIG SEQUENCE ===");
+  ESP_LOGI(TAG, "Device: 0x%08X, Type: %s", hw_id, subtype == 0x63 ? "dimmer" : "switch");
 
-  // Real bridge sequence pattern (extracted from successful pairing capture):
-  static const uint8_t real_seqs[] = {
-    0x00, 0x02, 0x06, 0x07, 0x08, 0x0C, 0x0E, 0x12, 0x13, 0x14,
-    0x18, 0x1A, 0x1E, 0x1F, 0x20, 0x24, 0x26, 0x2A, 0x2B, 0x2C,
-    0x30, 0x32, 0x36, 0x37, 0x38, 0x3C, 0x3E, 0x42, 0x43, 0x44
-  };
-  static const int num_seqs = sizeof(real_seqs) / sizeof(real_seqs[0]);
+  uint16_t subnet = this->pairing_subnet_;
+  uint32_t load_id = this->pairing_load_id_;
+  bool is_dimmer = (subtype == 0x63);
 
-  uint8_t packet[48];
+  // Build bridge zone IDs (alternating AD/AF)
+  // For subnet 0x2C90, zone_ad = 0x002C90AD → little-endian bytes: AD 90 2C 00
+  uint32_t zone_ad = ((uint32_t)(subnet >> 8) << 16) | ((uint32_t)(subnet & 0xFF) << 8) | 0xAD;
+  uint32_t zone_af = ((uint32_t)(subnet >> 8) << 16) | ((uint32_t)(subnet & 0xFF) << 8) | 0xAF;
 
-  for (int i = 0; i < num_seqs; i++) {
-    memset(packet, 0xCC, sizeof(packet));
+  // Stop beacon loop temporarily (we take over TX)
+  this->pairing_active_ = false;
 
-    packet[0] = 0xB1;  // B1 pairing assignment (real bridge uses B1, not B0!)
-    packet[1] = real_seqs[i];
-
-    // Zone prefix pattern from real bridge:
-    // - A0 for seq=0x00
-    // - A2 for seq=0x02, 0x06
-    // - AF for all others
-    uint8_t prefix;
-    if (real_seqs[i] == 0x00) prefix = 0xA0;
-    else if (real_seqs[i] == 0x02 || real_seqs[i] == 0x06) prefix = 0xA2;
-    else prefix = 0xAF;
-    packet[2] = prefix;
-    packet[3] = subnet & 0xFF;          // Subnet low byte
-    packet[4] = (subnet >> 8) & 0xFF;   // Subnet high byte
-    packet[5] = 0x7F;  // Special pairing suffix (always 7F in captures)
-
-    packet[6] = 0x21;
-    packet[7] = 0x17;  // Pairing format
-    packet[8] = 0x00;
-
-    // Broadcast address
-    packet[9] = 0xFF;
-    packet[10] = 0xFF;
-    packet[11] = 0xFF;
-    packet[12] = 0xFF;
-    packet[13] = 0xFF;
-
-    packet[14] = 0x08;
-    packet[15] = 0x05;
-
-    // Factory ID (big-endian, as printed on device label)
-    packet[16] = (factory_id >> 24) & 0xFF;
-    packet[17] = (factory_id >> 16) & 0xFF;
-    packet[18] = (factory_id >> 8) & 0xFF;
-    packet[19] = factory_id & 0xFF;
-
-    // Device type/configuration
-    // Dimmer (DVRF-6L): 0x63, 0x02
-    // Switch (DVRF-5NS): 0x64, 0x01
-    // Default to dimmer since it's more common
-    packet[20] = 0x04;
-    packet[21] = 0x63;  // Dimmer type
-    packet[22] = 0x02;  // Dimmer config
-    packet[23] = 0x01;
-    packet[24] = 0xFF;
-    packet[25] = 0x00;
-    packet[26] = 0x00;
-    packet[27] = 0x01;
-    packet[28] = 0x03;
-    packet[29] = 0x15;
-    packet[30] = 0x00;
-
-    // CRC at 31-32 (for 31-byte payload)
-    uint16_t crc = this->encoder_.calc_crc(packet, 31);
-    packet[31] = (crc >> 8) & 0xFF;
-    packet[32] = crc & 0xFF;
-
-    this->transmit_packet(packet, 33);
-
-    // Real bridge timing: bursts of packets with seq+1 are sent rapidly (~12ms apart)
-    // Larger gaps between bursts (~50ms)
-    // Detect if next packet is part of burst (seq difference of 1)
-    int delay_ms;
-    if (i + 1 < num_seqs) {
-      int seq_diff = real_seqs[i + 1] - real_seqs[i];
-      if (seq_diff == 1) {
-        delay_ms = 12;  // Fast burst timing
-      } else {
-        delay_ms = 50;  // Gap between bursts
-      }
-    } else {
-      delay_ms = 50;
-    }
-
-    // CRITICAL: Process RX during delays to avoid FIFO overflow
-    uint32_t delay_start = millis();
-    while (millis() - delay_start < delay_ms) {
+  // Helper: poll RX during delays
+  auto rx_delay = [this](int ms) {
+    uint32_t start = millis();
+    while (millis() - start < (uint32_t)ms) {
       this->radio_.check_rx();
       delay(1);
     }
+  };
+
+  // ===== Phase 3a: Targeted beacon 93 (format 0x0D) - "found" =====
+  ESP_LOGI(TAG, "Phase 3a: Targeted beacon (device found)");
+  for (int i = 0; i < 4; i++) {
+    this->send_targeted_beacon_93(i % 2 == 0 ? zone_ad : zone_af, hw_id, subnet);
+    rx_delay(65);
   }
 
-  ESP_LOGI(TAG, "Pair assignment packets sent (%d packets).", num_seqs);
+  // ===== Phase 3b: A1 format 0x0F subcmd 0x70 - initial integration ID binding =====
+  ESP_LOGI(TAG, "Phase 3b: Initial integration ID binding");
+  // A1 with slot 0x06/0x07 and counter - binds integration ID 1
+  {
+    uint8_t packet[24];
+    for (int i = 0; i < 2; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      packet[0] = 0xA1;
+      packet[1] = this->pairing_seq_;
+      // Bridge zone ID - little-endian
+      uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0F;
+      packet[8] = 0x00;
+      // Target HW ID - big-endian
+      packet[9] = (hw_id >> 24) & 0xFF;
+      packet[10] = (hw_id >> 16) & 0xFF;
+      packet[11] = (hw_id >> 8) & 0xFF;
+      packet[12] = hw_id & 0xFF;
+      packet[13] = 0xFE;
+      packet[14] = 0x06;
+      packet[15] = 0x70;
+      packet[16] = 0x06 + i;  // 0x06, then 0x07
+      // Integration ID 1
+      packet[17] = (this->pairing_integ_ids_[0] >> 24) & 0xFF;
+      packet[18] = (this->pairing_integ_ids_[0] >> 16) & 0xFF;
+      packet[19] = (this->pairing_integ_ids_[0] >> 8) & 0xFF;
+      packet[20] = this->pairing_integ_ids_[0] & 0xFF;
+      packet[21] = 0x00;
+      packet[22] = 0x00;
+      packet[23] = 0xCC;
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
 
-  // CRITICAL: After B0 assignment, device takes ~1.5-2 seconds to process and respond with B3
-  // We MUST stop all TX and listen during this time!
-  ESP_LOGI(TAG, "=== LISTENING FOR B3 RESPONSE (5 seconds - NO TX) ===");
-  ESP_LOGI(TAG, "Device should respond with B3 containing our assignment data");
+  // ===== Phase 3c: 82 zone assignment / unpair-clear =====
+  ESP_LOGI(TAG, "Phase 3c: Zone assignment / unpair-clear (0x82)");
+  for (int i = 0; i < 5; i++) {
+    this->send_zone_assignment_82(i % 2 == 0 ? zone_af : zone_ad, hw_id);
+    rx_delay(65);
+  }
 
-  // Put radio in RX mode and listen
-  this->radio_.start_rx();
+  // ===== Phase 4: Brief beacon resume (~2 seconds) =====
+  ESP_LOGI(TAG, "Phase 4: Brief beacon resume");
+  for (int i = 0; i < 20; i++) {
+    uint8_t beacon_type = (i % 3 == 0) ? 0x93 : (i % 3 == 1) ? 0x91 : 0x92;
+    this->send_bridge_beacon(beacon_type, subnet, this->pairing_seq_);
+    this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+    rx_delay(100);
+  }
 
-  uint32_t listen_start = millis();
-  int b3_count = 0;
+  // ===== Phase 5a: A1 format 0x0F subcmd 0x70 - integration ID 2 =====
+  ESP_LOGI(TAG, "Phase 5a: Integration ID 2 assignment");
+  {
+    uint8_t packet[24];
+    for (int i = 0; i < 2; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+      packet[0] = 0xA1;
+      packet[1] = this->pairing_seq_;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0F;
+      packet[8] = 0x00;
+      packet[9] = (hw_id >> 24) & 0xFF;
+      packet[10] = (hw_id >> 16) & 0xFF;
+      packet[11] = (hw_id >> 8) & 0xFF;
+      packet[12] = hw_id & 0xFF;
+      packet[13] = 0xFE;
+      packet[14] = 0x06;
+      packet[15] = 0x70;
+      packet[16] = 0x00;  // Slot 0x00 = assign integration ID 2
+      packet[17] = (this->pairing_integ_ids_[1] >> 24) & 0xFF;
+      packet[18] = (this->pairing_integ_ids_[1] >> 16) & 0xFF;
+      packet[19] = (this->pairing_integ_ids_[1] >> 8) & 0xFF;
+      packet[20] = this->pairing_integ_ids_[1] & 0xFF;
+      packet[21] = 0x00;
+      packet[22] = 0x00;
+      packet[23] = 0xCC;
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
 
-  while (millis() - listen_start < 5000) {  // Listen for 5 seconds
-    // Check for received packets
+  // ===== Phase 5b: A2 format 0x0F subcmd 0x70 - integration ID 1 reference =====
+  ESP_LOGI(TAG, "Phase 5b: Integration ID 1 reference");
+  {
+    uint8_t packet[24];
+    for (int i = 0; i < 2; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+      packet[0] = 0xA2;
+      packet[1] = this->pairing_seq_;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0F;
+      packet[8] = 0x00;
+      packet[9] = (hw_id >> 24) & 0xFF;
+      packet[10] = (hw_id >> 16) & 0xFF;
+      packet[11] = (hw_id >> 8) & 0xFF;
+      packet[12] = hw_id & 0xFF;
+      packet[13] = 0xFE;
+      packet[14] = 0x06;
+      packet[15] = 0x70;
+      packet[16] = 0x01;  // Slot 0x01 = reference integration ID 1
+      packet[17] = (this->pairing_integ_ids_[0] >> 24) & 0xFF;
+      packet[18] = (this->pairing_integ_ids_[0] >> 16) & 0xFF;
+      packet[19] = (this->pairing_integ_ids_[0] >> 8) & 0xFF;
+      packet[20] = this->pairing_integ_ids_[0] & 0xFF;
+      packet[21] = 0x00;
+      packet[22] = 0x00;
+      packet[23] = 0xCC;
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
+
+  // ===== Phase 5c: A3 format 0x0F subcmd 0x50 - capability config =====
+  ESP_LOGI(TAG, "Phase 5c: Capability config (subcmd 0x50)");
+  {
+    uint8_t packet[24];
+
+    // Switch: 1 packet with 05 04 [instance] 01 00 03
+    // Dimmer: 2 packets (initial + 0C 04 3B 92 00 03)
+    for (int p = 0; p < (is_dimmer ? 2 : 1); p++) {
+      for (int i = 0; i < 3; i++) {  // 3 retransmissions each
+        memset(packet, 0xCC, sizeof(packet));
+        uint8_t type = (i % 3 == 0) ? 0xA3 : (i % 3 == 1) ? 0xA1 : 0xA2;
+        uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+        packet[0] = type;
+        packet[1] = this->pairing_seq_;
+        packet[2] = zone & 0xFF;
+        packet[3] = (zone >> 8) & 0xFF;
+        packet[4] = (zone >> 16) & 0xFF;
+        packet[5] = (zone >> 24) & 0xFF;
+        packet[6] = 0x21;
+        packet[7] = 0x0F;
+        packet[8] = 0x00;
+        packet[9] = (hw_id >> 24) & 0xFF;
+        packet[10] = (hw_id >> 16) & 0xFF;
+        packet[11] = (hw_id >> 8) & 0xFF;
+        packet[12] = hw_id & 0xFF;
+        packet[13] = 0xFE;
+        packet[14] = 0x06;
+        packet[15] = 0x50;
+        packet[16] = 0x00;
+
+        if (p == 0) {
+          // Initial capability packet (switch and dimmer both get this)
+          packet[17] = 0x05;
+          packet[18] = 0x04;
+          packet[19] = this->pairing_instance_;  // Device instance counter
+          packet[20] = 0x01;
+          packet[21] = 0x00;
+          packet[22] = 0x03;
+        } else {
+          // Dimmer-specific second packet
+          packet[17] = 0x0C;
+          packet[18] = 0x04;
+          packet[19] = 0x3B;
+          packet[20] = 0x92;
+          packet[21] = 0x00;
+          packet[22] = 0x03;
+        }
+        packet[23] = 0xCC;
+
+        this->transmit_packet(packet, 24);
+        this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+        rx_delay(65);
+      }
+    }
+    this->pairing_instance_++;  // Increment for next device
+  }
+
+  // ===== Phase 5d: A1 format 0x0F subcmd 0x70 - integration ID 3 =====
+  ESP_LOGI(TAG, "Phase 5d: Integration ID 3 assignment");
+  {
+    uint8_t packet[24];
+    for (int i = 0; i < 2; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+      packet[0] = 0xA1;
+      packet[1] = this->pairing_seq_;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0F;
+      packet[8] = 0x00;
+      packet[9] = (hw_id >> 24) & 0xFF;
+      packet[10] = (hw_id >> 16) & 0xFF;
+      packet[11] = (hw_id >> 8) & 0xFF;
+      packet[12] = hw_id & 0xFF;
+      packet[13] = 0xFE;
+      packet[14] = 0x06;
+      packet[15] = 0x70;
+      packet[16] = 0x26;  // Slot 0x26 = assign integration ID 3
+      packet[17] = (this->pairing_integ_ids_[2] >> 24) & 0xFF;
+      packet[18] = (this->pairing_integ_ids_[2] >> 16) & 0xFF;
+      packet[19] = (this->pairing_integ_ids_[2] >> 8) & 0xFF;
+      packet[20] = this->pairing_integ_ids_[2] & 0xFF;
+      packet[21] = 0x00;
+      packet[22] = 0x00;
+      packet[23] = 0xCC;
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
+
+  // ===== Phase 5e: A2 format 0x0F subcmd 0x70 - integration ID 4 =====
+  ESP_LOGI(TAG, "Phase 5e: Integration ID 4 assignment");
+  {
+    uint8_t packet[24];
+    for (int i = 0; i < 2; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
+      packet[0] = 0xA2;
+      packet[1] = this->pairing_seq_;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0F;
+      packet[8] = 0x00;
+      packet[9] = (hw_id >> 24) & 0xFF;
+      packet[10] = (hw_id >> 16) & 0xFF;
+      packet[11] = (hw_id >> 8) & 0xFF;
+      packet[12] = hw_id & 0xFF;
+      packet[13] = 0xFE;
+      packet[14] = 0x06;
+      packet[15] = 0x70;
+      packet[16] = 0x2C;  // Slot 0x2C = assign integration ID 4
+      packet[17] = (this->pairing_integ_ids_[3] >> 24) & 0xFF;
+      packet[18] = (this->pairing_integ_ids_[3] >> 16) & 0xFF;
+      packet[19] = (this->pairing_integ_ids_[3] >> 8) & 0xFF;
+      packet[20] = this->pairing_integ_ids_[3] & 0xFF;
+      packet[21] = 0x00;
+      packet[22] = 0x00;
+      packet[23] = 0xCC;
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
+
+  // ===== Phase 5f/5g: Zone binding (format 0x1A, subcmd 0x40) - 2 rounds =====
+  ESP_LOGI(TAG, "Phase 5f: Zone binding round 1");
+  this->send_zone_binding(zone_ad, hw_id, 0);  // Round 1: byte20=0x20
+  rx_delay(200);
+
+  ESP_LOGI(TAG, "Phase 5g: Zone binding round 2");
+  this->send_zone_binding(zone_ad, hw_id, 1);  // Round 2: byte20=0x22
+  rx_delay(200);
+
+  // ===== Phase 6: Post-pairing beacons (subcmd 0x04 = "committed") =====
+  ESP_LOGI(TAG, "Phase 6: Post-pairing beacons (committed)");
+  {
+    // These use subcmd 0x04 instead of 0x02
+    uint8_t packet[24];
+    for (int i = 0; i < 10; i++) {
+      memset(packet, 0xCC, sizeof(packet));
+      uint8_t beacon_type = (i % 3 == 0) ? 0x93 : (i % 3 == 1) ? 0x91 : 0x92;
+      uint32_t zone = (i % 2 == 0) ? zone_af : zone_ad;
+
+      packet[0] = beacon_type;
+      packet[1] = this->pairing_seq_;
+      packet[2] = zone & 0xFF;
+      packet[3] = (zone >> 8) & 0xFF;
+      packet[4] = (zone >> 16) & 0xFF;
+      packet[5] = (zone >> 24) & 0xFF;
+      packet[6] = 0x21;
+      packet[7] = 0x0C;
+      packet[8] = 0x00;
+      packet[9] = 0xFF;
+      packet[10] = 0xFF;
+      packet[11] = 0xFF;
+      packet[12] = 0xFF;
+      packet[13] = 0xFF;
+      packet[14] = 0x08;
+      packet[15] = 0x04;  // 0x04 = committed (not 0x02 seeking)
+      // Subnet + load suffix (matching working beacon: 90 2C 1A 04)
+      packet[16] = subnet & 0xFF;
+      packet[17] = (subnet >> 8) & 0xFF;
+      packet[18] = 0x1A;
+      packet[19] = 0x04;
+
+      uint16_t crc = this->encoder_.calc_crc(packet, 22);
+      packet[22] = (crc >> 8) & 0xFF;
+      packet[23] = crc & 0xFF;
+
+      this->transmit_packet(packet, 24);
+      this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      rx_delay(65);
+    }
+  }
+
+  // ===== Phase 7: LED config (0x83 state report) =====
+  ESP_LOGI(TAG, "Phase 7: LED config (state report 0x83)");
+  for (int i = 0; i < 5; i++) {
+    this->send_state_report_83(i % 2 == 0 ? zone_ad : zone_af, hw_id);
+    rx_delay(65);
+  }
+
+  // ===== Phase 8: Handshake - listen for C1/C7/CD/D3/D9/DF and respond =====
+  ESP_LOGI(TAG, "Phase 8: Handshake - listening for device challenge packets (~5 seconds)");
+  // Re-enable pairing so handle_rx_packet auto-responds to Cx packets
+  this->pairing_active_ = true;
+  uint32_t hs_start = millis();
+  while (millis() - hs_start < 5000) {
     this->radio_.check_rx();
     delay(5);
-
-    // Log progress every second
-    if ((millis() - listen_start) % 1000 < 10) {
-      ESP_LOGI(TAG, "  Listening... %d seconds (B3 responses: %d)",
-               (millis() - listen_start) / 1000, b3_count);
-    }
   }
 
-  ESP_LOGI(TAG, "=== LISTEN PERIOD COMPLETE ===");
+  // Done - increment counter for next pairing
+  this->pairing_counter_++;
+
+  ESP_LOGI(TAG, "=== BRIDGE AUTO-PAIR CONFIG COMPLETE ===");
+  ESP_LOGI(TAG, "Device 0x%08X (%s) should now be paired to subnet 0x%04X",
+           hw_id, is_dimmer ? "dimmer" : "switch", subnet);
+  ESP_LOGI(TAG, "Load ID: 0x%08X", load_id);
+
+  // Stop pairing mode
+  this->stop_bridge_pairing(subnet);
 }
 
-void CC1101CCA::pair_device(uint16_t subnet, uint32_t factory_id, uint8_t zone_suffix) {
-  ESP_LOGI(TAG, "=== COMPLETE BRIDGE PAIRING SEQUENCE ===");
-  ESP_LOGI(TAG, "Subnet: 0x%04X, Factory: 0x%08X, Zone suffix: 0x%02X",
-           subnet, factory_id, zone_suffix);
+void CC1101CCA::send_zone_binding(uint32_t bridge_zone_id, uint32_t target_hw_id, uint8_t round) {
+  ESP_LOGD(TAG, "Zone binding round %d", round + 1);
 
-  // Step 1: Send active pairing beacons
-  ESP_LOGI(TAG, "Step 1: Sending active pairing beacons...");
-  this->start_bridge_pairing(subnet);
+  uint32_t zone_ad = bridge_zone_id;  // Primary zone
+  // Build AF variant: replace lowest byte AD→AF (little-endian: byte 0 is suffix)
+  uint32_t zone_af = (bridge_zone_id & 0xFFFFFF00) | 0xAF;
 
-  // Step 2: Brief pause for device to respond - poll RX during this time
-  ESP_LOGI(TAG, "Waiting for device response (polling RX)...");
-  uint32_t pause_start = millis();
-  while (millis() - pause_start < 500) {
-    this->radio_.check_rx();
-    delay(1);
+  uint8_t byte20_val = (round == 0) ? 0x20 : 0x22;
+  uint8_t byte18_val = (round == 0) ? 0xFC : 0xFB;
+
+  uint8_t packet[24];
+
+  // Packet 1: A3 with integration ID 3
+  for (int rep = 0; rep < 2; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+    uint32_t zone = (rep % 2 == 0) ? zone_ad : zone_af;
+    packet[0] = 0xA3;
+    packet[1] = this->pairing_seq_;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x1A;
+    packet[8] = 0x00;
+    packet[9] = (target_hw_id >> 24) & 0xFF;
+    packet[10] = (target_hw_id >> 16) & 0xFF;
+    packet[11] = (target_hw_id >> 8) & 0xFF;
+    packet[12] = target_hw_id & 0xFF;
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x40;
+    // Integration ID 3
+    packet[16] = (this->pairing_integ_ids_[2] >> 24) & 0xFF;
+    packet[17] = (this->pairing_integ_ids_[2] >> 16) & 0xFF;
+    packet[18] = (this->pairing_integ_ids_[2] >> 8) & 0xFF;
+    packet[19] = this->pairing_integ_ids_[2] & 0xFF;
+    packet[20] = 0x00;
+    packet[21] = byte20_val;
+    packet[22] = 0x00;
+    packet[23] = 0x03;
+    this->transmit_packet(packet, 24);
+    this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+
+    uint32_t start = millis();
+    while (millis() - start < 65) { this->radio_.check_rx(); delay(1); }
   }
 
-  // Step 3: Send B0 assignment packets
-  ESP_LOGI(TAG, "Step 2: Sending B0 pairing assignment packets...");
-  this->send_pair_assignment(subnet, factory_id, zone_suffix);
+  // Packet 2: A1 with integration ID 4
+  for (int rep = 0; rep < 2; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+    uint32_t zone = (rep % 2 == 0) ? zone_ad : zone_af;
+    packet[0] = 0xA1;
+    packet[1] = this->pairing_seq_;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x1A;
+    packet[8] = 0x00;
+    packet[9] = (target_hw_id >> 24) & 0xFF;
+    packet[10] = (target_hw_id >> 16) & 0xFF;
+    packet[11] = (target_hw_id >> 8) & 0xFF;
+    packet[12] = target_hw_id & 0xFF;
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x40;
+    // Integration ID 4
+    packet[16] = (this->pairing_integ_ids_[3] >> 24) & 0xFF;
+    packet[17] = (this->pairing_integ_ids_[3] >> 16) & 0xFF;
+    packet[18] = (this->pairing_integ_ids_[3] >> 8) & 0xFF;
+    packet[19] = this->pairing_integ_ids_[3] & 0xFF;
+    packet[20] = 0x00;
+    packet[21] = byte20_val;
+    packet[22] = 0x00;
+    packet[23] = 0x03;
+    this->transmit_packet(packet, 24);
+    this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 
-  // Step 4: Send stop beacons
-  ESP_LOGI(TAG, "Step 3: Sending stop beacons...");
-  this->stop_bridge_pairing(subnet);
-
-  // Step 5: Extended RX listening period
-  // RF analysis shows C responses (pairing ACKs) come 20+ seconds after B0 packets
-  // Continue polling RX to catch delayed device responses
-  ESP_LOGI(TAG, "Step 4: Extended RX listening for device response (30 seconds)...");
-  uint32_t listen_start = millis();
-  while (millis() - listen_start < 30000) {
-    this->radio_.check_rx();
-    delay(10);  // Poll every 10ms
-    // Log progress every 5 seconds
-    if ((millis() - listen_start) % 5000 < 15) {
-      ESP_LOGI(TAG, "  Listening... %d seconds elapsed", (millis() - listen_start) / 1000);
-    }
+    uint32_t start = millis();
+    while (millis() - start < 65) { this->radio_.check_rx(); delay(1); }
   }
 
-  ESP_LOGI(TAG, "=== PAIRING SEQUENCE COMPLETE ===");
-  ESP_LOGI(TAG, "Device 0x%08X should now respond to zone 0x06%04X%02X",
-           factory_id, subnet, zone_suffix);
+  // Packet 3: A2 with level=0000 and EF zone marker
+  for (int rep = 0; rep < 2; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+    uint32_t zone = (rep % 2 == 0) ? zone_ad : zone_af;
+    packet[0] = 0xA2;
+    packet[1] = this->pairing_seq_;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x1A;
+    packet[8] = 0x00;
+    packet[9] = (target_hw_id >> 24) & 0xFF;
+    packet[10] = (target_hw_id >> 16) & 0xFF;
+    packet[11] = (target_hw_id >> 8) & 0xFF;
+    packet[12] = target_hw_id & 0xFF;
+    packet[13] = 0xFE;
+    packet[14] = 0x06;
+    packet[15] = 0x40;
+    packet[16] = 0x00;
+    packet[17] = 0x00;
+    packet[18] = 0x00;
+    packet[19] = byte18_val;  // FC (round 1) or FB (round 2)
+    packet[20] = 0xEF;        // Zone marker
+    packet[21] = byte20_val;  // 0x20 (round 1) or 0x22 (round 2)
+    packet[22] = 0x00;
+    packet[23] = 0x03;
+    this->transmit_packet(packet, 24);
+    this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+
+    uint32_t start = millis();
+    while (millis() - start < 65) { this->radio_.check_rx(); delay(1); }
+  }
 }
 
 // ========== BRIDGE PAIRING PROTOCOL IMPLEMENTATIONS ==========
@@ -2847,9 +3231,9 @@ void CC1101CCA::send_targeted_beacon_93(uint32_t bridge_zone_id, uint32_t target
   packet[14] = 0x08;  // Different from broadcast 0x02
   packet[15] = 0x06;  // Device type (dimmer)
 
-  // Subnet - big-endian
-  packet[16] = (subnet >> 8) & 0xFF;
-  packet[17] = subnet & 0xFF;
+  // Subnet - little-endian (matching real captures: 90 2C for subnet 0x2C90)
+  packet[16] = subnet & 0xFF;
+  packet[17] = (subnet >> 8) & 0xFF;
 
   packet[18] = 0x1A;
   packet[19] = 0x04;
