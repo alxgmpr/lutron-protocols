@@ -13,6 +13,7 @@ export function BridgeLevel({ showStatus }: Props) {
   const [subnet, setSubnet] = useState('2C90')
   const [targetId, setTargetId] = useState('06FDEFF4')
   const [level, setLevel] = useState(50)
+  const [fade, setFade] = useState(0.25)
 
   const sourceId = `0x00${subnet.toUpperCase().padStart(4, '0')}AD`
 
@@ -23,7 +24,8 @@ export function BridgeLevel({ showStatus }: Props) {
       const result = await post('/api/level', {
         bridge: sourceId,
         target: '0x' + targetId.replace(/^0x/i, ''),
-        level: targetLevel
+        level: targetLevel,
+        fade
       })
       if (result.status === 'ok') {
         showStatus(`Set to ${result.level}%`, 'success')
@@ -59,6 +61,17 @@ export function BridgeLevel({ showStatus }: Props) {
           max={100}
           className="w-[48px]"
         />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">fade:</span>
+        <Input
+          type="number"
+          value={fade}
+          onChange={e => setFade(parseFloat(e.target.value) || 0)}
+          min={0}
+          max={63}
+          step={0.25}
+          className="w-[52px]"
+        />
+        <span className="text-[10px] text-[var(--text-muted)]">sec</span>
         <Button variant="blue" onClick={() => handleSend()}>
           <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
           Set

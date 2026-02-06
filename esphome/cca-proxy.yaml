@@ -58,9 +58,12 @@ esphome:
               uint32_t bridge = parse_hex(params["bridge"]);
               uint32_t target = parse_hex(params["target"]);
               int level = params["level"] | 0;
-              ESP_LOGD("udp_cmd", "level: bridge=0x%08X target=0x%08X level=%d", bridge, target, level);
+              float fade = params["fade"] | 0.25f;
+              uint8_t fade_qs = (uint8_t)(fade * 4);
+              if (fade_qs == 0) fade_qs = 1;
+              ESP_LOGD("udp_cmd", "level: bridge=0x%08X target=0x%08X level=%d fade=%u qs", bridge, target, level, fade_qs);
               if (bridge && target) {
-                id(cca_radio)->send_bridge_level(bridge, target, level);
+                id(cca_radio)->send_bridge_level(bridge, target, level, fade_qs);
               } else {
                 ESP_LOGW("udp_cmd", "level: missing bridge or target");
               }

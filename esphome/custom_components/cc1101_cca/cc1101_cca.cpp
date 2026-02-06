@@ -458,10 +458,10 @@ void CC1101CCA::send_level(uint32_t device_id, uint8_t level_percent) {
   ESP_LOGI(TAG, "Level command complete");
 }
 
-void CC1101CCA::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent) {
+void CC1101CCA::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent, uint8_t fade_time_qs) {
   ESP_LOGI(TAG, "=== BRIDGE-STYLE LEVEL COMMAND ===");
-  ESP_LOGI(TAG, "Bridge zone: %08X, Target: %08X, Level: %d%%",
-           bridge_zone_id, target_device_id, level_percent);
+  ESP_LOGI(TAG, "Bridge zone: %08X, Target: %08X, Level: %d%%, Fade: %u qs",
+           bridge_zone_id, target_device_id, level_percent, fade_time_qs);
 
   if (level_percent > 100) level_percent = 100;
 
@@ -512,7 +512,7 @@ void CC1101CCA::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_devic
     packet[17] = level_value & 0xFF;
 
     packet[18] = 0x00;
-    packet[19] = 0x01;
+    packet[19] = fade_time_qs;  // Fade time in quarter-seconds (0x01=250ms, 0x04=1s, 0x28=10s)
     packet[20] = 0x00;
     packet[21] = 0x00;
 
@@ -528,7 +528,7 @@ void CC1101CCA::send_bridge_level(uint32_t bridge_zone_id, uint32_t target_devic
     if (rep < 19) delay(60);
   }
 
-  ESP_LOGI(TAG, "=== BRIDGE LEVEL COMPLETE ===");
+  ESP_LOGI(TAG, "=== BRIDGE LEVEL COMPLETE (fade=%u qs) ===", fade_time_qs);
 }
 
 void CC1101CCA::send_pairing_b9(uint32_t device_id) {

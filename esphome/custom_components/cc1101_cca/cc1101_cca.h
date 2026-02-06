@@ -85,7 +85,7 @@ class CC1101CCA : public Component,
    * @param target_device_id Target dimmer's printed label ID (e.g., 0x06FDEFF4)
    * @param level_percent Level 0-100
    */
-  void send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent);
+  void send_bridge_level(uint32_t bridge_zone_id, uint32_t target_device_id, uint8_t level_percent, uint8_t fade_time_qs = 0x01);
 
   /**
    * @brief Send pairing using 0xB9 format (EXPERIMENTAL)

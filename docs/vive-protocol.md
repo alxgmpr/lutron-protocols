@@ -67,7 +67,7 @@ Vive commands use **hub ID** (4 bytes) + **zone ID** (1 byte) instead of device 
 ### ON/OFF/Level (format 0x0E)
 
 ```
-[type] [seq] [hub_id:4] 21 0e 00 00 00 00 [zone] ef 40 02 [level:2] 00 01 00 00 [CRC:2]
+[type] [seq] [hub_id:4] 21 0e 00 00 00 00 [zone] ef 40 02 [level:2] 00 [fade] 00 00 [CRC:2]
 ```
 
 | Field | Offset | Value |
@@ -79,7 +79,7 @@ Vive commands use **hub ID** (4 bytes) + **zone ID** (1 byte) instead of device 
 | Command class | 14 | 0x40 (on/off/level) |
 | Subcommand | 15 | 0x02 |
 | Level | 16-17 | 0x0000 (off) to 0xFEFF (100%) |
-| Byte 19 | 19 | 0x01 (dimmer), 0x00 (relay) |
+| Fade time | 19 | Quarter-seconds (0x01=250ms, 0x04=1s, 0x28=10s) |
 
 12 packets per command, type rotates 0x89/0x8A/0x8B, seq increments by 6.
 
@@ -92,6 +92,17 @@ Vive commands use **hub ID** (4 bytes) + **zone ID** (1 byte) instead of device 
 | 50% | 0x7F 0x7F |
 | 75% | 0xBF 0x3F |
 | ON (100%) | 0xFE 0xFF |
+
+**Fade time control**: Byte 19 controls the transition fade time in units of 0.25 seconds (quarter-seconds). Discovered from CC1101 captures of Caseta LEAP commands with different transition times:
+
+| Fade Time | Byte 19 | Notes |
+|-----------|---------|-------|
+| 250ms | 0x01 | Default (Vive hub default) |
+| 1 second | 0x04 | Caseta LEAP `{"CommandType":"GoToLevel","Level":10,"FadeTime":"00:01"}` |
+| 5 seconds | 0x14 | |
+| 10 seconds | 0x28 | Caseta LEAP `{"CommandType":"GoToLevel","Level":10,"FadeTime":"00:10"}` |
+
+The encoding is: `byte19 = seconds × 4`. This field is shared between Vive and Caseta bridge commands — both use the same format 0x0E with identical fade time encoding at byte 19.
 
 ### Hold-Start (format 0x09)
 
