@@ -706,6 +706,27 @@ Byte 20: 0x1E + button_code (save target)
 
 The dimmer enters save mode after ~5 seconds of continuous PRESS packets.
 
+## Vive Protocol
+
+Lutron Vive uses the same CCA radio layer but addresses devices by **hub ID + zone ID** instead of device ID. This enables room-level group control from a central Vive hub.
+
+See **[docs/vive-protocol.md](vive-protocol.md)** for complete Vive documentation including:
+- Pairing protocol (53-byte config packets)
+- ON/OFF, raise/lower command formats
+- FCJS-010 dimmer-specific configuration
+- Universal dimming command class (0x42) shared between Pico and Vive
+
+### Dimming Command Class 0x42
+
+Both Pico and Vive use the same two-phase dimming approach with command class `0x42`:
+
+| Phase | Subcommand | Pico Format | Vive Format | Purpose |
+|-------|------------|-------------|-------------|---------|
+| 1 | 0x00 | 0x0C | 0x09 | Hold-start (initiate dim) |
+| 2 | 0x02 | 0x0E | 0x0b | Dim step (actual dimming) |
+
+Direction encoding differs: Pico uses 0x01/0x00 (raise/lower), Vive uses 0x03/0x02.
+
 ## ESPHome Integration
 
 The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete ESPHome component for CC1101-based transmission and reception.
