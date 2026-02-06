@@ -14,34 +14,13 @@
 
 import { createSocket, type RemoteInfo, type Socket } from "dgram";
 import { join } from "path";
+import { identifyPacket, ButtonNames } from "../../protocol/protocol-ui";
 
 // Path to built frontend
 const STATIC_DIR = join(import.meta.dir, "../../web/dist");
 
 // ESP32 TX port (for sending commands)
 const ESP_TX_PORT = 9434;
-
-// Packet types
-const PACKET_TYPES: Record<number, string> = {
-  0x88: "BTN_SHORT_A",
-  0x89: "BTN_LONG_A",
-  0x8a: "BTN_SHORT_B",
-  0x8b: "BTN_LONG_B",
-  0x81: "LEVEL_81",
-  0x82: "LEVEL_82",
-  0x83: "LEVEL_83",
-  0x90: "DISCOVERY_B0",
-  0x91: "BEACON_91",
-  0x92: "BEACON_92",
-  0x93: "BEACON_93",
-  0xb0: "DIMMER_DISCOVERY",
-  0xb1: "PAIRING_B1",
-  0xb2: "PAIRING_B2",
-  0xb8: "VIVE_DEVICE_REQ",   // Device pairing request to hub
-  0xb9: "PAIRING_B9",
-  0xba: "VIVE_BEACON",       // Vive hub enter pairing mode
-  0xbb: "VIVE_ACCEPT",       // Vive hub accept/exit pairing
-};
 
 // Packet format expected by frontend
 interface Packet {
@@ -66,8 +45,8 @@ interface Stats {
   udpPort: number;
 }
 
-// ESP32 host configuration (can be changed at runtime)
-let espHost = process.env.ESP_HOST || "cca-proxy.local";
+// ESP32 host - auto-detected from last UDP packet source
+let espHost = process.env.ESP_HOST || "";
 
 class PacketServer {
   private packets: Packet[] = [];
@@ -107,6 +86,12 @@ class PacketServer {
 
     udp.on("message", (msg: Buffer, rinfo: RemoteInfo) => {
       try {
+        // Auto-detect ESP32 host from UDP source
+        if (espHost !== rinfo.address) {
+          espHost = rinfo.address;
+          this.stats.espHost = rinfo.address;
+        }
+
         const pkt = this.parsePacket(msg);
         if (pkt) {
           this.handlePacket(pkt);
@@ -143,13 +128,24 @@ class PacketServer {
     const direction = (flags & 0x80) ? "tx" : "rx";
     const rssi = direction === "rx" ? -(flags & 0x7f) : 0;
 
-    const typeCode = data[0];
-    const typeName = PACKET_TYPES[typeCode] ?? `0x${typeCode.toString(16).padStart(2, "0")}`;
+    // Use multi-signal identification (type byte + format byte)
+    const identified = identifyPacket(data);
+    const typeName = identified.typeName;
 
-    // Extract device ID (bytes 2-5, big-endian)
-    const deviceId = Array.from(data.subarray(2, 6))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    // Extract device ID with correct endianness
+    let deviceId: string;
+    if (identified.usesBigEndianDeviceId) {
+      // Big-endian: bytes 2-5 in order
+      deviceId = Array.from(data.subarray(2, 6))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    } else {
+      // Little-endian: bytes 2-5 reversed
+      deviceId = Array.from(data.subarray(2, 6))
+        .reverse()
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
 
     // Extract sequence number (byte 1)
     const seq = data[1];
@@ -164,17 +160,11 @@ class PacketServer {
       seq,
     };
 
-    // Add button info for button packets
-    if (typeCode >= 0x88 && typeCode <= 0x8b && data.length > 10) {
+    // Add button info for button packets (0x02=ON, 0x03=FAV, etc.)
+    if (identified.category === "BUTTON" && data.length > 10) {
       const button = data[10];
-      const buttonNames: Record<number, string> = {
-        0x01: "On",
-        0x02: "Fav",
-        0x03: "Off",
-        0x04: "Raise",
-        0x05: "Lower",
-      };
-      details.button = buttonNames[button] ?? `0x${button.toString(16)}`;
+      details.button = (ButtonNames as Record<number, string>)[button]
+        ?? `0x${button.toString(16).padStart(2, "0")}`;
     }
 
     return {
@@ -294,23 +284,14 @@ class PacketServer {
     const healthy = receivingPackets && this.stats.clientsConnected > 0;
 
     return Response.json({
-      host: espHost,
+      host: espHost || null,
       port: 9433,
-      default_host: "cca-proxy.local",
       last_packet_age: lastPacketAge,
       packets_received: this.stats.packetsReceived,
       clients_connected: this.stats.clientsConnected,
       receiving_packets: receivingPackets,
       healthy,
     }, {
-      headers: { "Access-Control-Allow-Origin": "*" },
-    });
-  }
-
-  handleSetConfig(host: string): Response {
-    espHost = host;
-    this.stats.espHost = host;
-    return Response.json({ status: "ok", host }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });
   }
@@ -401,13 +382,6 @@ const httpServer = Bun.serve({
           if (req.method === "GET") {
             return server.handleGetConfig();
           }
-          if (req.method === "POST") {
-            const body = await req.json() as { host?: string };
-            if (body.host) {
-              return server.handleSetConfig(body.host);
-            }
-            return Response.json({ error: "Missing host" }, { status: 400 });
-          }
           break;
       }
 
@@ -475,6 +449,8 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("vive_raise", allParams);
           case "/api/vive/lower":
             return server.handleTxCommand("vive_lower", allParams);
+          case "/api/vive/level":
+            return server.handleTxCommand("vive_level", allParams);
           case "/api/vive/toggle":
             return server.handleTxCommand("vive_toggle", allParams);
           case "/api/vive/cmd":
