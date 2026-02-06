@@ -49,7 +49,8 @@ export interface ParsedField {
 
 export interface Packet {
   time: string
-  type: string        // e.g., "LEVEL", "BTN_PRESS_A", "BEACON", "PAIRING"
+  protocol: 'cca' | 'ccx'
+  type: string        // e.g., "LEVEL", "BTN_PRESS_A", "BEACON", "PAIRING" (CCA) or "LEVEL_CONTROL", "BUTTON_PRESS" (CCX)
   summary: string     // Short description for display
   details: string[]   // Additional info parts
   rawBytes?: string   // Hex bytes if available

@@ -5,6 +5,7 @@ const MAX_PACKETS = 10000
 
 interface BackendPacket {
   direction: 'rx' | 'tx'
+  protocol?: 'cca' | 'ccx'
   type: string
   time: string
   device_id?: string
@@ -120,6 +121,7 @@ export function usePacketStream() {
 
         const packet: Packet = {
           time: pkt.time,
+          protocol: pkt.protocol ?? 'cca',
           type: pkt.type,
           summary: pkt.summary || pkt.device_id || '',
           details: formatDetails(pkt.details, pkt.rssi),

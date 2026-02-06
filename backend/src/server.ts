@@ -25,6 +25,7 @@ const ESP_TX_PORT = 9434;
 // Packet format expected by frontend
 interface Packet {
   direction: "rx" | "tx";
+  protocol: "cca" | "ccx";
   type: string;
   time: string;
   device_id?: string;
@@ -68,6 +69,7 @@ class PacketServer {
 
   constructor() {
     this.startUdpReceiver();
+    this.startCcxReceiver();
     this.txSocket = createSocket("udp4");
   }
 
@@ -121,6 +123,56 @@ class PacketServer {
     udp.bind(9433, () => {
       console.log("UDP listening on port 9433");
     });
+  }
+
+  private startCcxReceiver() {
+    const udp = createSocket("udp4");
+
+    udp.on("message", (msg: Buffer) => {
+      try {
+        const json = JSON.parse(msg.toString());
+        const pkt = this.parseCcxPacket(json);
+        if (pkt) {
+          console.log(`CCX: ${pkt.type} from ${pkt.device_id}`);
+          this.handlePacket(pkt);
+        }
+      } catch (e) {
+        console.error("Failed to parse CCX packet:", e);
+      }
+    });
+
+    udp.on("error", (err) => {
+      console.error("CCX UDP error:", err);
+    });
+
+    udp.bind(9435, () => {
+      console.log("CCX UDP listening on port 9435");
+    });
+  }
+
+  private parseCcxPacket(json: Record<string, unknown>): Packet | null {
+    const parsed = json.parsed as Record<string, unknown> | undefined;
+    if (!parsed) return null;
+
+    const msgType = parsed.type as string ?? "UNKNOWN";
+    const srcAddr = (json.srcAddr as string) ?? "";
+    const timestamp = (json.timestamp as string) ?? new Date().toISOString();
+
+    // Pass through the decoded CBOR body as JSON for display
+    const body = json.body as Record<string, unknown> ?? {};
+    const cborJson = JSON.stringify(body);
+
+    return {
+      direction: "rx",
+      protocol: "ccx",
+      type: msgType,
+      time: timestamp,
+      device_id: srcAddr,
+      source_id: srcAddr,
+      summary: srcAddr,
+      details: {},
+      raw_hex: cborJson,
+    };
   }
 
   private parsePacket(buf: Buffer): Packet | null {
@@ -182,6 +234,7 @@ class PacketServer {
 
     return {
       direction,
+      protocol: "cca" as const,
       type: typeName,
       time: new Date().toISOString(),
       device_id: deviceId,

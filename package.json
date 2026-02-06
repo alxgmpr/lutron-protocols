@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "predev": "(lsof -ti :5001 | xargs kill -9; lsof -ti :9433 | xargs kill -9; lsof -ti :5173 | xargs kill -9) 2>/dev/null || true",
-    "dev": "concurrently -n backend,web -c blue,green \"npm run dev -w backend\" \"npm run dev -w web\"",
+    "dev": "concurrently -n backend,web,ccx -c blue,green,magenta \"npm run dev -w backend\" \"npm run dev -w web\" \"bun run tools/ccx-sniffer.ts --live --relay\"",
     "build": "npm run build -w web",
     "test": "npm run test -w web",
     "codegen": "cargo run --manifest-path cca/Cargo.toml --release -- codegen",

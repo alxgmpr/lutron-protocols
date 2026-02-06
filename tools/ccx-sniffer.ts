@@ -106,6 +106,9 @@ function buildTsharkArgs(): string[] {
     }
   }
 
+  // Line-buffered output so packets appear in real-time (not buffered until exit)
+  tsharkArgs.push("-l");
+
   // Thread key is read from Wireshark's ieee802154_keys UAT file automatically
   // Filter to Lutron UDP port
   tsharkArgs.push("-Y", `udp.port == ${CCX_CONFIG.udpPort}`);
