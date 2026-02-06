@@ -1827,7 +1827,7 @@ void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool tu
       packet[17] = 0x00;
     }
     packet[18] = 0x00;
-    packet[19] = 0x00;
+    packet[19] = 0x01;  // Always 0x01 (RTL-SDR CRC-verified, was 0x00)
     packet[20] = 0x00;
     packet[21] = 0x00;
 
@@ -1855,53 +1855,28 @@ void CC1101CCA::send_vive_off(uint32_t hub_id, uint8_t zone_id) {
 }
 
 void CC1101CCA::send_vive_raise(uint32_t hub_id, uint8_t zone_id) {
-  // Raise command - needs capture verification
-  // Hypothesis: same format but different packet type or command bytes
-  ESP_LOGI(TAG, "=== VIVE RAISE ===");
-  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X", hub_id, zone_id);
-
-  uint8_t h0 = (hub_id >> 24) & 0xFF;
-  uint8_t h1 = (hub_id >> 16) & 0xFF;
-  uint8_t h2 = (hub_id >> 8) & 0xFF;
-  uint8_t h3 = hub_id & 0xFF;
-
-  uint8_t packet[24];
-  static uint8_t vive_cmd_seq = 0x01;
-
-  for (int rep = 0; rep < 12; rep++) {
-    memset(packet, 0x00, sizeof(packet));
-
-    packet[0] = 0x89;                   // Try 0x89 for raise (BTN_LONG_A)
-    packet[1] = vive_cmd_seq;
-    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
-    packet[6] = 0x21;
-    packet[7] = 0x0E;
-    packet[8] = 0x00;
-    packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
-    packet[12] = zone_id;
-    packet[13] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
-    packet[14] = 0x40;
-    packet[15] = 0x02;
-    packet[16] = 0xFE;                  // Raise = fe ff (like ON, held)
-    packet[17] = 0xFF;
-    packet[18] = 0x00; packet[19] = 0x00; packet[20] = 0x00; packet[21] = 0x00;
-
-    uint16_t crc = this->encoder_.calc_crc(packet, 22);
-    packet[22] = (crc >> 8) & 0xFF;
-    packet[23] = crc & 0xFF;
-
-    this->transmit_packet(packet, 24);
-    vive_cmd_seq += 6;
-    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
-    delay(15);
-  }
-  ESP_LOGI(TAG, "Vive raise sent");
+  // Raise = format 0x0b, command 0x42, subcommand 0x02, direction 0x03
+  // Verified from real Vive hub CC1101 capture (2026-02-06):
+  //   8b 01 01 7d 53 63 21 0b 00 00 00 00 39 ef 42 02 03 00 00 cc cc cc [CRC]
+  send_vive_dim_command(hub_id, zone_id, 0x03);
 }
 
 void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
-  // Lower command - needs capture verification
-  ESP_LOGI(TAG, "=== VIVE LOWER ===");
-  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X", hub_id, zone_id);
+  // Lower = format 0x0b, command 0x42, subcommand 0x02, direction 0x02
+  // Verified from real Vive hub CC1101 capture (2026-02-06):
+  //   89 01 01 7d 53 63 21 0b 00 00 00 00 39 ef 42 02 02 00 00 cc cc cc [CRC]
+  send_vive_dim_command(hub_id, zone_id, 0x02);
+}
+
+void CC1101CCA::send_vive_dim_command(uint32_t hub_id, uint8_t zone_id, uint8_t direction) {
+  // Vive dim command: hold-start (format 0x09) then dim steps (format 0x0b)
+  // Direction: 0x03 = raise, 0x02 = lower
+  // Real hub sequence (from CC1101 capture):
+  //   1. Format 0x09 hold-start: 8a 01 01 7d 53 63 21 09 00 00 00 00 39 ef 42 00 02 cc...cc [CRC]
+  //   2. Format 0x0b dim step:   8b 01 01 7d 53 63 21 0b 00 00 00 00 39 ef 42 02 03 00 00 cc cc cc [CRC]
+  ESP_LOGI(TAG, "=== VIVE DIM ===");
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X, Direction: %s",
+           hub_id, zone_id, direction == 0x03 ? "RAISE" : "LOWER");
 
   uint8_t h0 = (hub_id >> 24) & 0xFF;
   uint8_t h1 = (hub_id >> 16) & 0xFF;
@@ -1911,23 +1886,24 @@ void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
   uint8_t packet[24];
   static uint8_t vive_cmd_seq = 0x01;
 
-  for (int rep = 0; rep < 12; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+  // Phase 1: Send hold-start burst (format 0x09) - tells device a dim operation is starting
+  // Real hub: 8a 01 01 7d 53 63 21 09 00 00 00 00 39 ef 42 00 02 cc cc cc cc cc [CRC]
+  for (int rep = 0; rep < 6; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
 
-    packet[0] = 0x89;                   // Try 0x89 for lower too
+    packet[0] = 0x89 + (rep % 3);       // Rotate 89/8a/8b
     packet[1] = vive_cmd_seq;
     packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
     packet[6] = 0x21;
-    packet[7] = 0x0E;
+    packet[7] = 0x09;                   // Format 0x09 = hold-start
     packet[8] = 0x00;
     packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
     packet[12] = zone_id;
-    packet[13] = 0xEF;  // Always 0xEF (constant, not zone-derived!)
-    packet[14] = 0x40;
-    packet[15] = 0x02;
-    packet[16] = 0x00;                  // Lower = 00 00 (like OFF, held)
-    packet[17] = 0x00;
-    packet[18] = 0x00; packet[19] = 0x00; packet[20] = 0x00; packet[21] = 0x00;
+    packet[13] = 0xEF;
+    packet[14] = 0x42;                  // Command class: dim/level
+    packet[15] = 0x00;                  // Subcommand: hold-start (0x00, not 0x02)
+    packet[16] = direction;             // 0x03 = raise, 0x02 = lower
+    // Bytes 17-21 are CC padding (already set by memset)
 
     uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
@@ -1938,7 +1914,37 @@ void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
     if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
     delay(15);
   }
-  ESP_LOGI(TAG, "Vive lower sent");
+
+  // Phase 2: Send dim step burst (format 0x0b) - the actual dim commands
+  for (int rep = 0; rep < 12; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = 0x89 + (rep % 3);       // Rotate 89/8a/8b
+    packet[1] = vive_cmd_seq;
+    packet[2] = h0; packet[3] = h1; packet[4] = h2; packet[5] = h3;
+    packet[6] = 0x21;
+    packet[7] = 0x0B;                   // Format 0x0b = dim step
+    packet[8] = 0x00;
+    packet[9] = 0x00; packet[10] = 0x00; packet[11] = 0x00;
+    packet[12] = zone_id;
+    packet[13] = 0xEF;
+    packet[14] = 0x42;                  // Command class: dim/level
+    packet[15] = 0x02;                  // Subcommand: single step
+    packet[16] = direction;             // 0x03 = raise, 0x02 = lower
+    packet[17] = 0x00;
+    packet[18] = 0x00;
+    // Bytes 19-21 are CC padding (already set by memset)
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    vive_cmd_seq += 6;
+    if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
+    delay(15);
+  }
+  ESP_LOGI(TAG, "Vive dim command sent (6 hold-start + 12 step packets)");
 }
 
 // Legacy functions - keep for compatibility but they use wrong format
@@ -2133,10 +2139,10 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
   };
 
   // Helper to build packet WITHOUT seq byte (used by 87, 93, 9f, ab, 8d, b7, bd, c3)
-  // Format: type + hub_id + rest... (NO seq byte - one byte shorter!)
-  // Real example: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc
+  // Format: type + hub_id + rest... (NO seq byte - one byte shorter content, but still 53 bytes OTA!)
+  // Real example: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc...cc [CRC:2]
   auto build_packet_no_seq = [&](uint8_t* pkt, uint8_t type, uint8_t proto, uint8_t fmt) {
-    memset(pkt, 0xCC, 36);  // One byte shorter (no seq)
+    memset(pkt, 0xCC, 53);  // ALL pairing packets are 53 bytes OTA
     pkt[0] = type;
     pkt[1] = h0; pkt[2] = h1; pkt[3] = h2; pkt[4] = h3;  // Hub ID starts at byte 1!
     pkt[5] = proto;          // Protocol byte
@@ -2148,10 +2154,10 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     pkt[14] = 0x0A;          // Accept command
     pkt[15] = h0; pkt[16] = h1; pkt[17] = h2; pkt[18] = h3;  // Hub ID
     pkt[19] = h0; pkt[20] = h1; pkt[21] = h2; pkt[22] = h3;  // Hub ID again
-    // Bytes 23-33 are CC padding
-    uint16_t crc = this->encoder_.calc_crc(pkt, 34);
-    pkt[34] = (crc >> 8) & 0xFF;
-    pkt[35] = crc & 0xFF;
+    // Bytes 23-50 are CC padding (already set by memset)
+    uint16_t crc = this->encoder_.calc_crc(pkt, 51);
+    pkt[51] = (crc >> 8) & 0xFF;
+    pkt[52] = crc & 0xFF;
   };
 
   uint8_t packet[53];  // Max size for 53-byte pairing packets
@@ -2184,33 +2190,74 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     delay(70);
   }
 
-  // Phase 2: Multi-type retransmissions of accept (87, 93, 9f, ab) - NO seq byte!
-  // These are shorter packets (the no-seq format), matching real hub captures
-  // Real: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc
-  ESP_LOGI(TAG, "Phase 2: Sending accept retransmissions (87, 93, 9f, ab) - no seq");
-  uint8_t config_types_1[] = {0x87, 0x93, 0x9f, 0xab};
-  for (uint8_t type : config_types_1) {
+  // Phase 2: Multi-type retransmissions of accept (87, 8d, 93, 9f, ab, b1) - NO seq byte!
+  // All pairing packets are 53 bytes OTA with CC padding
+  // Real: 87 01 7d 53 63 21 10 00 02 1a d0 c3 fe 60 0a 01 7d 53 63 01 7d 53 63 cc...cc [CRC:2]
+  ESP_LOGI(TAG, "Phase 2: Sending accept retransmissions (87,8d,93,9f,ab,b1) - no seq, 53 bytes");
+  uint8_t accept_types[] = {0x87, 0x8D, 0x93, 0x9F, 0xAB, 0xB1};
+  for (uint8_t type : accept_types) {
     build_packet_no_seq(packet, type, 0x21, 0x10);
-    this->transmit_packet(packet, 36);  // 36 bytes (no seq)
+    this->transmit_packet(packet, 53);  // 53 bytes like all pairing packets
     delay(70);
   }
 
-  // Phase 3: Send A9 zone assignment packet (format 0x28)
-  // Real captures show: a9 01 01 7d 53 63 28 03 01 39 6c 21 1a 00 [device:4] fe 06 40 00 00 00
-  // Where bytes 8-10 are "01 39 XX" with XX being a zone reference counter
-  // The zone reference (6c, 72, 7a) varies by zone but doesn't need to match exactly
-  ESP_LOGI(TAG, "Phase 3: Sending A9 zone assignment (format 0x28)");
+  // Phase 2b: Send format 0x13 config packet (dimming capability config) - 53 bytes!
+  // RTL-SDR CRC-verified: aa 93 01 7d 53 63 21 13 00 09 62 66 57 fe 06 50 00 0d 08 02 0f 03 09 62 66 57 00 cc...cc [CRC:2]
+  // Device ID appears TWICE (bytes 9-12 AND 22-25), byte 26 = 0x00, then CC padding
+  // This tells the device to accept raise/lower commands - without it, only ON/OFF works
+  ESP_LOGI(TAG, "Phase 2b: Sending format 0x13 config (53 bytes, dimming capability)");
   {
-    uint8_t a9_pkt[26];
-    memset(a9_pkt, 0x00, sizeof(a9_pkt));
+    uint8_t cfg13_pkt[53];
+    memset(cfg13_pkt, 0xCC, sizeof(cfg13_pkt));  // CC padding
+    cfg13_pkt[0] = 0xAA;
+    cfg13_pkt[1] = 0x01;  // seq
+    cfg13_pkt[2] = h0; cfg13_pkt[3] = h1; cfg13_pkt[4] = h2; cfg13_pkt[5] = h3;
+    cfg13_pkt[6] = 0x21;
+    cfg13_pkt[7] = 0x13;  // Format 0x13 = dimming capability config
+    cfg13_pkt[8] = 0x00;
+    cfg13_pkt[9] = d0; cfg13_pkt[10] = d1; cfg13_pkt[11] = d2; cfg13_pkt[12] = d3;
+    cfg13_pkt[13] = 0xFE;
+    cfg13_pkt[14] = 0x06;
+    cfg13_pkt[15] = 0x50;
+    cfg13_pkt[16] = 0x00;
+    cfg13_pkt[17] = 0x0D;
+    cfg13_pkt[18] = 0x08;
+    cfg13_pkt[19] = 0x02;
+    cfg13_pkt[20] = 0x0F;
+    cfg13_pkt[21] = 0x03;
+    cfg13_pkt[22] = d0; cfg13_pkt[23] = d1; cfg13_pkt[24] = d2; cfg13_pkt[25] = d3;  // Device ID again
+    cfg13_pkt[26] = 0x00;
+    // Bytes 27-50 are CC padding (already set by memset)
+    uint16_t crc = this->encoder_.calc_crc(cfg13_pkt, 51);
+    cfg13_pkt[51] = (crc >> 8) & 0xFF;
+    cfg13_pkt[52] = crc & 0xFF;
+    // Send format 0x13 with multiple type bytes (real hub sends 5+ retransmissions)
+    uint8_t cfg13_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
+    for (uint8_t type : cfg13_types) {
+      cfg13_pkt[0] = type;
+      crc = this->encoder_.calc_crc(cfg13_pkt, 51);
+      cfg13_pkt[51] = (crc >> 8) & 0xFF;
+      cfg13_pkt[52] = crc & 0xFF;
+      this->transmit_packet(cfg13_pkt, 53);
+      delay(70);
+    }
+  }
+
+  // Phase 3: Send A9 zone assignment packet (format 0x28) - 53 bytes!
+  // RTL-SDR CRC-verified: a9 87 01 7d 53 63 28 03 01 50 c3 21 1a 00 09 62 66 57 fe 06 40 00 00 00 01 ef 20 00 03 09 2b 32 ff ff 00 00 b4 00 00 cc...cc [CRC:2]
+  // Same full content as Phase 4b AB - must be 53 bytes!
+  ESP_LOGI(TAG, "Phase 3: Sending A9 zone assignment (format 0x28, 53 bytes)");
+  {
+    uint8_t a9_pkt[53];
+    memset(a9_pkt, 0xCC, sizeof(a9_pkt));  // CC padding
     a9_pkt[0] = 0xA9;
     a9_pkt[1] = 0x01;  // seq
     a9_pkt[2] = h0; a9_pkt[3] = h1; a9_pkt[4] = h2; a9_pkt[5] = h3;
     a9_pkt[6] = 0x28;  // Zone assignment protocol
     a9_pkt[7] = 0x03;  // Format
     a9_pkt[8] = 0x01;  // Constant
-    a9_pkt[9] = 0x38;  // Always 0x38 (constant in real hub captures)
-    a9_pkt[10] = zone_id + 0x23;  // Zone reference (zone + 0x23)
+    a9_pkt[9] = 0x50;  // Device type: 0x50 for dimmers, 0x38 for relays
+    a9_pkt[10] = zone_id + 0x23;  // Zone reference counter (non-critical)
     a9_pkt[11] = 0x21;
     a9_pkt[12] = 0x1A;
     a9_pkt[13] = 0x00;
@@ -2221,19 +2268,41 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     a9_pkt[21] = 0x00;
     a9_pkt[22] = 0x00;
     a9_pkt[23] = 0x00;
-    uint16_t crc = this->encoder_.calc_crc(a9_pkt, 24);
-    a9_pkt[24] = (crc >> 8) & 0xFF;
-    a9_pkt[25] = crc & 0xFF;
-    this->transmit_packet(a9_pkt, 26);
-    delay(70);
+    // Additional config data (from RTL-SDR CRC-verified capture)
+    a9_pkt[24] = 0x01;
+    a9_pkt[25] = 0xEF;
+    a9_pkt[26] = 0x20;
+    a9_pkt[27] = 0x00;
+    a9_pkt[28] = 0x03;
+    a9_pkt[29] = 0x09;
+    a9_pkt[30] = 0x2B;
+    a9_pkt[31] = 0x32;
+    a9_pkt[32] = 0xFF;
+    a9_pkt[33] = 0xFF;
+    a9_pkt[34] = 0x00;
+    a9_pkt[35] = 0x00;
+    a9_pkt[36] = 0xB4;
+    a9_pkt[37] = 0x00;
+    a9_pkt[38] = 0x00;
+    // Bytes 39-50 are CC padding (already set)
+    // Send with multiple type bytes (real hub sends 5+ retransmissions)
+    uint8_t a9_types[] = {0xA9, 0x9F, 0xAB, 0xB7, 0xBD};
+    for (uint8_t type : a9_types) {
+      a9_pkt[0] = type;
+      uint16_t crc = this->encoder_.calc_crc(a9_pkt, 51);
+      a9_pkt[51] = (crc >> 8) & 0xFF;
+      a9_pkt[52] = crc & 0xFF;
+      this->transmit_packet(a9_pkt, 53);
+      delay(70);
+    }
   }
 
-  // Phase 4: Send AA function mapping
-  // Real: aa 01 01 7d 53 63 21 14 00 02 1a d0 c3 fe 06 50 00 0b 09 fe ff 00 00 00
-  ESP_LOGI(TAG, "Phase 4: Sending AA function mapping");
+  // Phase 4: Send AA function mapping (format 0x14) - 53 bytes like all config packets!
+  // Real FCJS-010: aa 01 01 7d 53 63 21 14 00 09 62 66 57 fe 06 50 00 0b 09 fe ff 00 02 00 cc...cc [CRC:2]
+  ESP_LOGI(TAG, "Phase 4: Sending function mapping (format 0x14, 53 bytes)");
   {
-    uint8_t aa_pkt[26];
-    memset(aa_pkt, 0x00, sizeof(aa_pkt));
+    uint8_t aa_pkt[53];
+    memset(aa_pkt, 0xCC, sizeof(aa_pkt));  // CC padding (NOT 0x00!)
     aa_pkt[0] = 0xAA;
     aa_pkt[1] = 0x01;
     aa_pkt[2] = h0; aa_pkt[3] = h1; aa_pkt[4] = h2; aa_pkt[5] = h3;
@@ -2250,13 +2319,19 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     aa_pkt[19] = 0xFE;
     aa_pkt[20] = 0xFF;
     aa_pkt[21] = 0x00;
-    aa_pkt[22] = 0x00;
+    aa_pkt[22] = 0x02;  // 0x02 for dimmers (was 0x00 for relays)
     aa_pkt[23] = 0x00;
-    uint16_t crc = this->encoder_.calc_crc(aa_pkt, 24);
-    aa_pkt[24] = (crc >> 8) & 0xFF;
-    aa_pkt[25] = crc & 0xFF;
-    this->transmit_packet(aa_pkt, 26);
-    delay(70);
+    // Bytes 24-50 are CC padding (already set by memset)
+    // Send with multiple type bytes (real hub sends 5+ retransmissions)
+    uint8_t aa14_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
+    for (uint8_t type : aa14_types) {
+      aa_pkt[0] = type;
+      uint16_t crc = this->encoder_.calc_crc(aa_pkt, 51);
+      aa_pkt[51] = (crc >> 8) & 0xFF;
+      aa_pkt[52] = crc & 0xFF;
+      this->transmit_packet(aa_pkt, 53);
+      delay(70);
+    }
   }
 
   // Phase 4b: Send AB packet (format 0x28) - 53 bytes like real hub!
@@ -2271,8 +2346,8 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     ab_pkt[6] = 0x28;  // Zone assignment protocol
     ab_pkt[7] = 0x03;  // Format
     ab_pkt[8] = 0x01;  // Constant
-    ab_pkt[9] = 0x38;  // Always 0x38 (constant in real hub captures)
-    ab_pkt[10] = zone_id + 0x23;  // Zone reference (zone + 0x23)
+    ab_pkt[9] = 0x50;  // Device type: 0x50 for dimmers, 0x38 for relays
+    ab_pkt[10] = zone_id + 0x23;  // Zone reference counter (non-critical)
     ab_pkt[11] = 0x21;
     ab_pkt[12] = 0x1A;
     ab_pkt[13] = 0x00;
@@ -2300,11 +2375,16 @@ void CC1101CCA::send_vive_accept(uint32_t hub_id, uint32_t device_id, uint8_t zo
     ab_pkt[37] = 0x00;
     ab_pkt[38] = 0x00;
     // Bytes 39-50 are CC padding (already set)
-    uint16_t crc = this->encoder_.calc_crc(ab_pkt, 51);
-    ab_pkt[51] = (crc >> 8) & 0xFF;
-    ab_pkt[52] = crc & 0xFF;
-    this->transmit_packet(ab_pkt, 53);
-    delay(70);
+    // Send with multiple type bytes (real hub sends 5+ retransmissions)
+    uint8_t ab28_types[] = {0xAB, 0xA9, 0xAA, 0x9F, 0xB7};
+    for (uint8_t type : ab28_types) {
+      ab_pkt[0] = type;
+      uint16_t crc = this->encoder_.calc_crc(ab_pkt, 51);
+      ab_pkt[51] = (crc >> 8) & 0xFF;
+      ab_pkt[52] = crc & 0xFF;
+      this->transmit_packet(ab_pkt, 53);
+      delay(70);
+    }
   }
 
   // Phase 5: Send format 0x12 config packets - ALL 53 bytes like real hub!

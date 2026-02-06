@@ -269,6 +269,90 @@ function findPreamble(fm: Float32Array): PreambleResult | null {
   return null;
 }
 
+// --- Step 3b: Find ALL preambles in a burst (for multi-retransmission decoding) ---
+function findAllPreambles(fm: Float32Array): PreambleResult[] {
+  const results: PreambleResult[] = [];
+  const refLen = Math.round(16 * SAMPLES_PER_BIT);
+  const ref = new Float32Array(refLen);
+  for (let i = 0; i < refLen; i++) {
+    const bitIdx = Math.floor(i / SAMPLES_PER_BIT);
+    ref[i] = (bitIdx % 2 === 0) ? 1.0 : -1.0;
+  }
+
+  let sigEnergy = 0;
+  for (let i = 0; i < fm.length; i++) sigEnergy += fm[i] * fm[i];
+  const rmsLevel = Math.sqrt(sigEnergy / fm.length);
+
+  // Each CCA retransmission is ~600 bits; skip at least 500 bits after finding one
+  const minRetxSpacing = Math.round(500 * SAMPLES_PER_BIT);
+  // Coarse stride for scanning (half a bit period - fast but won't miss peaks)
+  const stride = Math.max(1, Math.round(SAMPLES_PER_BIT * 0.5));
+  const searchEnd = fm.length - refLen;
+
+  for (let n = 0; n < searchEnd; n += stride) {
+    let corr = 0;
+    for (let k = 0; k < refLen; k++) {
+      corr += ref[k] * fm[n + k];
+    }
+    const normCorr = corr / (refLen * Math.max(rmsLevel, 0.01));
+
+    if (Math.abs(normCorr) <= 0.15) continue;
+
+    // Refine: check neighboring samples for peak correlation
+    let bestN = n;
+    let bestCorr = normCorr;
+    for (let dn = -stride; dn <= stride; dn++) {
+      const nn = n + dn;
+      if (nn < 0 || nn >= searchEnd) continue;
+      let c = 0;
+      for (let k = 0; k < refLen; k++) c += ref[k] * fm[nn + k];
+      const nc = c / (refLen * Math.max(rmsLevel, 0.01));
+      if (Math.abs(nc) > Math.abs(bestCorr)) {
+        bestCorr = nc;
+        bestN = nn;
+      }
+    }
+
+    const inverted = bestCorr < 0;
+    const bitOffset = bestN + Math.round(SAMPLES_PER_BIT / 2);
+
+    // Compute local threshold from preamble region (handles per-retx DC offset)
+    let posSum = 0, posCount = 0, negSum = 0, negCount = 0;
+    for (let i = bestN; i < bestN + refLen && i < fm.length; i++) {
+      if (fm[i] > 0.01) { posSum += fm[i]; posCount++; }
+      else if (fm[i] < -0.01) { negSum += fm[i]; negCount++; }
+    }
+    const threshold = (posCount > 0 && negCount > 0)
+      ? (posSum / posCount + negSum / negCount) / 2 : 0;
+
+    // Validate: check for alternating preamble pattern
+    let found = false;
+    for (const tryInverted of [inverted, !inverted]) {
+      let ok = 0, total = 0;
+      for (let i = 0; i < 16 && bitOffset + i * SAMPLES_PER_BIT < fm.length; i++) {
+        const idx = Math.round(bitOffset + i * SAMPLES_PER_BIT);
+        if (idx >= fm.length) break;
+        let bit = fm[idx] > threshold ? 1 : 0;
+        if (tryInverted) bit = 1 - bit;
+        if (bit === ((i % 2 === 0) ? 1 : 0)) ok++;
+        total++;
+      }
+      if (total >= 12 && ok >= total * 0.75) {
+        results.push({ bitOffset, inverted: tryInverted, threshold });
+        found = true;
+        break;
+      }
+    }
+
+    if (found) {
+      n += minRetxSpacing - stride; // skip past this retransmission
+    }
+    // If not found, normal stride continues
+  }
+
+  return results;
+}
+
 // --- Step 4: Bit slicing with locked clock ---
 function sliceBitsLocked(fm: Float32Array, startSample: number, threshold: number, inverted: boolean): number[] {
   const bits: number[] = [];
@@ -289,7 +373,7 @@ function sliceBitsLocked(fm: Float32Array, startSample: number, threshold: numbe
       const earlyDist = Math.abs(fm[earlyIdx] - threshold);
       const lateDist = Math.abs(fm[lateIdx] - threshold);
       // Small nudge toward the transition (where distance to threshold is small)
-      const adjust = (earlyDist - lateDist) * 0.05;
+      const adjust = (earlyDist - lateDist) * 0.15;
       pos += SAMPLES_PER_BIT + adjust;
     } else {
       pos += SAMPLES_PER_BIT;
@@ -508,81 +592,114 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
     }
   }
 
-  // Step 2-5: Decode each burst
-  console.log("\nStep 2: Demodulating bursts...\n");
+  // Step 2-5: Decode each burst (processing ALL retransmissions per burst)
+  console.log("\nStep 2: Demodulating bursts (multi-retransmission mode)...\n");
   console.log("=== DECODED PACKETS ===\n");
 
+  let totalRetx = 0;
   let decoded = 0;
   let crcOk = 0;
 
   for (let bi = 0; bi < bursts.length; bi++) {
     const burst = bursts[bi];
-    const timeMs = (burst.start / SAMPLE_RATE * 1000).toFixed(1);
+    const burstTimeMs = (burst.start / SAMPLE_RATE * 1000).toFixed(1);
 
     // FM demodulate this burst
     const fm = fmDiscriminateBurst(iq, burst.start, burst.end);
 
-    // Find preamble using correlation
-    const preamble = findPreamble(fm);
+    // Find ALL preambles in this burst (one per retransmission)
+    const preambles = findAllPreambles(fm);
 
-    if (!preamble) {
-      if (debug) console.log("#" + bi + " @ " + timeMs + "ms: no preamble detected");
+    if (preambles.length === 0) {
+      // Fallback to single preamble search (for short/weak bursts)
+      const single = findPreamble(fm);
+      if (single) preambles.push(single);
+    }
+
+    if (preambles.length === 0) {
+      if (debug) console.log("#" + bi + " @ " + burstTimeMs + "ms: no preamble detected");
       continue;
     }
 
+    totalRetx += preambles.length;
     if (debug) {
-      console.log("#" + bi + " @ " + timeMs + "ms: preamble at sample " + preamble.bitOffset +
-        " inverted=" + preamble.inverted + " thresh=" + preamble.threshold.toFixed(4));
+      console.log("#" + bi + " @ " + burstTimeMs + "ms: " + preambles.length + " retransmissions found");
     }
 
-    // Slice bits with locked clock
-    const bits = sliceBitsLocked(fm, preamble.bitOffset, preamble.threshold, preamble.inverted);
+    // Track unique CRC-valid packets for this burst (deduplicate retransmissions)
+    const burstCrcPackets: Map<string, { bytes: number[]; crcBoundary: number; count: number }> = new Map();
+    let burstDecoded = 0;
+    let burstNoCrc: { bytes: number[] }[] = [];
 
-    if (bits.length < 50) {
-      if (debug) console.log("  Too few bits: " + bits.length);
-      continue;
-    }
+    for (let ri = 0; ri < preambles.length; ri++) {
+      const preamble = preambles[ri];
 
-    if (debug) {
-      // Show first 64 bits
-      const bitStr = bits.slice(0, 64).join("");
-      const hexStr: string[] = [];
-      for (let i = 0; i < Math.min(64, bits.length); i += 8) {
-        const chunk = bits.slice(i, i + 8);
-        if (chunk.length === 8) {
-          let val = 0;
-          for (let j = 0; j < 8; j++) val = (val << 1) | chunk[j];
-          hexStr.push(hexByte(val));
+      if (debug) {
+        console.log("  retx " + ri + ": sample " + preamble.bitOffset +
+          " inv=" + preamble.inverted + " thresh=" + preamble.threshold.toFixed(4));
+      }
+
+      // Slice bits with locked clock
+      const bits = sliceBitsLocked(fm, preamble.bitOffset, preamble.threshold, preamble.inverted);
+
+      if (bits.length < 50) {
+        if (debug) console.log("    Too few bits: " + bits.length);
+        continue;
+      }
+
+      // Extract packet (find sync, prefix, decode N81)
+      const packet = extractPacket(bits);
+
+      if (!packet) {
+        if (debug) console.log("    Could not extract packet from " + bits.length + " bits");
+        continue;
+      }
+
+      burstDecoded++;
+      decoded++;
+
+      if (packet.crcBoundary) {
+        crcOk++;
+        const packetBytes = packet.bytes.slice(0, packet.crcBoundary);
+        const key = packetBytes.map(hexByte).join(" ");
+        const existing = burstCrcPackets.get(key);
+        if (existing) {
+          existing.count++;
+        } else {
+          burstCrcPackets.set(key, { bytes: packetBytes, crcBoundary: packet.crcBoundary, count: 1 });
+        }
+      } else {
+        // Keep first few non-CRC packets for debug
+        if (burstNoCrc.length < 2) {
+          burstNoCrc.push({ bytes: packet.bytes });
         }
       }
-      console.log("  Bits: " + bitStr);
-      console.log("  Hex (MSB): " + hexStr.join(" "));
     }
 
-    // Extract packet (find sync, prefix, decode N81)
-    const packet = extractPacket(bits);
-
-    if (!packet) {
-      if (debug) console.log("  Could not extract packet from " + bits.length + " bits");
-      continue;
+    // Output: show unique CRC-valid packets for this burst
+    for (const [key, { bytes, crcBoundary, count }] of burstCrcPackets) {
+      const type = bytes[0];
+      const typeStr = getTypeName(type);
+      const countStr = count > 1 ? " (" + count + "x)" : "";
+      console.log("#" + bi + " @ " + burstTimeMs + "ms: " + typeStr + " | CRC OK at " +
+        crcBoundary + countStr + " | " + key);
     }
 
-    decoded++;
-    if (packet.crcBoundary) crcOk++;
-
-    const packetBytes = packet.crcBoundary ? packet.bytes.slice(0, packet.crcBoundary) : packet.bytes;
-    console.log("#" + bi + " @ " + timeMs + "ms: " + formatPacket(packetBytes, packet.crcBoundary));
-
-    if (packet.crcBoundary && packet.bytes.length > packet.crcBoundary) {
-      const trailing = packet.bytes.slice(packet.crcBoundary).filter(b => b !== 0);
-      if (trailing.length > 0) {
-        console.log("   Trailing: " + packet.bytes.slice(packet.crcBoundary).map(hexByte).join(" "));
-      }
+    // If no CRC-valid packets, show first non-CRC decode
+    if (burstCrcPackets.size === 0 && burstNoCrc.length > 0) {
+      const p = burstNoCrc[0];
+      console.log("#" + bi + " @ " + burstTimeMs + "ms: " +
+        formatPacket(p.bytes, null) +
+        " [" + burstDecoded + "/" + preambles.length + " decoded, 0 CRC]");
+    } else if (burstCrcPackets.size === 0 && burstDecoded === 0) {
+      if (debug) console.log("#" + bi + " @ " + burstTimeMs + "ms: " +
+        preambles.length + " preambles but no packets decoded");
     }
   }
 
   console.log("\n--- Summary ---");
   console.log("  Bursts: " + bursts.length);
+  console.log("  Retransmissions found: " + totalRetx);
   console.log("  Decoded: " + decoded);
   console.log("  CRC OK: " + crcOk);
 }
@@ -645,8 +762,9 @@ async function main() {
     console.log("  bun run tools/rtlsdr-cca-decode.ts --debug <capture.bin>      Debug mode");
     console.log("  bun run tools/rtlsdr-cca-decode.ts --rate 1000000 <file.bin>  Set sample rate");
     console.log("");
-    console.log("Capture (2 MHz recommended):");
-    console.log("  rtl_sdr -f 433602844 -s 2000000 -n 20000000 capture.bin");
+    console.log("Capture (always use 2 MHz):");
+    console.log("  rtl_sdr -f 433602844 -s 2000000 -g 40 capture.bin      # until ctrl-c");
+    console.log("  rtl_sdr -f 433602844 -s 2000000 -g 40 -n 20000000 c.bin  # 10 seconds");
     process.exit(0);
   }
 

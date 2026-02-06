@@ -388,6 +388,12 @@ class CC1101CCA : public Component,
    */
   void send_vive_lower(uint32_t hub_id, uint8_t zone_id);
 
+  /**
+   * @brief Send dim step command (shared by raise/lower)
+   * @param direction 0x03 = raise, 0x02 = lower
+   */
+  void send_vive_dim_command(uint32_t hub_id, uint8_t zone_id, uint8_t direction);
+
   // Deprecated - use zone commands instead
   void send_vive_command(uint32_t hub_id, uint32_t device_id, uint8_t command, uint8_t subcommand);
   void send_vive_toggle(uint32_t hub_id, uint32_t device_id);
