@@ -366,17 +366,19 @@ class CC1101CCA : public Component,
    * @param zone_id Zone/room ID (e.g., 0x4B for room 3)
    * @param turn_on true=ON (0x8A), false=OFF (0x8B)
    */
-  void send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on);
+  void send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on, uint8_t fade_time_qs = 0x01);
 
   /**
    * @brief Turn ON a Vive zone
+   * @param fade_time_qs Fade time in quarter-seconds (1=250ms, 4=1s, 40=10s)
    */
-  void send_vive_on(uint32_t hub_id, uint8_t zone_id);
+  void send_vive_on(uint32_t hub_id, uint8_t zone_id, uint8_t fade_time_qs = 0x01);
 
   /**
    * @brief Turn OFF a Vive zone
+   * @param fade_time_qs Fade time in quarter-seconds (1=250ms, 4=1s, 40=10s)
    */
-  void send_vive_off(uint32_t hub_id, uint8_t zone_id);
+  void send_vive_off(uint32_t hub_id, uint8_t zone_id, uint8_t fade_time_qs = 0x01);
 
   /**
    * @brief Raise (dim up) a Vive zone
@@ -390,8 +392,9 @@ class CC1101CCA : public Component,
 
   /**
    * @brief Set a Vive zone to a specific level (0-100%)
+   * @param fade_time_qs Fade time in quarter-seconds (1=250ms, 4=1s, 40=10s)
    */
-  void send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent);
+  void send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent, uint8_t fade_time_qs = 0x01);
 
   /**
    * @brief Send dim step command (shared by raise/lower)

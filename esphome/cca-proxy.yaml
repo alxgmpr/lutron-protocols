@@ -190,8 +190,11 @@ esphome:
             else if (strcmp(cmd, "vive_on") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);
               uint8_t zone_id = params["zone_id"] | 0;
+              float fade = params["fade"] | 0.25f;
+              uint8_t fade_qs = (uint8_t)(fade * 4);
+              if (fade_qs == 0) fade_qs = 1;
               if (hub_id && zone_id) {
-                id(cca_radio)->send_vive_on(hub_id, zone_id);
+                id(cca_radio)->send_vive_on(hub_id, zone_id, fade_qs);
               } else {
                 ESP_LOGW("udp_cmd", "vive_on: missing hub_id or zone_id");
               }
@@ -199,8 +202,11 @@ esphome:
             else if (strcmp(cmd, "vive_off") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);
               uint8_t zone_id = params["zone_id"] | 0;
+              float fade = params["fade"] | 0.25f;
+              uint8_t fade_qs = (uint8_t)(fade * 4);
+              if (fade_qs == 0) fade_qs = 1;
               if (hub_id && zone_id) {
-                id(cca_radio)->send_vive_off(hub_id, zone_id);
+                id(cca_radio)->send_vive_off(hub_id, zone_id, fade_qs);
               } else {
                 ESP_LOGW("udp_cmd", "vive_off: missing hub_id or zone_id");
               }
@@ -227,8 +233,11 @@ esphome:
               uint32_t hub_id = parse_hex(params["hub_id"]);
               uint8_t zone_id = params["zone_id"] | 0;
               uint8_t level = params["level"] | 0;
+              float fade = params["fade"] | 0.25f;
+              uint8_t fade_qs = (uint8_t)(fade * 4);
+              if (fade_qs == 0) fade_qs = 1;
               if (hub_id && zone_id) {
-                id(cca_radio)->send_vive_level(hub_id, zone_id, level);
+                id(cca_radio)->send_vive_level(hub_id, zone_id, level, fade_qs);
               } else {
                 ESP_LOGW("udp_cmd", "vive_level: missing hub_id or zone_id");
               }

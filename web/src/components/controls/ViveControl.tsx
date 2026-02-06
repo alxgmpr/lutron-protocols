@@ -13,6 +13,7 @@ export function ViveControl({ showStatus }: Props) {
   const [hubId, setHubId] = useState('')
   const [zoneId, setZoneId] = useState('')
   const [level, setLevel] = useState(50)
+  const [fade, setFade] = useState(0.25)
 
   const getParams = () => {
     if (!hubId.trim() || !zoneId.trim()) {
@@ -32,9 +33,10 @@ export function ViveControl({ showStatus }: Props) {
     const params = getParams()
     if (!params) return
 
+    const withFade = (action === 'on' || action === 'off') ? { ...params, fade } : params
     showStatus(`Sending ${action.toUpperCase()} to hub ${params.hub_id} zone 0x${zoneId.toUpperCase()}...`)
     try {
-      const result = await postJson(`/api/vive/${action}`, params)
+      const result = await postJson(`/api/vive/${action}`, withFade)
       if (result.status === 'ok') {
         showStatus(`${action.toUpperCase()} sent to zone 0x${zoneId.toUpperCase()}`, 'success')
       } else {
@@ -52,7 +54,7 @@ export function ViveControl({ showStatus }: Props) {
 
     showStatus(`Setting zone 0x${zoneId.toUpperCase()} to ${targetLevel}%...`)
     try {
-      const result = await postJson('/api/vive/level', { ...params, level: targetLevel })
+      const result = await postJson('/api/vive/level', { ...params, level: targetLevel, fade })
       if (result.status === 'ok') {
         showStatus(`Set zone 0x${zoneId.toUpperCase()} to ${targetLevel}%`, 'success')
       } else {
@@ -103,6 +105,17 @@ export function ViveControl({ showStatus }: Props) {
           max={100}
           className="w-[48px]"
         />
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">fade:</span>
+        <Input
+          type="number"
+          value={fade}
+          onChange={e => setFade(parseFloat(e.target.value) || 0)}
+          min={0}
+          max={63}
+          step={0.25}
+          className="w-[52px]"
+        />
+        <span className="text-[10px] text-[var(--text-muted)]">sec</span>
         <Button size="sm" variant="blue" onClick={() => sendLevel()}>
           <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
           Set

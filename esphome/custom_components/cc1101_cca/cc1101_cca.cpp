@@ -1770,7 +1770,7 @@ void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
 
 // ========== VIVE DEVICE COMMANDS (0x8A/0x8B/0x89 format 0x0e) ==========
 
-void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on) {
+void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool turn_on, uint8_t fade_time_qs) {
   // Vive hub controls devices by ZONE/ROOM, not device ID!
   // Captured from real hub (2026-01-28):
   //
@@ -1803,7 +1803,7 @@ void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool tu
   for (int rep = 0; rep < 12; rep++) {
     memset(packet, 0x00, sizeof(packet));
 
-    packet[0] = turn_on ? 0x8A : 0x8B;  // 0x8A=ON, 0x8B=OFF
+    packet[0] = 0x89 + (rep % 3);       // Rotate 89/8a/8b like real hub
     packet[1] = vive_cmd_seq;           // Sequence
     packet[2] = h0;                     // Hub ID
     packet[3] = h1;
@@ -1827,7 +1827,7 @@ void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool tu
       packet[17] = 0x00;
     }
     packet[18] = 0x00;
-    packet[19] = 0x01;  // Always 0x01 (RTL-SDR CRC-verified, was 0x00)
+    packet[19] = fade_time_qs;  // Fade time in quarter-seconds (0x01=250ms default, 0x04=1s, 0x28=10s)
     packet[20] = 0x00;
     packet[21] = 0x00;
 
@@ -1843,15 +1843,15 @@ void CC1101CCA::send_vive_zone_command(uint32_t hub_id, uint8_t zone_id, bool tu
     delay(15);  // ~15ms between packets
   }
 
-  ESP_LOGI(TAG, "Vive zone command sent (12 packets)");
+  ESP_LOGI(TAG, "Vive zone command sent (12 packets, fade=%u qs)", fade_time_qs);
 }
 
-void CC1101CCA::send_vive_on(uint32_t hub_id, uint8_t zone_id) {
-  send_vive_zone_command(hub_id, zone_id, true);
+void CC1101CCA::send_vive_on(uint32_t hub_id, uint8_t zone_id, uint8_t fade_time_qs) {
+  send_vive_zone_command(hub_id, zone_id, true, fade_time_qs);
 }
 
-void CC1101CCA::send_vive_off(uint32_t hub_id, uint8_t zone_id) {
-  send_vive_zone_command(hub_id, zone_id, false);
+void CC1101CCA::send_vive_off(uint32_t hub_id, uint8_t zone_id, uint8_t fade_time_qs) {
+  send_vive_zone_command(hub_id, zone_id, false, fade_time_qs);
 }
 
 void CC1101CCA::send_vive_raise(uint32_t hub_id, uint8_t zone_id) {
@@ -1868,12 +1868,13 @@ void CC1101CCA::send_vive_lower(uint32_t hub_id, uint8_t zone_id) {
   send_vive_dim_command(hub_id, zone_id, 0x02);
 }
 
-void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent) {
+void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent, uint8_t fade_time_qs) {
   // Set Vive zone to a specific level (0-100%)
   // Uses the same format 0x0E as ON/OFF but with an arbitrary level value
   // ON = 0xFEFF (100%), OFF = 0x0000 (0%) — we interpolate between them
+  // fade_time_qs: fade time in quarter-seconds (0x01=250ms, 0x04=1s, 0x28=10s)
   ESP_LOGI(TAG, "=== VIVE SET LEVEL ===");
-  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X, Level: %u%%", hub_id, zone_id, level_percent);
+  ESP_LOGI(TAG, "Hub: 0x%08X, Zone: 0x%02X, Level: %u%%, Fade: %u qs", hub_id, zone_id, level_percent, fade_time_qs);
 
   if (level_percent > 100) level_percent = 100;
 
@@ -1907,7 +1908,7 @@ void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_
     packet[16] = (level16 >> 8) & 0xFF; // Level high byte
     packet[17] = level16 & 0xFF;        // Level low byte
     packet[18] = 0x00;
-    packet[19] = 0x01;                  // Dimmer variant
+    packet[19] = fade_time_qs;           // Fade time in quarter-seconds
     packet[20] = 0x00;
     packet[21] = 0x00;
 
@@ -1920,7 +1921,7 @@ void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_
     if (vive_cmd_seq > 0x43) vive_cmd_seq = 0x01;
     delay(15);
   }
-  ESP_LOGI(TAG, "Vive set level sent (12 packets, level=0x%04X)", level16);
+  ESP_LOGI(TAG, "Vive set level sent (12 packets, level=0x%04X, fade=%u qs)", level16, fade_time_qs);
 }
 
 void CC1101CCA::send_vive_dim_command(uint32_t hub_id, uint8_t zone_id, uint8_t direction) {
