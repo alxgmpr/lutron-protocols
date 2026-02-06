@@ -496,6 +496,7 @@ class CC1101CCA : public Component,
   bool pairing_is_dimmer_{false};       // Set from B0/B2 subtype
   uint32_t pairing_device_hw_id_{0};    // Filled from B0/B2 detection
   uint8_t pairing_instance_{0x01};      // Device instance counter
+  uint8_t pairing_hs_dev_seq_{0xFF};    // Track handshake round (0xFF = no handshake yet)
 
   // Vive pairing state
   bool vive_pairing_active_{false};

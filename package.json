@@ -14,7 +14,12 @@
     "test": "npm run test -w web",
     "codegen": "cargo run --manifest-path cca/Cargo.toml --release -- codegen",
     "cca": "cargo run --manifest-path cca/Cargo.toml --release --",
+    "ccx:sniff": "bun run tools/ccx-sniffer.ts",
+    "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "clean": "rm -rf node_modules web/node_modules backend/node_modules"
+  },
+  "dependencies": {
+    "cbor-x": "^1"
   },
   "devDependencies": {
     "concurrently": "^9",

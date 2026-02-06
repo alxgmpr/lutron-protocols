@@ -19,9 +19,9 @@ const LED_MODES = [
 ]
 
 export function DeviceConfig({ showStatus }: Props) {
-  const { post } = useApi()
+  const { postJson } = useApi()
   const [subnet, setSubnet] = useState('2C90')
-  const [targetId, setTargetId] = useState('06FE8006')
+  const [targetId, setTargetId] = useState('06FDEFF4')
   const [fadeOn, setFadeOn] = useState('0.25')
   const [fadeOff, setFadeOff] = useState('0.25')
   const [ledMode, setLedMode] = useState('0')
@@ -34,28 +34,28 @@ export function DeviceConfig({ showStatus }: Props) {
 
   const handleFade = async () => {
     showStatus(`Setting fade rates...`)
-    const result = await post('/api/config/fade', { bridge: sourceId, target, fade_on: parseFloat(fadeOn), fade_off: parseFloat(fadeOff) })
+    const result = await postJson('/api/config/fade', { bridge: sourceId, target, fade_on: parseFloat(fadeOn), fade_off: parseFloat(fadeOff) })
     if (result.status === 'ok') showStatus(`Fade: on=${fadeOn}s, off=${fadeOff}s`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
   const handleLed = async () => {
     showStatus(`Setting LED mode...`)
-    const result = await post('/api/config/led', { bridge: sourceId, target, mode: parseInt(ledMode) })
+    const result = await postJson('/api/config/led', { bridge: sourceId, target, mode: parseInt(ledMode) })
     if (result.status === 'ok') showStatus(`LED mode set`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
   const handleTrim = async () => {
     showStatus(`Setting trim...`)
-    const result = await post('/api/config/trim', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim), phase })
+    const result = await postJson('/api/config/trim', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim), phase })
     if (result.status === 'ok') showStatus(`Trim: ${lowTrim}%-${highTrim}%`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
   const handlePhase = async () => {
     showStatus(`Setting phase...`)
-    const result = await post('/api/config/phase', { bridge: sourceId, target, phase, high: parseInt(highTrim), low: parseInt(lowTrim) })
+    const result = await postJson('/api/config/phase', { bridge: sourceId, target, phase, high: parseInt(highTrim), low: parseInt(lowTrim) })
     if (result.status === 'ok') showStatus(`Phase: ${phase}`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }

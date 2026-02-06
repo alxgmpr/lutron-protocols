@@ -128,17 +128,23 @@ wpan.dst_pan == 0xXXXX
 wpan.src64 == e6:06:bf:9a:11:4f
 ```
 
-## Expected Traffic
+## Traffic Architecture
 
-Once configured, you should see:
+### Protocol Stack
 
-1. 802.15.4 MAC frames - Source/dest addresses, frame types
-2. 6LoWPAN headers - IPv6 header compression
-3. IPv6 packets - fd00:: local addresses
-4. UDP datagrams - Transport layer
-5. CoAP or proprietary - Application layer (Lutron-specific)
+```
+802.15.4 MAC → 6LoWPAN → IPv6 → UDP:9190 → CBOR (Lutron application layer)
+```
 
-The application layer commands will reveal how Lutron implements lighting control over Thread.
+tshark handles all lower layers (decryption, decompression, reassembly). The TypeScript decoder handles only the CBOR application payload.
+
+### Multicast & Retransmission
+
+All commands are multicast to `ff03::1` and retransmitted 7-25 times across the Thread mesh (~100ms window). The decoder deduplicates by `(msg_type, sequence)` pairs.
+
+### Processor Address
+
+The RA3 processor originates commands at `fd00::ff:fe00:2c0c`.
 
 ## Database Tables
 
@@ -175,11 +181,29 @@ All messages are CBOR arrays with 2 elements:
 
 | Type | Name | Description |
 |------|------|-------------|
-| 0 | Level Control | On/off, dimming commands (from app/Pico) |
-| 1 | Button Press | Physical button/scene press on device |
-| 7 | Acknowledgment | Response to commands |
-| 41 | Status | Thread/device status updates |
-| 65535 | Presence | Device broadcast/announcement |
+| 0 | LEVEL_CONTROL | Direct level set (0x0000=OFF, 0xFEFF=ON) to zone |
+| 1 | BUTTON_PRESS | Physical button/scene press with replay counters |
+| 2 | DIM_HOLD | First of raise/lower pair (even seq), announces hold |
+| 3 | DIM_STEP | Second of pair (odd seq), step=180-250 |
+| 7 | ACK | Response to commands |
+| 27 | DEVICE_REPORT | Devices broadcast after executing (no seq) |
+| 36 | SCENE_RECALL | Scene/group recall, triggers DEVICE_REPORTs |
+| 40 | COMPONENT_CMD | Shade/fan command, params=[10,4800] |
+| 41 | STATUS | Periodic device status heartbeat |
+| 65535 | PRESENCE | Device announcement |
+
+### Body Map Keys
+
+All message bodies are integer-keyed CBOR maps with shared top-level keys:
+
+| Key | Name | Description |
+|-----|------|-------------|
+| 0 | COMMAND | Inner command data (type-specific) |
+| 1 | ZONE | Zone info: `[zone_type, zone_id]` |
+| 2 | DEVICE | Device info: `[type, device_id]` |
+| 3 | EXTRA | Extra info map (scene ID, group ID, params) |
+| 4 | STATUS | Status field (used by PRESENCE) |
+| 5 | SEQUENCE | Sequence number |
 
 ### Level Control (Type 0) - Primary Command Format
 
@@ -305,6 +329,80 @@ Periodic status broadcasts from Thread devices containing device state:
 
 These appear at ~6 second intervals and may contain mesh routing or device health information.
 
+### Dim Hold (Type 2) — Raise/Lower Start
+
+First of a raise/lower pair. Always paired with a DIM_STEP (type 3). Uses even sequence numbers.
+
+```cbor
+[2, {
+    0: {
+        0: <device_id>,  # 4 bytes: [cmd_type, button_zone, 0xEF, 0x20]
+        1: <action>      # 3 = raise/lower action
+    },
+    5: <sequence>         # Even number
+}]
+```
+
+### Dim Step (Type 3) — Raise/Lower Step
+
+Second of a raise/lower pair. Uses odd sequence numbers (DIM_HOLD seq + 1). Contains a step value (180-250 observed).
+
+```cbor
+[3, {
+    0: {
+        0: <device_id>,  # Same 4-byte format as DIM_HOLD
+        1: <action>,     # 3 = raise/lower action
+        2: <step_value>  # Step size/timing (180-250 observed)
+    },
+    5: <sequence>         # Odd number (hold_seq + 1)
+}]
+```
+
+### Device Report (Type 27) — State Broadcast
+
+Devices broadcast their state after executing commands. No sequence number. Triggered by LEVEL_CONTROL, BUTTON_PRESS, or SCENE_RECALL.
+
+```cbor
+[27, {
+    0: {
+        <key>: <value>,  # Device-specific state data
+        ...
+    },
+    2: [<device_type>, <device_serial>],  # e.g., [1, 100000003]
+    3: {1: <group_id>}   # Scene/group that triggered the report
+}]
+```
+
+**Device serials** match LEAP database serial numbers, allowing cross-referencing with device names.
+
+### Scene Recall (Type 36)
+
+Recalls a stored scene/group, triggering all member devices to execute and broadcast DEVICE_REPORTs.
+
+```cbor
+[36, {
+    0: {0: [4]},                   # Command (4 = recall)
+    1: [0],                         # Targets (0 = all members)
+    3: {0: <scene_id>, 2: [5, 60]}, # Scene ID + params [component_type, value]
+    5: <sequence>
+}]
+```
+
+### Component Command (Type 40) — Shade/Fan Control
+
+Controls shades, fans, and other non-dimmer components.
+
+```cbor
+[40, {
+    0: {0: 0},                          # Command
+    1: [<targets>],                      # Target devices
+    3: {0: <group_id>, 2: [10, 4800]},   # Group + params [component_type, value]
+    5: <sequence>
+}]
+```
+
+**Params**: `[10, 4800]` observed for shade commands. Component type 10 may indicate shade position.
+
 ### Sample ON/OFF Traffic
 
 | Time | Seq | Type | Level | Zone | Description |
@@ -327,28 +425,113 @@ The `zone_id` in CCX messages (e.g., 961) is an **internal Lutron index**, not t
 udp.port == 9190
 ```
 
-### Python Decoder
+### TypeScript Decoder & Tools
 
-See `ccx/ccx_decoder.py` for a Python implementation:
+The CCX tooling lives in `ccx/` (decoder library) and `tools/` (CLI tools).
 
-```python
-from ccx.ccx_decoder import decode_and_parse
+#### Decode a message
 
-# Decode a level control command (from app/Pico)
-cmd = decode_and_parse("8200a300a20019feff03010182101903c105185c")
-print(cmd)  # CCXLevelCommand(FULL_ON, level=0xfeff, zone=961, seq=92)
+```typescript
+import { decodeAndParse, formatMessage } from "./ccx/decoder";
 
-# Decode a physical button press
-btn = decode_and_parse("8201a200a2004403b3ef2001831a0003e1483a0002fe66192c88051882")
-print(btn)  # CCXButtonPress(id=03b3ef20, zone=179, counters=[...], seq=130)
+const msg = decodeAndParse("8200a300a20019feff03010182101903c105185c");
+console.log(formatMessage(msg));
+// LEVEL_CONTROL(FULL_ON, level=0xfeff, zone=961, seq=92)
 ```
 
-## Matter Compatibility
+#### CCX Sniffer (tshark-based capture pipeline)
 
-Thread is the transport layer for Matter. Future research could investigate:
-- Whether Lutron CCX devices are Matter-compatible
-- If the Thread network can be joined by Matter devices
-- What application-layer protocol Lutron uses over Thread
+```bash
+# Process a pcapng capture file
+npm run ccx:sniff -- --file captures/ccx-onoff.pcapng
 
+# Live capture from nRF 802.15.4 sniffer
+npm run ccx:sniff -- --live --channel 25
 
+# JSON output for scripting
+npm run ccx:sniff -- --file capture.pcapng --json
+
+# Relay decoded packets to backend
+npm run ccx:sniff -- --live --relay
+```
+
+The sniffer uses tshark for Thread decryption (802.15.4 → 6LoWPAN → IPv6 → UDP),
+then decodes the Lutron CBOR application layer in TypeScript.
+
+**Requirements:**
+- tshark (Wireshark CLI) installed
+- For live capture: nRF 802.15.4 sniffer extcap plugin installed in Wireshark
+- Thread master key configured in `ccx/config.ts` or via `--key` flag
+
+#### CCX Analyzer (reverse engineering helper)
+
+```bash
+# Decode a single CBOR message with annotated dump
+npm run ccx:analyze -- decode "8200a300a20019feff03010182101903c105185c"
+
+# Catalog all message types in a capture
+npm run ccx:analyze -- types --file captures/ccx-onoff.pcapng
+
+# Analyze field patterns for a specific type
+npm run ccx:analyze -- fields LEVEL_CONTROL --file captures/ccx-onoff.pcapng
+
+# Timeline with timing deltas
+npm run ccx:analyze -- timeline --file captures/ccx-onoff.pcapng
+
+# List unique devices
+npm run ccx:analyze -- devices --file captures/ccx-onoff.pcapng
+
+# Find variable fields across same-type messages
+npm run ccx:analyze -- compare LEVEL_CONTROL --file captures/ccx-onoff.pcapng
+
+# Find unknown/unrecognized message types
+npm run ccx:analyze -- unknown --file captures/ccx-onoff.pcapng
+
+# Summary statistics
+npm run ccx:analyze -- stats --file captures/ccx-onoff.pcapng
+```
+
+#### Configuration
+
+Edit `ccx/config.ts` to set your Thread network parameters:
+- Channel, PAN ID, Extended PAN ID
+- Thread master key
+- Known device IPv6 addresses and zone names
+
+### nRF 802.15.4 Sniffer Setup
+
+1. Download the nRF Sniffer for 802.15.4 from [Nordic's site](https://www.nordicsemi.com/Products/Development-tools/nRF-Sniffer-for-802154)
+2. Flash the sniffer firmware onto an nRF52840 dongle
+3. Install the extcap plugin into Wireshark:
+   ```bash
+   cp -r nrf_sniffer_for_802154/extcap/* /Applications/Wireshark.app/Contents/MacOS/extcap/
+   pip3 install pyserial
+   ```
+4. Verify: `tshark -D` should list the nRF sniffer interface
+
+## Capture Files
+
+| File | Contents |
+|------|----------|
+| `captures/ccx-activity.pcapng` | 67 LEVEL_CONTROL packets (ON/OFF zone 961) |
+| `captures/ccx-full-exercise.pcapng` | 1212 decoded packets, all 8 active message types |
+
+## Known Zones (from LEAP database)
+
+See `ccx/config.ts` for the full mapping. Example zones:
+
+| Zone ID | Name |
+|---------|------|
+| 961 | Office Light |
+| 840 | Living Room Mantle |
+| 1843 | Living Room Lights |
+| 2000 | Kitchen Lights |
+| 1688 | Foyer Lights |
+
+## Remaining Unknowns
+
+- **Button device_id encoding**: Format is `[b0, b1, 0xEF, 0x20]` where bytes 0-1 correlate with LEAP button IDs but the exact encoding isn't fully cracked (observed ~+2 offset from LEAP button ID as BE16)
+- **COMPONENT_CMD params**: `[10, 4800]` meaning not yet determined (likely shade position)
+- **SCENE_RECALL params**: `[5, 60]` meaning not yet determined
+- **STATUS inner data**: Raw bytes not yet decoded
 

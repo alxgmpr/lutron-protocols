@@ -237,3 +237,110 @@ Round 1 byte 4 varies per device (session nonce). Round 4 contains device-type-s
 | `cca_packets_2026-02-06T05-59-49.csv` | DVRF-5NS switch #1 | 07 07 DF 6A |
 | `cca_packets_2026-02-06T06-12-19.csv` | DVRF-5NS switch #2 | 07 01 6F CE |
 | `cca_packets_2026-02-06T06-28-13.csv` | DVRF-6L dimmer | 07 03 C3 C6 |
+
+---
+
+## ESP32 Implementation
+
+Automated bridge pairing is implemented in `cc1101_cca.cpp`. The ESP32 acts as a fake Caseta bridge, running the full 8-phase pairing sequence autonomously after detecting a device announce.
+
+### How It Works
+
+1. **`start_bridge_pairing(subnet)`** — Activates beacon loop in `loop()`, cycling 91/92/93 beacons with format 0x0C subcmd 0x02.
+2. **Device holds OFF for 10 seconds** — Device enters pairing mode and sends B0 (switch) or B2 (dimmer) announce packets.
+3. **`handle_rx_packet()` detects B0/B2** — Extracts device HW ID and subtype, triggers `send_bridge_pair_config()`.
+4. **`send_bridge_pair_config()`** — Runs phases 3-8 as a blocking sequence (~15 seconds total).
+5. **Device is paired** — Responds to level commands via `send_bridge_level()`.
+
+### Arbitrary Subnet Support
+
+Subnets are not validated by the device. Any 16-bit subnet value works (confirmed with 0x2C90, 0x1234, 0x0001). The bridge ID is constructed as `0x00{subnet}AD` and the load ID as `{subnet << 16} | 0x1A04`.
+
+### Critical Implementation Details
+
+#### Handshake Echo (Phase 8)
+
+The handshake is a challenge-response where the **bridge must echo back the device's exact packet data**. Sending hardcoded/static payloads causes pairing failure — the device validates that its challenge bytes are reflected back.
+
+Echo logic:
+- Copy device's full 22-byte packet
+- Set `type = device_type + 1` (C1→C2, C7→C8, etc.)
+- Set `seq = device_seq + 5`
+- **Round 1 only**: Set `byte[5] = 0xF0` (round 1 is identified by tracking the first device seq value seen)
+- Recalculate CRC over the modified 22 bytes
+
+#### Phase 3b Field Order Inversion
+
+The initial integration ID binding packet (Phase 3b, format 0x0F subcmd 0x70 slot 0x06/0x07) has **inverted field order** compared to all other config packets:
+
+- Bytes 9-12 = `integ_id[0]` (NOT device_id)
+- Bytes 17-20 = `device_id` (NOT integ_id)
+
+All other Phase 5 config packets use the normal order (device_id at 9-12, integ_id at 17-20).
+
+#### Zone Binding Level Packet
+
+In the zone binding level sub-packet (format 0x1A, the third packet in each round), byte 21 is **always 0x20** regardless of which round. Earlier implementation incorrectly set byte 21 to the round value (0x20 or 0x22), but only byte 20 changes between rounds.
+
+#### Retransmission Counts
+
+The real bridge sends significantly more retransmissions than initially implemented. Current counts:
+
+| Phase | Retransmissions | Notes |
+|-------|----------------|-------|
+| 3a (targeted beacon) | 4 | |
+| 3b (initial binding) | 6 | |
+| 3c (unpair/clear) | 10 | |
+| 4 (beacon resume) | 30 beacons | ~2 seconds |
+| 5a-5e (config) | 6 each | |
+| 5c (capability) | 12 | |
+| 5f-5g (zone binding) | 4 per sub-packet | |
+| 6 (committed beacons) | 10 | |
+| 7 (LED config) | 10 | |
+| 8 (handshake) | 15-20s RX window | |
+
+500ms delays are inserted between all phases.
+
+#### Half-Duplex Handshake Timing
+
+The CC1101 is half-duplex — it cannot transmit and receive simultaneously. During Phase 8, the device sends handshake challenges that the bridge must receive. If the bridge is transmitting (e.g., LED config bursts), it will miss challenges.
+
+The implementation uses long uninterrupted RX windows with minimal TX:
+- Round 1: 5 seconds RX, then 3 LED config packets
+- Round 2: 5 seconds RX, then 3 LED config packets
+- Round 3: 10 seconds RX (final, no TX after)
+
+This maximizes the probability of catching all 6 handshake rounds from the device.
+
+---
+
+## Known Issues
+
+### Intermittent Pairing Failures
+
+Pairing does not succeed 100% of the time. On subnet 0x2C90, success was observed on the 2nd and 4th attempts but not the 1st and 3rd. With the Phase 8 timing improvements (longer RX windows), reliability improved significantly but is still not perfect.
+
+Likely causes:
+- **Half-duplex collisions**: Device may send a challenge while ESP32 is briefly in TX mode (even a few ms gap can miss a packet)
+- **Phase timing sensitivity**: The device may have strict windows for when it expects config packets; our fixed delays may not always align
+- **No retry/NACK mechanism**: Unlike the real bridge which likely monitors for device acknowledgments, we fire-and-forget all config packets
+
+### Switch-Only Support
+
+The current implementation only fully supports DVRF-5NS on/off switches. Dimmer pairing (DVRF-6L) requires:
+- Format 0x15 dimmer-specific config packets
+- Potentially multiple handshake cycles
+- STATE_RPT_81 handling
+
+The B0/B2 detection correctly identifies dimmers (subtype 0x63) but the config sequence does not yet send dimmer-specific packets.
+
+---
+
+## Future TODO
+
+- [ ] **Improve pairing reliability** — Investigate adaptive timing: monitor for device B8 retries during config (presence = device received config, absence = needs retransmission). Consider adding acknowledgment detection between phases.
+- [ ] **Implement dimmer pairing** — Add format 0x15 config packets, dimmer capability config (0x0C 0x04 0x3B 0x92), and multi-cycle handshake support.
+- [ ] **Beacon state machine** — Tie beacon format/subcmd to pairing state rather than type byte. Real bridge uses 0x08/0x01 (idle), 0x0C/0x02 (seeking), 0x0D/0x06 (found), 0x0C/0x04 (committed). Current implementation always sends 0x0C/0x02.
+- [ ] **Integration ID management** — Currently uses hardcoded IDs. Should generate deterministic IDs from subnet/load or allow user-specified IDs for multi-device setups.
+- [ ] **Pairing counter persistence** — The monotonic pairing counter should persist across reboots (currently resets to 0x06).
+- [ ] **RTL-SDR verification** — Capture our ESP32's pairing sequence with RTL-SDR and diff against real bridge captures to identify remaining byte-level differences.
