@@ -32,6 +32,10 @@ export function DeviceState({ showStatus }: Props) {
 
   return (
     <ControlSection title="Device State" storageKey="ctrl-device-state">
+      <div className="text-[11px] font-mono text-[var(--text-muted)] leading-snug mb-2 w-full flex-1">
+        Report the state of a device to the bridge.
+      </div>
+
       <div className="flex items-center gap-3">
         <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
         <Input

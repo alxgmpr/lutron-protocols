@@ -308,17 +308,6 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
           </button>
         </div>
 
-        <select
-          className="pdt-type-filter"
-          value={currentTypeFilter}
-          onChange={handleTypeFilter}
-        >
-          <option value="">All types</option>
-          {packetTypes.map(type => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-
         <div className="pdt-spacer" />
 
         <span className="pdt-count">

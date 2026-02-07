@@ -8,19 +8,11 @@ interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
 
-interface ViveDevice {
-  device_id: string
-  device_type: string
-  rssi: number | null
-  last_seen: number
-}
-
 export function VivePairing({ showStatus }: Props) {
   const { postJson } = useApi()
   const [hubId, setHubId] = useState('')
   const [zoneId, setZoneId] = useState('')
   const [isActive, setIsActive] = useState(false)
-  const [discoveredDevices, setDiscoveredDevices] = useState<ViveDevice[]>([])
   const [elapsedTime, setElapsedTime] = useState(0)
   const timerRef = useRef<number | null>(null)
   const startTimeRef = useRef<number>(0)
@@ -55,7 +47,6 @@ export function VivePairing({ showStatus }: Props) {
       const result = await postJson('/api/vive/start', { hub_id: fullHubId, zone_id: zoneNum })
       if (result.status === 'ok') {
         setIsActive(true)
-        setDiscoveredDevices([])
         showStatus('Vive pairing active - devices should flash', 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
@@ -82,26 +73,6 @@ export function VivePairing({ showStatus }: Props) {
     try {
       await postJson('/api/vive/beacon', { hub_id: fullHubId, count: 9 })
       showStatus('Beacon burst sent', 'success')
-    } catch (e) {
-      showStatus(`Error: ${e}`, 'error')
-    }
-  }
-
-  const handleAccept = async (deviceId: string) => {
-    const fullHubId = '0x' + hubId.replace(/^0x/i, '')
-    const zoneNum = parseInt(zoneId, 16)
-    if (isNaN(zoneNum) || zoneNum < 0 || zoneNum > 255) {
-      showStatus('Invalid zone ID (must be 00-FF hex)', 'error')
-      return
-    }
-    showStatus(`Accepting device ${deviceId} to zone 0x${zoneId.toUpperCase()}...`)
-    try {
-      await postJson('/api/vive/accept', {
-        hub_id: fullHubId,
-        device_id: deviceId,
-        zone_id: zoneNum
-      })
-      showStatus(`Accept sent: ${deviceId} -> zone 0x${zoneId.toUpperCase()}`, 'success')
     } catch (e) {
       showStatus(`Error: ${e}`, 'error')
     }
@@ -160,57 +131,7 @@ export function VivePairing({ showStatus }: Props) {
         </div>
       )}
 
-      <div className="border-t border-[var(--border-primary)] pt-2">
-        <div className="text-[11px] font-mono text-[var(--text-muted)] mb-2">
-          manual accept (device ID from B8 packet):
-        </div>
-        <ManualAccept onAccept={handleAccept} />
-      </div>
-
-      {discoveredDevices.length > 0 && (
-        <div className="border border-[var(--border-primary)] rounded p-3 font-mono text-[11px]">
-          <div className="text-[var(--text-muted)] mb-2">discovered:</div>
-          <div className="flex flex-col gap-1.5">
-            {discoveredDevices.map(d => (
-              <div key={d.device_id} className="flex items-center gap-3">
-                <span className="text-[var(--text-primary)]">{d.device_id}</span>
-                <span className="text-[var(--text-muted)]">{d.device_type}</span>
-                {d.rssi && <span className="text-[var(--text-muted)]">{d.rssi}dBm</span>}
-                <Button size="xs" variant="green" onClick={() => handleAccept(d.device_id)}>
-                  <svg className="size-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6l2.5 3 5-6"/></svg>
-                  Accept
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </ControlSection>
   )
 }
 
-function ManualAccept({ onAccept }: { onAccept: (id: string) => void }) {
-  const [deviceId, setDeviceId] = useState('')
-
-  const handleSubmit = () => {
-    if (deviceId.trim()) {
-      const fullId = '0x' + deviceId.replace(/^0x/i, '')
-      onAccept(fullId)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      <Input
-        value={deviceId}
-        onChange={e => setDeviceId(e.target.value)}
-        placeholder="021AD0C3"
-        className="w-[100px]"
-      />
-      <Button size="sm" variant="green" onClick={handleSubmit} disabled={!deviceId.trim()}>
-        <svg className="size-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6l2.5 3 5-6"/></svg>
-        Accept
-      </Button>
-    </div>
-  )
-}
