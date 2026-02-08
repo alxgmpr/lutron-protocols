@@ -290,7 +290,7 @@ wifi:
   password: !secret wifi_password
 
 logger:
-  level: DEBUG
+  level: INFO
 
 api:
   encryption:
