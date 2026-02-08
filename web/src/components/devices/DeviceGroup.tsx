@@ -29,9 +29,9 @@ function getRfRoleHint(device: Device): { label: string; role: RfRole } {
   if (rfRole && rfRole !== 'unknown') {
     // Add specificity based on legacy category
     if (rfRole === 'one_way_tx') {
-      if (category === 'scene_pico') return { label: 'Scene Pico', role: rfRole }
-      if (category === 'pico') return { label: 'Pico', role: rfRole }
-      return { label: 'Transmitter', role: rfRole }
+      if (category === 'scene_pico') return { label: 'OWT Scene', role: rfRole }
+      if (category === 'pico') return { label: 'OWT Pico', role: rfRole }
+      return { label: 'OWT', role: rfRole }
     }
     if (rfRole === 'two_way_cca_node') {
       return { label: 'CCA Device', role: rfRole }
@@ -43,25 +43,25 @@ function getRfRoleHint(device: Device): { label: string; role: RfRole } {
   }
 
   // Fallback to legacy category inference
-  if (category === 'pico') return { label: 'Pico', role: 'one_way_tx' }
-  if (category === 'scene_pico') return { label: 'Scene Pico', role: 'one_way_tx' }
+  if (category === 'pico') return { label: 'OWT Pico', role: 'one_way_tx' }
+  if (category === 'scene_pico') return { label: 'OWT Scene', role: 'one_way_tx' }
   if (category === 'bridge_controlled') return { label: 'CCA Device', role: 'two_way_cca_node' }
   if (category === 'dimmer_passive' || category === 'dimmer') return { label: 'CCA Device', role: 'two_way_cca_node' }
   if (type === 'LEVEL') return { label: 'CCA Device', role: 'two_way_cca_node' }
-  if (type?.startsWith('BTN_')) return { label: 'Transmitter', role: 'one_way_tx' }
+  if (type?.startsWith('BTN_')) return { label: 'OWT', role: 'one_way_tx' }
 
   return { label: '', role: 'unknown' }
 }
 
-function getDeviceCategory(devices: Array<[string, Device]>): 'pico' | 'dimmer' | 'unknown' {
+function getDeviceCategory(devices: Array<[string, Device]>): 'owt' | 'dimmer' | 'unknown' {
   for (const [, device] of devices) {
     const rfRole = device.rf_role
-    if (rfRole === 'one_way_tx') return 'pico'
+    if (rfRole === 'one_way_tx') return 'owt'
     if (rfRole === 'two_way_cca_node' || rfRole === 'cca_bridge') return 'dimmer'
 
     // Legacy fallback
     const category = device.info?.category || ''
-    if (category === 'pico' || category === 'scene_pico') return 'pico'
+    if (category === 'pico' || category === 'scene_pico') return 'owt'
     if (category === 'bridge_controlled' || category === 'dimmer_passive' || category === 'dimmer') return 'dimmer'
   }
   return 'unknown'

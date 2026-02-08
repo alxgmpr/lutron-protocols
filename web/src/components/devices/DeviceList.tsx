@@ -121,7 +121,7 @@ export function DeviceList({
 
     const category = device.info?.category || ''
     if (category === 'pico') return 'pico-5btn'
-    if (category === 'scene_pico') return 'pico-scene'
+    if (category === 'scene_pico') return 'pico-4btn-scene'
     if (category === 'bridge_controlled' || category === 'bridge') return 'dimmer'
     if (category === 'dimmer' || category === 'dimmer_passive') return 'dimmer'
     return 'auto'
@@ -331,7 +331,7 @@ export function DeviceList({
               onChange={e => setBridgeFilter(e.target.value)}
             >
               <option value="all">All Devices</option>
-              <option value="none">No Bridge (Picos)</option>
+              <option value="none">No Bridge (OWT)</option>
               {bridgePairings.map(pairing => (
                 <option key={pairing} value={pairing}>Bridge {pairing}</option>
               ))}

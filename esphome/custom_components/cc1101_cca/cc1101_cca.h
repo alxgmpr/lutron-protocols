@@ -74,6 +74,21 @@ class CC1101CCA : public Component,
   void send_save_favorite(uint32_t device_id, uint8_t button, int hold_seconds = 6);
 
   /**
+   * @brief Send continuous hold packets (for raise/lower dimming)
+   * @param device_id OWT device ID
+   * @param button Button code (0x05=RAISE, 0x06=LOWER for 5-btn)
+   * @param duration_ms Hold duration in milliseconds
+   */
+  void send_button_hold(uint32_t device_id, uint8_t button, uint16_t duration_ms = 2000);
+
+  /**
+   * @brief Send double-tap sequence (two press/release cycles with A/B alternation)
+   * @param device_id OWT device ID
+   * @param button Button code
+   */
+  void send_button_double_tap(uint32_t device_id, uint8_t button);
+
+  /**
    * @brief Send a level/dimming command (WORKING - direct paired devices)
    */
   void send_level(uint32_t device_id, uint8_t level_percent);

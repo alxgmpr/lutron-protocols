@@ -16,9 +16,9 @@ function getRfRoleInfo(device: Device): { hint: string; role: RfRole; showSubnet
   // Use rf_role if available and not unknown
   if (rfRole && rfRole !== 'unknown') {
     if (rfRole === 'one_way_tx') {
-      if (category === 'scene_pico') return { hint: 'Scene Pico', role: rfRole, showSubnet: false }
-      if (category === 'pico') return { hint: 'Pico Remote', role: rfRole, showSubnet: false }
-      return { hint: 'One-Way TX', role: rfRole, showSubnet: false }
+      if (category === 'scene_pico') return { hint: 'OWT Scene', role: rfRole, showSubnet: false }
+      if (category === 'pico') return { hint: 'OWT Pico', role: rfRole, showSubnet: false }
+      return { hint: 'OWT', role: rfRole, showSubnet: false }
     }
     if (rfRole === 'two_way_cca_node') {
       return { hint: 'CCA Device', role: rfRole, showSubnet: true }
@@ -33,12 +33,12 @@ function getRfRoleInfo(device: Device): { hint: string; role: RfRole; showSubnet
   }
 
   // Fallback to legacy category inference
-  if (category === 'pico') return { hint: 'Pico Remote', role: 'one_way_tx', showSubnet: false }
-  if (category === 'scene_pico') return { hint: 'Scene Pico', role: 'one_way_tx', showSubnet: false }
+  if (category === 'pico') return { hint: 'OWT Pico', role: 'one_way_tx', showSubnet: false }
+  if (category === 'scene_pico') return { hint: 'OWT Scene', role: 'one_way_tx', showSubnet: false }
   if (category === 'bridge_controlled') return { hint: 'CCA Device', role: 'two_way_cca_node', showSubnet: true }
   if (category === 'dimmer_passive' || category === 'dimmer') return { hint: 'CCA Device', role: 'two_way_cca_node', showSubnet: true }
   if (type === 'LEVEL') return { hint: 'CCA Device', role: 'two_way_cca_node', showSubnet: true }
-  if (type?.startsWith('BTN_')) return { hint: 'One-Way TX', role: 'one_way_tx', showSubnet: false }
+  if (type?.startsWith('BTN_')) return { hint: 'OWT', role: 'one_way_tx', showSubnet: false }
 
   return { hint: 'Unknown', role: 'unknown', showSubnet: false }
 }

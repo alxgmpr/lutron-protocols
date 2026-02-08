@@ -480,6 +480,10 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("unpair", allParams);
           case "/api/save-favorite":
             return server.handleTxCommand("save_favorite", allParams);
+          case "/api/hold":
+            return server.handleTxCommand("hold", allParams);
+          case "/api/double-tap":
+            return server.handleTxCommand("double_tap", allParams);
           case "/api/pair-pico":
             return server.handleTxCommand("pair_pico", allParams);
           case "/api/config/fade":

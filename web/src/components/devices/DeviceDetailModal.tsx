@@ -3,6 +3,7 @@ import { Button } from '../common'
 import { PacketInspector } from '../display'
 import { DEVICE_TYPES } from '../../types'
 import type { Device, RfRole } from '../../types'
+import { isOwtType, getOwtButtons } from '../../owt-types'
 import './DeviceDetailModal.css'
 
 interface DeviceDetailModalProps {
@@ -21,8 +22,8 @@ interface DeviceDetailModalProps {
 // RF Role descriptions for display
 const RF_ROLE_INFO: Record<RfRole, { label: string; description: string }> = {
   'one_way_tx': {
-    label: 'One-Way Transmitter',
-    description: 'Sends commands only (e.g., Pico remote, motion sensor)'
+    label: 'One-Way Transmitter (OWT)',
+    description: 'Sends commands only (e.g., Pico remote, motion sensor, daylight sensor)'
   },
   'two_way_cca_node': {
     label: 'CCA Network Device',
@@ -179,16 +180,19 @@ export function DeviceDetailModal({
     const bridgeId = info.bridge_id as string | undefined
     const factoryId = info.factory_id as string | undefined
     
-    if (effectiveType === 'pico-5btn' || effectiveType === 'pico-4b-rl' || effectiveType === 'pico-scene' || effectiveType === 'pico-2btn') {
-      return (
-        <div className="modal-control-buttons">
-          <Button size="sm" onClick={() => onReplayButton(targetDevice.id, 0x02)}>ON</Button>
-          <Button size="sm" onClick={() => onReplayButton(targetDevice.id, 0x03)}>FAV</Button>
-          <Button size="sm" onClick={() => onReplayButton(targetDevice.id, 0x04)}>OFF</Button>
-          <Button size="sm" onClick={() => onReplayButton(targetDevice.id, 0x05)}>▲</Button>
-          <Button size="sm" onClick={() => onReplayButton(targetDevice.id, 0x06)}>▼</Button>
-        </div>
-      )
+    if (isOwtType(effectiveType)) {
+      const buttons = getOwtButtons(effectiveType)
+      if (buttons.length > 0) {
+        return (
+          <div className="modal-control-buttons">
+            {buttons.map(btn => (
+              <Button key={btn.code} size="sm" onClick={() => onReplayButton(targetDevice.id, btn.code)}>
+                {btn.label}
+              </Button>
+            ))}
+          </div>
+        )
+      }
     }
     
     if (effectiveType === 'dimmer' || effectiveType === 'switch' || effectiveType === 'fan') {

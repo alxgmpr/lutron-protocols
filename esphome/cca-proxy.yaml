@@ -102,6 +102,21 @@ esphome:
                 id(cca_radio)->send_save_favorite(device, button, hold);
               }
             }
+            else if (strcmp(cmd, "hold") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              uint32_t button = parse_hex(params["button"]);
+              int duration = params["duration"] | 2000;
+              if (device && button) {
+                id(cca_radio)->send_button_hold(device, button, duration);
+              }
+            }
+            else if (strcmp(cmd, "double_tap") == 0) {
+              uint32_t device = parse_hex(params["device"]);
+              uint32_t button = parse_hex(params["button"]);
+              if (device && button) {
+                id(cca_radio)->send_button_double_tap(device, button);
+              }
+            }
             else if (strcmp(cmd, "pair_pico") == 0) {
               uint32_t device = parse_hex(params["device"]);
               int duration = params["duration"] | 10;

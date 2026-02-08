@@ -8,14 +8,14 @@ interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
 
-export function ResetPico({ showStatus }: Props) {
+export function OwtReset({ showStatus }: Props) {
   const { post } = useApi()
-  const [picoId, setPicoId] = useState('05851117')
+  const [deviceId, setDeviceId] = useState('05851117')
 
   const handleReset = async () => {
-    showStatus(`Sending reset for ${picoId}...`)
+    showStatus(`Sending reset for ${deviceId}...`)
     try {
-      const result = await post('/api/reset', { pico: '0x' + picoId.replace(/^0x/i, '') })
+      const result = await post('/api/reset', { pico: '0x' + deviceId.replace(/^0x/i, '') })
       if (result.status === 'ok') {
         showStatus(`Reset broadcast sent`, 'success')
       } else {
@@ -27,12 +27,12 @@ export function ResetPico({ showStatus }: Props) {
   }
 
   return (
-    <ControlSection title="Reset Pico" storageKey="ctrl-reset-pico">
+    <ControlSection title="OWT Reset" storageKey="ctrl-owt-reset">
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">pico:</span>
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
         <Input
-          value={picoId}
-          onChange={e => setPicoId(e.target.value.replace(/^0x/i, ''))}
+          value={deviceId}
+          onChange={e => setDeviceId(e.target.value.replace(/^0x/i, ''))}
           className="w-[100px]"
         />
         <Button variant="red" onClick={handleReset}>

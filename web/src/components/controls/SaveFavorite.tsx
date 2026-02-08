@@ -39,7 +39,7 @@ export function SaveFavorite({ showStatus }: Props) {
   return (
     <ControlSection title="Save Favorite" storageKey="ctrl-save-favorite">
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">pico:</span>
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
         <Input
           value={deviceId}
           onChange={e => setDeviceId(e.target.value.replace(/^0x/i, ''))}

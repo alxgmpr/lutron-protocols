@@ -835,6 +835,8 @@ The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete 
 | send_bridge_level | Send bridge-style level with target ID |
 | send_pico_level | Set arbitrary level via pico ID (no bridge needed) |
 | send_save_favorite | Save current level to button |
+| send_button_hold | Continuous hold packets for raise/lower dimming |
+| send_button_double_tap | Two press/release cycles with A/B alternation |
 | send_beacon | Send pairing beacon |
 | send_pairing_5button | Pair as 5-button Pico |
 | send_pairing_advanced | Pair with custom capability bytes |
@@ -842,5 +844,63 @@ The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete 
 | send_state_report | Fake dimmer state to bridge |
 | start_rx / stop_rx | Control RX mode |
 
+## OWT (One Way Transmitter) Device Taxonomy
 
+CCA One Way Transmitters include remotes and sensors. They share a common RF protocol
+but differ in button codes and capabilities.
+
+### Remote Devices
+
+| Type | Model | Buttons | Codes |
+|------|-------|---------|-------|
+| 5-Button Pico | PJ2-3BRL | ON, FAV, OFF, RAISE, LOWER | 0x02-0x06 |
+| 4-Button R/L | PJ2-4B | ON, RAISE, LOWER, OFF | 0x08-0x0B |
+| 4-Button Scene | PJ2-4B-S | SCENE4, SCENE3, SCENE2, OFF | 0x08-0x0B |
+| 2-Button Pico | PJ2-2B | ON, OFF | 0x02, 0x04 |
+
+### Sensor Devices
+
+| Type | Model | Codes | Notes |
+|------|-------|-------|-------|
+| Motion Sensor | LRF3-OKLB | 0x02 (OCC), 0x04 (UNOCC) | Uses same OWT protocol |
+| Daylight Sensor | LRF3-DKLB | TBD | Placeholder — needs capture analysis |
+
+## Button Action Patterns
+
+### Press (normal)
+
+3x BTN_PRESS (action=0x00) + 1x BTN_RELEASE (action=0x01), 70ms intervals.
+Actually implemented as 6 short-format + 10 long-format packets.
+Firmware: `send_button_press(device_id, button)`
+
+### Hold-to-Dim
+
+Continuous long-format packets with action byte 0x02 (HOLD) at position 11.
+Used for RAISE/LOWER buttons. Sends at 70ms intervals for the specified duration.
+Firmware: `send_button_hold(device_id, button, duration_ms)`
+
+### Save Favorite
+
+12x long-format packets with format byte 0x0D and action byte 0x03 (SAVE) at position 11.
+75ms intervals. Triggers dimmer to save current level to the specified button.
+Firmware: `send_save_favorite(device_id, button, hold_seconds)`
+
+### Double-Tap
+
+Two complete press/release cycles with A→B type alternation:
+1. Tap 1: Type A packets (0x88/0x89)
+2. 100ms gap
+3. Tap 2: Type B packets (0x8A/0x8B)
+
+The type group alternation lets receivers distinguish double-tap from retransmissions.
+Firmware: `send_button_double_tap(device_id, button)`
+
+### Action Byte Summary (byte 11 in long format)
+
+| Value | Action | Description |
+|-------|--------|-------------|
+| 0x00 | PRESS | Normal button press |
+| 0x01 | RELEASE | Button release |
+| 0x02 | HOLD | Continuous hold (dimming) |
+| 0x03 | SAVE | Save favorite/scene level |
 

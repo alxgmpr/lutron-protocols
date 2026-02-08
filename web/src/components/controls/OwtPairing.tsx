@@ -8,7 +8,7 @@ interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
 
-export function PicoPairing({ showStatus }: Props) {
+export function OwtPairing({ showStatus }: Props) {
   const { post } = useApi()
   const [deviceId, setDeviceId] = useState('CC110001')
   const [duration, setDuration] = useState(4)
@@ -38,9 +38,9 @@ export function PicoPairing({ showStatus }: Props) {
   }
 
   return (
-    <ControlSection title="Pico Pairing" storageKey="ctrl-pico-pairing">
+    <ControlSection title="OWT Pairing" storageKey="ctrl-owt-pairing">
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">pico:</span>
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
         <Input
           value={deviceId}
           onChange={e => setDeviceId(e.target.value.replace(/^0x/i, ''))}

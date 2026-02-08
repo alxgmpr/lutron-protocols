@@ -91,15 +91,18 @@ export const PAIRING_PRESETS: Record<string, PairingPreset> = {
   'custom': { pkt: 'B9', b10: '0x04', b30: '0x03', b31: '0x00', b37: '0x02', b38: '0x06', desc: 'Custom parameters' }
 }
 
-export const DEVICE_TYPES: Record<string, { name: string; buttons: string | null }> = {
-  'auto': { name: 'Auto', buttons: null },
-  'pico-5btn': { name: 'Pico 5-Button', buttons: 'pico' },
-  'pico-4btn-rl': { name: 'Pico 4B Raise/Lower', buttons: 'pico_4btn_rl' },
-  'pico-scene': { name: 'Pico Scene', buttons: 'scene_pico' },
-  'pico-2btn': { name: 'Pico 2-Button', buttons: 'pico_2btn' },
-  'dimmer': { name: 'Dimmer', buttons: 'dimmer' },
-  'switch': { name: 'Switch', buttons: 'switch' },
-  'fan': { name: 'Fan', buttons: 'fan' }
+export const DEVICE_TYPES: Record<string, { name: string; owtType: string | null }> = {
+  'auto': { name: 'Auto', owtType: null },
+  'pico-5btn': { name: 'Pico 5-Button', owtType: 'pico-5btn' },
+  'pico-4btn-rl': { name: 'Pico 4B Raise/Lower', owtType: 'pico-4btn-rl' },
+  'pico-4btn-scene': { name: 'Pico 4B Scene', owtType: 'pico-4btn-scene' },
+  'pico-scene': { name: 'Pico Scene (legacy)', owtType: 'pico-4btn-scene' },
+  'pico-2btn': { name: 'Pico 2-Button', owtType: 'pico-2btn' },
+  'sensor-motion': { name: 'Motion Sensor', owtType: 'sensor-motion' },
+  'sensor-daylight': { name: 'Daylight Sensor', owtType: 'sensor-daylight' },
+  'dimmer': { name: 'Dimmer', owtType: null },
+  'switch': { name: 'Switch', owtType: null },
+  'fan': { name: 'Fan', owtType: null }
 }
 
 // CCA Subnet (discovered from SET_LEVEL/STATE_RPT traffic)

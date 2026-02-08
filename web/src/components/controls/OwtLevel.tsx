@@ -8,23 +8,23 @@ interface Props {
   showStatus: (message: string, type?: 'success' | 'error' | '') => void
 }
 
-export function PicoLevel({ showStatus }: Props) {
+export function OwtLevel({ showStatus }: Props) {
   const { postJson } = useApi()
-  const [picoId, setPicoId] = useState('0595E68D')
+  const [deviceId, setDeviceId] = useState('0595E68D')
   const [level, setLevel] = useState(50)
   const [fade, setFade] = useState(0.25)
 
   const handleSend = async (lvl?: number) => {
     const targetLevel = lvl ?? level
-    showStatus(`Pico level ${picoId} → ${targetLevel}%...`)
+    showStatus(`OWT level ${deviceId} → ${targetLevel}%...`)
     try {
       const result = await postJson('/api/pico-level', {
-        device: '0x' + picoId.replace(/^0x/i, ''),
+        device: '0x' + deviceId.replace(/^0x/i, ''),
         level: targetLevel,
         fade
       })
       if (result.status === 'ok') {
-        showStatus(`Pico level → ${targetLevel}%`, 'success')
+        showStatus(`OWT level → ${targetLevel}%`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
       }
@@ -34,12 +34,12 @@ export function PicoLevel({ showStatus }: Props) {
   }
 
   return (
-    <ControlSection title="Pico Set Level" storageKey="ctrl-pico-level" defaultOpen>
+    <ControlSection title="OWT Set Level" storageKey="ctrl-owt-level" defaultOpen>
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">pico:</span>
+        <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">device:</span>
         <Input
-          value={picoId}
-          onChange={e => setPicoId(e.target.value.replace(/^0x/i, ''))}
+          value={deviceId}
+          onChange={e => setDeviceId(e.target.value.replace(/^0x/i, ''))}
           className="w-[100px]"
           placeholder="0595E68D"
         />
