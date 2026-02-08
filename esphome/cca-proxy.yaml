@@ -239,6 +239,18 @@ esphome:
                 ESP_LOGW("udp_cmd", "vive_level: missing hub_id or zone_id");
               }
             }
+            else if (strcmp(cmd, "pico_level") == 0) {
+              uint32_t pico_id = parse_hex(params["device"]);
+              uint8_t level = params["level"] | 0;
+              float fade = params["fade"] | 0.25f;
+              uint8_t fade_qs = (uint8_t)(fade * 4);
+              if (fade_qs == 0) fade_qs = 1;
+              if (pico_id) {
+                id(cca_radio)->send_pico_level(pico_id, level, fade_qs);
+              } else {
+                ESP_LOGW("udp_cmd", "pico_level: missing device (pico ID)");
+              }
+            }
             // Legacy commands (deprecated)
             else if (strcmp(cmd, "vive_toggle") == 0) {
               uint32_t hub_id = parse_hex(params["hub_id"]);

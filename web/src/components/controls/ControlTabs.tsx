@@ -4,6 +4,7 @@ import { PicoButtons } from './PicoButtons'
 import { PicoPairing } from './PicoPairing'
 import { SaveFavorite } from './SaveFavorite'
 import { ResetPico } from './ResetPico'
+import { PicoLevel } from './PicoLevel'
 import { BridgeLevel } from './BridgeLevel'
 import { BridgeBeacon } from './BridgeBeacon'
 import { DeviceConfig } from './DeviceConfig'
@@ -40,6 +41,7 @@ export function ControlTabs({ showStatus }: ControlTabsProps) {
 
       <div className="flex-1 overflow-y-auto">
         <TabsContent value="pico" className="mt-0">
+          <PicoLevel showStatus={showStatus} />
           <PicoButtons showStatus={showStatus} />
           <PicoPairing showStatus={showStatus} />
           <SaveFavorite showStatus={showStatus} />

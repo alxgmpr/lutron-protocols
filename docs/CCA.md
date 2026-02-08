@@ -297,6 +297,62 @@ Long format bytes 17-21 by button:
 
 Formula for ON/OFF/FAV: byte 19 = 0x1E + button_code
 
+### Pico Set Level (DISCOVERED 2026-02-08)
+
+Pico remotes only have physical buttons for ON/OFF/RAISE/LOWER/FAVORITE, and the Caseta app only exposes these discrete actions. However, dimmers paired to a Pico will accept **arbitrary level values** via the long format command payload — enabling direct percentage-based dimming without bridge pairing.
+
+This mirrors the Vive set-level discovery (2026-02-06): Vive dimmers accept arbitrary levels in format 0x0E despite the Vive app only supporting on/off/raise/lower.
+
+**Key insight**: The dimmer's format 0x0E parser uses command class 0x40 with subcommand 0x02 for set-level. This is the same command class used by bridge SET_LEVEL and Vive SET_LEVEL. The dimmer processes it regardless of whether the source is a bridge, hub, or pico.
+
+**Working packet** (long format, byte 7 = 0x0E):
+
+```
+Byte  0: Type (0x89 or 0x8B, long format)
+Byte  1: Sequence
+Byte 2-5: Pico device ID (big-endian)
+Byte  6: 0x21
+Byte  7: 0x0E
+Byte  8: 0x03          ← MUST be 0x03 (pico format marker)
+Byte  9: 0x00
+Byte 10: 0x02          ← Button code (ON)
+Byte 11: 0x01          ← Action (release)
+Byte 12-15: Pico device ID (repeated, big-endian)
+Byte 16: 0x00
+Byte 17: 0x40          ← Command class: level control
+Byte 18: 0x02          ← Subcommand: SET LEVEL (not 0x00 for button)
+Byte 19: Level high     ← } 0x0000 = OFF, 0xFEFF = 100%
+Byte 20: Level low      ← }
+Byte 21: Fade time      ← Quarter-seconds (0x01=250ms, 0x04=1s)
+Byte 22-23: CRC-16
+```
+
+Compared to a standard ON button press, **only bytes 18-21 differ**:
+
+| | Byte 18 | Byte 19 | Byte 20 | Byte 21 |
+|--|---------|---------|---------|---------|
+| ON button | 0x00 | 0x20 | 0x00 | 0x00 |
+| Set level | **0x02** | **level_hi** | **level_lo** | **fade_qs** |
+
+**Critical**: Byte 8 MUST be 0x03 and the repeated device ID MUST be present at bytes 12-15. Without these, the dimmer ignores the packet (it expects pico-style framing when the source is a pico device ID).
+
+**Implications**: Any Caseta dimmer with a paired Pico can be set to an arbitrary level by spoofing the Pico's device ID. This enables:
+- Precise percentage-based dimming on devices without a bridge
+- Controllable fade times (same encoding as bridge/Vive: quarter-seconds)
+- Full dimmer control from any CCA transmitter that knows the Pico's device ID
+
+**Level encoding** (identical across all CCA command sources):
+
+| Level | Bytes 19-20 |
+|-------|-------------|
+| OFF (0%) | 0x00 0x00 |
+| 25% | 0x3F 0xBF |
+| 50% | 0x7F 0x7F |
+| 75% | 0xBF 0x3F |
+| ON (100%) | 0xFE 0xFF |
+
+Formula: `level16 = percent * 0xFEFF / 100`
+
 ### Dimming Format (byte 7 = 0x0C)
 
 RAISE/LOWER buttons use this format for continuous dimming:
@@ -777,6 +833,7 @@ The `rf/esphome/custom_components/lutron_cc1101/` directory contains a complete 
 | send_button_press | Send button command |
 | send_level | Send level command |
 | send_bridge_level | Send bridge-style level with target ID |
+| send_pico_level | Set arbitrary level via pico ID (no bridge needed) |
 | send_save_favorite | Save current level to button |
 | send_beacon | Send pairing beacon |
 | send_pairing_5button | Pair as 5-button Pico |

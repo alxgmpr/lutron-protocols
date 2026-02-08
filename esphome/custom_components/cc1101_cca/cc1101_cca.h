@@ -398,6 +398,17 @@ class CC1101CCA : public Component,
   void send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_percent, uint8_t fade_time_qs = 0x01);
 
   /**
+   * @brief EXPERIMENTAL: Send SET_LEVEL using a Pico's device ID as source
+   * Picos are one-way — the dimmer stores the pico's ID during pairing.
+   * We broadcast with the pico's ID and a level payload; any dimmer paired
+   * to that pico should obey (if it parses format 0x0E level commands).
+   * @param pico_id Pico device ID (must be paired to the target dimmer)
+   * @param level_percent Level 0-100
+   * @param fade_time_qs Fade time in quarter-seconds (1=250ms, 4=1s, 40=10s)
+   */
+  void send_pico_level(uint32_t pico_id, uint8_t level_percent, uint8_t fade_time_qs = 0x01);
+
+  /**
    * @brief Send dim step command (shared by raise/lower)
    * @param direction 0x03 = raise, 0x02 = lower
    */

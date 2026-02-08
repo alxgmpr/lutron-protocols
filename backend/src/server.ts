@@ -519,6 +519,8 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("vive_lower", allParams);
           case "/api/vive/level":
             return server.handleTxCommand("vive_level", allParams);
+          case "/api/pico-level":
+            return server.handleTxCommand("pico_level", allParams);
           case "/api/vive/toggle":
             return server.handleTxCommand("vive_toggle", allParams);
           case "/api/vive/cmd":

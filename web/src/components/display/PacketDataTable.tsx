@@ -38,14 +38,6 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
   const [dirFilter, setDirFilter] = useState<'all' | 'rx' | 'tx'>('all')
   const [protoFilter, setProtoFilter] = useState<'all' | 'cca' | 'ccx'>('all')
 
-  // Collect unique packet types for filter dropdown
-  const packetTypes = useMemo(() => {
-    const types = new Set<string>()
-    for (const p of packets) {
-      types.add(p.type)
-    }
-    return Array.from(types).sort()
-  }, [packets])
 
   // Parse bytes and identify packet type (memoized per packet)
   const enrichedPackets = useMemo(() =>
@@ -207,16 +199,6 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
     setUserScrolled(!atBottom)
   }, [])
 
-  // Handle type filter
-  const handleTypeFilter = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value
-    const typeColumn = table.getColumn('type')
-    if (typeColumn) {
-      typeColumn.setFilterValue(value || undefined)
-    }
-  }, [table])
-
-  const currentTypeFilter = (table.getColumn('type')?.getFilterValue() as string) ?? ''
 
   // Copy visible packets to clipboard as text
   const handleCopy = useCallback(() => {
