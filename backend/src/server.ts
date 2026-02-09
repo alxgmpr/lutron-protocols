@@ -14,7 +14,11 @@
 
 import { createSocket, type RemoteInfo, type Socket } from "dgram";
 import { join } from "path";
+import { mkdirSync, appendFileSync, writeFileSync } from "fs";
 import { identifyPacket, ButtonNames } from "../../protocol/protocol-ui";
+
+// Recording sessions directory
+const CAPTURES_DIR = join(import.meta.dir, "../../captures/cca-sessions");
 
 // Path to built frontend
 const STATIC_DIR = join(import.meta.dir, "../../web/dist");
@@ -56,6 +60,7 @@ class PacketServer {
   private clients = new Set<WritableStreamDefaultWriter>();
   private startTime = Date.now();
   private txSocket: Socket;
+  private recording: { file: string; count: number } | null = null;
   private stats: Stats = {
     packetsReceived: 0,
     packetsDropped: 0,
@@ -248,6 +253,13 @@ class PacketServer {
     this.stats.packetsReceived++;
     this.stats.lastPacketTime = Date.now();
 
+    // Write to recording CSV if active
+    if (this.recording) {
+      const line = `${pkt.time},${pkt.direction},${pkt.rssi ?? ''},${pkt.raw_hex ?? ''}\n`;
+      appendFileSync(this.recording.file, line);
+      this.recording.count++;
+    }
+
     // Store packet (with limit)
     this.packets.push(pkt);
     if (this.packets.length > this.maxPackets) {
@@ -375,6 +387,62 @@ class PacketServer {
     });
   }
 
+  handleRecordingStart(name: string): Response {
+    if (this.recording) {
+      return Response.json({ status: "error", error: "Already recording" }, {
+        status: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    mkdirSync(CAPTURES_DIR, { recursive: true });
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-");
+    const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const fileName = `${safeName}_${timestamp}.csv`;
+    const filePath = join(CAPTURES_DIR, fileName);
+
+    writeFileSync(filePath, "timestamp,direction,rssi,raw_hex\n");
+    this.recording = { file: filePath, count: 0 };
+
+    console.log(`Recording started: ${fileName}`);
+    return Response.json({ file: fileName }, {
+      headers: { "Access-Control-Allow-Origin": "*" },
+    });
+  }
+
+  handleRecordingStop(): Response {
+    if (!this.recording) {
+      return Response.json({ status: "error", error: "Not recording" }, {
+        status: 400,
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    }
+
+    const { file, count } = this.recording;
+    const fileName = file.split("/").pop();
+    this.recording = null;
+
+    console.log(`Recording stopped: ${fileName} (${count} packets)`);
+    return Response.json({ file: fileName, packets_recorded: count }, {
+      headers: { "Access-Control-Allow-Origin": "*" },
+    });
+  }
+
+  handleRecordingStatus(): Response {
+    if (this.recording) {
+      return Response.json({
+        recording: true,
+        file: this.recording.file.split("/").pop(),
+        count: this.recording.count,
+      }, {
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+    }
+    return Response.json({ recording: false }, {
+      headers: { "Access-Control-Allow-Origin": "*" },
+    });
+  }
+
   /** Handle TX command - send to ESP32 and return response */
   async handleTxCommand(command: string, params: Record<string, unknown>): Promise<Response> {
     try {
@@ -455,6 +523,26 @@ const httpServer = Bun.serve({
             return server.handleGetConfig();
           }
           break;
+
+        case "/api/recording/status":
+          if (req.method === "GET") {
+            return server.handleRecordingStatus();
+          }
+          break;
+      }
+
+      // Recording start/stop (POST with JSON body)
+      if (req.method === "POST" && url.pathname === "/api/recording/start") {
+        let body: Record<string, unknown> = {};
+        try {
+          const text = await req.text();
+          if (text) body = JSON.parse(text);
+        } catch { /* ignore */ }
+        return server.handleRecordingStart(String(body.name || "session"));
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/recording/stop") {
+        return server.handleRecordingStop();
       }
 
       // TX Commands - send to ESP32
@@ -559,9 +647,18 @@ const httpServer = Bun.serve({
   },
 });
 
+// Clean up recording on shutdown
+process.on("SIGINT", () => {
+  server.handleRecordingStop();
+  process.exit(0);
+});
+
 console.log(`HTTP server listening on http://localhost:${httpServer.port}`);
 console.log("API endpoints:");
 console.log("  GET  /api/packets/stream - SSE stream of packets");
 console.log("  GET  /api/packets        - Get recent packets");
 console.log("  DELETE /api/packets      - Clear packet history");
 console.log("  GET  /api/stats          - Server statistics");
+console.log("  POST /api/recording/start - Start CSV recording");
+console.log("  POST /api/recording/stop  - Stop CSV recording");
+console.log("  GET  /api/recording/status - Recording status");

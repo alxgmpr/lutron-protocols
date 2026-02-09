@@ -19,7 +19,7 @@ const ARROW_DOWN = (
 )
 
 export function OwtButtons({ showStatus }: Props) {
-  const { post, postJson } = useApi()
+  const { postJson } = useApi()
   const [deviceId, setDeviceId] = useState(() => localStorage.getItem('owt-btn-device') || '05851117')
   const [owtType, setOwtType] = useState(() => localStorage.getItem('owt-btn-type') || 'pico-5btn')
   const [customHex, setCustomHex] = useState('')
@@ -40,7 +40,7 @@ export function OwtButtons({ showStatus }: Props) {
     const fullId = deviceId.replace(/^0x/i, '')
     showStatus(`Sending 0x${hex} from ${fullId}...`)
     try {
-      const result = await post('/api/send', { device: '0x' + fullId, button: '0x' + hex })
+      const result = await postJson('/api/send', { device: '0x' + fullId, button: '0x' + hex })
       if (result.status === 'ok') {
         showStatus(`Sent 0x${hex} from ${result.device}`, 'success')
       } else {
@@ -59,22 +59,6 @@ export function OwtButtons({ showStatus }: Props) {
       const result = await postJson('/api/hold', { device: '0x' + fullId, button: '0x' + hex, duration: 2000 })
       if (result.status === 'ok') {
         showStatus(`Hold 0x${hex} complete`, 'success')
-      } else {
-        showStatus(`Error: ${result.error}`, 'error')
-      }
-    } catch (e) {
-      showStatus(`Error: ${e}`, 'error')
-    }
-  }
-
-  const sendSave = async (btnCode: number) => {
-    const hex = btnCode.toString(16).padStart(2, '0').toUpperCase()
-    const fullId = deviceId.replace(/^0x/i, '')
-    showStatus(`Saving 0x${hex} on ${fullId}...`)
-    try {
-      const result = await post('/api/save-favorite', { device: '0x' + fullId, button: '0x' + hex, hold: 6 })
-      if (result.status === 'ok') {
-        showStatus(`Saved on ${result.device}`, 'success')
       } else {
         showStatus(`Error: ${result.error}`, 'error')
       }
@@ -103,11 +87,6 @@ export function OwtButtons({ showStatus }: Props) {
         {btn.canHold && (
           <Button size="sm" variant="default" onClick={() => sendHold(btn.code)} title="Hold (dim)">
             H
-          </Button>
-        )}
-        {btn.canSave && (
-          <Button size="sm" variant="default" onClick={() => sendSave(btn.code)} title="Save favorite">
-            S
           </Button>
         )}
       </div>

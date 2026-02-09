@@ -444,9 +444,9 @@ void CC1101CCA::send_save_favorite(uint32_t device_id, uint8_t button, int hold_
 }
 
 void CC1101CCA::send_button_hold(uint32_t device_id, uint8_t button, uint16_t duration_ms) {
-  // Hold-to-dim: send continuous HOLD (action=0x02) packets for the specified duration.
-  // Uses long format with hold action byte at position 11.
-  // Real picos send hold packets at ~70ms intervals.
+  // Hold-to-dim: burst of HOLD press packets, wait for duration, then burst release packets.
+  // Dimmer starts dimming on press burst and stops on release burst.
+  // No need to continuously emit — just press, wait, release.
 
   ESP_LOGI(TAG, "=== BUTTON HOLD ===");
   ESP_LOGI(TAG, "Device: 0x%08X, Button: 0x%02X, Duration: %dms", device_id, button, duration_ms);
@@ -456,10 +456,9 @@ void CC1101CCA::send_button_hold(uint32_t device_id, uint8_t button, uint16_t du
   this->type_alternate_ = !this->type_alternate_;
 
   uint8_t seq = 0x00;
-  uint32_t start = millis();
-  int count = 0;
 
-  while ((millis() - start) < duration_ms) {
+  // --- PRESS BURST: 14 long-format HOLD packets ---
+  for (int rep = 0; rep < 14; rep++) {
     memset(packet, 0xCC, sizeof(packet));
 
     packet[0] = type_base | 0x01;  // LONG format
@@ -501,11 +500,61 @@ void CC1101CCA::send_button_hold(uint32_t device_id, uint8_t button, uint16_t du
 
     this->transmit_packet(packet, 24);
     seq = (seq + 6) & 0xFF;
-    count++;
-    delay(70);
+    if (rep < 13) delay(70);
   }
 
-  ESP_LOGI(TAG, "=== HOLD COMPLETE (%d packets) ===", count);
+  ESP_LOGI(TAG, "Hold press burst sent, waiting %dms...", duration_ms);
+
+  // --- WAIT for hold duration ---
+  delay(duration_ms);
+
+  // --- RELEASE BURST: 14 long-format RELEASE packets ---
+  for (int rep = 0; rep < 14; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
+
+    packet[0] = type_base | 0x01;  // LONG format (same type group as press)
+    packet[1] = seq;
+    packet[2] = (device_id >> 24) & 0xFF;
+    packet[3] = (device_id >> 16) & 0xFF;
+    packet[4] = (device_id >> 8) & 0xFF;
+    packet[5] = device_id & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;
+    packet[8] = 0x03;
+    packet[9] = 0x00;
+    packet[10] = button;
+    packet[11] = 0x01;  // RELEASE action
+
+    // Repeated device ID
+    packet[12] = (device_id >> 24) & 0xFF;
+    packet[13] = (device_id >> 16) & 0xFF;
+    packet[14] = (device_id >> 8) & 0xFF;
+    packet[15] = device_id & 0xFF;
+    packet[16] = 0x00;
+
+    // Same dimming command as press
+    if (button == LUTRON_BUTTON_RAISE) {
+      packet[17] = 0x42; packet[18] = 0x02; packet[19] = 0x01;
+      packet[20] = 0x00; packet[21] = 0x16;
+    } else if (button == LUTRON_BUTTON_LOWER) {
+      packet[17] = 0x42; packet[18] = 0x02; packet[19] = 0x00;
+      packet[20] = 0x00; packet[21] = 0x43;
+    } else {
+      packet[17] = 0x40; packet[18] = 0x00;
+      packet[19] = 0x1E + button;
+      packet[20] = 0x00; packet[21] = 0x00;
+    }
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    seq = (seq + 6) & 0xFF;
+    if (rep < 13) delay(70);
+  }
+
+  ESP_LOGI(TAG, "=== HOLD COMPLETE (press + %dms + release) ===", duration_ms);
 }
 
 void CC1101CCA::send_button_double_tap(uint32_t device_id, uint8_t button) {

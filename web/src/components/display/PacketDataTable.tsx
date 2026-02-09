@@ -18,7 +18,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { HexByteRow } from './HexByte'
-import { useProtocolDefinition } from '../../context/ProtocolDefinitionContext'
 import type { Packet } from '../../types'
 import './PacketDataTable.css'
 
@@ -29,8 +28,13 @@ interface PacketDataTableProps {
   onClear: () => void
 }
 
+interface RecordingState {
+  recording: boolean
+  file?: string
+  count?: number
+}
+
 export function PacketDataTable({ packets, paused, onTogglePause, onClear }: PacketDataTableProps) {
-  const { identifyPacketFromHex, getCategoryColor } = useProtocolDefinition()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [userScrolled, setUserScrolled] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -38,27 +42,39 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
   const [dirFilter, setDirFilter] = useState<'all' | 'rx' | 'tx'>('all')
   const [protoFilter, setProtoFilter] = useState<'all' | 'cca' | 'ccx'>('all')
 
+  // Recording state
+  const [recording, setRecording] = useState<RecordingState>({ recording: false })
+  const [showRecordInput, setShowRecordInput] = useState(false)
+  const [sessionName, setSessionName] = useState('')
+  const recordInputRef = useRef<HTMLInputElement>(null)
 
-  // Parse bytes and identify packet type (memoized per packet)
+  // Poll recording status while recording
+  useEffect(() => {
+    if (!recording.recording) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/recording/status')
+        const data = await res.json()
+        setRecording(data)
+      } catch { /* ignore */ }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [recording.recording])
+
+  // Focus input when it appears
+  useEffect(() => {
+    if (showRecordInput && recordInputRef.current) {
+      recordInputRef.current.focus()
+    }
+  }, [showRecordInput])
+
+  // Split bytes from raw hex (memoized per packet set)
   const enrichedPackets = useMemo(() =>
     packets.map(packet => {
       const bytes = packet.rawBytes?.split(/\s+/).filter(b => b.length > 0) || []
-      if (packet.protocol === 'ccx') {
-        // CCX packets: no CCA hex identification needed
-        return {
-          ...packet,
-          bytes,
-          identified: {
-            typeName: packet.type,
-            category: 'CCX',
-            description: packet.type,
-          },
-        }
-      }
-      const identified = identifyPacketFromHex(bytes)
-      return { ...packet, bytes, identified }
+      return { ...packet, bytes }
     }),
-    [packets, identifyPacketFromHex]
+    [packets]
   )
 
   // Apply direction + protocol filters at data level
@@ -81,23 +97,6 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
   }, [])
 
   type EnrichedPacket = (typeof enrichedPackets)[number]
-
-  // Color for CCX message types
-  const ccxTypeColor = useCallback((type: string) => {
-    switch (type) {
-      case 'LEVEL_CONTROL': return '#2563eb'
-      case 'BUTTON_PRESS': return '#7c3aed'
-      case 'DIM_HOLD':
-      case 'DIM_STEP': return '#9333ea'
-      case 'DEVICE_REPORT': return '#059669'
-      case 'SCENE_RECALL': return '#d97706'
-      case 'COMPONENT_CMD': return '#0891b2'
-      case 'ACK': return '#6b7280'
-      case 'STATUS': return '#4b5563'
-      case 'PRESENCE': return '#374151'
-      default: return '#9ca3af'
-    }
-  }, [])
 
   const columns = useMemo<ColumnDef<EnrichedPacket>[]>(() => [
     {
@@ -133,22 +132,26 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
     {
       accessorKey: 'type',
       header: 'Type',
-      size: 120,
+      size: 40,
       filterFn: 'equals',
       cell: ({ row }) => {
-        const isCcx = row.original.protocol === 'ccx'
-        const color = isCcx
-          ? ccxTypeColor(row.original.type)
-          : getCategoryColor(row.original.identified.category)
+        const rawType = row.original.protocol === 'ccx'
+          ? row.original.type
+          : (row.original.bytes[0]?.toUpperCase() || '??')
         return (
-          <span
-            className="pdt-type-badge"
-            style={{ backgroundColor: color }}
-            title={row.original.identified.description}
-          >
-            {row.original.identified.typeName}
-          </span>
+          <span className="pdt-type-raw">{rawType}</span>
         )
+      },
+    },
+    {
+      id: 'seq',
+      header: 'Seq',
+      size: 30,
+      enableSorting: false,
+      cell: ({ row }) => {
+        if (row.original.protocol !== 'cca' || row.original.bytes.length < 2) return null
+        const seq = parseInt(row.original.bytes[1], 16)
+        return <span className="pdt-seq">{isNaN(seq) ? '' : seq}</span>
       },
     },
     {
@@ -170,7 +173,7 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
         )
       },
     },
-  ], [formatTime, getCategoryColor, ccxTypeColor])
+  ], [formatTime])
 
   const table = useReactTable({
     data: filteredPackets,
@@ -194,11 +197,9 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
   const handleScroll = useCallback(() => {
     if (!scrollRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-    // User is "at bottom" if within 50px
     const atBottom = scrollHeight - scrollTop - clientHeight < 50
     setUserScrolled(!atBottom)
   }, [])
-
 
   // Copy visible packets to clipboard as text
   const handleCopy = useCallback(() => {
@@ -206,23 +207,21 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
       const time = formatTime(p.time)
       const dir = p.direction.toUpperCase()
       const proto = p.protocol.toUpperCase()
-      const type = p.identified.typeName
-      const data = p.protocol === 'ccx' ? (p.summary + ' ' + p.details.join(' ')) : (p.rawBytes || '')
-      return `${time} ${proto} ${dir} ${type} ${data}`
+      const data = p.rawBytes || ''
+      return `${time} ${proto} ${dir} ${data}`
     })
     navigator.clipboard.writeText(lines.join('\n'))
   }, [filteredPackets, formatTime])
 
   // Dump visible packets as CSV
   const handleDumpCsv = useCallback(() => {
-    const header = 'time,protocol,direction,type,data'
+    const header = 'timestamp,direction,rssi,raw_hex'
     const rows = filteredPackets.map(p => {
-      const time = formatTime(p.time)
-      const proto = p.protocol
+      const time = p.time
       const dir = p.direction
-      const type = p.identified.typeName
-      const data = p.protocol === 'ccx' ? (p.summary + ' | ' + p.details.join(' | ')) : (p.rawBytes || '')
-      return `${time},${proto},${dir},${type},"${data}"`
+      const rssi = ''
+      const data = p.rawBytes || ''
+      return `${time},${dir},${rssi},${data}`
     })
     const csv = [header, ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -232,7 +231,53 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
     a.download = `packets_${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.csv`
     a.click()
     URL.revokeObjectURL(url)
-  }, [filteredPackets, formatTime])
+  }, [filteredPackets])
+
+  // Recording controls
+  const startRecording = useCallback(async (name: string) => {
+    try {
+      const res = await fetch('/api/recording/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json()
+      setRecording({ recording: true, file: data.file, count: 0 })
+      setShowRecordInput(false)
+      setSessionName('')
+    } catch (e) {
+      console.error('Failed to start recording:', e)
+    }
+  }, [])
+
+  const stopRecording = useCallback(async () => {
+    try {
+      const res = await fetch('/api/recording/stop', { method: 'POST' })
+      const data = await res.json()
+      setRecording({ recording: false, file: data.file, count: data.packets_recorded })
+    } catch (e) {
+      console.error('Failed to stop recording:', e)
+    }
+  }, [])
+
+  const handleRecordClick = useCallback(() => {
+    if (recording.recording) {
+      stopRecording()
+    } else {
+      setShowRecordInput(true)
+    }
+  }, [recording.recording, stopRecording])
+
+  const handleRecordSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault()
+    const name = sessionName.trim() || `session`
+    startRecording(name)
+  }, [sessionName, startRecording])
+
+  const handleRecordCancel = useCallback(() => {
+    setShowRecordInput(false)
+    setSessionName('')
+  }, [])
 
   return (
     <div className="packet-data-table">
@@ -297,6 +342,36 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
           {paused ? ' (paused)' : ''}
         </span>
 
+        {/* Recording inline input */}
+        {showRecordInput && (
+          <form className="pdt-record-form" onSubmit={handleRecordSubmit}>
+            <input
+              ref={recordInputRef}
+              className="pdt-record-input"
+              type="text"
+              placeholder="session name..."
+              value={sessionName}
+              onChange={e => setSessionName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') handleRecordCancel() }}
+            />
+            <button className="pdt-action-btn" type="submit">Go</button>
+            <button className="pdt-action-btn" type="button" onClick={handleRecordCancel}>X</button>
+          </form>
+        )}
+
+        <button
+          className={`pdt-action-btn ${recording.recording ? 'pdt-record-active' : ''}`}
+          onClick={handleRecordClick}
+        >
+          {recording.recording ? (
+            <>
+              <span className="pdt-record-dot" />
+              Stop ({recording.count ?? 0})
+            </>
+          ) : (
+            'Record'
+          )}
+        </button>
         <button
           className="pdt-action-btn"
           data-active={paused}

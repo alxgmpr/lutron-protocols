@@ -875,8 +875,9 @@ Firmware: `send_button_press(device_id, button)`
 
 ### Hold-to-Dim
 
-Continuous long-format packets with action byte 0x02 (HOLD) at position 11.
-Used for RAISE/LOWER buttons. Sends at 70ms intervals for the specified duration.
+Burst of 14 long-format HOLD packets (action=0x02 at byte 11), then wait for the
+hold duration, then burst of 14 RELEASE packets (action=0x01). The dimmer starts
+dimming on the press burst and stops on the release burst — no continuous emission needed.
 Firmware: `send_button_hold(device_id, button, duration_ms)`
 
 ### Save Favorite
