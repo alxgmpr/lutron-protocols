@@ -14,8 +14,8 @@ const FADE_RATES = ['0.25', '0.75', '2.5', '3', '5', '15']
 const LED_MODES = [
   { value: '0', label: 'Both Off' },
   { value: '1', label: 'Both On' },
-  { value: '2', label: 'On when load on' },
-  { value: '3', label: 'On when load off' },
+  { value: '2', label: 'On when load off' },
+  { value: '3', label: 'On when load on' },
 ]
 
 export function DeviceConfig({ showStatus }: Props) {

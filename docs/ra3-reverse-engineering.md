@@ -13,12 +13,26 @@
 
 | Port | Protocol | Description | Cert Required |
 |------|----------|-------------|---------------|
-| 8081 | LEAP/JSON | Primary control protocol | Product certs (Designer) |
-| 8083 | LAP | Legacy protocol | Unknown |
+| 8081 | LEAP/JSON | Primary control + 3rd-party integration | Product certs (Designer) |
+| 8083 | TCP/TLS | Processor configuration | Unknown |
 | 8902 | IPL/Binary | Designer-to-processor transfer | Product certs (TLS works, binary protocol) |
-| 443 | WSS | WebSocket for programming | **Project-specific certs** |
-| 22 | SSH | Open but requires key/password auth | N/A |
+| 443 | WSS | WebSocket for programming / inter-processor (IPv4/IPv6) | **Project-specific certs** |
+| 22 | SSH | Database transfer, support files, diagnostics | N/A |
+| 23 | Telnet | AV integration (via QSE-CI-NWK only, not processor direct) | N/A |
+| 5353 | UDP mDNS | Processor discovery (multicast 224.0.0.251) | N/A |
+| 51023 | TCP | Unicast software-to-processor communication | Unknown |
+| 2056-3055 | UDP multicast | **Inter-processor event/status** (239.0.38.1 - 239.0.8.xx) | N/A |
+| 8883 | MQTT/TLS | AWS IoT cloud connectivity | Device certs |
 | 2647 | UDP | LEAP discovery? | Unknown |
+
+### Inter-Processor Multicast (from App Note 048760)
+
+QSX processors (HQP7, codename "Athena") share events and status via UDP multicast:
+- Address range: **239.0.38.1 - 239.0.8.xx**
+- Port range: **2056-3055**
+- Sniffable on the LAN — could reveal status/event traffic without radio captures
+- Up to 16 processors per system, max 5 Ethernet hops between any two
+- Can force TCP mode for software-to-processor (inter-processor stays multicast)
 
 ### Port Access Summary
 
