@@ -1588,8 +1588,8 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
   // [8]     0x00
   // [9-12]  Target device ID (big-endian)
   // [13-22] Static bytes
-  // [23]    Fade-on value (quarter-seconds)
-  // [24]    Fade-off value (quarter-seconds) - packet extends to 25 bytes
+  // [23-24] Fade-on value (quarter-seconds) + 0x00
+  // [25-26] Fade-off value (quarter-seconds) + 0x00
 
   // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
   uint8_t type_byte = 0xA1 + this->config_type_idx_;
@@ -1634,9 +1634,11 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
     packet[21] = 0x31;
     packet[22] = 0x00;
 
-    // Fade values
+    // Fade values — each is 2 bytes (value + 0x00)
     packet[23] = fade_on_qs;
-    packet[24] = fade_off_qs;
+    packet[24] = 0x00;
+    packet[25] = fade_off_qs;
+    packet[26] = 0x00;
 
     // Bytes 25-50 remain CC padding
     // CRC at bytes 51-52
