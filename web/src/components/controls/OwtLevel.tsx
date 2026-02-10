@@ -76,6 +76,9 @@ export function OwtLevel({ showStatus }: Props) {
           Set
         </Button>
       </div>
+      <p className="text-[10px] text-[var(--text-muted)] leading-tight mt-0.5">
+        Temp limitation: ~3 min delay + ~1 min fade. Level is correct but fade control not yet solved via pico path.
+      </p>
     </ControlSection>
   )
 }
