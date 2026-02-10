@@ -92,9 +92,9 @@ export function DeviceConfig({ showStatus }: Props) {
         <TabsContent value="fade" className="mt-3">
           <div className="flex items-center gap-3">
             <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">on:</span>
-            <Input type="number" value={fadeOn} onChange={e => setFadeOn(e.target.value)} min={0.25} max={63.75} step={0.25} className="w-[64px]" />
+            <Input type="number" value={fadeOn} onChange={e => setFadeOn(e.target.value)} min={0.25} step={0.25} className="w-[64px]" />
             <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">off:</span>
-            <Input type="number" value={fadeOff} onChange={e => setFadeOff(e.target.value)} min={0.25} max={63.75} step={0.25} className="w-[64px]" />
+            <Input type="number" value={fadeOff} onChange={e => setFadeOff(e.target.value)} min={0.25} step={0.25} className="w-[64px]" />
             <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">sec</span>
             <Button variant="blue" onClick={handleFade}>
               <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>

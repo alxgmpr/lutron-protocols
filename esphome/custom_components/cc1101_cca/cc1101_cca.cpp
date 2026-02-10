@@ -1571,7 +1571,7 @@ void CC1101CCA::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_
 }
 
 void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
-                                     uint8_t fade_on_qs, uint8_t fade_off_qs) {
+                                     uint16_t fade_on_qs, uint16_t fade_off_qs) {
   ESP_LOGI(TAG, "=== FADE CONFIG ===");
   ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, FadeOn: %d qs (%.2fs), FadeOff: %d qs (%.2fs)",
            bridge_zone_id, target_device_id,
@@ -1588,8 +1588,8 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
   // [8]     0x00
   // [9-12]  Target device ID (big-endian)
   // [13-22] Static bytes
-  // [23-24] Fade-on value (quarter-seconds) + 0x00
-  // [25-26] Fade-off value (quarter-seconds) + 0x00
+  // [23-24] Fade-on (uint16 LE, quarter-seconds)
+  // [25-26] Fade-off (uint16 LE, quarter-seconds)
 
   // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
   uint8_t type_byte = 0xA1 + this->config_type_idx_;
@@ -1634,13 +1634,13 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
     packet[21] = 0x31;
     packet[22] = 0x00;
 
-    // Fade values — each is 2 bytes (value + 0x00)
-    packet[23] = fade_on_qs;
-    packet[24] = 0x00;
-    packet[25] = fade_off_qs;
-    packet[26] = 0x00;
+    // Fade values — uint16 little-endian (quarter-seconds)
+    packet[23] = fade_on_qs & 0xFF;
+    packet[24] = (fade_on_qs >> 8) & 0xFF;
+    packet[25] = fade_off_qs & 0xFF;
+    packet[26] = (fade_off_qs >> 8) & 0xFF;
 
-    // Bytes 25-50 remain CC padding
+    // Bytes 27-50 remain CC padding
     // CRC at bytes 51-52
     uint16_t crc = this->encoder_.calc_crc(packet, 51);
     packet[51] = (crc >> 8) & 0xFF;

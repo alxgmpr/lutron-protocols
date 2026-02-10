@@ -221,11 +221,11 @@ class CC1101CCA : public Component,
    * Uses format 0x1C with A1/A2/A3 type bytes
    * @param bridge_zone_id Bridge zone ID, sent little-endian
    * @param target_device_id Target dimmer ID, sent big-endian
-   * @param fade_on_qs Fade-on time in quarter-seconds (e.g., 60 = 15 seconds)
-   * @param fade_off_qs Fade-off time in quarter-seconds
+   * @param fade_on_qs Fade-on time in quarter-seconds (uint16)
+   * @param fade_off_qs Fade-off time in quarter-seconds (uint16)
    */
   void send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
-                        uint8_t fade_on_qs, uint8_t fade_off_qs);
+                        uint16_t fade_on_qs, uint16_t fade_off_qs);
 
   /**
    * @brief Send device state/config command (trim and phase settings)
