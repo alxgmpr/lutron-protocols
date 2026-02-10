@@ -353,14 +353,19 @@ class CC1101CCA : public Component,
   void send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id);
 
   /**
-   * @brief Send handshake response packet during Phase 5
-   * Bridge responds to dimmer's Cx packet with Cx+1
-   * Dimmer sends: C1, C7, CD, D3, D9, DF (odd types)
-   * Bridge responds: C2, C8, CE, D4, DA, E0 (even types)
-   * @param dimmer_type The packet type received from dimmer
-   * @param subnet 16-bit subnet ID
+   * @brief Store a handshake challenge from the device during Phase 8.
+   * Device sends 4 payloads with seq 0x20/0x40/0x60/0x80.
+   * Each payload arrives on rotating odd types (C1, C7, CD, D3, D9, DF).
+   * We store unique payloads (keyed by seq) for later burst echo.
    */
-  void send_handshake_response(uint8_t dimmer_type, uint16_t subnet);
+  void store_handshake_challenge(const uint8_t *challenge_data, uint8_t challenge_len);
+
+  /**
+   * @brief Burst-send all collected handshake echoes.
+   * For each stored payload, sends on ALL 6 even types (C2, C8, CE, D4, DA, E0).
+   * 4 payloads x 6 types = 24 packets at ~75ms intervals.
+   */
+  void send_handshake_burst();
 
   /**
    * @brief Send beacon with specific type for pairing phases
@@ -506,6 +511,7 @@ class CC1101CCA : public Component,
   LutronPairing *pairing_{nullptr};
 
   bool type_alternate_{false};
+  uint8_t config_type_idx_{0};  // Rotates 0→1→2 across config calls (A1/A2/A3)
   bool rx_enabled_{false};
   bool rx_auto_{true};  // Auto-resume RX after TX (default: on)
   bool pairing_active_{false};
@@ -523,7 +529,14 @@ class CC1101CCA : public Component,
   bool pairing_is_dimmer_{false};       // Set from B0/B2 subtype
   uint32_t pairing_device_hw_id_{0};    // Filled from B0/B2 detection
   uint8_t pairing_instance_{0x01};      // Device instance counter
-  uint8_t pairing_hs_dev_seq_{0xFF};    // Track handshake round (0xFF = no handshake yet)
+
+  // Handshake challenge collection (Phase 8)
+  // Device sends 4 payloads with seq 0x20/0x40/0x60/0x80
+  // We store bytes 0-21 of each unique challenge, keyed by slot = (seq / 0x20) - 1
+  uint8_t hs_challenges_[4][22]{};      // 4 slots x 22 bytes each
+  bool hs_challenge_received_[4]{};     // Which slots have been filled
+  uint8_t hs_challenge_count_{0};       // How many unique payloads collected
+  uint32_t hs_last_challenge_time_{0};  // Timestamp of last challenge received
 
   // Vive pairing state
   bool vive_pairing_active_{false};

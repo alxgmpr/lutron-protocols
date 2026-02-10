@@ -87,14 +87,13 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
     }
   }
 
-  // Auto-respond to handshake packets during bridge pairing
-  // Device sends odd types (C1, C7, CD, D3, D9, DF), bridge responds with even (+1)
-  if (this->pairing_active_ && pkt.raw_len >= 4) {
+  // Collect handshake challenge packets during bridge pairing Phase 8
+  // Device sends 4 unique payloads on odd types (C1, C7, CD, D3, D9, DF)
+  // We store them and burst-send echoes after collection
+  if (this->pairing_active_ && pkt.raw_len >= 22) {
     uint8_t pkt_type = pkt.raw[0];
     if (pkt_type >= 0xC1 && pkt_type <= 0xDF && (pkt_type % 2 == 1)) {
-      ESP_LOGI(TAG, "Handshake request 0x%02X detected, responding with 0x%02X",
-               pkt_type, pkt_type + 1);
-      this->send_handshake_response(pkt_type, this->pairing_subnet_);
+      this->store_handshake_challenge(pkt.raw, pkt.raw_len);
     }
   }
 
@@ -153,11 +152,10 @@ void CC1101CCA::loop() {
   if (this->pairing_active_) {
     uint32_t now = millis();
 
-    // RX gap: after every 8 beacons, pause for 200ms to listen for B0 discovery
-    if (this->pairing_beacon_count_ >= 8) {
-      if (now - this->last_pairing_beacon_ >= 200) {  // 200ms RX gap
+    // RX gap: after every 6 beacons, pause for 500ms to listen for B0 discovery
+    if (this->pairing_beacon_count_ >= 6) {
+      if (now - this->last_pairing_beacon_ >= 500) {  // 500ms RX gap
         this->pairing_beacon_count_ = 0;  // Reset counter, resume beaconing
-        ESP_LOGD(TAG, "RX gap complete, resuming beacons");
       }
       // During RX gap, just poll RX (already done above)
       return;
@@ -1026,15 +1024,8 @@ uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq, uint8_t b
 
   packet[6] = 0x21;  // Protocol marker
 
-  // Format and mode bytes differ by beacon type:
-  // 0x93 (initial): format=0x08, mode=0x01
-  // 0x91 (active):  format=0x0C, mode=0x02
-  // 0x92 (continue): format=0x0C, mode=0x02
-  if (beacon_type == 0x93) {
-    packet[7] = 0x08;  // Initial beacon format
-  } else {
-    packet[7] = 0x0C;  // Active beacon format (0x91, 0x92)
-  }
+  // All beacon types use discovery format during active pairing
+  packet[7] = 0x0C;  // Discovery format
   packet[8] = 0x00;
 
   // Broadcast address
@@ -1045,22 +1036,13 @@ uint8_t CC1101CCA::send_beacon_single(uint32_t device_id, uint8_t seq, uint8_t b
   packet[13] = 0xFF;
 
   packet[14] = 0x08;
+  packet[15] = 0x02;  // Active seeking mode
 
-  // Mode byte differs by beacon type
-  if (beacon_type == 0x93) {
-    packet[15] = 0x01;  // Initial mode
-  } else {
-    packet[15] = 0x02;  // Active mode (0x91, 0x92)
-  }
-
-  // Additional zone info for 0x91/0x92 beacons
-  if (beacon_type != 0x93) {
-    packet[16] = (device_id >> 16) & 0xFF;  // Subnet low byte
-    packet[17] = (device_id >> 8) & 0xFF;   // Subnet high byte
-    packet[18] = 0x1A;
-    packet[19] = 0x04;
-  }
-  // 0x93 leaves bytes 16-21 as 0xCC (padding)
+  // Load info (all beacon types during pairing)
+  packet[16] = (device_id >> 16) & 0xFF;  // Subnet low byte
+  packet[17] = (device_id >> 8) & 0xFF;   // Subnet high byte
+  packet[18] = 0x1A;
+  packet[19] = 0x04;
 
   // Calculate CRC
   uint16_t crc = this->encoder_.calc_crc(packet, 22);
@@ -1480,63 +1462,73 @@ void CC1101CCA::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_
   ESP_LOGI(TAG, "=== LED CONFIG ===");
   ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, Mode: %d", bridge_zone_id, target_device_id, mode);
 
-  // LED modes from capture analysis:
-  // Mode 0 (Both Off):       Type A3, byte[23]=0x00
-  // Mode 1 (Both On):        Type A1, byte[23]=0xFF
-  // Mode 2 (On when load on): Type A2, byte[23]=0xFF
-  // Mode 3 (On when load off): Type A3, byte[23]=0x00
-  // Note: Modes 0 and 3 have same wire encoding but different semantic meaning
-
-  uint8_t type_byte;
-  uint8_t led_value;
+  // LED mode encoding (bytes 23-24):
+  //   Byte 23 = LED state when load OFF (0xFF=on, 0x00=off)
+  //   Byte 24 = LED state when load ON  (0xDF=on, 0x00=off)
+  // Confirmed from capture led_2026-02-10T09-04-26.csv
+  uint8_t led_off_state;  // byte 23: LED when load is OFF
+  uint8_t led_on_state;   // byte 24: LED when load is ON
   switch (mode) {
     case 0:  // Both Off
-      type_byte = 0xA3;
-      led_value = 0x00;
+      led_off_state = 0x00;
+      led_on_state  = 0x00;
       break;
     case 1:  // Both On
-      type_byte = 0xA1;
-      led_value = 0xFF;
+      led_off_state = 0xFF;
+      led_on_state  = 0xDF;
       break;
     case 2:  // On when load on
-      type_byte = 0xA2;
-      led_value = 0xFF;
+      led_off_state = 0x00;
+      led_on_state  = 0xDF;
       break;
     case 3:  // On when load off
     default:
-      type_byte = 0xA3;
-      led_value = 0x00;
+      led_off_state = 0xFF;
+      led_on_state  = 0x00;
       break;
   }
 
-  // Captured packet structure (format 0x11):
-  // A1 01 AD 90 2C 00 21 11 00 06 FE 80 06 FE 06 50 00 04 06 00 00 00 00 FF
-  // [0]     Type (A1/A2/A3)
+  // Packet structure (format 0x11, 25 bytes, no CRC):
+  // [0]     Type (A1/A2/A3 rotating counter)
   // [1]     Sequence
-  // [2-5]   Bridge zone ID (little-endian)
+  // [2-5]   Bridge zone ID (little-endian) — AD first, then AF
   // [6]     0x21 protocol marker
   // [7]     0x11 format (LED config)
   // [8]     0x00
   // [9-12]  Target device ID (big-endian)
-  // [13]    0xFE (part of target? or separator)
-  // [14-22] Static bytes from capture
-  // [23]    LED value (0x00 or 0xFF)
+  // [13]    0xFE command prefix
+  // [14]    0x06 device config class
+  // [15]    0x50 LED component
+  // [16]    0x00
+  // [17]    0x04 LED mode subcommand
+  // [18]    0x06
+  // [19-22] 0x00
+  // [23]    LED state when load OFF
+  // [24]    LED state when load ON
 
-  uint8_t packet[24];
-  uint8_t seq = 0x01;
+  // Type byte: constant within burst, rotates A1→A2→A3 across config calls
+  // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
+  uint8_t type_byte = 0xA1 + this->config_type_idx_;
+  this->config_type_idx_ = (this->config_type_idx_ + 1) % 3;
 
-  // Send ~20 packets like bridge does
+  // Zone alternation: primary zone first packet, +2 low byte for rest
+  uint32_t alt_zone_id = (bridge_zone_id & 0xFFFFFF00) | ((bridge_zone_id & 0xFF) + 2);
+
+  uint8_t packet[53];
+  uint8_t seq = 0x02;
+
   for (int rep = 0; rep < 20; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+    memset(packet, 0xCC, sizeof(packet));
 
     packet[0] = type_byte;
-    packet[1] = seq;
+    packet[1] = (rep == 0) ? 0x01 : seq;
 
-    // Bridge zone ID little-endian
-    packet[2] = bridge_zone_id & 0xFF;
-    packet[3] = (bridge_zone_id >> 8) & 0xFF;
-    packet[4] = (bridge_zone_id >> 16) & 0xFF;
-    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+    // First packet on primary zone, rest on alternate
+    uint32_t zone = (rep == 0) ? bridge_zone_id : alt_zone_id;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
 
     packet[6] = 0x21;
     packet[7] = 0x11;  // LED config format
@@ -1548,32 +1540,34 @@ void CC1101CCA::send_led_config(uint32_t bridge_zone_id, uint32_t target_device_
     packet[11] = (target_device_id >> 8) & 0xFF;
     packet[12] = target_device_id & 0xFF;
 
-    // Static bytes from capture (06 FE 06 50 00 04 06 00 00 00 00)
     packet[13] = 0xFE;
-    packet[14] = 0x06;
-    packet[15] = 0x50;
+    packet[14] = 0x06;  // Device config class
+    packet[15] = 0x50;  // LED component
     packet[16] = 0x00;
-    packet[17] = 0x04;
+    packet[17] = 0x04;  // LED mode subcommand
     packet[18] = 0x06;
     packet[19] = 0x00;
     packet[20] = 0x00;
     packet[21] = 0x00;
-
-    // CRC placeholder (will be overwritten)
-    // Note: Config packets don't seem to use standard CRC
-    // Real bridge packets have crc_ok=false but devices still respond
     packet[22] = 0x00;
 
-    // LED value
-    packet[23] = led_value;
+    // Mode bytes
+    packet[23] = led_off_state;
+    packet[24] = led_on_state;
 
-    this->transmit_packet(packet, 24);
+    // Bytes 25-50 remain CC padding
+    // CRC at bytes 51-52
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
 
     seq = (seq + 6) & 0xFF;
-    if (rep < 19) delay(60);
+    if (rep < 19) delay(75);
   }
 
-  ESP_LOGI(TAG, "=== LED CONFIG COMPLETE ===");
+  ESP_LOGI(TAG, "=== LED CONFIG COMPLETE (type=0x%02X) ===", type_byte);
 }
 
 void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device_id,
@@ -1597,21 +1591,26 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
   // [23]    Fade-on value (quarter-seconds)
   // [24]    Fade-off value (quarter-seconds) - packet extends to 25 bytes
 
-  uint8_t packet[26];  // 24 data + 2 for extended fade bytes
-  uint8_t seq = 0x01;
+  // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
+  uint8_t type_byte = 0xA1 + this->config_type_idx_;
+  this->config_type_idx_ = (this->config_type_idx_ + 1) % 3;
+
+  uint32_t alt_zone_id = (bridge_zone_id & 0xFFFFFF00) | ((bridge_zone_id & 0xFF) + 2);
+
+  uint8_t packet[53];
+  uint8_t seq = 0x02;
 
   for (int rep = 0; rep < 20; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+    memset(packet, 0xCC, sizeof(packet));
 
-    // Rotate through A1, A2, A3
-    packet[0] = 0xA1 + (rep % 3);
-    packet[1] = seq;
+    packet[0] = type_byte;
+    packet[1] = (rep == 0) ? 0x01 : seq;
 
-    // Bridge zone ID little-endian
-    packet[2] = bridge_zone_id & 0xFF;
-    packet[3] = (bridge_zone_id >> 8) & 0xFF;
-    packet[4] = (bridge_zone_id >> 16) & 0xFF;
-    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+    uint32_t zone = (rep == 0) ? bridge_zone_id : alt_zone_id;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
 
     packet[6] = 0x21;
     packet[7] = 0x1C;  // Fade config format
@@ -1623,7 +1622,7 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
     packet[11] = (target_device_id >> 8) & 0xFF;
     packet[12] = target_device_id & 0xFF;
 
-    // Static bytes from capture (FE 06 50 00 03 11 80 FF 31 00)
+    // Static bytes from capture
     packet[13] = 0xFE;
     packet[14] = 0x06;
     packet[15] = 0x50;
@@ -1639,14 +1638,19 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
     packet[23] = fade_on_qs;
     packet[24] = fade_off_qs;
 
-    // Note: Using 25 bytes - CRC not appended as config packets don't use standard CRC
-    this->transmit_packet(packet, 25);
+    // Bytes 25-50 remain CC padding
+    // CRC at bytes 51-52
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
 
     seq = (seq + 6) & 0xFF;
-    if (rep < 19) delay(60);
+    if (rep < 19) delay(75);
   }
 
-  ESP_LOGI(TAG, "=== FADE CONFIG COMPLETE ===");
+  ESP_LOGI(TAG, "=== FADE CONFIG COMPLETE (type=0x%02X) ===", type_byte);
 }
 
 void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
@@ -1678,24 +1682,29 @@ void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_devic
   // [22]    Phase mode (0x03=Forward, 0x23=Reverse)
   // [23]    0x0B (constant)
 
-  uint8_t packet[24];
-  uint8_t seq = 0x01;
+  // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
+  uint8_t type_byte = 0xA1 + this->config_type_idx_;
+  this->config_type_idx_ = (this->config_type_idx_ + 1) % 3;
+
+  uint32_t alt_zone_id = (bridge_zone_id & 0xFFFFFF00) | ((bridge_zone_id & 0xFF) + 2);
+
+  uint8_t packet[53];
+  uint8_t seq = 0x02;
 
   for (int rep = 0; rep < 20; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+    memset(packet, 0xCC, sizeof(packet));
 
-    // Rotate through A1, A2, A3
-    packet[0] = 0xA1 + (rep % 3);
-    packet[1] = seq;
+    packet[0] = type_byte;
+    packet[1] = (rep == 0) ? 0x01 : seq;
 
-    // Bridge zone ID little-endian
-    packet[2] = bridge_zone_id & 0xFF;
-    packet[3] = (bridge_zone_id >> 8) & 0xFF;
-    packet[4] = (bridge_zone_id >> 16) & 0xFF;
-    packet[5] = (bridge_zone_id >> 24) & 0xFF;
+    uint32_t zone = (rep == 0) ? bridge_zone_id : alt_zone_id;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
 
     packet[6] = 0x21;
-    packet[7] = 0x15;  // STATE_RPT / device state format
+    packet[7] = 0x15;  // Device state format
     packet[8] = 0x00;
 
     // Target device ID big-endian
@@ -1704,7 +1713,7 @@ void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_devic
     packet[11] = (target_device_id >> 8) & 0xFF;
     packet[12] = target_device_id & 0xFF;
 
-    // Static bytes from capture (FE 06 50 00 02 08 13)
+    // Static bytes from capture
     packet[13] = 0xFE;
     packet[14] = 0x06;
     packet[15] = 0x50;
@@ -1717,15 +1726,21 @@ void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_devic
     packet[20] = high_byte;
     packet[21] = low_byte;
     packet[22] = phase_byte;
-    packet[23] = 0x0B;  // Constant from captures
+    packet[23] = 0x0B;
 
-    this->transmit_packet(packet, 24);
+    // Bytes 24-50 remain CC padding
+    // CRC at bytes 51-52
+    uint16_t crc = this->encoder_.calc_crc(packet, 51);
+    packet[51] = (crc >> 8) & 0xFF;
+    packet[52] = crc & 0xFF;
+
+    this->transmit_packet(packet, 53);
 
     seq = (seq + 6) & 0xFF;
-    if (rep < 19) delay(60);
+    if (rep < 19) delay(75);
   }
 
-  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG COMPLETE ===");
+  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG COMPLETE (type=0x%02X) ===", type_byte);
 }
 
 void CC1101CCA::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {
@@ -2825,15 +2840,17 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
   ESP_LOGI(TAG, "Phase 3a: Targeted beacon (device found)");
   for (int i = 0; i < 4; i++) {
     this->send_targeted_beacon_93(i % 2 == 0 ? zone_ad : zone_af, hw_id, subnet);
-    rx_delay(65);
+    rx_delay(40);
   }
 
   // ===== Phase 3b: A1 format 0x0F subcmd 0x70 - initial integration ID binding =====
   ESP_LOGI(TAG, "Phase 3b: Initial integration ID binding");
-  // A1 with slot 0x06/0x07 and counter - binds integration ID 1
+  // Real capture: A1 01 AD 90 2C 00 21 0F 00 [integ_id] FE 06 70 06 [device_id] 00 00 CC
+  // Note: Phase 3b uniquely puts integ_id at bytes 9-12 and device_id at bytes 17-20
   {
     uint8_t packet[24];
-    for (int i = 0; i < 2; i++) {
+    int phase3b_reps = is_dimmer ? 10 : 4;
+    for (int i = 0; i < phase3b_reps; i++) {
       memset(packet, 0xCC, sizeof(packet));
       packet[0] = 0xA1;
       packet[1] = this->pairing_seq_;
@@ -2846,20 +2863,20 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
       packet[6] = 0x21;
       packet[7] = 0x0F;
       packet[8] = 0x00;
-      // Target HW ID - big-endian
-      packet[9] = (hw_id >> 24) & 0xFF;
-      packet[10] = (hw_id >> 16) & 0xFF;
-      packet[11] = (hw_id >> 8) & 0xFF;
-      packet[12] = hw_id & 0xFF;
+      // Integration ID 1 at bytes 9-12 (source)
+      packet[9] = (this->pairing_integ_ids_[0] >> 24) & 0xFF;
+      packet[10] = (this->pairing_integ_ids_[0] >> 16) & 0xFF;
+      packet[11] = (this->pairing_integ_ids_[0] >> 8) & 0xFF;
+      packet[12] = this->pairing_integ_ids_[0] & 0xFF;
       packet[13] = 0xFE;
       packet[14] = 0x06;
       packet[15] = 0x70;
-      packet[16] = 0x06 + i;  // 0x06, then 0x07
-      // Integration ID 1
-      packet[17] = (this->pairing_integ_ids_[0] >> 24) & 0xFF;
-      packet[18] = (this->pairing_integ_ids_[0] >> 16) & 0xFF;
-      packet[19] = (this->pairing_integ_ids_[0] >> 8) & 0xFF;
-      packet[20] = this->pairing_integ_ids_[0] & 0xFF;
+      packet[16] = 0x06;  // Fixed slot 0x06 (matches real capture)
+      // Device HW ID at bytes 17-20 (target)
+      packet[17] = (hw_id >> 24) & 0xFF;
+      packet[18] = (hw_id >> 16) & 0xFF;
+      packet[19] = (hw_id >> 8) & 0xFF;
+      packet[20] = hw_id & 0xFF;
       packet[21] = 0x00;
       packet[22] = 0x00;
       packet[23] = 0xCC;
@@ -2871,25 +2888,26 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
 
   // ===== Phase 3c: 82 zone assignment / unpair-clear =====
   ESP_LOGI(TAG, "Phase 3c: Zone assignment / unpair-clear (0x82)");
-  for (int i = 0; i < 5; i++) {
+  int phase3c_reps = is_dimmer ? 10 : 5;
+  for (int i = 0; i < phase3c_reps; i++) {
     this->send_zone_assignment_82(i % 2 == 0 ? zone_af : zone_ad, hw_id);
-    rx_delay(65);
+    rx_delay(40);
   }
 
-  // ===== Phase 4: Brief beacon resume (~2 seconds) =====
-  ESP_LOGI(TAG, "Phase 4: Brief beacon resume");
-  for (int i = 0; i < 20; i++) {
+  // ===== Phase 4: Beacon resume (~3 seconds, real bridge sends 50-58) =====
+  ESP_LOGI(TAG, "Phase 4: Beacon resume");
+  for (int i = 0; i < 50; i++) {
     uint8_t beacon_type = (i % 3 == 0) ? 0x93 : (i % 3 == 1) ? 0x91 : 0x92;
     this->send_bridge_beacon(beacon_type, subnet, this->pairing_seq_);
     this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
-    rx_delay(100);
+    rx_delay(65);
   }
 
   // ===== Phase 5a: A1 format 0x0F subcmd 0x70 - integration ID 2 =====
   ESP_LOGI(TAG, "Phase 5a: Integration ID 2 assignment");
   {
     uint8_t packet[24];
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 5; i++) {
       memset(packet, 0xCC, sizeof(packet));
       uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
       packet[0] = 0xA1;
@@ -2926,7 +2944,7 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
   ESP_LOGI(TAG, "Phase 5b: Integration ID 1 reference");
   {
     uint8_t packet[24];
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 4; i++) {
       memset(packet, 0xCC, sizeof(packet));
       uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
       packet[0] = 0xA2;
@@ -2966,8 +2984,10 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
 
     // Switch: 1 packet with 05 04 [instance] 01 00 03
     // Dimmer: 2 packets (initial + 0C 04 3B 92 00 03)
+    // Real bridge: 7 reps (switch), 20 reps (dimmer, esp. the 0C 04 3B 92 packet)
     for (int p = 0; p < (is_dimmer ? 2 : 1); p++) {
-      for (int i = 0; i < 3; i++) {  // 3 retransmissions each
+      int cap_reps = (is_dimmer && p == 1) ? 15 : 7;  // Dimmer-specific packet needs heavy retx
+      for (int i = 0; i < cap_reps; i++) {
         memset(packet, 0xCC, sizeof(packet));
         uint8_t type = (i % 3 == 0) ? 0xA3 : (i % 3 == 1) ? 0xA1 : 0xA2;
         uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
@@ -3020,7 +3040,7 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
   ESP_LOGI(TAG, "Phase 5d: Integration ID 3 assignment");
   {
     uint8_t packet[24];
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 4; i++) {
       memset(packet, 0xCC, sizeof(packet));
       uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
       packet[0] = 0xA1;
@@ -3057,7 +3077,7 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
   ESP_LOGI(TAG, "Phase 5e: Integration ID 4 assignment");
   {
     uint8_t packet[24];
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
       memset(packet, 0xCC, sizeof(packet));
       uint32_t zone = (i % 2 == 0) ? zone_ad : zone_af;
       packet[0] = 0xA2;
@@ -3093,18 +3113,19 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
   // ===== Phase 5f/5g: Zone binding (format 0x1A, subcmd 0x40) - 2 rounds =====
   ESP_LOGI(TAG, "Phase 5f: Zone binding round 1");
   this->send_zone_binding(zone_ad, hw_id, 0);  // Round 1: byte20=0x20
-  rx_delay(200);
+  rx_delay(100);
 
   ESP_LOGI(TAG, "Phase 5g: Zone binding round 2");
   this->send_zone_binding(zone_ad, hw_id, 1);  // Round 2: byte20=0x22
-  rx_delay(200);
+  rx_delay(100);
 
   // ===== Phase 6: Post-pairing beacons (subcmd 0x04 = "committed") =====
-  ESP_LOGI(TAG, "Phase 6: Post-pairing beacons (committed)");
+  // Real bridge sends 78-92 committed beacons over ~4.4 seconds
+  ESP_LOGI(TAG, "Phase 6: Post-pairing beacons (committed, ~80 packets)");
   {
     // These use subcmd 0x04 instead of 0x02
     uint8_t packet[24];
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 80; i++) {
       memset(packet, 0xCC, sizeof(packet));
       uint8_t beacon_type = (i % 3 == 0) ? 0x93 : (i % 3 == 1) ? 0x91 : 0x92;
       uint32_t zone = (i % 2 == 0) ? zone_af : zone_ad;
@@ -3141,21 +3162,64 @@ void CC1101CCA::send_bridge_pair_config(uint32_t hw_id, uint8_t subtype) {
     }
   }
 
-  // ===== Phase 7: LED config (0x83 state report) =====
-  ESP_LOGI(TAG, "Phase 7: LED config (state report 0x83)");
-  for (int i = 0; i < 5; i++) {
+  // ===== Phase 7: LED config (0x81 state report) =====
+  // Real bridge: 5 (switch) or 26 (dimmer) over 0.8-11s
+  ESP_LOGI(TAG, "Phase 7: LED config (state report 0x81)");
+  int phase7_reps = is_dimmer ? 15 : 5;
+  for (int i = 0; i < phase7_reps; i++) {
     this->send_state_report_83(i % 2 == 0 ? zone_ad : zone_af, hw_id);
-    rx_delay(65);
+    rx_delay(40);
   }
 
   // ===== Phase 8: Handshake - listen for C1/C7/CD/D3/D9/DF and respond =====
-  ESP_LOGI(TAG, "Phase 8: Handshake - listening for device challenge packets (~5 seconds)");
-  // Re-enable pairing so handle_rx_packet auto-responds to Cx packets
+  // Real bridge: 1.7s (switch) or 13.7s with 6 attempts (dimmer)
+  // Interleave LED config retransmissions during handshake (like real bridge)
+  ESP_LOGI(TAG, "Phase 8: Handshake - collect challenges then burst echo (~15 seconds)");
+  // Reset handshake collection state
+  this->hs_challenge_count_ = 0;
+  this->hs_last_challenge_time_ = 0;
+  memset(this->hs_challenge_received_, 0, sizeof(this->hs_challenge_received_));
+
+  // Re-enable pairing so handle_rx_packet collects Cx challenge packets
   this->pairing_active_ = true;
   uint32_t hs_start = millis();
-  while (millis() - hs_start < 5000) {
+  uint32_t last_led_retx = 0;
+  bool burst_sent = false;
+
+  while (millis() - hs_start < 15000) {
     this->radio_.check_rx();
+
+    // Retransmit LED config every ~2s during listen (like real bridge does for dimmers)
+    if (is_dimmer && millis() - last_led_retx > 2000) {
+      this->send_state_report_83(zone_ad, hw_id);
+      last_led_retx = millis();
+    }
+
+    // Once we have challenges and 500ms passed since last one, burst-send echoes
+    if (!burst_sent && this->hs_challenge_count_ > 0 &&
+        this->hs_last_challenge_time_ > 0 &&
+        millis() - this->hs_last_challenge_time_ > 500) {
+      ESP_LOGI(TAG, "Collected %d/4 challenges, sending burst echo", this->hs_challenge_count_);
+      this->send_handshake_burst();
+      burst_sent = true;
+      // Keep listening in case we need to collect more and re-burst
+    }
+
+    // If we got all 4 and burst was sent, we're done
+    if (burst_sent && this->hs_challenge_count_ >= 4) {
+      ESP_LOGI(TAG, "All 4 handshake rounds complete");
+      break;
+    }
+
     delay(5);
+  }
+
+  if (!burst_sent && this->hs_challenge_count_ > 0) {
+    // Timeout but we have some challenges — send what we have
+    ESP_LOGW(TAG, "Handshake timeout with %d/4 challenges, sending partial burst", this->hs_challenge_count_);
+    this->send_handshake_burst();
+  } else if (this->hs_challenge_count_ == 0) {
+    ESP_LOGW(TAG, "No handshake challenges received in 15 seconds");
   }
 
   // Done - increment counter for next pairing
@@ -3539,15 +3603,15 @@ void CC1101CCA::send_zone_assignment_82(uint32_t bridge_zone_id, uint32_t target
 }
 
 void CC1101CCA::send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw_id) {
-  ESP_LOGI(TAG, "=== STATE REPORT 0x83 ===");
+  ESP_LOGI(TAG, "=== LED CONFIG 0x81 ===");
   ESP_LOGI(TAG, "From zone: 0x%08X, To device: 0x%08X", bridge_zone_id, target_hw_id);
 
   uint8_t packet[24];
   memset(packet, 0xCC, sizeof(packet));
 
-  // From REAL bridge capture: 83 01 AD 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 59 C4
+  // From REAL bridge capture: 81 02 AF 90 2C 00 21 0A 00 FF FF FF FF FF 09 06 00 00 CC CC CC CC 3E F0
   // Format 0x0A with BROADCAST target (FF FF FF FF FF)
-  packet[0] = 0x83;
+  packet[0] = 0x81;  // Real bridge uses 0x81, not 0x83
   packet[1] = this->pairing_seq_;
 
   // Bridge zone ID - little-endian
@@ -3584,59 +3648,70 @@ void CC1101CCA::send_state_report_83(uint32_t bridge_zone_id, uint32_t target_hw
   this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
 }
 
-void CC1101CCA::send_handshake_response(uint8_t dimmer_type, uint16_t subnet) {
-  // Validate dimmer sent odd type (C1, C7, CD, D3, D9, DF)
-  if ((dimmer_type & 0x01) == 0) {
-    ESP_LOGW(TAG, "Expected odd handshake type, got 0x%02X", dimmer_type);
+void CC1101CCA::store_handshake_challenge(const uint8_t *challenge_data, uint8_t challenge_len) {
+  if (challenge_len < 22) return;
+
+  uint8_t dev_seq = challenge_data[1];
+  // Slot index: seq 0x20=0, 0x40=1, 0x60=2, 0x80=3
+  // Device retransmits same payload on multiple odd types, so dedup by seq
+  int slot = (dev_seq / 0x20) - 1;
+  if (slot < 0 || slot > 3) {
+    ESP_LOGW(TAG, "Handshake challenge with unexpected seq 0x%02X (slot %d)", dev_seq, slot);
     return;
   }
 
-  // Bridge responds with dimmer_type + 1 (even type)
-  uint8_t response_type = dimmer_type + 1;
+  if (!this->hs_challenge_received_[slot]) {
+    memcpy(this->hs_challenges_[slot], challenge_data, 22);
+    this->hs_challenge_received_[slot] = true;
+    this->hs_challenge_count_++;
+    ESP_LOGI(TAG, "Handshake challenge stored: slot %d (seq=0x%02X, type=0x%02X), %d/4 collected",
+             slot, dev_seq, challenge_data[0], this->hs_challenge_count_);
+  }
+  this->hs_last_challenge_time_ = millis();
+}
 
-  ESP_LOGI(TAG, "=== HANDSHAKE RESPONSE 0x%02X ===", response_type);
-  ESP_LOGI(TAG, "Responding to dimmer 0x%02X with 0x%02X", dimmer_type, response_type);
+void CC1101CCA::send_handshake_burst() {
+  // Send ALL collected challenge echoes.
+  // For each payload, send on ALL 6 even types: C2, C8, CE, D4, DA, E0
+  static const uint8_t echo_types[] = {0xC2, 0xC8, 0xCE, 0xD4, 0xDA, 0xE0};
+
+  ESP_LOGI(TAG, "=== HANDSHAKE BURST (%d payloads x 6 types = %d packets) ===",
+           this->hs_challenge_count_, this->hs_challenge_count_ * 6);
 
   uint8_t packet[24];
-  memset(packet, 0x00, sizeof(packet));
 
-  // From capture: C2 26 90 2C 62 70 D0 FE 00 00 00 FE FE 00 00 00 00 00 FE 19 FE 00 XX XX
-  packet[0] = response_type;
-  packet[1] = this->pairing_seq_;
+  for (int slot = 0; slot < 4; slot++) {
+    if (!this->hs_challenge_received_[slot]) continue;
 
-  // Subnet - little-endian in first two bytes of device ID field
-  packet[2] = subnet & 0xFF;
-  packet[3] = (subnet >> 8) & 0xFF;
+    uint8_t dev_seq = this->hs_challenges_[slot][1];
+    uint8_t echo_seq = dev_seq + 5;
 
-  // Handshake payload pattern from captures
-  packet[4] = 0x62;
-  packet[5] = 0x70;
-  packet[6] = 0xD0;
-  packet[7] = 0xFE;
-  packet[8] = 0x00;
-  packet[9] = 0x00;
-  packet[10] = 0x00;
-  packet[11] = 0xFE;
-  packet[12] = 0xFE;
-  packet[13] = 0x00;
-  packet[14] = 0x00;
-  packet[15] = 0x00;
-  packet[16] = 0x00;
-  packet[17] = 0x00;
-  packet[18] = 0xFE;
-  packet[19] = 0x19;
-  packet[20] = 0xFE;
-  packet[21] = 0x00;
+    for (int t = 0; t < 6; t++) {
+      memset(packet, 0x00, sizeof(packet));
 
-  // Calculate CRC
-  uint16_t crc = this->encoder_.calc_crc(packet, 22);
-  packet[22] = (crc >> 8) & 0xFF;
-  packet[23] = crc & 0xFF;
+      packet[0] = echo_types[t];
+      packet[1] = echo_seq;
 
-  this->transmit_packet(packet, 24);
+      // Copy bytes 2-21 from stored challenge
+      for (int i = 2; i < 22; i++) {
+        packet[i] = this->hs_challenges_[slot][i];
+      }
 
-  // Increment sequence by 6
-  this->pairing_seq_ = (this->pairing_seq_ + 6) % 0x48;
+      // Payload 1 (slot 0, seq=0x20): byte 5 gets OR'd with 0x90
+      if (slot == 0) {
+        packet[5] |= 0x90;
+      }
+
+      uint16_t crc = this->encoder_.calc_crc(packet, 22);
+      packet[22] = (crc >> 8) & 0xFF;
+      packet[23] = crc & 0xFF;
+
+      this->transmit_packet(packet, 24);
+      delay(75);
+    }
+  }
+
+  ESP_LOGI(TAG, "=== HANDSHAKE BURST COMPLETE ===");
 }
 
 uint8_t CC1101CCA::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint8_t seq) {
@@ -3667,12 +3742,10 @@ uint8_t CC1101CCA::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint
 
   packet[6] = 0x21;  // Protocol marker
 
-  // Format byte differs by beacon type
-  if (beacon_type == 0x93) {
-    packet[7] = 0x08;  // Initial beacon format
-  } else {
-    packet[7] = 0x0C;  // Active beacon format (0x91, 0x92)
-  }
+  // During active pairing, ALL beacon types use discovery format:
+  // format=0x0C, mode=0x02, with load info
+  // Real capture confirms 92 beacons during pairing also use 0x0C/0x02
+  packet[7] = 0x0C;  // Discovery format
   packet[8] = 0x00;
 
   // Broadcast address
@@ -3683,23 +3756,13 @@ uint8_t CC1101CCA::send_bridge_beacon(uint8_t beacon_type, uint16_t subnet, uint
   packet[13] = 0xFF;
 
   packet[14] = 0x08;
+  packet[15] = 0x02;  // Active seeking mode
 
-  // Mode byte differs by beacon type
-  if (beacon_type == 0x93) {
-    packet[15] = 0x01;  // Initial
-  } else if (beacon_type == 0x91) {
-    packet[15] = 0x02;  // Active pairing
-  } else {
-    packet[15] = 0x02;  // 0x92 active or 0x04 for stop
-  }
-
-  // Additional zone info for 0x91/0x92
-  if (beacon_type != 0x93) {
-    packet[16] = subnet & 0xFF;
-    packet[17] = (subnet >> 8) & 0xFF;
-    packet[18] = 0x1A;
-    packet[19] = 0x04;
-  }
+  // Load info (all beacon types during pairing)
+  packet[16] = subnet & 0xFF;
+  packet[17] = (subnet >> 8) & 0xFF;
+  packet[18] = 0x1A;
+  packet[19] = 0x04;
 
   // Calculate CRC
   uint16_t crc = this->encoder_.calc_crc(packet, 22);

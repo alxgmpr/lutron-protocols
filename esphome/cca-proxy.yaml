@@ -571,12 +571,10 @@ api:
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_hw_id.c_str(), nullptr, 0));
 
-    - service: send_handshake_response
-      variables:
-        dimmer_type: int
-        subnet: string
+    - service: send_handshake_burst
+      variables: {}
       then:
-        - lambda: id(cca_radio)->send_handshake_response(dimmer_type, strtoul(subnet.c_str(), nullptr, 0));
+        - lambda: id(cca_radio)->send_handshake_burst();
 
     # Vive pairing services
     - service: start_vive_pairing
