@@ -422,6 +422,7 @@ class CC1101CCA : public Component,
    * @param fade_time_qs Fade time in quarter-seconds (1=250ms, 4=1s, 40=10s)
    */
   void send_pico_level(uint32_t pico_id, uint8_t level_percent, uint8_t fade_time_qs = 0x01);
+  void send_pico_level_raw(uint32_t pico_id, uint8_t b17, uint8_t b18, uint8_t b19, uint8_t b20, uint8_t b21);
 
   /**
    * @brief Send dim step command (shared by raise/lower)

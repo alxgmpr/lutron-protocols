@@ -57,6 +57,8 @@ export interface Packet {
   direction: 'tx' | 'rx'
   fields?: ParsedField[]  // Backend-parsed field breakdown
   crcOk?: boolean     // CRC validation status (RX packets only, undefined = ok/unknown)
+  seq?: number        // Sequence number (CCX body key 5)
+  typeNum?: number    // Numeric message type (CCX CBOR array[0])
 }
 
 export interface ApiResponse {

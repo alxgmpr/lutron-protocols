@@ -317,7 +317,7 @@ void CC1101CCA::send_button_press(uint32_t device_id, uint8_t button) {
       packet[16] = 0x00;
       packet[17] = 0x42;
       packet[18] = 0x00;
-      packet[19] = 0x02;
+      packet[19] = (button == LUTRON_BUTTON_RAISE) ? 0x03 : 0x02;
     } else {
       packet[7] = 0x04;
     }
@@ -327,12 +327,12 @@ void CC1101CCA::send_button_press(uint32_t device_id, uint8_t button) {
     packet[23] = crc & 0xFF;
 
     this->transmit_packet(packet, 24);
-    seq += (rep % 2 == 0) ? 2 : 4;
+    seq += 6;
     delay(70);
   }
 
   // --- PHASE 2: LONG FORMAT (10 packets) ---
-  seq = 0x0C;
+  seq = 0x00;
 
   for (int rep = 0; rep < 10; rep++) {
     memset(packet, 0x00, sizeof(packet));
@@ -2125,16 +2125,8 @@ void CC1101CCA::send_vive_level(uint32_t hub_id, uint8_t zone_id, uint8_t level_
 }
 
 void CC1101CCA::send_pico_level(uint32_t pico_id, uint8_t level_percent, uint8_t fade_time_qs) {
-  // EXPERIMENTAL: Send SET_LEVEL using a Pico's device ID as source
-  // Picos are one-way — the dimmer stores the pico's ID during pairing.
-  //
-  // Uses the EXACT pico phase-2 packet layout (format 0x0E with byte[8]=0x03,
-  // repeated device ID at bytes 12-15, command at bytes 17-21) but substitutes
-  // the level command (40 02 [level16] [fade]) for the button command (40 00 XX 00 00).
-  //
-  // Working pico ON:  89 seq [id] 21 0E 03 00 02 01 [id] 00 40 00 20 00 00 [CRC]
-  // Our level cmd:    89 seq [id] 21 0E 03 00 02 01 [id] 00 40 02 [lvl16] [fade] 00 [CRC]
-  ESP_LOGI(TAG, "=== PICO SET LEVEL (EXPERIMENTAL) ===");
+  // Send SET_LEVEL using pico framing with proper 2-phase structure.
+  ESP_LOGI(TAG, "=== PICO SET LEVEL ===");
   ESP_LOGI(TAG, "Pico: 0x%08X, Level: %u%%, Fade: %u qs", pico_id, level_percent, fade_time_qs);
 
   if (level_percent > 100) level_percent = 100;
@@ -2143,56 +2135,100 @@ void CC1101CCA::send_pico_level(uint32_t pico_id, uint8_t level_percent, uint8_t
                      (level_percent >= 100) ? 0xFEFF :
                      (uint16_t)((uint32_t)level_percent * 0xFEFF / 100);
 
-  uint8_t packet[24];
-  static uint8_t pico_lvl_seq = 0x0C;  // Match phase-2 starting seq
+  uint8_t cmd[5] = {
+    0x40,                                // Command class
+    0x02,                                // Subcommand: set level
+    (uint8_t)((level16 >> 8) & 0xFF),    // Level high
+    (uint8_t)(level16 & 0xFF),           // Level low
+    (uint8_t)((fade_time_qs > 0) ? fade_time_qs : 0x01)
+  };
+  this->send_pico_level_raw(pico_id, cmd[0], cmd[1], cmd[2], cmd[3], cmd[4]);
 
-  // Use the same type alternation as button press
+  ESP_LOGI(TAG, "Pico set level sent (level=0x%04X, fade=%u qs)", level16, fade_time_qs);
+}
+
+void CC1101CCA::send_pico_level_raw(uint32_t pico_id, uint8_t b17, uint8_t b18, uint8_t b19, uint8_t b20, uint8_t b21) {
+  // Send set-level in proper 2-phase pico framing — standard 24-byte packets.
+  // Phase 1: 6 short format packets (0x04)
+  // Phase 2: 10 long format packets (0x0E)
+  // Command payload at bytes 17-21: b17 b18 b19 b20 b21
+  ESP_LOGI(TAG, "=== PICO RAW CMD ===");
+  ESP_LOGI(TAG, "Pico: 0x%08X, Bytes: %02X %02X %02X %02X %02X", pico_id, b17, b18, b19, b20, b21);
+
+  uint8_t packet[24];
+
+  // Type alternates between presses (same as button press)
   uint8_t type_base = this->type_alternate_ ? PKT_TYPE_BUTTON_SHORT_B : PKT_TYPE_BUTTON_SHORT_A;
   this->type_alternate_ = !this->type_alternate_;
 
-  for (int rep = 0; rep < 16; rep++) {
-    memset(packet, 0x00, sizeof(packet));
+  uint8_t seq = 0x00;
 
-    packet[0] = type_base | 0x01;        // Long format (0x89 or 0x8B)
-    packet[1] = pico_lvl_seq;
+  // --- PHASE 1: SHORT FORMAT (6 packets) ---
+  for (int rep = 0; rep < 6; rep++) {
+    memset(packet, 0xCC, sizeof(packet));
 
-    // Pico device ID in big-endian
+    packet[0] = type_base;              // Short type (0x88 or 0x8A)
+    packet[1] = seq;
     packet[2] = (pico_id >> 24) & 0xFF;
     packet[3] = (pico_id >> 16) & 0xFF;
     packet[4] = (pico_id >> 8) & 0xFF;
     packet[5] = pico_id & 0xFF;
-
-    packet[6] = 0x21;                   // Protocol marker
-    packet[7] = 0x0E;                   // Format (same as button phase 2)
-    packet[8] = 0x03;                   // Pico format marker (NOT 0x00!)
+    packet[6] = 0x21;
+    packet[7] = 0x04;                   // Short format
+    packet[8] = 0x03;
     packet[9] = 0x00;
-    packet[10] = 0x02;                  // Button code: ON (context for level set)
-    packet[11] = 0x01;                  // Action: release
-
-    // Repeated pico device ID (bytes 12-15, same as button press)
-    packet[12] = (pico_id >> 24) & 0xFF;
-    packet[13] = (pico_id >> 16) & 0xFF;
-    packet[14] = (pico_id >> 8) & 0xFF;
-    packet[15] = pico_id & 0xFF;
-
-    packet[16] = 0x00;
-
-    // Command payload at bytes 17-21 (pico position, NOT bridge position 14-19)
-    packet[17] = 0x40;                  // Command class: level control
-    packet[18] = 0x02;                  // Subcommand: set level (vs 0x00 for button)
-    packet[19] = (level16 >> 8) & 0xFF; // Level high byte
-    packet[20] = level16 & 0xFF;        // Level low byte
-    packet[21] = fade_time_qs;          // Fade time in quarter-seconds
+    packet[10] = 0x02;                  // Button: ON
+    packet[11] = 0x00;                  // Action: PRESS
 
     uint16_t crc = this->encoder_.calc_crc(packet, 22);
     packet[22] = (crc >> 8) & 0xFF;
     packet[23] = crc & 0xFF;
 
     this->transmit_packet(packet, 24);
-    pico_lvl_seq += 6;
+    seq += 6;
     delay(70);
   }
-  ESP_LOGI(TAG, "Pico set level sent (16 packets, level=0x%04X, fade=%u qs)", level16, fade_time_qs);
+
+  // --- PHASE 2: LONG FORMAT (10 packets) ---
+  seq = 0x00;
+
+  for (int rep = 0; rep < 10; rep++) {
+    memset(packet, 0x00, sizeof(packet));
+
+    packet[0] = type_base | 0x01;        // Long type (0x89 or 0x8B)
+    packet[1] = seq;
+    packet[2] = (pico_id >> 24) & 0xFF;
+    packet[3] = (pico_id >> 16) & 0xFF;
+    packet[4] = (pico_id >> 8) & 0xFF;
+    packet[5] = pico_id & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x0E;                   // Long format
+    packet[8] = 0x03;
+    packet[9] = 0x00;
+    packet[10] = 0x02;                  // Button: ON
+    packet[11] = 0x01;                  // Action: RELEASE
+
+    packet[12] = (pico_id >> 24) & 0xFF;
+    packet[13] = (pico_id >> 16) & 0xFF;
+    packet[14] = (pico_id >> 8) & 0xFF;
+    packet[15] = pico_id & 0xFF;
+    packet[16] = 0x00;
+
+    // Command payload at bytes 17-21
+    packet[17] = b17;
+    packet[18] = b18;
+    packet[19] = b19;
+    packet[20] = b20;
+    packet[21] = b21;
+
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+
+    this->transmit_packet(packet, 24);
+    seq += 6;
+    delay(70);
+  }
 }
 
 void CC1101CCA::send_vive_dim_command(uint32_t hub_id, uint8_t zone_id, uint8_t direction) {

@@ -120,8 +120,23 @@ esphome:
             else if (strcmp(cmd, "pair_pico") == 0) {
               uint32_t device = parse_hex(params["device"]);
               int duration = params["duration"] | 10;
+              const char* preset = params["preset"].as<const char*>();
+              if (!preset) preset = "5btn";
               if (device) {
-                id(cca_radio)->send_pairing_pico(device, duration);
+                if (strcmp(preset, "5btn") == 0) {
+                  // Use the verified B9/BB alternating function (matches real pico captures)
+                  id(cca_radio)->send_pairing_5button(device, duration);
+                } else if (strcmp(preset, "2btn") == 0) {
+                  // 2-button: ON(0x02) + OFF(0x04), scheme=0x01
+                  id(cca_radio)->send_pairing_advanced(device, duration, 0xB9, 0xBB, 0x01, 0x02, 0x00, 0x02, 0x04);
+                } else if (strcmp(preset, "4btn-rl") == 0) {
+                  // 4-button raise/lower: buttons 0x08-0x0B
+                  id(cca_radio)->send_pairing_advanced(device, duration, 0xB9, 0xBB, 0x04, 0x04, 0x00, 0x08, 0x0B);
+                } else {
+                  // Scene presets and others: use advanced with configurable bytes
+                  // Default to 4-button scene: buttons 0x08-0x0B
+                  id(cca_radio)->send_pairing_advanced(device, duration, 0xB9, 0xBB, 0x04, 0x04, 0x00, 0x08, 0x0B);
+                }
               }
             }
             else if (strcmp(cmd, "config_fade") == 0) {
@@ -264,6 +279,17 @@ esphome:
                 id(cca_radio)->send_pico_level(pico_id, level, fade_qs);
               } else {
                 ESP_LOGW("udp_cmd", "pico_level: missing device (pico ID)");
+              }
+            }
+            else if (strcmp(cmd, "pico_level_raw") == 0) {
+              uint32_t pico_id = parse_hex(params["device"]);
+              uint8_t b17 = params["b17"] | 0x40;
+              uint8_t b18 = params["b18"] | 0x02;
+              uint8_t b19 = params["b19"] | 0;
+              uint8_t b20 = params["b20"] | 0;
+              uint8_t b21 = params["b21"] | 0;
+              if (pico_id) {
+                id(cca_radio)->send_pico_level_raw(pico_id, b17, b18, b19, b20, b21);
               }
             }
             // Legacy commands (deprecated)

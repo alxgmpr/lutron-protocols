@@ -38,6 +38,8 @@ interface Packet {
   details?: Record<string, string | number | boolean>;
   raw_hex?: string;
   rssi?: number;
+  seq?: number;        // Sequence number (CCX body key 5)
+  type_num?: number;   // Numeric message type (CCX CBOR array[0])
 }
 
 interface Stats {
@@ -159,6 +161,8 @@ class PacketServer {
     if (!parsed) return null;
 
     const msgType = parsed.type as string ?? "UNKNOWN";
+    const msgTypeNum = (json.msgType as number) ?? undefined;
+    const sequence = (parsed.sequence as number) ?? undefined;
     const srcAddr = (json.srcAddr as string) ?? "";
     const timestamp = (json.timestamp as string) ?? new Date().toISOString();
 
@@ -176,6 +180,8 @@ class PacketServer {
       summary: srcAddr,
       details: {},
       raw_hex: cborJson,
+      seq: sequence,
+      type_num: msgTypeNum,
     };
   }
 
@@ -613,6 +619,8 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("vive_level", allParams);
           case "/api/pico-level":
             return server.handleTxCommand("pico_level", allParams);
+          case "/api/pico-level-raw":
+            return server.handleTxCommand("pico_level_raw", allParams);
           case "/api/vive/toggle":
             return server.handleTxCommand("vive_toggle", allParams);
           case "/api/vive/cmd":

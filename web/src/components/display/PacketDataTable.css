@@ -45,30 +45,28 @@
   filter: none;
 }
 
-.pdt-filter-btn[data-active="true"] {
-  background: var(--accent-blue);
-  color: white;
-  border-color: var(--accent-blue);
-}
-
 .pdt-filter-btn[data-active="true"][data-variant="rx"] {
   background: var(--accent-cyan);
   border-color: var(--accent-cyan);
+  color: white;
 }
 
 .pdt-filter-btn[data-active="true"][data-variant="tx"] {
   background: var(--accent-green);
   border-color: var(--accent-green);
+  color: white;
 }
 
 .pdt-filter-btn[data-active="true"][data-variant="cca"] {
   background: var(--accent-orange);
   border-color: var(--accent-orange);
+  color: white;
 }
 
 .pdt-filter-btn[data-active="true"][data-variant="ccx"] {
   background: var(--accent-blue);
   border-color: var(--accent-blue);
+  color: white;
 }
 
 .pdt-filter-sep {
@@ -275,6 +273,8 @@
 
 /* Hex bytes cell */
 .pdt-hex-cell {
+  display: flex;
+  align-items: center;
   overflow: hidden;
 }
 
@@ -291,8 +291,26 @@
   color: var(--accent-blue);
 }
 
+/* Repeat count badge for collapsed duplicate packets */
+.pdt-repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 0px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent-purple, #a855f7) 25%, transparent);
+  color: var(--accent-purple, #a855f7);
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
 /* CCX CBOR JSON display */
 .pdt-ccx-cbor {
+  display: flex;
+  align-items: center;
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: 10px;

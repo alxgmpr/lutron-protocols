@@ -39,8 +39,10 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
   const [userScrolled, setUserScrolled] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [dirFilter, setDirFilter] = useState<'all' | 'rx' | 'tx'>('all')
-  const [protoFilter, setProtoFilter] = useState<'all' | 'cca' | 'ccx'>('all')
+  const [showTx, setShowTx] = useState(true)
+  const [showRx, setShowRx] = useState(true)
+  const [showCca, setShowCca] = useState(true)
+  const [showCcx, setShowCcx] = useState(true)
 
   // Recording state
   const [recording, setRecording] = useState<RecordingState>({ recording: false })
@@ -79,11 +81,35 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
 
   // Apply direction + protocol filters at data level
   const filteredPackets = useMemo(() => {
-    let result = enrichedPackets
-    if (dirFilter !== 'all') result = result.filter(p => p.direction === dirFilter)
-    if (protoFilter !== 'all') result = result.filter(p => p.protocol === protoFilter)
+    return enrichedPackets.filter(p => {
+      const dirOk = (p.direction === 'tx' && showTx) || (p.direction === 'rx' && showRx)
+      const protoOk = (p.protocol === 'cca' && showCca) || (p.protocol === 'ccx' && showCcx)
+      return dirOk && protoOk
+    })
+  }, [enrichedPackets, showTx, showRx, showCca, showCcx])
+
+  // Collapse consecutive packets with identical raw data
+  const collapsedPackets = useMemo(() => {
+    if (filteredPackets.length === 0) return []
+    const result: (typeof filteredPackets[number] & { repeatCount: number })[] = []
+    for (const pkt of filteredPackets) {
+      const prev = result[result.length - 1]
+      if (prev && prev.rawBytes && pkt.rawBytes && prev.rawBytes === pkt.rawBytes && prev.protocol === pkt.protocol) {
+        prev.repeatCount++
+      } else {
+        result.push({ ...pkt, repeatCount: 1 })
+      }
+    }
     return result
-  }, [enrichedPackets, dirFilter, protoFilter])
+  }, [filteredPackets])
+
+  // Convert integers in CBOR JSON to hex for display
+  const hexifyCborJson = useCallback((json: string) => {
+    return json.replace(/\b(\d+)\b/g, (match) => {
+      const n = parseInt(match, 10)
+      return n.toString(16).toUpperCase()
+    })
+  }, [])
 
   // Format time as HH:MM:SS.ms
   const formatTime = useCallback((time: string) => {
@@ -96,9 +122,9 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
     return time
   }, [])
 
-  type EnrichedPacket = (typeof enrichedPackets)[number]
+  type CollapsedPacket = (typeof collapsedPackets)[number]
 
-  const columns = useMemo<ColumnDef<EnrichedPacket>[]>(() => [
+  const columns = useMemo<ColumnDef<CollapsedPacket>[]>(() => [
     {
       accessorKey: 'time',
       header: 'Time',
@@ -135,11 +161,13 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
       size: 40,
       filterFn: 'equals',
       cell: ({ row }) => {
-        const rawType = row.original.protocol === 'ccx'
-          ? row.original.type
-          : (row.original.bytes[0]?.toUpperCase() || '??')
+        if (row.original.protocol === 'ccx') {
+          const num = row.original.typeNum
+          const hex = num !== undefined ? num.toString(16).toUpperCase().padStart(2, '0') : '??'
+          return <span className="pdt-type-raw" title={row.original.type}>{hex}</span>
+        }
         return (
-          <span className="pdt-type-raw">{rawType}</span>
+          <span className="pdt-type-raw">{row.original.bytes[0]?.toUpperCase() || '??'}</span>
         )
       },
     },
@@ -149,7 +177,11 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
       size: 30,
       enableSorting: false,
       cell: ({ row }) => {
-        if (row.original.protocol !== 'cca' || row.original.bytes.length < 2) return null
+        if (row.original.protocol === 'ccx') {
+          const seq = row.original.seq
+          return seq !== undefined ? <span className="pdt-seq">{seq}</span> : null
+        }
+        if (row.original.bytes.length < 2) return null
         const seq = parseInt(row.original.bytes[1], 16)
         return <span className="pdt-seq">{isNaN(seq) ? '' : seq}</span>
       },
@@ -159,24 +191,28 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
       header: 'Data',
       enableSorting: false,
       cell: ({ row }) => {
+        const count = row.original.repeatCount
+        const badge = count > 1 ? <span className="pdt-repeat-badge">{count}x</span> : null
         if (row.original.protocol === 'ccx') {
           return (
             <div className="pdt-ccx-cbor">
-              {row.original.rawBytes || ''}
+              {badge}
+              {hexifyCborJson(row.original.rawBytes || '')}
             </div>
           )
         }
         return (
           <div className="pdt-hex-cell">
+            {badge}
             <HexByteRow bytes={row.original.bytes} />
           </div>
         )
       },
     },
-  ], [formatTime])
+  ], [formatTime, hexifyCborJson])
 
   const table = useReactTable({
-    data: filteredPackets,
+    data: collapsedPackets,
     columns,
     state: { sorting, columnFilters },
     onSortingChange: setSorting,
@@ -191,7 +227,7 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
     if (scrollRef.current && !paused && !userScrolled && sorting.length === 0) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [filteredPackets, paused, userScrolled, sorting])
+  }, [collapsedPackets, paused, userScrolled, sorting])
 
   // Detect user scroll
   const handleScroll = useCallback(() => {
@@ -286,24 +322,17 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
         <div className="pdt-toolbar-filters">
           <button
             className="pdt-filter-btn"
-            data-active={dirFilter === 'all'}
-            onClick={() => setDirFilter('all')}
-          >
-            All
-          </button>
-          <button
-            className="pdt-filter-btn"
-            data-active={dirFilter === 'rx'}
+            data-active={showRx}
             data-variant="rx"
-            onClick={() => setDirFilter('rx')}
+            onClick={() => setShowRx(v => !v)}
           >
             RX
           </button>
           <button
             className="pdt-filter-btn"
-            data-active={dirFilter === 'tx'}
+            data-active={showTx}
             data-variant="tx"
-            onClick={() => setDirFilter('tx')}
+            onClick={() => setShowTx(v => !v)}
           >
             TX
           </button>
@@ -312,24 +341,17 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
 
           <button
             className="pdt-filter-btn"
-            data-active={protoFilter === 'all'}
-            onClick={() => setProtoFilter('all')}
-          >
-            A+X
-          </button>
-          <button
-            className="pdt-filter-btn"
-            data-active={protoFilter === 'cca'}
+            data-active={showCca}
             data-variant="cca"
-            onClick={() => setProtoFilter('cca')}
+            onClick={() => setShowCca(v => !v)}
           >
             CCA
           </button>
           <button
             className="pdt-filter-btn"
-            data-active={protoFilter === 'ccx'}
+            data-active={showCcx}
             data-variant="ccx"
-            onClick={() => setProtoFilter('ccx')}
+            onClick={() => setShowCcx(v => !v)}
           >
             CCX
           </button>
@@ -338,7 +360,9 @@ export function PacketDataTable({ packets, paused, onTogglePause, onClear }: Pac
         <div className="pdt-spacer" />
 
         <span className="pdt-count">
-          {filteredPackets.length} packet{filteredPackets.length !== 1 ? 's' : ''}
+          {collapsedPackets.length !== filteredPackets.length
+            ? `${collapsedPackets.length} rows (${filteredPackets.length} packets)`
+            : `${filteredPackets.length} packet${filteredPackets.length !== 1 ? 's' : ''}`}
           {paused ? ' (paused)' : ''}
         </span>
 

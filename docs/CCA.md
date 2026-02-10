@@ -313,17 +313,17 @@ Byte  1: Sequence
 Byte 2-5: Pico device ID (big-endian)
 Byte  6: 0x21
 Byte  7: 0x0E
-Byte  8: 0x03          ← MUST be 0x03 (pico format marker)
+Byte  8: 0x03          <- MUST be 0x03 (pico format marker)
 Byte  9: 0x00
-Byte 10: 0x02          ← Button code (ON)
-Byte 11: 0x01          ← Action (release)
+Byte 10: 0x02          <- Button code (ON)
+Byte 11: 0x01          <- Action (release)
 Byte 12-15: Pico device ID (repeated, big-endian)
 Byte 16: 0x00
-Byte 17: 0x40          ← Command class: level control
-Byte 18: 0x02          ← Subcommand: SET LEVEL (not 0x00 for button)
-Byte 19: Level high     ← } 0x0000 = OFF, 0xFEFF = 100%
-Byte 20: Level low      ← }
-Byte 21: Fade time      ← Quarter-seconds (0x01=250ms, 0x04=1s)
+Byte 17: 0x40          <- Command class: level control
+Byte 18: 0x02          <- Subcommand: SET LEVEL (not 0x00 for button)
+Byte 19: Level high     <- } 0x0000 = OFF, 0xFEFF = 100%
+Byte 20: Level low      <- }
+Byte 21: Fade time (?)  <- See "Open questions" below
 Byte 22-23: CRC-16
 ```
 
@@ -336,10 +336,29 @@ Compared to a standard ON button press, **only bytes 18-21 differ**:
 
 **Critical**: Byte 8 MUST be 0x03 and the repeated device ID MUST be present at bytes 12-15. Without these, the dimmer ignores the packet (it expects pico-style framing when the source is a pico device ID).
 
+**Status: LEVEL WORKS, FADE DOES NOT**
+
+The dimmer correctly receives and applies the target level (confirmed by touching the physical slider mid-fade, which snaps to the commanded level). However, the transition uses an extremely slow default fade (~1-2 minutes) regardless of what byte 21 contains. This contrasts with bridge/Vive set-level which achieve fast fades via byte 19 in their 8-byte command payload at bytes 14-21.
+
+The likely cause: the pico long-format payload is only 5 bytes (bytes 17-21), whereas bridge/Vive payloads are 8 bytes (bytes 14-21). The dimmer's fade time parser may expect the fade field at a position that doesn't exist in the pico frame, falling back to an internal default.
+
+Attempts to resolve this (all failed):
+- 20 different byte permutations at positions 17-21 via fuzzer — level accepted, fade always slow
+- Extended 26-byte packets (to fit fade at byte 22 like bridge byte 19) — dimmer ignores entirely
+- Bridge-style framing (byte 8 = 0x00) with pico device ID — dimmer ignores entirely
+- Different command subcommands (0x00, 0x01, 0x03, 0x04) — no fast fade
+- Command class 0x42 instead of 0x40 — no fast fade
+
+**Open questions**:
+1. Is byte 21 actually fade time, or just a required non-zero field? (byte 21 = 0x00 causes rejection)
+2. Does the dimmer use a fixed slow fade for all pico-sourced level commands by design?
+3. Could a separate "fade config" command change the default fade for pico sources?
+4. Real picos never send set-level commands — this is an undocumented capability. The dimmer may not have a fast-fade code path for pico-framed packets.
+
 **Implications**: Any Caseta dimmer with a paired Pico can be set to an arbitrary level by spoofing the Pico's device ID. This enables:
 - Precise percentage-based dimming on devices without a bridge
-- Controllable fade times (same encoding as bridge/Vive: quarter-seconds)
 - Full dimmer control from any CCA transmitter that knows the Pico's device ID
+- **Limitation**: Fade time appears uncontrollable — transitions are always slow (~1-2 min)
 
 **Level encoding** (identical across all CCA command sources):
 

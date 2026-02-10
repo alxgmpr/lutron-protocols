@@ -17,6 +17,8 @@ interface BackendPacket {
   raw_hex?: string
   rssi?: number
   fields?: ParsedField[]  // Backend-parsed field breakdown
+  seq?: number            // Sequence number (CCX)
+  type_num?: number       // Numeric message type (CCX)
 }
 
 export function usePacketStream() {
@@ -155,7 +157,9 @@ export function usePacketStream() {
           rawBytes: pkt.raw_hex,
           direction: pkt.direction,
           fields: pkt.fields,
-          crcOk
+          crcOk,
+          seq: pkt.seq,
+          typeNum: pkt.type_num,
         }
 
         // Filter out bad CRC packets
