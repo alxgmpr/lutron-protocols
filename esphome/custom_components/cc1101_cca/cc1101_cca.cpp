@@ -1656,66 +1656,89 @@ void CC1101CCA::send_fade_config(uint32_t bridge_zone_id, uint32_t target_device
 }
 
 void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
-                                      uint8_t high_trim, uint8_t low_trim, bool phase_reverse) {
-  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG ===");
-  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X", bridge_zone_id, target_device_id);
-  ESP_LOGI(TAG, "HighTrim: %d%%, LowTrim: %d%%, Phase: %s",
-           high_trim, low_trim, phase_reverse ? "Reverse" : "Forward");
+                                      uint8_t high_trim, uint8_t low_trim, bool is_high_test) {
+  // RTL-SDR confirmed: trim config is 53 bytes (51 data + 2 CRC), same as LED/fade.
+  // Earlier lockup was caused by CC padding at bytes 27-28 instead of 00 FE.
+  // Real bridge sandwich: 82 (OFF) → A3 (config) → 81 (save level)
+  //
+  // A3 packet structure (from RTL-SDR captures):
+  //   [0]     A3 type
+  //   [1]     seq (01 first, 02 second)
+  //   [2-5]   zone LE (AD first, AF second)
+  //   [6]     0x21 proto
+  //   [7]     0x15 format
+  //   [8]     0x00
+  //   [9-12]  target device ID BE
+  //   [13-19] FE 06 50 00 02 08 13
+  //   [20]    high trim byte
+  //   [21]    low trim byte
+  //   [22-23] 23 0B (constant)
+  //   [24-26] 60 00 00 (constant)
+  //   [27-28] 00 FE (constant — NOT CC padding!)
+  //   [29-50] CC padding
+  //   [51-52] CRC
 
-  // Convert percentages to byte values (% * 254 / 100)
+  ESP_LOGI(TAG, "=== TRIM CONFIG (%s) ===", is_high_test ? "HIGH" : "LOW");
+  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, High: %d%%, Low: %d%%",
+           bridge_zone_id, target_device_id, high_trim, low_trim);
+
   uint8_t high_byte = (high_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)high_trim * 254 / 100);
   uint8_t low_byte = (low_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)low_trim * 254 / 100);
 
-  // Phase encoding: Forward = 0x03, Reverse = 0x23 (bit 5 set)
-  uint8_t phase_byte = phase_reverse ? 0x23 : 0x03;
-
-  // Captured packet structure (format 0x15 / STATE_RPT):
-  // A3 01 AD 90 2C 00 21 15 00 06 FE 80 06 FE 06 50 00 02 08 13 FE 03 03 0B
-  // [0]     Type (A1/A2/A3 rotating)
-  // [1]     Sequence
-  // [2-5]   Bridge zone ID (little-endian)
-  // [6]     0x21 protocol marker
-  // [7]     0x15 format (STATE_RPT / device state)
-  // [8]     0x00
-  // [9-12]  Target device ID (big-endian)
-  // [13-19] Static bytes
-  // [20]    High-end trim value
-  // [21]    Low-end trim value
-  // [22]    Phase mode (0x03=Forward, 0x23=Reverse)
-  // [23]    0x0B (constant)
-
-  // Type 0xA0+ requires 53-byte packets (51 data + 2 CRC) with CC padding
-  uint8_t type_byte = 0xA1 + this->config_type_idx_;
-  this->config_type_idx_ = (this->config_type_idx_ + 1) % 3;
+  ESP_LOGI(TAG, "Encoded: high=0x%02X (%d%%), low=0x%02X (%d%%)",
+           high_byte, high_trim, low_byte, low_trim);
 
   uint32_t alt_zone_id = (bridge_zone_id & 0xFFFFFF00) | ((bridge_zone_id & 0xFF) + 2);
 
   uint8_t packet[53];
-  uint8_t seq = 0x02;
+  uint8_t seq;
 
-  for (int rep = 0; rep < 20; rep++) {
-    memset(packet, 0xCC, sizeof(packet));
-
-    packet[0] = type_byte;
-    packet[1] = (rep == 0) ? 0x01 : seq;
-
-    uint32_t zone = (rep == 0) ? bridge_zone_id : alt_zone_id;
+  // Helper: build SET_LEVEL packet (24 bytes = 22 data + 2 CRC)
+  auto build_set_level = [&](uint8_t type, uint16_t level, uint32_t zone) {
+    memset(packet, 0x00, 53);
+    packet[0] = type;
+    packet[1] = seq;
     packet[2] = zone & 0xFF;
     packet[3] = (zone >> 8) & 0xFF;
     packet[4] = (zone >> 16) & 0xFF;
     packet[5] = (zone >> 24) & 0xFF;
-
     packet[6] = 0x21;
-    packet[7] = 0x15;  // Device state format
+    packet[7] = 0x0E;
     packet[8] = 0x00;
-
-    // Target device ID big-endian
-    packet[9] = (target_device_id >> 24) & 0xFF;
+    packet[9]  = (target_device_id >> 24) & 0xFF;
     packet[10] = (target_device_id >> 16) & 0xFF;
     packet[11] = (target_device_id >> 8) & 0xFF;
     packet[12] = target_device_id & 0xFF;
+    packet[13] = 0xFE;
+    packet[14] = 0x40;
+    packet[15] = 0x02;
+    packet[16] = (level >> 8) & 0xFF;
+    packet[17] = level & 0xFF;
+    packet[18] = 0x00;
+    packet[19] = 0x01;  // Fade = 250ms
+    packet[20] = 0x00;
+    packet[21] = 0x00;
+    uint16_t crc = this->encoder_.calc_crc(packet, 22);
+    packet[22] = (crc >> 8) & 0xFF;
+    packet[23] = crc & 0xFF;
+  };
 
-    // Static bytes from capture
+  // Helper: build TRIM CONFIG packet (53 bytes = 51 data + 2 CRC)
+  auto build_trim = [&](uint32_t zone) {
+    memset(packet, 0xCC, sizeof(packet));
+    packet[0] = 0xA3;
+    packet[1] = seq;
+    packet[2] = zone & 0xFF;
+    packet[3] = (zone >> 8) & 0xFF;
+    packet[4] = (zone >> 16) & 0xFF;
+    packet[5] = (zone >> 24) & 0xFF;
+    packet[6] = 0x21;
+    packet[7] = 0x15;
+    packet[8] = 0x00;
+    packet[9]  = (target_device_id >> 24) & 0xFF;
+    packet[10] = (target_device_id >> 16) & 0xFF;
+    packet[11] = (target_device_id >> 8) & 0xFF;
+    packet[12] = target_device_id & 0xFF;
     packet[13] = 0xFE;
     packet[14] = 0x06;
     packet[15] = 0x50;
@@ -1723,26 +1746,153 @@ void CC1101CCA::send_device_state(uint32_t bridge_zone_id, uint32_t target_devic
     packet[17] = 0x02;
     packet[18] = 0x08;
     packet[19] = 0x13;
-
-    // Trim and phase values
     packet[20] = high_byte;
     packet[21] = low_byte;
-    packet[22] = phase_byte;
+    packet[22] = 0x23;
     packet[23] = 0x0B;
-
-    // Bytes 24-50 remain CC padding
-    // CRC at bytes 51-52
+    packet[24] = 0x60;
+    packet[25] = 0x00;
+    packet[26] = 0x00;
+    packet[27] = 0x00;  // NOT CC! Real bridge has 00 here
+    packet[28] = 0xFE;  // NOT CC! Real bridge has FE here
+    // bytes 29-50 remain CC from memset
     uint16_t crc = this->encoder_.calc_crc(packet, 51);
     packet[51] = (crc >> 8) & 0xFF;
     packet[52] = crc & 0xFF;
+  };
 
-    this->transmit_packet(packet, 53);
-
+  // ── Phase 1: SET_LEVEL(0x0000) — type 0x82, first=AD then AF ──
+  ESP_LOGI(TAG, "Phase 1: SET_LEVEL(0%%) type=0x82");
+  seq = 0x01;
+  for (int i = 0; i < 20; i++) {
+    uint32_t zone = (i == 0) ? bridge_zone_id : alt_zone_id;
+    build_set_level(0x82, 0x0000, zone);
+    this->transmit_packet(packet, 24);
     seq = (seq + 6) & 0xFF;
-    if (rep < 19) delay(75);
+    if (i < 19) delay(75);
   }
 
-  ESP_LOGI(TAG, "=== DEVICE STATE CONFIG COMPLETE (type=0x%02X) ===", type_byte);
+  delay(200);
+
+  // ── Phase 2: TRIM CONFIG — 53-byte A3 packets, 2 retransmissions ──
+  ESP_LOGI(TAG, "Phase 2: TRIM CONFIG type=0xA3 (high=0x%02X, low=0x%02X)", high_byte, low_byte);
+  seq = 0x01;
+  build_trim(bridge_zone_id);
+  this->transmit_packet(packet, 53);
+  delay(10);
+  seq = 0x02;
+  build_trim(alt_zone_id);
+  this->transmit_packet(packet, 53);
+
+  // ── Phase 3: SET_LEVEL(save) — type 0x81, zone AF ──
+  uint16_t save_level = is_high_test ? 0xFEFF : 0x0001;
+  delay(50);
+  ESP_LOGI(TAG, "Phase 3: SET_LEVEL(0x%04X) type=0x81", save_level);
+  seq = 0x02;
+  for (int i = 0; i < 20; i++) {
+    build_set_level(0x81, save_level, alt_zone_id);
+    this->transmit_packet(packet, 24);
+    seq = (seq + 6) & 0xFF;
+    if (i < 19) delay(75);
+  }
+
+  ESP_LOGI(TAG, "=== TRIM CONFIG COMPLETE ===");
+}
+
+void CC1101CCA::send_trim_config_only(uint32_t bridge_zone_id, uint32_t target_device_id,
+                                          uint8_t high_trim, uint8_t low_trim) {
+  // Send ONLY the A3 trim config packets — no SET_LEVEL sandwich.
+  ESP_LOGI(TAG, "=== TRIM SAVE (config only) ===");
+  ESP_LOGI(TAG, "Bridge: %08X, Target: %08X, High: %d%%, Low: %d%%",
+           bridge_zone_id, target_device_id, high_trim, low_trim);
+
+  uint8_t high_byte = (high_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)high_trim * 254 / 100);
+  uint8_t low_byte = (low_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)low_trim * 254 / 100);
+
+  ESP_LOGI(TAG, "Encoded: high=0x%02X (%d%%), low=0x%02X (%d%%)",
+           high_byte, high_trim, low_byte, low_trim);
+
+  uint32_t alt_zone_id = (bridge_zone_id & 0xFFFFFF00) | ((bridge_zone_id & 0xFF) + 2);
+
+  uint8_t packet[53];
+  uint8_t seq;
+
+  // 53-byte A3 config packet, same structure as sandwich version
+  seq = 0x01;
+  memset(packet, 0xCC, sizeof(packet));
+  packet[0] = 0xA3;
+  packet[1] = seq;
+  packet[2] = bridge_zone_id & 0xFF;
+  packet[3] = (bridge_zone_id >> 8) & 0xFF;
+  packet[4] = (bridge_zone_id >> 16) & 0xFF;
+  packet[5] = (bridge_zone_id >> 24) & 0xFF;
+  packet[6] = 0x21;
+  packet[7] = 0x15;
+  packet[8] = 0x00;
+  packet[9]  = (target_device_id >> 24) & 0xFF;
+  packet[10] = (target_device_id >> 16) & 0xFF;
+  packet[11] = (target_device_id >> 8) & 0xFF;
+  packet[12] = target_device_id & 0xFF;
+  packet[13] = 0xFE;
+  packet[14] = 0x06;
+  packet[15] = 0x50;
+  packet[16] = 0x00;
+  packet[17] = 0x02;
+  packet[18] = 0x08;
+  packet[19] = 0x13;
+  packet[20] = high_byte;
+  packet[21] = low_byte;
+  packet[22] = 0x23;
+  packet[23] = 0x0B;
+  packet[24] = 0x60;
+  packet[25] = 0x00;
+  packet[26] = 0x00;
+  packet[27] = 0x00;
+  packet[28] = 0xFE;
+  uint16_t crc = this->encoder_.calc_crc(packet, 51);
+  packet[51] = (crc >> 8) & 0xFF;
+  packet[52] = crc & 0xFF;
+  this->transmit_packet(packet, 53);
+
+  delay(10);
+
+  seq = 0x02;
+  memset(packet, 0xCC, sizeof(packet));
+  packet[0] = 0xA3;
+  packet[1] = seq;
+  packet[2] = alt_zone_id & 0xFF;
+  packet[3] = (alt_zone_id >> 8) & 0xFF;
+  packet[4] = (alt_zone_id >> 16) & 0xFF;
+  packet[5] = (alt_zone_id >> 24) & 0xFF;
+  packet[6] = 0x21;
+  packet[7] = 0x15;
+  packet[8] = 0x00;
+  packet[9]  = (target_device_id >> 24) & 0xFF;
+  packet[10] = (target_device_id >> 16) & 0xFF;
+  packet[11] = (target_device_id >> 8) & 0xFF;
+  packet[12] = target_device_id & 0xFF;
+  packet[13] = 0xFE;
+  packet[14] = 0x06;
+  packet[15] = 0x50;
+  packet[16] = 0x00;
+  packet[17] = 0x02;
+  packet[18] = 0x08;
+  packet[19] = 0x13;
+  packet[20] = high_byte;
+  packet[21] = low_byte;
+  packet[22] = 0x23;
+  packet[23] = 0x0B;
+  packet[24] = 0x60;
+  packet[25] = 0x00;
+  packet[26] = 0x00;
+  packet[27] = 0x00;
+  packet[28] = 0xFE;
+  crc = this->encoder_.calc_crc(packet, 51);
+  packet[51] = (crc >> 8) & 0xFF;
+  packet[52] = crc & 0xFF;
+  this->transmit_packet(packet, 53);
+
+  ESP_LOGI(TAG, "=== TRIM SAVE COMPLETE ===");
 }
 
 void CC1101CCA::send_bridge_unpair(uint32_t bridge_zone_id, uint32_t target_device_id) {

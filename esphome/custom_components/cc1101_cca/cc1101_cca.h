@@ -234,10 +234,14 @@ class CC1101CCA : public Component,
    * @param target_device_id Target dimmer ID, sent big-endian
    * @param high_trim High-end trim 0-100% (encoded as % * 2.54)
    * @param low_trim Low-end trim 0-100% (encoded as % * 2.54)
-   * @param phase_reverse true for reverse phase, false for forward
+   * @param is_high_test true=high-end test (SET_LEVEL 100%), false=low-end test (SET_LEVEL min)
    */
   void send_device_state(uint32_t bridge_zone_id, uint32_t target_device_id,
-                         uint8_t high_trim, uint8_t low_trim, bool phase_reverse);
+                         uint8_t high_trim, uint8_t low_trim, bool is_high_test);
+
+  /** Send only the trim config A3 packet (no SET_LEVEL sandwich) */
+  void send_trim_config_only(uint32_t bridge_zone_id, uint32_t target_device_id,
+                             uint8_t high_trim, uint8_t low_trim);
 
   /**
    * @brief Send bridge-style unpair command to remove a device from the network

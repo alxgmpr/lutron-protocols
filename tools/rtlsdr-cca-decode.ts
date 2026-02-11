@@ -283,8 +283,9 @@ function findAllPreambles(fm: Float32Array): PreambleResult[] {
   for (let i = 0; i < fm.length; i++) sigEnergy += fm[i] * fm[i];
   const rmsLevel = Math.sqrt(sigEnergy / fm.length);
 
-  // Each CCA retransmission is ~600 bits; skip at least 500 bits after finding one
-  const minRetxSpacing = Math.round(500 * SAMPLES_PER_BIT);
+  // 53-byte packets = 530 N81 bits + 32 preamble + 30 sync/prefix ≈ 592 bits
+  // Use 700 bits spacing to avoid false preamble detections mid-packet
+  const minRetxSpacing = Math.round(700 * SAMPLES_PER_BIT);
   // Coarse stride for scanning (half a bit period - fast but won't miss peaks)
   const stride = Math.max(1, Math.round(SAMPLES_PER_BIT * 0.5));
   const searchEnd = fm.length - refLen;
@@ -316,19 +317,25 @@ function findAllPreambles(fm: Float32Array): PreambleResult[] {
     const inverted = bestCorr < 0;
     const bitOffset = bestN + Math.round(SAMPLES_PER_BIT / 2);
 
-    // Compute local threshold from preamble region (handles per-retx DC offset)
+    // Compute threshold from a wide region (preamble + early data) to avoid
+    // burst onset transients that have much larger swings than the actual data.
+    // Use 100 bit periods (~1600 samples at 32 samp/bit) to get robust estimate.
+    const threshRegionLen = Math.round(100 * SAMPLES_PER_BIT);
+    const threshStart = bestN; // start from preamble
+    const threshEnd = Math.min(fm.length, threshStart + threshRegionLen);
     let posSum = 0, posCount = 0, negSum = 0, negCount = 0;
-    for (let i = bestN; i < bestN + refLen && i < fm.length; i++) {
+    for (let i = threshStart; i < threshEnd; i++) {
       if (fm[i] > 0.01) { posSum += fm[i]; posCount++; }
       else if (fm[i] < -0.01) { negSum += fm[i]; negCount++; }
     }
     const threshold = (posCount > 0 && negCount > 0)
       ? (posSum / posCount + negSum / negCount) / 2 : 0;
 
-    // Validate: check for alternating preamble pattern
+    // Validate: check for alternating preamble pattern + amplitude consistency
     let found = false;
     for (const tryInverted of [inverted, !inverted]) {
       let ok = 0, total = 0;
+      const highVals: number[] = [], lowVals: number[] = [];
       for (let i = 0; i < 16 && bitOffset + i * SAMPLES_PER_BIT < fm.length; i++) {
         const idx = Math.round(bitOffset + i * SAMPLES_PER_BIT);
         if (idx >= fm.length) break;
@@ -336,11 +343,31 @@ function findAllPreambles(fm: Float32Array): PreambleResult[] {
         if (tryInverted) bit = 1 - bit;
         if (bit === ((i % 2 === 0) ? 1 : 0)) ok++;
         total++;
+        // Collect FM values for amplitude consistency check
+        if (fm[idx] > threshold) highVals.push(fm[idx]);
+        else lowVals.push(fm[idx]);
       }
       if (total >= 12 && ok >= total * 0.75) {
-        results.push({ bitOffset, inverted: tryInverted, threshold });
-        found = true;
-        break;
+        // Check amplitude consistency: reject if FM values vary too much
+        // (burst onset transients have 10x variation, real preambles are consistent)
+        let reject = false;
+        if (highVals.length >= 3 && lowVals.length >= 3) {
+          const highMax = Math.max(...highVals), highMin = Math.min(...highVals);
+          const lowMax = Math.max(...lowVals), lowMin = Math.min(...lowVals);
+          const swing = Math.abs(highMax + lowMin) > 0.01 ? (highMax - lowMin) : 1;
+          const highRange = highMax - highMin;
+          const lowRange = lowMax - lowMin;
+          // Reject if either high or low range exceeds 40% of total signal swing
+          // (real preambles have ~5-10% range, transients have 60%+)
+          if (highRange > swing * 0.4 || lowRange > swing * 0.4) {
+            reject = true;
+          }
+        }
+        if (!reject) {
+          results.push({ bitOffset, inverted: tryInverted, threshold });
+          found = true;
+          break;
+        }
       }
     }
 
@@ -422,7 +449,7 @@ function extractPacket(bits: number[]): PacketResult | null {
   // Accept if at most 2 bit errors in the 30-bit sync+prefix
   if (bestMatch >= 0 && bestErrors <= 2) {
     const payloadStart = bestMatch + 30;
-    const bytes = decodeN81(bits, payloadStart, 60);
+    const bytes = decodeN81(bits, payloadStart, 70);
     if (bytes.length >= 3) {
       const crcBoundary = findCrcBoundary(bytes);
       return { bytes, crcBoundary, preambleBits: bestMatch };
@@ -448,7 +475,7 @@ function extractPacket(bits: number[]): PacketResult | null {
     if (faByte === 0xFA) {
       const deByte = decodeN81Byte(bits, afterSync + 10);
       if (deByte === 0xDE) {
-        const bytes = decodeN81(bits, afterSync + 20, 60);
+        const bytes = decodeN81(bits, afterSync + 20, 70);
         if (bytes.length >= 3) {
           const crcBoundary = findCrcBoundary(bytes);
           return { bytes, crcBoundary, preambleBits: pos };
@@ -458,7 +485,7 @@ function extractPacket(bits: number[]): PacketResult | null {
 
     // Try decoding directly after sync (maybe prefix is corrupted)
     if (faByte !== null) {
-      const testBytes = [faByte, ...decodeN81(bits, afterSync + 10, 59)];
+      const testBytes = [faByte, ...decodeN81(bits, afterSync + 10, 69)];
       if (testBytes.length >= 5 && testBytes[0] >= 0x80) {
         const crcBoundary = findCrcBoundary(testBytes);
         if (crcBoundary) return { bytes: testBytes, crcBoundary, preambleBits: pos };
@@ -469,7 +496,7 @@ function extractPacket(bits: number[]): PacketResult | null {
   // Last resort: scan for any N81 byte that looks like a CCA type, verify with CRC
   for (let pos = 10; pos < Math.min(bits.length - 100, 250); pos++) {
     if (bits[pos] !== 0) continue;
-    const bytes = decodeN81(bits, pos, 60);
+    const bytes = decodeN81(bits, pos, 70);
     if (bytes.length < 10) continue;
     if (bytes[0] < 0x80 || bytes[0] > 0xDF) continue;
     const crcBoundary = findCrcBoundary(bytes);
@@ -648,10 +675,26 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
       }
 
       // Extract packet (find sync, prefix, decode N81)
-      const packet = extractPacket(bits);
+      let packet = extractPacket(bits);
+
+      // If extraction fails, try opposite polarity.
+      // The alternating preamble pattern is ambiguous for polarity, so the
+      // preamble detector sometimes picks the wrong one.
+      if (!packet) {
+        const flipped = bits.map(b => 1 - b);
+        packet = extractPacket(flipped);
+        if (packet && debug) {
+          console.log("    Polarity corrected (flipped)");
+        }
+      }
 
       if (!packet) {
-        if (debug) console.log("    Could not extract packet from " + bits.length + " bits");
+        if (debug) {
+          console.log("    Could not extract packet from " + bits.length + " bits");
+          // Show first 60 bits for diagnosis
+          const bitStr = bits.slice(0, Math.min(60, bits.length)).join('');
+          console.log("    First 60 bits: " + bitStr);
+        }
         continue;
       }
 
@@ -669,10 +712,8 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
           burstCrcPackets.set(key, { bytes: packetBytes, crcBoundary: packet.crcBoundary, count: 1 });
         }
       } else {
-        // Keep first few non-CRC packets for debug
-        if (burstNoCrc.length < 2) {
-          burstNoCrc.push({ bytes: packet.bytes });
-        }
+        // Keep all non-CRC packets for majority-vote combining
+        burstNoCrc.push({ bytes: packet.bytes });
       }
     }
 
@@ -685,8 +726,60 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
         crcBoundary + countStr + " | " + key);
     }
 
-    // If no CRC-valid packets, show first non-CRC decode
-    if (burstCrcPackets.size === 0 && burstNoCrc.length > 0) {
+    // If no CRC-valid packets, try majority-vote combining across retransmissions
+    if (burstCrcPackets.size === 0 && burstNoCrc.length >= 2) {
+      // Collect all decoded byte arrays
+      const allDecodes = burstNoCrc.map(p => p.bytes);
+      // Find the most common length (likely the correct packet length)
+      const lenCounts = new Map<number, number>();
+      for (const d of allDecodes) {
+        lenCounts.set(d.length, (lenCounts.get(d.length) || 0) + 1);
+      }
+      let bestLen = 0, bestLenCount = 0;
+      for (const [len, count] of lenCounts) {
+        if (count > bestLenCount || (count === bestLenCount && len > bestLen)) {
+          bestLen = len;
+          bestLenCount = count;
+        }
+      }
+
+      if (bestLen >= 10) {
+        // Majority vote per bit position across retransmissions of the same length
+        const matching = allDecodes.filter(d => d.length >= bestLen);
+        const voted: number[] = [];
+        for (let byteIdx = 0; byteIdx < bestLen; byteIdx++) {
+          // Vote on each bit independently
+          let votedByte = 0;
+          for (let bit = 0; bit < 8; bit++) {
+            let ones = 0;
+            for (const d of matching) {
+              if (d[byteIdx] & (1 << bit)) ones++;
+            }
+            if (ones > matching.length / 2) votedByte |= (1 << bit);
+          }
+          voted.push(votedByte);
+        }
+        const votedCrc = findCrcBoundary(voted);
+        if (votedCrc) {
+          const key = voted.slice(0, votedCrc).map(hexByte).join(" ");
+          const type = voted[0];
+          const typeStr = getTypeName(type);
+          console.log("#" + bi + " @ " + burstTimeMs + "ms: " + typeStr +
+            " | CRC OK at " + votedCrc + " (voted " + matching.length + "x) | " + key);
+          crcOk++;
+        } else {
+          const p = burstNoCrc[0];
+          console.log("#" + bi + " @ " + burstTimeMs + "ms: " +
+            formatPacket(p.bytes, null) +
+            " [" + burstDecoded + "/" + preambles.length + " decoded, 0 CRC, vote failed]");
+        }
+      } else {
+        const p = burstNoCrc[0];
+        console.log("#" + bi + " @ " + burstTimeMs + "ms: " +
+          formatPacket(p.bytes, null) +
+          " [" + burstDecoded + "/" + preambles.length + " decoded, 0 CRC]");
+      }
+    } else if (burstCrcPackets.size === 0 && burstNoCrc.length > 0) {
       const p = burstNoCrc[0];
       console.log("#" + bi + " @ " + burstTimeMs + "ms: " +
         formatPacket(p.bytes, null) +

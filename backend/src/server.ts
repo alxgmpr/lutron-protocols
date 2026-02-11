@@ -586,6 +586,8 @@ const httpServer = Bun.serve({
             return server.handleTxCommand("config_led", allParams);
           case "/api/config/trim":
             return server.handleTxCommand("config_trim", allParams);
+          case "/api/config/trim-save":
+            return server.handleTxCommand("config_trim_save", allParams);
           case "/api/config/phase":
             return server.handleTxCommand("config_phase", allParams);
           case "/api/pairing/start":

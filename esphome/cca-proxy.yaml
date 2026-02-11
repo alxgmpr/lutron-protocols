@@ -156,15 +156,23 @@ esphome:
                 id(cca_radio)->send_led_config(bridge, target, mode);
               }
             }
-            else if (strcmp(cmd, "config_trim") == 0 || strcmp(cmd, "config_phase") == 0) {
+            else if (strcmp(cmd, "config_trim") == 0) {
               uint32_t bridge = parse_hex(params["bridge"]);
               uint32_t target = parse_hex(params["target"]);
               int high = params["high"] | 100;
               int low = params["low"] | 1;
-              const char* phase_str = params["phase"].as<const char*>();
-              bool phase_reverse = phase_str && strcmp(phase_str, "reverse") == 0;
+              bool is_high = params["is_high"] | true;
               if (bridge && target) {
-                id(cca_radio)->send_device_state(bridge, target, high, low, phase_reverse);
+                id(cca_radio)->send_device_state(bridge, target, high, low, is_high);
+              }
+            }
+            else if (strcmp(cmd, "config_trim_save") == 0) {
+              uint32_t bridge = parse_hex(params["bridge"]);
+              uint32_t target = parse_hex(params["target"]);
+              int high = params["high"] | 100;
+              int low = params["low"] | 1;
+              if (bridge && target) {
+                id(cca_radio)->send_trim_config_only(bridge, target, high, low);
               }
             }
             else if (strcmp(cmd, "pairing_start") == 0) {
@@ -478,13 +486,13 @@ api:
         target_device_id: string
         high_trim: int
         low_trim: int
-        phase_reverse: int
+        is_high_test: int
       then:
         - lambda: |-
             id(cca_radio)->send_device_state(
               strtoul(bridge_zone_id.c_str(), nullptr, 0),
               strtoul(target_device_id.c_str(), nullptr, 0),
-              high_trim, low_trim, phase_reverse != 0);
+              high_trim, low_trim, is_high_test != 0);
 
     - service: start_pairing
       variables:

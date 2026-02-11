@@ -25,8 +25,7 @@ export function DeviceConfig({ showStatus }: Props) {
   const [fadeOff, setFadeOff] = useState('0.25')
   const [ledMode, setLedMode] = useState('0')
   const [highTrim, setHighTrim] = useState('100')
-  const [lowTrim, setLowTrim] = useState('1')
-  const [phase, setPhase] = useState('forward')
+  const [lowTrim, setLowTrim] = useState('21')
 
   const sourceId = `0x00${subnet.toUpperCase().padStart(4, '0')}AD`
   const target = '0x' + targetId.replace(/^0x/i, '')
@@ -45,17 +44,24 @@ export function DeviceConfig({ showStatus }: Props) {
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
-  const handleTrim = async () => {
-    showStatus(`Setting trim...`)
-    const result = await postJson('/api/config/trim', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim), phase })
-    if (result.status === 'ok') showStatus(`Trim: ${lowTrim}%-${highTrim}%`, 'success')
+  const handleTrimHigh = async () => {
+    showStatus(`High trim: off → config → 100%...`)
+    const result = await postJson('/api/config/trim', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim), is_high: true })
+    if (result.status === 'ok') showStatus(`High trim: ${highTrim}%`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
-  const handlePhase = async () => {
-    showStatus(`Setting phase...`)
-    const result = await postJson('/api/config/phase', { bridge: sourceId, target, phase, high: parseInt(highTrim), low: parseInt(lowTrim) })
-    if (result.status === 'ok') showStatus(`Phase: ${phase}`, 'success')
+  const handleTrimLow = async () => {
+    showStatus(`Low trim: off → config → min...`)
+    const result = await postJson('/api/config/trim', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim), is_high: false })
+    if (result.status === 'ok') showStatus(`Low trim: ${lowTrim}%`, 'success')
+    else showStatus(`Error: ${result.error}`, 'error')
+  }
+
+  const handleTrimSave = async () => {
+    showStatus(`Saving trim config...`)
+    const result = await postJson('/api/config/trim-save', { bridge: sourceId, target, high: parseInt(highTrim), low: parseInt(lowTrim) })
+    if (result.status === 'ok') showStatus(`Trim saved: high=${highTrim}%, low=${lowTrim}%`, 'success')
     else showStatus(`Error: ${result.error}`, 'error')
   }
 
@@ -78,7 +84,7 @@ export function DeviceConfig({ showStatus }: Props) {
 
       <Tabs defaultValue="fade" className="gap-0">
         <TabsList className="h-auto w-full rounded bg-[var(--bg-tertiary)] p-[2px]">
-          {(['fade', 'led', 'trim', 'phase'] as const).map(tab => (
+          {(['fade', 'led', 'trim'] as const).map(tab => (
             <TabsTrigger
               key={tab}
               value={tab}
@@ -116,30 +122,31 @@ export function DeviceConfig({ showStatus }: Props) {
           </div>
         </TabsContent>
 
-        <TabsContent value="trim" className="mt-3">
+        <TabsContent value="trim" className="mt-3 flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">high:</span>
+            <Input type="number" value={highTrim} onChange={e => setHighTrim(e.target.value)} min={50} max={100} className="w-[52px]" />
+            <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">%</span>
+            <Button variant="blue" onClick={handleTrimHigh}>
+              <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
+              Save + Test
+            </Button>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">low:</span>
             <Input type="number" value={lowTrim} onChange={e => setLowTrim(e.target.value)} min={1} max={50} className="w-[52px]" />
-            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">high:</span>
-            <Input type="number" value={highTrim} onChange={e => setHighTrim(e.target.value)} min={50} max={100} className="w-[52px]" />
-            <Button variant="blue" onClick={handleTrim}>
+            <span className="text-[10px] font-mono text-[var(--text-muted)] shrink-0">%</span>
+            <Button variant="blue" onClick={handleTrimLow}>
               <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
-              Apply
+              Save + Test
             </Button>
           </div>
-        </TabsContent>
-
-        <TabsContent value="phase" className="mt-3">
           <div className="flex items-center gap-3">
-            <span className="text-[11px] font-mono text-[var(--text-muted)] shrink-0">phase:</span>
-            <Select value={phase} onChange={e => setPhase(e.target.value)} className="w-[96px]">
-              <option value="forward">forward</option>
-              <option value="reverse">reverse</option>
-            </Select>
-            <Button variant="blue" onClick={handlePhase}>
+            <Button variant="blue" onClick={handleTrimSave}>
               <svg className="size-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2.5 6h7M7 3l3 3-3 3"/></svg>
-              Apply
+              Save
             </Button>
+            <span className="text-[10px] font-mono text-[var(--text-muted)]">A3 config only (no level sandwich)</span>
           </div>
         </TabsContent>
       </Tabs>

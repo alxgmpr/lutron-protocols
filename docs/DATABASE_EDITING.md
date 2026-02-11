@@ -49,6 +49,8 @@ Edit the database while Lutron Designer has the project open.
 3. Connect in SSMS: `np:\\.\pipe\LOCALDB#XXXXX\tsql\query`
 4. Make changes, close Lutron Designer normally
 
+You can connect through SSH to the VM like: sshpass -p 'alex' ssh -o StrictHostKeyChecking=no -o PubkeyAuthentication=no alex@10.0.0.4 'sqlcmd -S "np:\\.\pipe\LOCALDB#XXXXXXXX\tsql\query" -No -Q "SELECT…
+
 ### Method 2: SQL Server (Docker)
 
 ```bash
