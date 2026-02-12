@@ -1,12 +1,3 @@
 # Lutron Tools
 
-Tools for hacking Lutron lighting systems: database extraction/modification for RadioRA3 and Homeworks project files, Clear Connect Type A RF transmission via ESPHome+CC1101, and a proxy to unlock Homeworks Programming in Lutron Designer.
-
-## What's Here
-
-- `db/lutron-tool.py` - Extract/repack `.ra3` and `.hw` project files
-- `rf/cca/` - Clear Connect Type A protocol library
-- `rf/esphome/` - ESP32 CC1101 transciever
-- `proxy/` - Designer API proxy for unlocking features
-
-See `docs/` for protocol specs and research notes.
+Tools for hacking Lutron lighting systems: database extraction/modification for RadioRA3 and Homeworks project files, Clear Connect Type A/X RF transmission via ESPHome+CC1101, and a proxy to unlock Homeworks Programming in Lutron Designer.

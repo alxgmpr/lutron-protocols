@@ -325,16 +325,3 @@ data:
 {"cmd": "vive_lower", "hub_id": "0xYYYYYYYY", "zone_id": 70}
 {"cmd": "vive_level", "hub_id": "0xYYYYYYYY", "zone_id": 70, "level": 50}
 ```
-
----
-
-## Reference Captures
-
-| File | Description |
-|------|-------------|
-| `captures/vive-sessions/real-pairing.bin` | Real Vive hub pairing Room 1 (zone 0x38) |
-| `captures/vive-sessions/toggling.bin` | Real Vive hub zone toggling |
-| `captures/2mhz-fcjs-pairing-1.bin` | Real hub pairing FCJS-010 at 2 MHz (54 CRC OK) |
-| `captures/esp-pairing-and-toggling-room-2.bin` | ESP32 pairing + control Room 2 |
-| `captures/esp-pairing-and-toggling-room-3.bin` | ESP32 pairing + control Room 3 |
-| `captures/esp-pairing-and-toggling-room-4.bin` | ESP32 pairing + control Room 4 |
