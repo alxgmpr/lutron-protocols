@@ -38,6 +38,7 @@ static const uint8_t PKT_PAIR_RESP_C0 = 0xC0;
 static const uint8_t PKT_PAIR_RESP_C1 = 0xC1;
 static const uint8_t PKT_PAIR_RESP_C2 = 0xC2;
 static const uint8_t PKT_PAIR_RESP_C8 = 0xC8;
+static const uint8_t PKT_DIMMER_ACK = 0x0B;
 static const uint8_t PKT_UNPAIR = 0xF0;
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;
 static const uint8_t PKT_LED_CONFIG = 0xF2;
@@ -87,6 +88,7 @@ struct DecodedPacket {
   uint32_t target_id;
   uint16_t crc;
   bool crc_valid;
+  uint8_t n81_errors;
   uint8_t raw[CCA_MAX_PACKET_LEN];
   size_t raw_len;
 
@@ -102,6 +104,7 @@ struct DecodedPacket {
     target_id = pkt.target_id;
     crc = pkt.crc;
     crc_valid = pkt.crc_valid;
+    n81_errors = pkt.n81_errors;
     raw_len = pkt.raw_len;
     memcpy(raw, pkt.raw, pkt.raw_len);
   }

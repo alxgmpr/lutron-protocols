@@ -89,6 +89,34 @@ pub fn find_packet_boundary(bytes: &[u8]) -> Option<usize> {
     None
 }
 
+/// Check CRC at specific known packet lengths only.
+///
+/// Unlike `find_packet_boundary()` which scans every possible length,
+/// this checks CRC only at the two known CCA packet sizes (24 and 53 bytes).
+/// This prevents false CRC matches at intermediate lengths that would
+/// truncate 53-byte config packets.
+///
+/// # Arguments
+/// * `bytes` - Decoded packet bytes
+/// * `lengths` - Slice of candidate lengths to check (e.g., `&[24, 53]`)
+///
+/// # Returns
+/// `Some(length)` if CRC matches at one of the given lengths, `None` otherwise
+pub fn check_crc_at_lengths(bytes: &[u8], lengths: &[usize]) -> Option<usize> {
+    for &len in lengths {
+        if bytes.len() < len || len < 4 {
+            continue;
+        }
+        let crc_offset = len - 2;
+        let computed = calc_crc(&bytes[..crc_offset]);
+        let received = ((bytes[crc_offset] as u16) << 8) | (bytes[crc_offset + 1] as u16);
+        if computed == received {
+            return Some(len);
+        }
+    }
+    None
+}
+
 /// Verify CRC of a complete Lutron packet using boundary scanning.
 ///
 /// # Arguments
@@ -200,5 +228,51 @@ mod tests {
     fn test_find_packet_boundary_too_short() {
         let data = vec![0x88, 0x00, 0x01];
         assert_eq!(find_packet_boundary(&data), None);
+    }
+
+    #[test]
+    fn test_check_crc_at_lengths_24() {
+        let payload = vec![
+            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+        ];
+        let packet = append_crc(&payload);
+        assert_eq!(packet.len(), 24);
+        assert_eq!(check_crc_at_lengths(&packet, &[24, 53]), Some(24));
+    }
+
+    #[test]
+    fn test_check_crc_at_lengths_53() {
+        let mut payload = vec![0xB9; 51];
+        payload[1] = 0x00;
+        let packet = append_crc(&payload);
+        assert_eq!(packet.len(), 53);
+        assert_eq!(check_crc_at_lengths(&packet, &[24, 53]), Some(53));
+    }
+
+    #[test]
+    fn test_check_crc_at_lengths_with_trailing() {
+        let payload = vec![
+            0x88, 0x00, 0x8D, 0xE6, 0x95, 0x05, 0x21, 0x04, 0x03, 0x00, 0x02, 0x00, 0xCC, 0xCC,
+            0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+        ];
+        let mut packet = append_crc(&payload);
+        packet.extend_from_slice(&[0xCC; 29]); // trailing data up to 53 bytes
+        // Should still find CRC at 24, not be confused by trailing
+        assert_eq!(check_crc_at_lengths(&packet, &[24, 53]), Some(24));
+    }
+
+    #[test]
+    fn test_check_crc_at_lengths_no_match() {
+        let data = vec![0x88, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
+                        0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13,
+                        0x14, 0x15, 0x16, 0x17];
+        assert_eq!(check_crc_at_lengths(&data, &[24, 53]), None);
+    }
+
+    #[test]
+    fn test_check_crc_at_lengths_too_short() {
+        let data = vec![0x88, 0x00, 0x01];
+        assert_eq!(check_crc_at_lengths(&data, &[24, 53]), None);
     }
 }

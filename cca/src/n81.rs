@@ -180,18 +180,71 @@ fn write_n81_byte(bits: &mut [u8], bit_offset: usize, byte: u8) {
     set_bit(bits, bit_offset + 9, true);
 }
 
+/// Decode N81 bytes with tolerance for framing errors.
+///
+/// On framing error (bad start/stop bit), pushes 0xCC placeholder and
+/// increments the error counter. Stops after 3 consecutive errors
+/// (indicates lost sync, not recoverable bit errors).
+///
+/// # Arguments
+/// * `bits` - Packed bit data
+/// * `bit_offset` - Starting bit position
+/// * `max_bytes` - Maximum bytes to decode
+///
+/// # Returns
+/// Tuple of (decoded bytes with 0xCC for errors, error count)
+pub fn decode_n81_stream_tolerant(bits: &[u8], bit_offset: usize, max_bytes: usize) -> (Vec<u8>, u8) {
+    let mut result = Vec::with_capacity(max_bytes);
+    let total_bits = bits.len() * 8;
+    let mut errors: u8 = 0;
+    let mut consecutive_errors: u8 = 0;
+
+    for i in 0..max_bytes {
+        let pos = bit_offset + i * 10;
+        if pos + 10 > total_bits {
+            break;
+        }
+        match decode_n81_byte(bits, pos) {
+            Some(b) => {
+                result.push(b);
+                consecutive_errors = 0;
+            }
+            None => {
+                result.push(0xCC); // placeholder
+                errors = errors.saturating_add(1);
+                consecutive_errors += 1;
+                if consecutive_errors >= 3 {
+                    break; // lost sync
+                }
+            }
+        }
+    }
+
+    (result, errors)
+}
+
 /// Find N81 sync pattern (0xFF 0xFA 0xDE) in bitstream
 ///
-/// Returns the bit offset where payload starts (after 0xDE)
+/// Searches up to `max_search` bit positions for the FF FA DE sync sequence.
+/// Only matches the full 3-byte sync or FA DE followed by a valid packet type.
+/// Does NOT match "direct packet start" heuristics which produce false positives.
+///
+/// Returns the bit offset where payload starts (after sync)
 pub fn find_sync_offset(bits: &[u8]) -> Option<usize> {
+    find_sync_offset_range(bits, 300)
+}
+
+/// Find N81 sync pattern searching up to `max_search` bit positions,
+/// starting from `start_bit`.
+pub fn find_sync_offset_from(bits: &[u8], start_bit: usize, max_search: usize) -> Option<usize> {
     let total_bits = bits.len() * 8;
     if total_bits < 50 {
         return None;
     }
 
-    // Search first 30 bits for sync pattern
-    for bit_pos in 0..30.min(total_bits - 30) {
-        // Try to decode three consecutive bytes
+    let search_limit = max_search.min(total_bits.saturating_sub(30));
+
+    for bit_pos in start_bit..search_limit {
         let b1 = decode_n81_byte(bits, bit_pos);
         let b2 = decode_n81_byte(bits, bit_pos + 10);
         let b3 = decode_n81_byte(bits, bit_pos + 20);
@@ -201,21 +254,21 @@ pub fn find_sync_offset(bits: &[u8]) -> Option<usize> {
             (Some(0xFF), Some(0xFA), Some(0xDE)) => {
                 return Some(bit_pos + 30);
             }
-            // Short sync: FA DE + valid packet type
-            (Some(0xFA), Some(0xDE), Some(pkt_type)) if pkt_type >= 0x80 && pkt_type <= 0xCF => {
+            // Short sync: FA DE (FF may have been corrupted)
+            // No type byte filtering — CRC validation is the only gate.
+            (Some(0xFA), Some(0xDE), Some(_)) => {
                 return Some(bit_pos + 20);
-            }
-            // Direct packet start
-            (Some(pkt_type), Some(seq), _)
-                if pkt_type >= 0x80 && pkt_type <= 0xCF && seq < 0x60 =>
-            {
-                return Some(bit_pos);
             }
             _ => continue,
         }
     }
 
     None
+}
+
+/// Find N81 sync pattern searching up to `max_search` bit positions from bit 0
+pub fn find_sync_offset_range(bits: &[u8], max_search: usize) -> Option<usize> {
+    find_sync_offset_from(bits, 0, max_search)
 }
 
 #[cfg(test)]
@@ -276,5 +329,88 @@ mod tests {
 
         let decoded = decode_n81_stream(&bits, 0, 2);
         assert_eq!(decoded, vec![0x88, 0x00]);
+    }
+
+    #[test]
+    fn test_decode_n81_stream_tolerant_clean() {
+        // Clean stream with no errors
+        let mut bits = vec![0u8; 4];
+        write_n81_byte(&mut bits, 0, 0x88);
+        write_n81_byte(&mut bits, 10, 0x00);
+        write_n81_byte(&mut bits, 20, 0xFF);
+
+        let (decoded, errors) = decode_n81_stream_tolerant(&bits, 0, 3);
+        assert_eq!(decoded, vec![0x88, 0x00, 0xFF]);
+        assert_eq!(errors, 0);
+    }
+
+    #[test]
+    fn test_decode_n81_stream_tolerant_with_error() {
+        // Stream with one corrupted byte in the middle
+        let mut bits = vec![0u8; 4];
+        write_n81_byte(&mut bits, 0, 0x88);
+        // Corrupt byte at position 10: set start bit to 1 (should be 0)
+        set_bit(&mut bits, 10, true);
+        write_n81_byte(&mut bits, 20, 0xFF);
+
+        let (decoded, errors) = decode_n81_stream_tolerant(&bits, 0, 3);
+        assert_eq!(decoded.len(), 3);
+        assert_eq!(decoded[0], 0x88);
+        assert_eq!(decoded[1], 0xCC); // placeholder for error
+        assert_eq!(decoded[2], 0xFF);
+        assert_eq!(errors, 1);
+    }
+
+    #[test]
+    fn test_decode_n81_stream_tolerant_stops_after_3() {
+        // Stream where all bytes are corrupted - should stop after 3
+        let bits = vec![0xFF; 10]; // All 1s = bad start bits
+        let (decoded, errors) = decode_n81_stream_tolerant(&bits, 0, 10);
+        assert_eq!(decoded.len(), 3); // stopped after 3 consecutive errors
+        assert_eq!(errors, 3);
+    }
+
+    #[test]
+    fn test_find_sync_offset_full_sync() {
+        // FF FA DE at bit 0
+        let mut bits = vec![0u8; 20];
+        write_n81_byte(&mut bits, 0, 0xFF);
+        write_n81_byte(&mut bits, 10, 0xFA);
+        write_n81_byte(&mut bits, 20, 0xDE);
+
+        assert_eq!(find_sync_offset(&bits), Some(30));
+    }
+
+    #[test]
+    fn test_find_sync_offset_at_high_offset() {
+        // FF FA DE at bit 100 (beyond old 30-bit search limit)
+        let mut bits = vec![0u8; 40];
+        write_n81_byte(&mut bits, 100, 0xFF);
+        write_n81_byte(&mut bits, 110, 0xFA);
+        write_n81_byte(&mut bits, 120, 0xDE);
+
+        assert_eq!(find_sync_offset(&bits), Some(130));
+    }
+
+    #[test]
+    fn test_find_sync_offset_at_200() {
+        // FF FA DE at bit 200
+        let mut bits = vec![0u8; 50];
+        write_n81_byte(&mut bits, 200, 0xFF);
+        write_n81_byte(&mut bits, 210, 0xFA);
+        write_n81_byte(&mut bits, 220, 0xDE);
+
+        assert_eq!(find_sync_offset(&bits), Some(230));
+    }
+
+    #[test]
+    fn test_find_sync_no_direct_start_false_positive() {
+        // Data that looks like a "direct packet start" (0x8A 0x05)
+        // but has no FF FA DE sync — should NOT match
+        let mut bits = vec![0u8; 10];
+        write_n81_byte(&mut bits, 0, 0x8A);
+        write_n81_byte(&mut bits, 10, 0x05);
+
+        assert_eq!(find_sync_offset(&bits), None);
     }
 }

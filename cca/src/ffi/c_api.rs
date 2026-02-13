@@ -48,6 +48,8 @@ pub struct CcaPacket {
     pub crc: u16,
     /// Whether CRC is valid
     pub crc_valid: bool,
+    /// Number of N81 framing errors during decode (0 = clean)
+    pub n81_errors: u8,
     /// Raw packet bytes
     pub raw: [u8; CCA_MAX_PACKET_LEN],
     /// Length of raw bytes
@@ -69,6 +71,7 @@ impl Default for CcaPacket {
             format_byte: 0,
             crc: 0,
             crc_valid: false,
+            n81_errors: 0,
             raw: [0u8; CCA_MAX_PACKET_LEN],
             raw_len: 0,
         }
@@ -190,6 +193,84 @@ pub unsafe extern "C" fn cca_parse_bytes(
             true
         }
         None => false,
+    }
+}
+
+/// Diagnostic: find ALL syncs in FIFO and report the best one.
+///
+/// Reports the sync that produced the MOST decoded bytes (strict+tolerant).
+///
+/// * `sync_offset` - Bit offset of best sync, or -1 if not found
+/// * `sync_count` - Total number of syncs found in the FIFO
+/// * `strict_len` - Bytes decoded by strict N81 at best sync
+/// * `tolerant_len` - Bytes decoded by tolerant N81 at best sync
+/// * `decoded_out` - First `decoded_out_size` decoded bytes at best sync
+/// * `decoded_out_size` - Size of decoded_out buffer (recommended: 8)
+///
+/// # Safety
+/// All pointers must be valid and non-null.
+#[no_mangle]
+pub unsafe extern "C" fn cca_decode_fifo_debug(
+    fifo_data: *const u8,
+    len: usize,
+    sync_offset: *mut i32,
+    sync_count: *mut u8,
+    strict_len: *mut u8,
+    tolerant_len: *mut u8,
+    decoded_out: *mut u8,
+    decoded_out_size: usize,
+) {
+    if fifo_data.is_null() || sync_offset.is_null() || strict_len.is_null() || tolerant_len.is_null() {
+        return;
+    }
+
+    let data = slice::from_raw_parts(fifo_data, len);
+
+    *sync_offset = -1;
+    if !sync_count.is_null() { *sync_count = 0; }
+    *strict_len = 0;
+    *tolerant_len = 0;
+    if !decoded_out.is_null() {
+        for i in 0..decoded_out_size {
+            *decoded_out.add(i) = 0;
+        }
+    }
+
+    let mut search_from: usize = 0;
+    let mut best_offset: i32 = -1;
+    let mut best_strict: u8 = 0;
+    let mut best_tolerant: u8 = 0;
+    let mut best_bytes: Vec<u8> = Vec::new();
+    let mut count: u8 = 0;
+
+    loop {
+        match crate::n81::find_sync_offset_from(data, search_from, 500) {
+            Some(offset) => {
+                count = count.saturating_add(1);
+                let strict = crate::n81::decode_n81_stream(data, offset, 56);
+                let (tolerant, _) = crate::n81::decode_n81_stream_tolerant(data, offset, 56);
+                let best_len = strict.len().max(tolerant.len());
+
+                if best_len > best_strict.max(best_tolerant) as usize {
+                    best_offset = offset as i32;
+                    best_strict = strict.len() as u8;
+                    best_tolerant = tolerant.len() as u8;
+                    best_bytes = if tolerant.len() > strict.len() { tolerant } else { strict };
+                }
+
+                search_from = offset + 10;
+            }
+            None => break,
+        }
+    }
+
+    *sync_offset = best_offset;
+    if !sync_count.is_null() { *sync_count = count; }
+    *strict_len = best_strict;
+    *tolerant_len = best_tolerant;
+    if !decoded_out.is_null() && decoded_out_size > 0 {
+        let n = best_bytes.len().min(decoded_out_size);
+        ptr::copy_nonoverlapping(best_bytes.as_ptr(), decoded_out, n);
     }
 }
 
@@ -359,6 +440,7 @@ pub extern "C" fn cca_packet_type_name(pkt_type: u8) -> *const c_char {
         PacketType::ConfigA1 => "CONFIG_A1\0",
         PacketType::Level => "SET_LEVEL\0",
         PacketType::ConfigA3 => "CONFIG_A3\0",
+        PacketType::DimmerAck => "DIMMER_ACK\0",
         PacketType::Beacon91 => "BEACON_91\0",
         PacketType::BeaconStop => "BEACON_STOP\0",
         PacketType::Beacon93 => "BEACON_93\0",
@@ -417,11 +499,11 @@ pub extern "C" fn cca_button_name(button: u8) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn cca_get_packet_length(type_byte: u8) -> usize {
     match type_byte {
-        0x80..=0x8F => 24, // Button/state packets
-        0x90..=0x9F => 24, // Beacons
-        0xA0..=0xAF => 24, // Level commands
-        0xB0..=0xBF => 53, // Pairing announcements
-        0xC0..=0xCF => 24, // Pairing responses
+        0x0B => 5,           // Dimmer ACK (short, no CRC)
+        0x80..=0x8F => 24,   // Button/state packets
+        0x90..=0x9F => 24,   // Beacons
+        0xA0..=0xBF => 53,   // Config/level/pairing (type >= 0xA0 = 53-byte packets)
+        0xC0..=0xCF => 24,   // Pairing responses
         _ => 0,
     }
 }
@@ -474,6 +556,7 @@ fn fill_c_packet(out: &mut CcaPacket, decoded: &crate::packet::DecodedPacket) {
     out.format_byte = decoded.format_byte.unwrap_or(0);
     out.crc = decoded.crc;
     out.crc_valid = decoded.crc_valid;
+    out.n81_errors = decoded.n81_errors;
 
     out.raw_len = decoded.raw.len().min(CCA_MAX_PACKET_LEN);
     out.raw[..out.raw_len].copy_from_slice(&decoded.raw[..out.raw_len]);

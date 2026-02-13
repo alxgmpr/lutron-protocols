@@ -157,6 +157,10 @@ typedef struct CcaPacket {
      */
     bool crc_valid;
     /**
+     * Number of N81 framing errors during decode (0 = clean)
+     */
+    uint8_t n81_errors;
+    /**
      * Raw packet bytes
      */
     uint8_t raw[CCA_MAX_PACKET_LEN];
@@ -229,6 +233,30 @@ bool cca_parse_bytes(const struct CcaDecoder *decoder,
                      const uint8_t *bytes,
                      uintptr_t len,
                      struct CcaPacket *packet);
+
+/**
+ * Diagnostic: find ALL syncs in FIFO and report the best one.
+ *
+ * Reports the sync that produced the MOST decoded bytes (strict+tolerant).
+ *
+ * * `sync_offset` - Bit offset of best sync, or -1 if not found
+ * * `sync_count` - Total number of syncs found in the FIFO
+ * * `strict_len` - Bytes decoded by strict N81 at best sync
+ * * `tolerant_len` - Bytes decoded by tolerant N81 at best sync
+ * * `decoded_out` - First `decoded_out_size` decoded bytes at best sync
+ * * `decoded_out_size` - Size of decoded_out buffer (recommended: 8)
+ *
+ * # Safety
+ * All pointers must be valid and non-null.
+ */
+void cca_decode_fifo_debug(const uint8_t *fifo_data,
+                           uintptr_t len,
+                           int32_t *sync_offset,
+                           uint8_t *sync_count,
+                           uint8_t *strict_len,
+                           uint8_t *tolerant_len,
+                           uint8_t *decoded_out,
+                           uintptr_t decoded_out_size);
 
 /**
  * Calculate CRC-16 for packet data

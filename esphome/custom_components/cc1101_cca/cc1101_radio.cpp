@@ -34,16 +34,24 @@ void CC1101Radio::init(CC1101SPI *spi, GPIOPin *gdo0_pin) {
   this->strobe(CC1101_SIDLE);
   delay(1);
 
-  // Frequency: 433.602844 MHz + 13 kHz calibration offset
+  // Frequency: 433.602844 MHz — matches CC1150 TX (FREQ=0x10AD52)
+  // Previously had +13 kHz "calibration offset" (FREQ0=0x73) which was wrong
   this->write_register(CC1101_FREQ2, 0x10);
   this->write_register(CC1101_FREQ1, 0xAD);
-  this->write_register(CC1101_FREQ0, 0x73);
+  this->write_register(CC1101_FREQ0, 0x52);
 
-  // Data rate: 62.4847 kBaud
-  this->write_register(CC1101_MDMCFG4, 0x0B);
+  // Channel filter BW + data rate exponent
+  // CHANBW_E=1, CHANBW_M=1 → BW = 26MHz/(8*5*2) = 325 kHz
+  // Bridge commands decode reliably at this BW.
+  // Dimmer responses fail with strict=5 at ALL BW settings (270/325/406/812 kHz)
+  // — this is NOT an RF issue, it's a protocol/encoding difference.
+  this->write_register(CC1101_MDMCFG4, 0x5B);
+  // Data rate mantissa: 62.4847 kBaud
   this->write_register(CC1101_MDMCFG3, 0x3B);
 
   // Modulation: 2-FSK, no sync word
+  // CC1150 from Hackaday uses GFSK (0x10) but some Lutron devices (dimmers)
+  // may use plain 2-FSK. 2-FSK demod works for both signal types.
   this->write_register(CC1101_MDMCFG2, 0x00);
   this->write_register(CC1101_MDMCFG1, 0x00);
   this->write_register(CC1101_MDMCFG0, 0x00);
@@ -77,12 +85,26 @@ void CC1101Radio::init(CC1101SPI *spi, GPIOPin *gdo0_pin) {
   this->write_register(CC1101_AGCCTRL1, 0x40);
   this->write_register(CC1101_AGCCTRL0, 0x91);
 
+  // Frequency Offset Compensation
+  // FOC_BS_CS_GATE=0 (AFC always active, not gated on carrier sense)
+  // FOC_PRE_K=10 (2K pre-sync loop gain)
+  // FOC_POST_K=1 (K/2 post-sync)
+  // FOC_LIMIT=10 (±BW_chan/4 = ±101 kHz compensation range)
+  // Different Lutron devices have different crystal offsets — AFC tracks per-packet.
+  this->write_register(CC1101_FOCCFG, 0x16);
+
+  // Bit Synchronization Configuration
+  // BS_PRE_KI=01 (KI), BS_PRE_KP=10 (2Kp), BS_POST_KI=1 (KI/2), BS_POST_KP=0 (Kp)
+  // BS_LIMIT=00 (no data rate offset compensation)
+  // SmartRF Studio default for 2-FSK at 62.5 kBaud.
+  this->write_register(CC1101_BSCFG, 0x6C);
+
   // Front end config
   this->write_register(CC1101_FREND1, 0x56);
   this->write_register(CC1101_FREND0, 0x10);
 
-  // Frequency calibration
-  this->write_register(CC1101_FSCAL3, 0xE9);
+  // Frequency calibration (matches CC1150 TX: FSCAL3=0xEA)
+  this->write_register(CC1101_FSCAL3, 0xEA);
   this->write_register(CC1101_FSCAL2, 0x2A);
   this->write_register(CC1101_FSCAL1, 0x00);
   this->write_register(CC1101_FSCAL0, 0x1F);
@@ -213,7 +235,7 @@ void CC1101Radio::start_rx() {
   this->write_register(CC1101_SYNC0, 0xAA);
 
   // MDMCFG2: 2-FSK, 15/16 sync word (allow 1 bit error)
-  // Bits 6:4 = 000 = 2-FSK
+  // Bits 6:4 = 000 = 2-FSK (works for both 2-FSK and GFSK transmitters)
   // Bit 3 = 0 = no Manchester
   // Bits 2:0 = 001 = 15/16 sync word bits (allows 1 bit error for robustness)
   this->write_register(CC1101_MDMCFG2, 0x01);
@@ -224,10 +246,13 @@ void CC1101Radio::start_rx() {
   // PKTCTRL1: No address check, no append status
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
-  // Set packet length for RX - 80 bytes to capture full pairing packets
-  // Button packets: ~30 raw bytes, Pairing packets: 53 decoded = ~67 raw N81 bytes
-  // 80 bytes exceeds the 64-byte FIFO, so check_rx() drains mid-packet
-  this->write_register(CC1101_PKTLEN, 80);
+  // Set packet length for RX - 110 bytes to capture overlapping transmissions.
+  // When two CCA devices transmit back-to-back (e.g. hub config + dimmer response),
+  // the CC1101 captures both in one FIFO fill. A 53-byte config packet as the second
+  // transmission needs ~75 raw bytes after the first packet's sync. With PKTLEN=80,
+  // the second packet is truncated at ~44 N81 bytes (need 53). PKTLEN=110 gives
+  // enough room for both a 24-byte and 53-byte packet with their preambles.
+  this->write_register(CC1101_PKTLEN, 110);
 
   // Reset accumulation buffer
   this->rx_accum_pos_ = 0;
@@ -299,11 +324,11 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // PKTLEN is 80. At 62.5 kbaud (7812.5 bytes/s), 80 bytes takes ~10.2ms.
+  // PKTLEN is 110. At 62.5 kbaud (7812.5 bytes/s), 110 bytes takes ~14ms.
   // The 64-byte FIFO fills in ~8.2ms, so we must drain mid-packet.
   // Strategy: once we see bytes, enter a tight loop accumulating into rx_accum_
-  // until we have 80 bytes, the FIFO goes idle for >2ms, or 20ms timeout.
-  const size_t PKTLEN = 80;
+  // until we have 110 bytes, the FIFO goes idle for >2ms, or 20ms timeout.
+  const size_t PKTLEN = 110;
   const uint32_t IDLE_TIMEOUT_US = 2000;   // 2ms with no new bytes = end of packet
   const uint32_t TOTAL_TIMEOUT_MS = 20;    // 20ms safety timeout
 

@@ -62,6 +62,9 @@ pub enum PacketType {
     HandshakeDF = 0xDF, // Dimmer round 6
     HandshakeE0 = 0xE0, // Bridge round 6
 
+    // Short ACK packets (5 bytes, no CRC)
+    DimmerAck = 0x0B, // Dimmer acknowledgement to bridge commands
+
     // Virtual types (assigned during decode based on format byte)
     Unpair = 0xF0,
     UnpairPrep = 0xF1,
@@ -89,6 +92,7 @@ impl PacketType {
             0xA1 => Self::ConfigA1,
             0xA2 => Self::Level,
             0xA3 => Self::ConfigA3,
+            0x0B => Self::DimmerAck,
             0xB0 => Self::PairingB0,
             0xB8 => Self::PairingB8,
             0xB9 => Self::PairingB9,
@@ -126,6 +130,7 @@ impl PacketType {
             Self::ConfigA1 => "CONFIG_A1",
             Self::Level => "SET_LEVEL",
             Self::ConfigA3 => "CONFIG_A3",
+            Self::DimmerAck => "DIMMER_ACK",
             Self::Beacon91 => "BEACON_91",
             Self::BeaconStop => "BEACON_STOP",
             Self::Beacon93 => "BEACON_93",
@@ -162,6 +167,7 @@ impl PacketType {
             | Self::PairingBA
             | Self::PairingBB
             | Self::PairingB0 => 53,
+            Self::DimmerAck => 5,
             _ => 24,
         }
     }
@@ -244,10 +250,10 @@ impl PacketType {
 /// Get expected packet length from raw type byte
 pub fn get_packet_length(type_byte: u8) -> Option<usize> {
     match type_byte {
+        0x0B => Some(5),         // Dimmer ACK (short, no CRC)
         0x80..=0x8F => Some(24), // Button/state packets
         0x90..=0x9F => Some(24), // Beacons
-        0xA0..=0xAF => Some(24), // Level commands
-        0xB0..=0xBF => Some(53), // Pairing announcements
+        0xA0..=0xBF => Some(53), // Config/level/pairing (type >= 0xA0 = 53-byte packets)
         0xC0..=0xCF => Some(24), // Pairing responses
         _ => None,
     }
@@ -374,6 +380,9 @@ pub struct DecodedPacket {
     /// Whether CRC validated
     pub crc_valid: bool,
 
+    /// Number of N81 framing errors during decode (0 = clean)
+    pub n81_errors: u8,
+
     /// Raw decoded bytes
     pub raw: Vec<u8>,
 }
@@ -394,6 +403,7 @@ impl DecodedPacket {
             format_byte: None,
             crc: 0,
             crc_valid: false,
+            n81_errors: 0,
             raw: Vec::new(),
         }
     }

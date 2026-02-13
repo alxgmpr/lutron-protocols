@@ -47,16 +47,61 @@ void CC1101CCA::setup() {
 // Echo detection moved to backend - ESP32 just streams all valid packets
 
 void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
-  // Filter out noise - real Lutron packets have RSSI > -70 typically
-  // Noise floor is around -80 to -95
-  if (rssi < -70) {
-    return;  // Silently ignore noise
+  // No RSSI filter — CRC validation handles garbage rejection.
+  // RSSI is unreliable in fixed-length mode (measured after accumulation,
+  // not during the actual signal).
+
+  // Diagnostic: dump raw FIFO bytes for packets with stronger signal
+  if (rssi > -80 && len >= 40) {
+    // Print in hex, 40 bytes per line
+    char hex[3*40+1];
+    size_t lines = (len + 39) / 40;
+    for (size_t line = 0; line < lines; line++) {
+      size_t offset = line * 40;
+      size_t count = (len - offset) < 40 ? (len - offset) : 40;
+      for (size_t i = 0; i < count; i++) {
+        snprintf(hex + i*3, 4, "%02X ", data[offset + i]);
+      }
+      hex[count*3] = '\0';
+      ESP_LOGW(TAG, "FIFO[%u] RSSI=%d: %s", (unsigned)offset, rssi, hex);
+    }
   }
 
-  // Try to decode the packet (N81 decoding only)
+  // Try to decode the packet (N81 decoding + CRC validation)
   DecodedPacket pkt;
   if (!this->decoder_.decode(data, len, pkt)) {
-    return;  // Silently ignore undecoded packets
+    // Decode failed — log diagnostic info for strong-signal packets
+    if (rssi > -80 && len >= 40) {
+      int32_t sync_off = -1;
+      uint8_t syncs = 0, strict_n = 0, tolerant_n = 0;
+      uint8_t decoded[56] = {0};
+      cca_decode_fifo_debug(data, len, &sync_off, &syncs, &strict_n, &tolerant_n, decoded, 56);
+      uint8_t best_n = strict_n > tolerant_n ? strict_n : tolerant_n;
+      ESP_LOGW(TAG, "DECODE FAIL RSSI=%d syncs=%u best_sync=%d strict=%u tolerant=%u first8=%02X%02X%02X%02X%02X%02X%02X%02X",
+               rssi, syncs, sync_off, strict_n, tolerant_n,
+               decoded[0], decoded[1], decoded[2], decoded[3],
+               decoded[4], decoded[5], decoded[6], decoded[7]);
+      // CRC diagnostic for packets with enough decoded bytes
+      if (best_n >= 24) {
+        uint16_t crc22 = cca_calc_crc(decoded, 22);
+        uint16_t got22 = ((uint16_t)decoded[22] << 8) | decoded[23];
+        ESP_LOGW(TAG, "  CRC@24: computed=%04X received=%04X %s",
+                 crc22, got22, crc22 == got22 ? "MATCH" : "MISMATCH");
+      }
+      if (best_n >= 53) {
+        uint16_t crc51 = cca_calc_crc(decoded, 51);
+        uint16_t got51 = ((uint16_t)decoded[51] << 8) | decoded[52];
+        ESP_LOGW(TAG, "  CRC@53: computed=%04X received=%04X %s  bytes49-52=%02X%02X%02X%02X",
+                 crc51, got51, crc51 == got51 ? "MATCH" : "MISMATCH",
+                 decoded[49], decoded[50], decoded[51], decoded[52]);
+      }
+    }
+    return;
+  }
+
+  // decode_fifo() now only returns CRC-verified packets, but guard anyway
+  if (!pkt.crc_valid) {
+    return;
   }
 
   // Auto-detect B0/B2 device announce during bridge pairing
