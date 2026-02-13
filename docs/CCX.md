@@ -157,14 +157,9 @@ The RA3 processor originates commands at `fd00::ff:fe00:2c0c`.
 | LinkBinding | Device-to-device bindings |
 | LinkRoute | Mesh routing tables |
 
-## Extracting Keys from Project File
+## Extracting Keys
 
-1. Extract .ra3 or .hw file (it's a ZIP archive)
-2. Extract the .lut file (MTF backup format)
-3. Attach the .mdf database to SQL Server 2022 RTM
-4. Query: `SELECT * FROM LinkNetwork`
-
-See `DATABASE_EDITING.md` for detailed extraction instructions.
+Keys can be extracted from the LEAP API (`/link/{id}`) or from the project database. See [ra3-system.md](ra3-system.md) for database extraction instructions.
 
 ## Application Layer Protocol (CBOR over UDP)
 
@@ -429,70 +424,11 @@ The `zone_id` in CCX messages (e.g., 961) is an **internal Lutron index**, not t
 udp.port == 9190
 ```
 
-## LEAP API Access
+## LEAP API
 
-The RA3 processor exposes a read-only JSON API on port 8081 via mutual TLS. This is used by
-`tools/leap-dump.ts` to enumerate the full device database.
+The LEAP API on port 8081 provides device enumeration, preset mappings, and RF credentials. See [ra3-system.md](ra3-system.md) for connection details, endpoints, and certificate setup.
 
-### Connection
-
-Requires product certificates extracted from Lutron Designer:
-
-```bash
-# Using pylutron-caseta CLI (pip install pylutron_caseta[cli])
-leap --cacert lutron-ra3-ca.pem --cert lutron-ra3-cert.pem --key lutron-ra3-key.pem \
-  "10.0.0.1/area"
-
-# Using the leap-dump tool (walks full hierarchy automatically)
-bun run tools/leap-dump.ts
-```
-
-Certificate files in project root:
-- `lutron-ra3-cert.pem` — Client certificate (from Designer)
-- `lutron-ra3-key.pem` — Client private key
-- `lutron-ra3-ca.pem` — CA chain
-
-### Key Endpoints
-
-| Endpoint | Returns |
-|----------|---------|
-| `/area` | All areas/rooms |
-| `/area/{id}/associatedzone` | Zones (dimmers/switches) in an area |
-| `/area/{id}/associatedcontrolstation` | Control stations (keypads, picos) in an area |
-| `/device/{id}` | Device details (serial, model, firmware) |
-| `/device/{id}/buttongroup` | Button groups on a device |
-| `/button/{id}` | Button definition with engraving and programming model |
-| `/programmingmodel/{id}` | Programming model with preset references |
-| `/preset/{id}` | Preset definition |
-| `/zone/{id}/status` | Current zone level and lock state |
-| `/link/{id}` | RF network config including Thread encryption keys |
-
-### Control Station → Device Hierarchy
-
-```
-Area
-└── ControlStation (named location, e.g., "Doorway")
-    └── AssociatedGangedDevices[]
-        └── Device (href, DeviceType)
-            └── ButtonGroup
-                └── Button (engraving, ProgrammingModel)
-                    └── ProgrammingModel
-                        └── Preset(s)
-```
-
-### Programming Model Types
-
-| Type | Preset Structure |
-|------|-----------------|
-| `AdvancedToggleProgrammingModel` | `.AdvancedToggleProperties.PrimaryPreset` + `.SecondaryPreset` |
-| `SingleActionProgrammingModel` | `.Preset` (singular) |
-| `SingleSceneRaiseProgrammingModel` | `.Preset` (singular) |
-| `SingleSceneLowerProgrammingModel` | `.Preset` (singular) |
-
-### Limitations
-
-- **Read-only** — all write attempts return 500 or 405
-- Write access requires port 443 (WSS) with project-specific certificates from Designer pairing
+Key for CCX: `npm run leap:dump -- --config` generates preset mappings for `ccx/config.ts`.
 
 ## TypeScript Decoder & Tools
 
