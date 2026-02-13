@@ -228,22 +228,23 @@ void CC1101Radio::start_rx() {
   this->flush_rx();
   delay(1);
 
-  // Sync word: Use 0xAAAA to match the Lutron preamble
-  // This will trigger on preamble, then we capture data after
-  // The decoder will find the actual packet start in the captured data
+  // Sync word: 0xAAAA matches Lutron's alternating preamble (CC1101 is MSB-first).
+  // With 30/32 mode, CC1101 constructs 32-bit sync {SYNC1,SYNC0,SYNC1,SYNC0} = 0xAAAAAAAA.
+  // Lutron preamble is 4+ bytes of alternating bits, so 30/32 match is reliable.
+  // Random noise matching 30+ bits of alternating at the right alignment is ~0.00002%.
   this->write_register(CC1101_SYNC1, 0xAA);
   this->write_register(CC1101_SYNC0, 0xAA);
 
-  // MDMCFG2: 2-FSK, 15/16 sync word (allow 1 bit error)
-  // Bits 6:4 = 000 = 2-FSK (works for both 2-FSK and GFSK transmitters)
+  // MDMCFG2: 2-FSK, 15/16 sync word match
+  // Bits 6:4 = 000 = 2-FSK
   // Bit 3 = 0 = no Manchester
-  // Bits 2:0 = 001 = 15/16 sync word bits (allows 1 bit error for robustness)
+  // Bits 2:0 = 001 = 15/16 sync word bits (tolerant — works with short preambles)
   this->write_register(CC1101_MDMCFG2, 0x01);
 
   // PKTCTRL0: FIFO packet mode, FIXED length
   this->write_register(CC1101_PKTCTRL0, 0x00);
 
-  // PKTCTRL1: No address check, no append status
+  // PKTCTRL1: No address check, no append status, PQT=0
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
   // Set packet length for RX - 80 bytes covers all CCA packet types.
@@ -261,14 +262,6 @@ void CC1101Radio::start_rx() {
   // FIFO threshold
   this->write_register(CC1101_FIFOTHR, 0x0F);
 
-  // Carrier sense threshold: set to -10 dBm relative to MAGN_TARGET
-  // This helps reject noise - only trigger on strong signals
-  // AGCCTRL1 bits 3:0 = carrier sense threshold
-  // 0x00 = relative threshold disabled (use absolute)
-  // Let's use 0x40 which enables carrier sense at ~-7dB from RSSI
-  uint8_t agcctrl1 = this->read_register(CC1101_AGCCTRL1);
-  this->write_register(CC1101_AGCCTRL1, (agcctrl1 & 0xF0) | 0x00);  // Keep as is for now
-
   // Enter RX mode
   this->strobe(CC1101_SRX);
 
@@ -280,6 +273,8 @@ void CC1101Radio::stop_rx() {
   delay(1);
   this->flush_rx();
 
+  // Reset to no-sync mode for TX (our encoder includes preamble/sync)
+  this->write_register(CC1101_MDMCFG2, 0x00);
   // Reset to fixed packet mode
   this->write_register(CC1101_PKTCTRL0, 0x00);
 
@@ -392,6 +387,16 @@ bool CC1101Radio::check_rx() {
 
   ESP_LOGV(TAG, "RX accumulated %u bytes (RSSI=%d)", this->rx_accum_pos_, rssi);
 
+  // Software RSSI floor — reject noise that slipped past sync matching.
+  // Real devices are -50 to -85, noise floor is ~-100.
+  if (rssi < -90) {
+    this->rx_accum_pos_ = 0;
+    this->set_idle();
+    this->flush_rx();
+    this->strobe(CC1101_SRX);
+    return false;
+  }
+
   // Deliver accumulated packet
   if (this->rx_callback_ != nullptr) {
     this->rx_callback_(this->rx_accum_, this->rx_accum_pos_, rssi);
@@ -411,6 +416,10 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
     ESP_LOGE(TAG, "Radio not initialized!");
     return false;
   }
+
+  // Disable auto preamble/sync for TX — our encoder already includes them.
+  // (MDMCFG2=0x07 from start_rx() would prepend CC1101's own preamble+sync)
+  this->write_register(CC1101_MDMCFG2, 0x00);
 
   // Full state reset before TX to handle RX->TX transition properly
   this->set_idle();
