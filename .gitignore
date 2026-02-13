@@ -55,5 +55,8 @@ node_modules/
 # Metadata
 .lutron-metadata.json
 
+# CCX sequence counter
+.ccx-seq
+
 # SQLite databases
 *.db
