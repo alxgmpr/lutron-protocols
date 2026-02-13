@@ -75,7 +75,7 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
       int32_t sync_off = -1;
       uint8_t syncs = 0, strict_n = 0, tolerant_n = 0;
       uint8_t decoded[56] = {0};
-      cca_decode_fifo_debug(data, len, &sync_off, &syncs, &strict_n, &tolerant_n, decoded, 56);
+      this->decoder_.decode_fifo_debug(data, len, &sync_off, &syncs, &strict_n, &tolerant_n, decoded, 56);
       uint8_t best_n = strict_n > tolerant_n ? strict_n : tolerant_n;
       ESP_LOGW(TAG, "DECODE FAIL RSSI=%d syncs=%u best_sync=%d strict=%u tolerant=%u first8=%02X%02X%02X%02X%02X%02X%02X%02X",
                rssi, syncs, sync_off, strict_n, tolerant_n,
@@ -83,13 +83,13 @@ void CC1101CCA::handle_rx_packet(const uint8_t *data, size_t len, int8_t rssi) {
                decoded[4], decoded[5], decoded[6], decoded[7]);
       // CRC diagnostic for packets with enough decoded bytes
       if (best_n >= 24) {
-        uint16_t crc22 = cca_calc_crc(decoded, 22);
+        uint16_t crc22 = this->encoder_.calc_crc(decoded, 22);
         uint16_t got22 = ((uint16_t)decoded[22] << 8) | decoded[23];
         ESP_LOGW(TAG, "  CRC@24: computed=%04X received=%04X %s",
                  crc22, got22, crc22 == got22 ? "MATCH" : "MISMATCH");
       }
       if (best_n >= 53) {
-        uint16_t crc51 = cca_calc_crc(decoded, 51);
+        uint16_t crc51 = this->encoder_.calc_crc(decoded, 51);
         uint16_t got51 = ((uint16_t)decoded[51] << 8) | decoded[52];
         ESP_LOGW(TAG, "  CRC@53: computed=%04X received=%04X %s  bytes49-52=%02X%02X%02X%02X",
                  crc51, got51, crc51 == got51 ? "MATCH" : "MISMATCH",
@@ -2116,6 +2116,9 @@ void CC1101CCA::start_bridge_pairing(uint16_t subnet, uint32_t load_id, uint8_t 
   ESP_LOGI(TAG, "Integration IDs: 0x%08X, 0x%08X, 0x%08X, 0x%08X",
            this->pairing_integ_ids_[0], this->pairing_integ_ids_[1],
            this->pairing_integ_ids_[2], this->pairing_integ_ids_[3]);
+  // Switch to larger PKTLEN for 53-byte config packets
+  this->radio_.set_rx_pktlen(80);
+
   ESP_LOGI(TAG, "Continuous pairing beacons started. Devices should flash.");
   ESP_LOGI(TAG, ">>> HOLD OFF BUTTON ON DEVICE FOR 10 SECONDS <<<");
   ESP_LOGI(TAG, "Device will be auto-paired when B0/B2 announce is detected.");
@@ -2125,6 +2128,9 @@ void CC1101CCA::stop_bridge_pairing(uint16_t subnet) {
   ESP_LOGI(TAG, "=== STOP BRIDGE PAIRING MODE ===");
 
   this->pairing_active_ = false;
+
+  // Restore default PKTLEN for fast RX cycle
+  this->radio_.set_rx_pktlen(80);
 
   // Send stop beacon burst
   // Real bridge: 92 XX AF 90 2C 00 21 0C 00 FF FF FF FF FF 08 04 90 2C 1A 04 CC CC [crc]
@@ -2548,6 +2554,9 @@ void CC1101CCA::start_vive_pairing(uint32_t hub_id, uint8_t zone_id) {
   this->vive_seq_ = 0;
   this->vive_last_burst_ = 0;  // Force immediate first burst
 
+  // Switch to larger PKTLEN for 53-byte config packets
+  this->radio_.set_rx_pktlen(80);
+
   // Send first burst immediately
   this->send_vive_beacon_burst(hub_id, false);
   this->vive_last_burst_ = millis();
@@ -2568,6 +2577,9 @@ void CC1101CCA::stop_vive_pairing() {
 
   this->vive_pairing_active_ = false;
   this->vive_hub_id_ = 0;
+
+  // Restore default PKTLEN for fast RX cycle
+  this->radio_.set_rx_pktlen(80);
 
   ESP_LOGI(TAG, "Vive pairing stopped. Devices should exit pairing mode.");
 }

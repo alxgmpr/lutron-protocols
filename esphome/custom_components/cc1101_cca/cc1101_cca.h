@@ -4,9 +4,9 @@
 #include "esphome/core/automation.h"
 #include "esphome/components/spi/spi.h"
 #include "cc1101_radio.h"
-#include "lutron_protocol.h"
+#include "cca_encoder.h"
+#include "cca_decoder.h"
 #include "lutron_pairing.h"
-#include "lutron_decoder.h"
 #include <vector>
 #include <functional>
 
@@ -510,8 +510,8 @@ class CC1101CCA : public Component,
 
   GPIOPin *gdo0_pin_{nullptr};
   CC1101Radio radio_;
-  LutronEncoder encoder_;
-  LutronDecoder decoder_;
+  CcaEncoder encoder_;
+  CcaDecoder decoder_;
   LutronPairing *pairing_{nullptr};
 
   bool type_alternate_{false};

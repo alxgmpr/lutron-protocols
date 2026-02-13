@@ -246,13 +246,11 @@ void CC1101Radio::start_rx() {
   // PKTCTRL1: No address check, no append status
   this->write_register(CC1101_PKTCTRL1, 0x00);
 
-  // Set packet length for RX - 110 bytes to capture overlapping transmissions.
-  // When two CCA devices transmit back-to-back (e.g. hub config + dimmer response),
-  // the CC1101 captures both in one FIFO fill. A 53-byte config packet as the second
-  // transmission needs ~75 raw bytes after the first packet's sync. With PKTLEN=80,
-  // the second packet is truncated at ~44 N81 bytes (need 53). PKTLEN=110 gives
-  // enough room for both a 24-byte and 53-byte packet with their preambles.
-  this->write_register(CC1101_PKTLEN, 110);
+  // Set packet length for RX - 80 bytes covers all CCA packet types.
+  // 53-byte CCA packet in N81: 32 preamble + 30 sync + 530 data + 16 trailing = 608 bits ≈ 76 raw bytes.
+  // PKTLEN=80 gives enough margin for 53-byte config packets.
+  // At 62.5 kbaud: 80 bytes = 10.2ms fill time (vs 14ms at old PKTLEN=110).
+  this->write_register(CC1101_PKTLEN, 80);
 
   // Reset accumulation buffer
   this->rx_accum_pos_ = 0;
@@ -324,13 +322,13 @@ bool CC1101Radio::check_rx() {
     return false;
   }
 
-  // PKTLEN is 110. At 62.5 kbaud (7812.5 bytes/s), 110 bytes takes ~14ms.
-  // The 64-byte FIFO fills in ~8.2ms, so we must drain mid-packet.
-  // Strategy: once we see bytes, enter a tight loop accumulating into rx_accum_
-  // until we have 110 bytes, the FIFO goes idle for >2ms, or 20ms timeout.
-  const size_t PKTLEN = 110;
-  const uint32_t IDLE_TIMEOUT_US = 2000;   // 2ms with no new bytes = end of packet
-  const uint32_t TOTAL_TIMEOUT_MS = 20;    // 20ms safety timeout
+  // At 62.5 kbaud (7812.5 bytes/s), accumulate until PKTLEN bytes received,
+  // FIFO goes idle for >1ms, or 15ms timeout.
+  // CCA inter-byte gap is <0.2ms, so 1ms safely detects end-of-packet.
+  // PKTLEN is set via register (48 default, 80 in config mode).
+  const size_t PKTLEN = this->read_register(CC1101_PKTLEN);
+  const uint32_t IDLE_TIMEOUT_US = 1000;   // 1ms with no new bytes = end of packet
+  const uint32_t TOTAL_TIMEOUT_MS = 15;    // 15ms safety timeout
 
   uint32_t loop_start = millis();
   uint32_t last_byte_time = micros();
@@ -376,8 +374,9 @@ bool CC1101Radio::check_rx() {
     delayMicroseconds(50);  // Brief yield between FIFO polls
   }
 
-  // Minimum viable packet: 35 raw bytes = 280 bits (decoder needs bit_pos + 270 < total)
-  const size_t MIN_PACKET_LEN = 35;
+  // Minimum viable packet: 15 raw bytes = 120 bits
+  // Enough for 0x0B dimmer ACK (5 N81 bytes ≈ 8 raw bytes + preamble overhead)
+  const size_t MIN_PACKET_LEN = 15;
   if (this->rx_accum_pos_ < MIN_PACKET_LEN) {
     // Not enough data for a valid packet - reset and continue
     this->rx_accum_pos_ = 0;
@@ -554,6 +553,20 @@ bool CC1101Radio::transmit_raw(const uint8_t *data, size_t len) {
   // Don't force IDLE - let auto-RX take effect if configured
   // The caller (lutron_cc1101.cpp) will call start_rx() if needed
   return true;
+}
+
+void CC1101Radio::set_rx_pktlen(uint8_t len) {
+  if (!this->initialized_) return;
+
+  ESP_LOGV(TAG, "Setting RX PKTLEN to %u", len);
+
+  // Briefly go to IDLE to change register, then restart RX
+  this->set_idle();
+  delay(1);
+  this->flush_rx();
+  this->write_register(CC1101_PKTLEN, len);
+  this->rx_accum_pos_ = 0;
+  this->strobe(CC1101_SRX);
 }
 
 }  // namespace cc1101_cca

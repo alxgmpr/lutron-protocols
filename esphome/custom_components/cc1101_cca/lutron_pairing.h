@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cc1101_radio.h"
-#include "lutron_protocol.h"
+#include "cca_encoder.h"
 #include <functional>
 #include <vector>
 
@@ -104,7 +104,7 @@ class LutronPairing {
 
  private:
   CC1101Radio *radio_;
-  LutronEncoder encoder_;
+  CcaEncoder encoder_;
   uint8_t sequence_{0};
   std::function<void(const std::vector<uint8_t> &)> tx_callback_;
 

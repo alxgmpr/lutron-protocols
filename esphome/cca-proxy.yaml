@@ -339,7 +339,7 @@ wifi:
   password: !secret wifi_password
 
 logger:
-  level: INFO
+  level: VERBOSE
 
 api:
   encryption:

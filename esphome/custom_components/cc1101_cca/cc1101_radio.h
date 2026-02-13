@@ -143,6 +143,14 @@ class CC1101Radio {
    */
   bool is_rx_active() const { return rx_active_; }
 
+  /**
+   * @brief Set RX packet length (PKTLEN register)
+   * Default is 48 (covers 24-byte CCA packets in ~6ms).
+   * Switch to 80 during config/pairing mode (covers 53-byte packets).
+   * Must be called while in RX mode — will briefly go IDLE and restart.
+   */
+  void set_rx_pktlen(uint8_t len);
+
  protected:
   CC1101SPI *spi_{nullptr};
   GPIOPin *gdo0_pin_{nullptr};

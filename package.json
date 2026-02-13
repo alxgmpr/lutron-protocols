@@ -12,8 +12,6 @@
     "dev": "concurrently -n backend,web,ccx -c blue,green,magenta \"npm run dev -w backend\" \"npm run dev -w web\" \"bun run tools/ccx-sniffer.ts --live --relay\"",
     "build": "npm run build -w web",
     "test": "npm run test -w web",
-    "codegen": "cargo run --manifest-path cca/Cargo.toml --release -- codegen",
-    "cca": "cargo run --manifest-path cca/Cargo.toml --release --",
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "leap:dump": "bun run tools/leap-dump.ts",

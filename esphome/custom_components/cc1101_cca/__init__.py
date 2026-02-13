@@ -3,7 +3,6 @@ import esphome.config_validation as cv
 from esphome.components import spi
 from esphome import pins, automation
 from esphome.const import CONF_ID, CONF_TRIGGER_ID
-import os
 
 DEPENDENCIES = ['spi']
 CODEOWNERS = ['@custom']
@@ -56,12 +55,3 @@ async def to_code(config):
     for conf in config.get(CONF_ON_TX, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(trigger, [(cg.std_vector.template(cg.uint8), 'data')], conf)
-
-    # Link Rust CCA library for protocol decoding/encoding
-    # Library is built separately via: cargo +esp build --target xtensa-esp32-none-elf --no-default-features --features embedded --lib -Zbuild-std=core,alloc --release
-    cca_lib_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'cca', 'target', 'xtensa-esp32-none-elf', 'release'))
-    cca_header_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'cca'))
-
-    cg.add_build_flag(f'-I{cca_header_dir}')
-    cg.add_build_flag(f'-L{cca_lib_dir}')
-    cg.add_build_flag('-lcca')
