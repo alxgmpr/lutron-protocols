@@ -217,11 +217,14 @@ int _write(int fd, char *buf, int len)
 
     /* Copy to capture buffer if this is the captured task */
     if (s_capture.task == caller && s_capture.buf != NULL) {
-        size_t avail = s_capture.buf_size - s_capture.len;
+        uint8_t *cap_buf = (uint8_t *)s_capture.buf;
+        size_t cap_len = s_capture.len;
+        size_t cap_size = s_capture.buf_size;
+        size_t avail = cap_size - cap_len;
         size_t copy = (size_t)len < avail ? (size_t)len : avail;
         if (copy > 0) {
-            memcpy(s_capture.buf + s_capture.len, buf, copy);
-            s_capture.len += copy;
+            memcpy(cap_buf + cap_len, buf, copy);
+            s_capture.len = cap_len + copy;
         }
     }
 
