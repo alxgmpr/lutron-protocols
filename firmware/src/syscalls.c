@@ -89,6 +89,36 @@ typedef struct {
 static shell_state_t s_shell;
 static SemaphoreHandle_t s_uart3_mutex;
 
+/* -----------------------------------------------------------------------
+ * Printf capture — allows UDP text passthrough to collect command output.
+ * Only captures output from the task that started the capture.
+ * ----------------------------------------------------------------------- */
+typedef struct {
+    TaskHandle_t task;
+    uint8_t     *buf;
+    size_t       buf_size;
+    size_t       len;
+} printf_capture_t;
+
+static volatile printf_capture_t s_capture;
+
+void printf_capture_start(uint8_t *buf, size_t buf_size) {
+    taskENTER_CRITICAL();
+    s_capture.task = xTaskGetCurrentTaskHandle();
+    s_capture.buf = buf;
+    s_capture.buf_size = buf_size;
+    s_capture.len = 0;
+    taskEXIT_CRITICAL();
+}
+
+size_t printf_capture_stop(void) {
+    taskENTER_CRITICAL();
+    size_t n = s_capture.len;
+    s_capture.task = NULL;
+    taskEXIT_CRITICAL();
+    return n;
+}
+
 /* Raw UART write — blocking, bypasses _write() to avoid reentrancy.
  * Used only for shell save/restore (a few bytes). Must be called
  * when no DMA TX is in flight. */
@@ -184,6 +214,17 @@ int _write(int fd, char *buf, int len)
     }
 
     TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+
+    /* Copy to capture buffer if this is the captured task */
+    if (s_capture.task == caller && s_capture.buf != NULL) {
+        size_t avail = s_capture.buf_size - s_capture.len;
+        size_t copy = (size_t)len < avail ? (size_t)len : avail;
+        if (copy > 0) {
+            memcpy(s_capture.buf + s_capture.len, buf, copy);
+            s_capture.len += copy;
+        }
+    }
+
     int need_restore = 0;
 
     if (caller != s_shell.task && s_shell.active) {

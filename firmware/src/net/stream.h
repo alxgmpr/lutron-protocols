@@ -50,10 +50,12 @@ extern "C" {
 #define STREAM_CMD_CCA_VIVE_LEVEL 0x13
 #define STREAM_CMD_CCA_VIVE_DIM   0x14
 #define STREAM_CMD_CCA_VIVE_PAIR  0x15
+#define STREAM_CMD_TEXT           0x20
 
 /**
  * Stream response opcodes (STM32 → host):
  */
+#define STREAM_RESP_TEXT          0xFD
 #define STREAM_RESP_STATUS        0xFE
 
 /** Maximum concurrent UDP stream clients */

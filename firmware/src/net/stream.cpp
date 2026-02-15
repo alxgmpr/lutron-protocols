@@ -18,6 +18,7 @@
  */
 
 #include "stream.h"
+#include "shell.h"
 #include "cca_task.h"
 #include "cca_commands.h"
 #include "cc1101.h"
@@ -600,6 +601,27 @@ static void handle_rx_data(const uint8_t *buf, size_t len,
             printf("[stream] Status query\r\n");
             send_status_response(src_addr, src_port);
             break;
+
+        case STREAM_CMD_TEXT: {
+            if (data_len == 0) break;
+            char cmd_line[256];
+            size_t cmd_len = data_len < sizeof(cmd_line) - 1 ? data_len : sizeof(cmd_line) - 1;
+            memcpy(cmd_line, buf + 2, cmd_len);
+            cmd_line[cmd_len] = '\0';
+            /* Strip trailing \r\n */
+            while (cmd_len > 0 && (cmd_line[cmd_len-1] == '\r' || cmd_line[cmd_len-1] == '\n'))
+                cmd_line[--cmd_len] = '\0';
+            if (cmd_len == 0) break;
+
+            static uint8_t text_resp[1500];
+            text_resp[0] = STREAM_RESP_TEXT;
+            printf_capture_start(text_resp + 1, sizeof(text_resp) - 1);
+            shell_execute(cmd_line);
+            size_t captured = printf_capture_stop();
+
+            send_to_client(text_resp, (uint16_t)(1 + captured), src_addr, src_port);
+            break;
+        }
 
         default:
             printf("[stream] Unknown command: 0x%02X\r\n", cmd);

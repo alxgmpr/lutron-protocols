@@ -2074,6 +2074,62 @@ static void cmd_help(void)
 }
 
 /* -----------------------------------------------------------------------
+ * Execute a single shell command line.
+ * Called from the UART shell task and from UDP text passthrough.
+ * ----------------------------------------------------------------------- */
+void shell_execute(const char *line)
+{
+    if (strcmp(line, "status") == 0) {
+        cmd_status();
+    } else if (strcmp(line, "help") == 0) {
+        cmd_help();
+    } else if (strcmp(line, "clear") == 0) {
+        printf("\033[2J\033[3J\033[H");
+        fflush(stdout);
+    } else if (strcmp(line, "config") == 0) {
+        flash_store_print();
+    } else if (strcmp(line, "save") == 0) {
+        if (flash_store_save()) {
+            printf("Settings saved to flash\r\n");
+        } else {
+            printf("Save FAILED\r\n");
+        }
+    } else if (strcmp(line, "reboot") == 0) {
+        printf("Rebooting...\r\n");
+        HAL_Delay(100);
+        NVIC_SystemReset();
+    } else if (strncmp(line, "tx ", 3) == 0) {
+        cmd_tx(line + 3);
+    } else if (strcmp(line, "cca") == 0) {
+        cmd_cca("");
+    } else if (strncmp(line, "cca ", 4) == 0) {
+        cmd_cca(line + 4);
+    } else if (strcmp(line, "eth") == 0) {
+        cmd_eth();
+    } else if (strncmp(line, "rx ", 3) == 0) {
+        cmd_rx(line + 3);
+    } else if (strcmp(line, "ccx") == 0) {
+        cmd_ccx("");
+    } else if (strncmp(line, "ccx ", 4) == 0) {
+        cmd_ccx(line + 4);
+    } else if (strcmp(line, "stream") == 0) {
+        cmd_stream("");
+    } else if (strncmp(line, "stream ", 7) == 0) {
+        cmd_stream(line + 7);
+    } else if (strcmp(line, "ot") == 0) {
+        cmd_ot("");
+    } else if (strncmp(line, "ot ", 3) == 0) {
+        cmd_ot(line + 3);
+    } else if (strncmp(line, "spinel ", 7) == 0) {
+        cmd_spinel(line + 7);
+    } else if (strcmp(line, "spinel") == 0) {
+        cmd_spinel("");
+    } else {
+        printf("Unknown command: '%s' (type 'help')\r\n", line);
+    }
+}
+
+/* -----------------------------------------------------------------------
  * Shell task
  * ----------------------------------------------------------------------- */
 static void shell_task_func(void *param)
@@ -2096,55 +2152,8 @@ static void shell_task_func(void *param)
         /* Add to history */
         hist_add(cmd_buf);
 
-        /* Parse command */
-        if (strcmp(cmd_buf, "status") == 0) {
-            cmd_status();
-        } else if (strcmp(cmd_buf, "help") == 0) {
-            cmd_help();
-        } else if (strcmp(cmd_buf, "clear") == 0) {
-            printf("\033[2J\033[3J\033[H");
-            fflush(stdout);
-        } else if (strcmp(cmd_buf, "config") == 0) {
-            flash_store_print();
-        } else if (strcmp(cmd_buf, "save") == 0) {
-            if (flash_store_save()) {
-                printf("Settings saved to flash\r\n");
-            } else {
-                printf("Save FAILED\r\n");
-            }
-        } else if (strcmp(cmd_buf, "reboot") == 0) {
-            printf("Rebooting...\r\n");
-            HAL_Delay(100);
-            NVIC_SystemReset();
-        } else if (strncmp(cmd_buf, "tx ", 3) == 0) {
-            cmd_tx(cmd_buf + 3);
-        } else if (strcmp(cmd_buf, "cca") == 0) {
-            cmd_cca("");
-        } else if (strncmp(cmd_buf, "cca ", 4) == 0) {
-            cmd_cca(cmd_buf + 4);
-        } else if (strcmp(cmd_buf, "eth") == 0) {
-            cmd_eth();
-        } else if (strncmp(cmd_buf, "rx ", 3) == 0) {
-            cmd_rx(cmd_buf + 3);
-        } else if (strcmp(cmd_buf, "ccx") == 0) {
-            cmd_ccx("");
-        } else if (strncmp(cmd_buf, "ccx ", 4) == 0) {
-            cmd_ccx(cmd_buf + 4);
-        } else if (strcmp(cmd_buf, "stream") == 0) {
-            cmd_stream("");
-        } else if (strncmp(cmd_buf, "stream ", 7) == 0) {
-            cmd_stream(cmd_buf + 7);
-        } else if (strcmp(cmd_buf, "ot") == 0) {
-            cmd_ot("");
-        } else if (strncmp(cmd_buf, "ot ", 3) == 0) {
-            cmd_ot(cmd_buf + 3);
-        } else if (strncmp(cmd_buf, "spinel ", 7) == 0) {
-            cmd_spinel(cmd_buf + 7);
-        } else if (strcmp(cmd_buf, "spinel") == 0) {
-            cmd_spinel("");
-        } else {
-            printf("Unknown command: '%s' (type 'help')\r\n", cmd_buf);
-        }
+        /* Parse and execute command */
+        shell_execute(cmd_buf);
     }
 }
 
