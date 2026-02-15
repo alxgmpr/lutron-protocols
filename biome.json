@@ -1,0 +1,39 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.0/schema.json",
+  "files": {
+    "includes": [
+      "cli/**/*.ts",
+      "tools/**/*.ts",
+      "ccx/**/*.ts",
+      "protocol/**/*.ts"
+    ],
+    "ignoreUnknown": true
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn",
+        "noUnusedFunctionParameters": "warn"
+      },
+      "style": {
+        "useTemplate": "off",
+        "useNodejsImportProtocol": "off",
+        "noNonNullAssertion": "off"
+      },
+      "complexity": {
+        "useSimpleNumberKeys": "off",
+        "useLiteralKeys": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  }
+}

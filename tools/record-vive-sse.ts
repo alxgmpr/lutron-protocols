@@ -18,7 +18,7 @@
  *   Ctrl+C to stop recording
  */
 
-import { mkdirSync, appendFileSync, writeFileSync } from "fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { createInterface } from "readline";
 
@@ -36,7 +36,7 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // Session state
 let packetCount = 0;
-let startTime = Date.now();
+const startTime = Date.now();
 const markers: { time: string; elapsed_ms: number; label: string }[] = [];
 const packetTypeCounts: Record<string, number> = {};
 const devicesSeen = new Set<string>();
@@ -55,7 +55,9 @@ console.log(`Session:  ${sessionLabel}`);
 console.log(`Output:   ${outputFile}`);
 console.log(`SSE URL:  ${SSE_URL}`);
 console.log(`\nControls:`);
-console.log(`  Type a label + Enter to mark an event (e.g., "pairing started")`);
+console.log(
+  `  Type a label + Enter to mark an event (e.g., "pairing started")`,
+);
 console.log(`  Ctrl+C to stop recording\n`);
 
 // Set up stdin for event markers
@@ -141,7 +143,7 @@ async function connectSSE() {
             const elapsed = (record.elapsed_ms / 1000).toFixed(1);
             const rssiStr = pkt.rssi !== undefined ? ` rssi:${pkt.rssi}` : "";
             console.log(
-              `  [${elapsed}s] ${dir} ${typeName.padEnd(18)} dev:${pkt.device_id || "???"}${rssiStr}  seq:${pkt.details?.seq ?? "?"}  ${pkt.raw_hex || ""}`
+              `  [${elapsed}s] ${dir} ${typeName.padEnd(18)} dev:${pkt.device_id || "???"}${rssiStr}  seq:${pkt.details?.seq ?? "?"}  ${pkt.raw_hex || ""}`,
             );
           } catch {
             // Skip non-JSON data lines
@@ -183,7 +185,9 @@ function shutdown() {
   console.log(`Packets:      ${packetCount}`);
   console.log(`Devices seen: ${Array.from(devicesSeen).join(", ") || "none"}`);
   console.log(`Types:`);
-  for (const [type, count] of Object.entries(packetTypeCounts).sort((a, b) => b[1] - a[1])) {
+  for (const [type, count] of Object.entries(packetTypeCounts).sort(
+    (a, b) => b[1] - a[1],
+  )) {
     console.log(`  ${type.padEnd(20)} ${count}`);
   }
   if (markers.length > 0) {

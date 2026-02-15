@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * CCX Command Sender — send CBOR-encoded commands to Lutron Thread devices
  *
@@ -22,17 +23,17 @@
  *   --seq <n>         Override sequence number
  */
 
+import { decode as cborDecode } from "cbor-x";
 import { createSocket } from "dgram";
 import { CCX_CONFIG, getZoneName } from "../ccx/config";
 import { decodeBytes, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import { decode as cborDecode } from "cbor-x";
 import {
   encodeLevelControl,
-  encodeOn,
   encodeOff,
+  encodeOn,
   encodeSceneRecall,
-  percentToLevel,
   nextSequence,
+  percentToLevel,
 } from "../ccx/encoder";
 
 // --- CLI argument parsing (same pattern as ccx-sniffer.ts) ---
@@ -62,7 +63,7 @@ const PORT = CCX_CONFIG.udpPort;
 function resolveZone(input: string): { id: number; name: string } | null {
   // Try numeric ID first
   const num = parseInt(input, 10);
-  if (!isNaN(num) && CCX_CONFIG.knownZones[num]) {
+  if (!Number.isNaN(num) && CCX_CONFIG.knownZones[num]) {
     return { id: num, name: CCX_CONFIG.knownZones[num].name };
   }
 
@@ -78,7 +79,11 @@ function resolveZone(input: string): { id: number; name: string } | null {
 
 // --- Transport ---
 
-function sendPackets(buf: Buffer, count: number, intervalMs: number): Promise<void> {
+function sendPackets(
+  buf: Buffer,
+  count: number,
+  intervalMs: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const sock = createSocket({ type: "udp6", reuseAddr: true });
 
@@ -92,7 +97,11 @@ function sendPackets(buf: Buffer, count: number, intervalMs: number): Promise<vo
         sock.setMulticastInterface(`::%${iface}`);
       } catch (err) {
         sock.close();
-        reject(new Error(`Failed to set multicast interface ${iface}: ${(err as Error).message}`));
+        reject(
+          new Error(
+            `Failed to set multicast interface ${iface}: ${(err as Error).message}`,
+          ),
+        );
         return;
       }
 
@@ -107,13 +116,20 @@ function sendPackets(buf: Buffer, count: number, intervalMs: number): Promise<vo
           }, 50);
           return;
         }
-        sock.send(buf, 0, buf.length, PORT, `${MULTICAST_ADDR}%${iface}`, (err) => {
-          if (err) {
-            clearInterval(timer);
-            sock.close();
-            reject(err);
-          }
-        });
+        sock.send(
+          buf,
+          0,
+          buf.length,
+          PORT,
+          `${MULTICAST_ADDR}%${iface}`,
+          (err) => {
+            if (err) {
+              clearInterval(timer);
+              sock.close();
+              reject(err);
+            }
+          },
+        );
         sent++;
       }, intervalMs);
     });
@@ -123,23 +139,33 @@ function sendPackets(buf: Buffer, count: number, intervalMs: number): Promise<vo
 // --- Commands ---
 
 function printHex(label: string, buf: Buffer) {
-  const hex = buf.toString("hex").replace(/(.{2})/g, "$1 ").trim();
+  const hex = buf
+    .toString("hex")
+    .replace(/(.{2})/g, "$1 ")
+    .trim();
   console.log(`${label}: ${hex}`);
 }
 
 async function cmdOn(zoneInput: string) {
   const zone = resolveZone(zoneInput);
   if (!zone) {
-    console.error(`Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`);
+    console.error(
+      `Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`,
+    );
     process.exit(1);
   }
-  const seq = seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
-  const fade = fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
-  const delay = delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
+  const seq =
+    seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
+  const fade =
+    fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
+  const delay =
+    delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
   const buf = encodeOn(zone.id, seq, fade, delay);
   const fadeLabel = fade !== undefined ? `, fade=${fadeArg}s` : "";
   const delayLabel = delay !== undefined ? `, delay=${delayArg}s` : "";
-  console.log(`ON → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`);
+  console.log(
+    `ON → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`,
+  );
   printHex("CBOR", buf);
   if (!dryRun) {
     await sendPackets(buf, repeat, interval);
@@ -150,16 +176,23 @@ async function cmdOn(zoneInput: string) {
 async function cmdOff(zoneInput: string) {
   const zone = resolveZone(zoneInput);
   if (!zone) {
-    console.error(`Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`);
+    console.error(
+      `Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`,
+    );
     process.exit(1);
   }
-  const seq = seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
-  const fade = fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
-  const delay = delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
+  const seq =
+    seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
+  const fade =
+    fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
+  const delay =
+    delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
   const buf = encodeOff(zone.id, seq, fade, delay);
   const fadeLabel = fade !== undefined ? `, fade=${fadeArg}s` : "";
   const delayLabel = delay !== undefined ? `, delay=${delayArg}s` : "";
-  console.log(`OFF → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`);
+  console.log(
+    `OFF → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`,
+  );
   printHex("CBOR", buf);
   if (!dryRun) {
     await sendPackets(buf, repeat, interval);
@@ -170,22 +203,35 @@ async function cmdOff(zoneInput: string) {
 async function cmdLevel(zoneInput: string, percentStr: string) {
   const zone = resolveZone(zoneInput);
   if (!zone) {
-    console.error(`Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`);
+    console.error(
+      `Unknown zone: "${zoneInput}". Use 'zones' command to list known zones.`,
+    );
     process.exit(1);
   }
   const percent = parseFloat(percentStr);
-  if (isNaN(percent) || percent < 0 || percent > 100) {
+  if (Number.isNaN(percent) || percent < 0 || percent > 100) {
     console.error(`Invalid level: "${percentStr}". Must be 0-100.`);
     process.exit(1);
   }
   const level = percentToLevel(percent);
-  const seq = seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
-  const fade = fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
-  const delay = delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
-  const buf = encodeLevelControl({ zoneId: zone.id, level, sequence: seq, fade, delay });
+  const seq =
+    seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
+  const fade =
+    fadeArg !== undefined ? Math.round(parseFloat(fadeArg) * 4) : undefined;
+  const delay =
+    delayArg !== undefined ? Math.round(parseFloat(delayArg) * 4) : undefined;
+  const buf = encodeLevelControl({
+    zoneId: zone.id,
+    level,
+    sequence: seq,
+    fade,
+    delay,
+  });
   const fadeLabel = fade !== undefined ? `, fade=${fadeArg}s` : "";
   const delayLabel = delay !== undefined ? `, delay=${delayArg}s` : "";
-  console.log(`LEVEL ${percent}% (0x${level.toString(16).padStart(4, "0")}) → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`);
+  console.log(
+    `LEVEL ${percent}% (0x${level.toString(16).padStart(4, "0")}) → ${zone.name} (zone=${zone.id}, seq=${seq}${fadeLabel}${delayLabel})`,
+  );
   printHex("CBOR", buf);
   if (!dryRun) {
     await sendPackets(buf, repeat, interval);
@@ -195,11 +241,12 @@ async function cmdLevel(zoneInput: string, percentStr: string) {
 
 async function cmdScene(sceneIdStr: string) {
   const sceneId = parseInt(sceneIdStr, 10);
-  if (isNaN(sceneId)) {
+  if (Number.isNaN(sceneId)) {
     console.error(`Invalid scene ID: "${sceneIdStr}".`);
     process.exit(1);
   }
-  const seq = seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
+  const seq =
+    seqOverride !== undefined ? parseInt(seqOverride, 10) : nextSequence();
   const buf = encodeSceneRecall({ sceneId, sequence: seq });
   console.log(`SCENE_RECALL (scene=${sceneId}, seq=${seq})`);
   printHex("CBOR", buf);
@@ -247,7 +294,7 @@ function cmdListen() {
     try {
       const parsed = decodeBytes(msg);
       const typeName = getMessageTypeName(
-        (cborDecode(msg) as unknown[])[0] as number
+        (cborDecode(msg) as unknown[])[0] as number,
       ).padEnd(14);
       const formatted = formatMessage(parsed);
 
@@ -261,7 +308,16 @@ function cmdListen() {
       if (jsonOutput) {
         // Include raw CBOR body for field exploration
         const raw = cborDecode(msg) as unknown[];
-        console.log(JSON.stringify({ time, src: rinfo.address, type: typeName.trim(), parsed, rawBody: raw[1], hex }));
+        console.log(
+          JSON.stringify({
+            time,
+            src: rinfo.address,
+            type: typeName.trim(),
+            parsed,
+            rawBody: raw[1],
+            hex,
+          }),
+        );
       } else {
         const src = rinfo.address.replace(/%.*/, ""); // strip %utun8
         console.log(`${time} ${typeName} ${src} → ${formatted}${annotation}`);
@@ -306,12 +362,18 @@ function cmdListen() {
 
 // --- Main ---
 
-const command = args.find((a) => !a.startsWith("--") && args.indexOf(a) === args.findIndex((x) => !x.startsWith("--")));
-// Simpler: just grab positional args (non-flag args)
+// Grab positional args (non-flag args)
 const positional = args.filter((a, i) => {
   if (a.startsWith("--")) return false;
   // Skip values that follow a flag
-  if (i > 0 && args[i - 1].startsWith("--") && !["on", "off", "level", "scene", "raw", "zones", "listen"].includes(args[i - 1])) return false;
+  if (
+    i > 0 &&
+    args[i - 1].startsWith("--") &&
+    !["on", "off", "level", "scene", "raw", "zones", "listen"].includes(
+      args[i - 1],
+    )
+  )
+    return false;
   return true;
 });
 
@@ -346,23 +408,38 @@ Options:
 
 switch (cmd) {
   case "on":
-    if (!positional[1]) { console.error("Usage: on <zone>"); process.exit(1); }
+    if (!positional[1]) {
+      console.error("Usage: on <zone>");
+      process.exit(1);
+    }
     await cmdOn(positional[1]);
     break;
   case "off":
-    if (!positional[1]) { console.error("Usage: off <zone>"); process.exit(1); }
+    if (!positional[1]) {
+      console.error("Usage: off <zone>");
+      process.exit(1);
+    }
     await cmdOff(positional[1]);
     break;
   case "level":
-    if (!positional[1] || !positional[2]) { console.error("Usage: level <zone> <percent>"); process.exit(1); }
+    if (!positional[1] || !positional[2]) {
+      console.error("Usage: level <zone> <percent>");
+      process.exit(1);
+    }
     await cmdLevel(positional[1], positional[2]);
     break;
   case "scene":
-    if (!positional[1]) { console.error("Usage: scene <sceneId>"); process.exit(1); }
+    if (!positional[1]) {
+      console.error("Usage: scene <sceneId>");
+      process.exit(1);
+    }
     await cmdScene(positional[1]);
     break;
   case "raw":
-    if (!positional[1]) { console.error("Usage: raw <cbor-hex>"); process.exit(1); }
+    if (!positional[1]) {
+      console.error("Usage: raw <cbor-hex>");
+      process.exit(1);
+    }
     await cmdRaw(positional[1]);
     break;
   case "zones":
@@ -372,6 +449,8 @@ switch (cmd) {
     cmdListen();
     break;
   default:
-    console.error(`Unknown command: "${cmd}". Run without arguments for usage.`);
+    console.error(
+      `Unknown command: "${cmd}". Run without arguments for usage.`,
+    );
     process.exit(1);
 }

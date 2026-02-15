@@ -7,7 +7,9 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const dir = "captures/cca-sessions";
-const files = readdirSync(dir).filter(f => f.startsWith("5btn-pairing") && f.endsWith(".csv"));
+const files = readdirSync(dir).filter(
+  (f) => f.startsWith("5btn-pairing") && f.endsWith(".csv"),
+);
 
 // Parse all pairing packets from recordings
 const allPackets: string[][] = [];
@@ -32,7 +34,9 @@ console.log(`Types: ${[...byType.keys()].sort().join(", ")}\n`);
 
 for (const [type, pkts] of [...byType.entries()].sort()) {
   console.log(`${"=".repeat(80)}`);
-  console.log(`TYPE 0x${type} — ${pkts.length} packets, length ${pkts[0].length} bytes`);
+  console.log(
+    `TYPE 0x${type} — ${pkts.length} packets, length ${pkts[0].length} bytes`,
+  );
   console.log(`${"=".repeat(80)}`);
 
   // Find first unique packet of this type
@@ -81,8 +85,13 @@ for (const [type, pkts] of [...byType.entries()].sort()) {
 
     for (const [label, offset, size] of labels) {
       if (offset >= pkt.length) continue;
-      const bytes = pkt.slice(offset, offset + size).map(b => b.toUpperCase()).join(" ");
-      console.log(`    [${String(offset).padStart(2)}] ${label.padEnd(14)} = ${bytes}`);
+      const bytes = pkt
+        .slice(offset, offset + size)
+        .map((b) => b.toUpperCase())
+        .join(" ");
+      console.log(
+        `    [${String(offset).padStart(2)}] ${label.padEnd(14)} = ${bytes}`,
+      );
     }
     console.log();
   }
@@ -90,6 +99,8 @@ for (const [type, pkts] of [...byType.entries()].sort()) {
 
 // Now show what our firmware sends
 console.log(`\n${"=".repeat(80)}`);
-console.log("OUR FIRMWARE PAIRING SEQUENCE (from send_pairing_5button / send_pairing_advanced)");
+console.log(
+  "OUR FIRMWARE PAIRING SEQUENCE (from send_pairing_5button / send_pairing_advanced)",
+);
 console.log(`${"=".repeat(80)}\n`);
 console.log("Need to check cc1101_cca.cpp for the pairing function...\n");

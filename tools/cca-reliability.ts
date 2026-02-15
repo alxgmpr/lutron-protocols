@@ -43,7 +43,7 @@ function usageAndExit(msg?: string): never {
       "  --window-ms <n>      Timestamp match tolerance (default: 35)",
       "  --direction <dir>    Filter by direction (default: rx)",
       "  --show-misses <n>    Print first N misses (default: 20)",
-    ].join("\n")
+    ].join("\n"),
   );
   process.exit(1);
 }
@@ -85,8 +85,10 @@ function parseArgs() {
 
   if (!truth) usageAndExit("Missing --truth");
   if (!dut) usageAndExit("Missing --dut");
-  if (!Number.isFinite(windowMs) || windowMs < 0) usageAndExit("Invalid --window-ms");
-  if (!Number.isFinite(showMisses) || showMisses < 0) usageAndExit("Invalid --show-misses");
+  if (!Number.isFinite(windowMs) || windowMs < 0)
+    usageAndExit("Invalid --window-ms");
+  if (!Number.isFinite(showMisses) || showMisses < 0)
+    usageAndExit("Invalid --show-misses");
 
   return {
     truth: resolve(truth),
@@ -135,10 +137,13 @@ function parseCsv(filePath: string, directionFilter: string): PacketRow[] {
     const tsMs = Date.parse(tsIso);
     if (!Number.isFinite(tsMs)) continue;
 
-    const direction = (idxDirection >= 0 ? parts[idxDirection] : "rx").trim().toLowerCase();
+    const direction = (idxDirection >= 0 ? parts[idxDirection] : "rx")
+      .trim()
+      .toLowerCase();
     if (directionFilter !== "*" && direction !== directionFilter) continue;
 
-    const rawField = (idxRawHex >= 0 ? parts[idxRawHex] : parts[fallbackRawIdx]) || "";
+    const rawField =
+      (idxRawHex >= 0 ? parts[idxRawHex] : parts[fallbackRawIdx]) || "";
     const rawHex = normalizeRawHex(rawField);
     if (!rawHex) continue;
 
@@ -193,7 +198,11 @@ function main() {
 
   const matchedTruth = new Set<number>();
   const missedTruth: PacketRow[] = [];
-  const matchedPairs: Array<{ truth: PacketRow; dut: PacketRow; deltaMs: number }> = [];
+  const matchedPairs: Array<{
+    truth: PacketRow;
+    dut: PacketRow;
+    deltaMs: number;
+  }> = [];
 
   for (let i = 0; i < truth.length; i++) {
     const t = truth[i];
@@ -237,7 +246,10 @@ function main() {
     }
   }
 
-  const perType = new Map<string, { expected: number; matched: number; extras: number }>();
+  const perType = new Map<
+    string,
+    { expected: number; matched: number; extras: number }
+  >();
   for (const p of truth) {
     const k = typeKey(p.typeByte);
     const rec = perType.get(k) || { expected: 0, matched: 0, extras: 0 };
@@ -266,7 +278,8 @@ function main() {
 
   const meanAbsDelta =
     matchedPairs.length > 0
-      ? matchedPairs.reduce((s, p) => s + Math.abs(p.deltaMs), 0) / matchedPairs.length
+      ? matchedPairs.reduce((s, p) => s + Math.abs(p.deltaMs), 0) /
+        matchedPairs.length
       : 0;
 
   console.log("\n=== CCA Reliability Report ===");
@@ -275,14 +288,20 @@ function main() {
   console.log(`direction=${opts.direction} window=${opts.windowMs}ms`);
   console.log("");
   console.log(`frames expected: ${truth.length}`);
-  console.log(`frames matched:  ${matchedPairs.length} (${pct(matchedPairs.length, truth.length)})`);
-  console.log(`frames missed:   ${missedTruth.length} (${pct(missedTruth.length, truth.length)})`);
+  console.log(
+    `frames matched:  ${matchedPairs.length} (${pct(matchedPairs.length, truth.length)})`,
+  );
+  console.log(
+    `frames missed:   ${missedTruth.length} (${pct(missedTruth.length, truth.length)})`,
+  );
   console.log(`dut extras:      ${unmatchedDut.length}`);
   console.log(`|Δt| mean:       ${meanAbsDelta.toFixed(1)}ms`);
   console.log("");
   console.log(`unique truth frames:   ${truthUnique.size}`);
   console.log(`unique dut frames:     ${dutUnique.size}`);
-  console.log(`unique matched frames: ${uniqueMatched} (${pct(uniqueMatched, truthUnique.size)})`);
+  console.log(
+    `unique matched frames: ${uniqueMatched} (${pct(uniqueMatched, truthUnique.size)})`,
+  );
 
   const rows = [...perType.entries()].sort((a, b) => {
     if (b[1].expected !== a[1].expected) return b[1].expected - a[1].expected;
@@ -305,10 +324,12 @@ function main() {
   }
 
   if (opts.showMisses > 0 && missedTruth.length > 0) {
-    console.log(`\nFirst ${Math.min(opts.showMisses, missedTruth.length)} misses:`);
+    console.log(
+      `\nFirst ${Math.min(opts.showMisses, missedTruth.length)} misses:`,
+    );
     for (const m of missedTruth.slice(0, opts.showMisses)) {
       console.log(
-        `${m.tsIso} type=0x${m.typeByte} seq=0x${m.seqHex} raw=${m.rawHex}`
+        `${m.tsIso} type=0x${m.typeByte} seq=0x${m.seqHex} raw=${m.rawHex}`,
       );
     }
   }

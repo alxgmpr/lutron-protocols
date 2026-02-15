@@ -23,8 +23,8 @@
 
 import { spawn } from "child_process";
 import { createSocket } from "dgram";
-import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
 import { CCX_CONFIG, getDeviceName, getZoneName } from "../ccx/config";
+import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 
 // Parse CLI arguments
@@ -85,7 +85,9 @@ function detectSnifferInterface(): string {
     try {
       const stat = Bun.file(path);
       if (stat) return path;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return "/dev/cu.usbmodem201401";
 }
@@ -115,14 +117,22 @@ function buildTsharkArgs(): string[] {
 
   // Output fields as tab-separated values
   tsharkArgs.push(
-    "-T", "fields",
-    "-e", "frame.time_epoch",
-    "-e", "ipv6.src",
-    "-e", "ipv6.dst",
-    "-e", "wpan.src64",
-    "-e", "wpan.dst64",
-    "-e", "udp.payload",
-    "-E", "separator=\t"
+    "-T",
+    "fields",
+    "-e",
+    "frame.time_epoch",
+    "-e",
+    "ipv6.src",
+    "-e",
+    "ipv6.dst",
+    "-e",
+    "wpan.src64",
+    "-e",
+    "wpan.dst64",
+    "-e",
+    "udp.payload",
+    "-E",
+    "separator=\t",
   );
 
   return tsharkArgs;
@@ -159,7 +169,9 @@ function processLine(line: string): CCXPacket | null {
     });
   } catch (err) {
     if (!jsonOutput) {
-      console.error(`  [decode error] ${(err as Error).message}: ${payloadHex}`);
+      console.error(
+        `  [decode error] ${(err as Error).message}: ${payloadHex}`,
+      );
     }
     return null;
   }
@@ -197,7 +209,9 @@ async function main() {
   const tsharkArgs = buildTsharkArgs();
 
   if (!jsonOutput) {
-    console.log(`CCX Sniffer - ${fileMode ? `Processing ${fileMode}` : "Live capture"}`);
+    console.log(
+      `CCX Sniffer - ${fileMode ? `Processing ${fileMode}` : "Live capture"}`,
+    );
     console.log(`  Channel: ${channel}`);
     console.log(`  Master key: ${masterKey.slice(0, 8)}...`);
     if (relayMode) console.log(`  Relaying to localhost:${RELAY_PORT}`);
@@ -274,7 +288,9 @@ async function main() {
   tshark.on("error", (err) => {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       console.error("Error: tshark not found. Install Wireshark CLI tools.");
-      console.error("  macOS: brew install wireshark (or install Wireshark.app)");
+      console.error(
+        "  macOS: brew install wireshark (or install Wireshark.app)",
+      );
     } else {
       console.error("Error spawning tshark:", err.message);
     }

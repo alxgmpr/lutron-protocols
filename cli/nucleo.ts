@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Nucleo CLI — interactive UDP shell for Nucleo H723ZG
  *
@@ -10,18 +11,20 @@
  *        NUCLEO_HOST=192.168.1.50 bun cli/nucleo.ts
  */
 
-import { join } from "path";
-import { mkdirSync, appendFileSync, writeFileSync } from "fs";
 import { createSocket, type Socket } from "dgram";
+import { appendFileSync, mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
 import {
-  identifyPacket,
-  parseFieldValue,
-} from "../protocol/protocol-ui";
-import { DeviceClassNames } from "../protocol/generated/typescript/protocol";
-import { decodeBytes } from "../ccx/decoder";
+  CCX_CONFIG,
+  getPresetInfo,
+  getZoneName,
+  presetIdFromDeviceId,
+} from "../ccx/config";
 import { Level } from "../ccx/constants";
-import { CCX_CONFIG, getZoneName, getPresetInfo, presetIdFromDeviceId } from "../ccx/config";
+import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
+import { DeviceClassNames } from "../protocol/generated/typescript/protocol";
+import { identifyPacket, parseFieldValue } from "../protocol/protocol-ui";
 
 // ============================================================================
 // ANSI colors
@@ -68,10 +71,10 @@ const THREAD_ROLES = ["detached", "child", "router", "leader"] as const;
 // ============================================================================
 // State
 // ============================================================================
-let host = process.argv[2] || process.env.NUCLEO_HOST || "";
+const host = process.argv[2] || process.env.NUCLEO_HOST || "";
 let udpSocket: Socket;
-let lastHeartbeat = 0;
 let quiet = false;
+let raw = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval>;
 let lastCcaRadioTs = 0; // for CCA inter-packet delta
@@ -98,7 +101,12 @@ function fmtNum(n: number): string {
 
 /** Read LE u32 from buffer */
 function readU32LE(buf: Buffer, off: number): number {
-  return buf[off] | (buf[off + 1] << 8) | (buf[off + 2] << 16) | ((buf[off + 3] << 24) >>> 0);
+  return (
+    buf[off] |
+    (buf[off + 1] << 8) |
+    (buf[off + 2] << 16) |
+    ((buf[off + 3] << 24) >>> 0)
+  );
 }
 
 /** Build a binary command frame [CMD:1][LEN:1][DATA:N] */
@@ -137,7 +145,12 @@ function sendTextCommand(text: string) {
 // RX packet display
 // ============================================================================
 
-function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, deltaMs: number = 0) {
+function displayCcaPacket(
+  data: Buffer,
+  flags: number,
+  _radioTs: number = 0,
+  deltaMs: number = 0,
+) {
   const isTx = !!(flags & FLAG_TX);
   const rssi = isTx ? 0 : -(flags & FLAG_RSSI_MASK);
   const direction = isTx ? "TX" : "RX";
@@ -160,18 +173,32 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
   const typeColor = catColor[category] || WHITE;
 
   // Build hex strings for field parsing
-  const hexBytes = Array.from(data).map((b) =>
-    b.toString(16).padStart(2, "0")
-  );
+  const hexBytes = Array.from(data).map((b) => b.toString(16).padStart(2, "0"));
 
   // Fields to skip in output
   const SKIP_FIELDS = new Set([
-    "type", "crc", "protocol", "broadcast", "device_repeat",
-    "device_id2", "device_id3",
+    "type",
+    "crc",
+    "protocol",
+    "broadcast",
+    "device_repeat",
+    "device_id2",
+    "device_id3",
+    "pico_frame",
+    "cmd_class",
+    "cmd_param",
   ]);
 
   // Fields that are only useful when decoded (skip raw hex noise)
-  const DECODE_ONLY = new Set(["format", "data", "flags", "pair_flag", "btn_scheme", "device_type", "zone_id"]);
+  const DECODE_ONLY = new Set([
+    "format",
+    "data",
+    "flags",
+    "pair_flag",
+    "btn_scheme",
+    "device_type",
+    "zone_id",
+  ]);
 
   // Collect parsed field values
   const fieldValues = new Map<string, string>();
@@ -181,7 +208,7 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
       hexBytes,
       field.offset,
       field.size,
-      field.format
+      field.format,
     );
     if (decoded) {
       fieldValues.set(field.name, decoded);
@@ -208,10 +235,14 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
   for (const idField of ["device_id", "source_id", "load_id", "hardware_id"]) {
     const val = fieldValues.get(idField);
     if (val) {
-      const label = idField === "device_id" ? "dev"
-        : idField === "source_id" ? "src"
-        : idField === "load_id" ? "load"
-        : "hw";
+      const label =
+        idField === "device_id"
+          ? "dev"
+          : idField === "source_id"
+            ? "src"
+            : idField === "load_id"
+              ? "load"
+              : "hw";
       parts.push(fmtId(label, val));
       fieldValues.delete(idField);
     }
@@ -228,10 +259,30 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
   fieldValues.delete("sequence");
 
   if (category === "BUTTON") {
-    // Show button and action directly: "ON PRESS"
-    const btn = fieldValues.get("button") || "";
+    let btn = fieldValues.get("button") || "";
     const act = fieldValues.get("action") || "";
-    if (btn || act) parts.push(`${BOLD}${btn} ${act}${RESET}`);
+    // Enhance 4-button pico display using format byte + cmd_class (byte 17)
+    // cmd_class 0x42 = dim (RAISE/LOWER), 0x40 = scene/preset
+    // Action byte means "has payload" not "press/release" — don't display it
+    // when we have command semantics; the packet type name already says press/release
+    const fmtByte = data.length > 7 ? data[7] : 0;
+    const cmdClass = data.length > 17 ? data[17] : 0xcc;
+    const cmdParam = data.length > 19 ? data[19] : 0xcc;
+    let hasCmd = false;
+    if ((fmtByte === 0x0e || fmtByte === 0x0c) && cmdClass === 0x42) {
+      // Dim command or dim stop — resolve SCENE3/SCENE2 to RAISE/LOWER
+      btn = cmdParam === 0x01 || cmdParam === 0x03 ? "RAISE" : "LOWER";
+      hasCmd = true;
+    } else if (fmtByte === 0x0e && cmdClass === 0x40) {
+      // Scene/preset — keep button name, drop confusing action byte
+      hasCmd = true;
+    }
+    if (hasCmd) {
+      parts.push(`${BOLD}${btn}${RESET}`);
+    } else {
+      // 5-button pico or short 4-button tap — use action as-is
+      if (btn || act) parts.push(`${BOLD}${btn} ${act}${RESET}`);
+    }
     fieldValues.delete("button");
     fieldValues.delete("action");
   } else if (category === "STATE" || category === "CONFIG") {
@@ -247,10 +298,11 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
     }
   } else if (category === "PAIRING") {
     // Translate device_class — read raw byte since hex format doesn't auto-decode
-    const dcField = identified.fields.find(f => f.name === "device_class");
+    const dcField = identified.fields.find((f) => f.name === "device_class");
     if (dcField && data.length > dcField.offset) {
       const code = data[dcField.offset];
-      const name = DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
+      const name =
+        DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
       parts.push(`${DIM}class=${RESET}${BOLD}${name}${RESET}`);
     }
     fieldValues.delete("device_class");
@@ -265,18 +317,21 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
     parts.push(`${DIM}${name}=${RESET}${val}`);
   }
 
-  const rssiStr = isTx
-    ? `${DIM}(echo)${RESET}`
-    : `${DIM}rssi=${RESET}${rssi}`;
-  const deltaStr = deltaMs > 0
-    ? `${DIM}+${deltaMs}ms${RESET}`
-    : "";
+  const rssiStr = isTx ? `${DIM}(echo)${RESET}` : `${DIM}rssi=${RESET}${rssi}`;
+  const deltaStr = deltaMs > 0 ? `${DIM}+${deltaMs}ms${RESET}` : "";
   const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
   const ts = new Date().toISOString().slice(11, 23);
 
-  console.log(
-    `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}`
-  );
+  if (raw) {
+    const rawHex = hexBytes.join(" ");
+    console.log(
+      `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}  ${rawHex}  ${rssiStr}  ${deltaStr}`,
+    );
+  } else {
+    console.log(
+      `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}`,
+    );
+  }
 
   // CSV recording
   if (recording) {
@@ -293,7 +348,7 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
           hexBytes,
           field.offset,
           field.size,
-          field.format
+          field.format,
         );
         if (decoded) {
           deviceId = decoded;
@@ -307,7 +362,10 @@ function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, delt
   }
 }
 
-function formatCcxMessage(msg: CCXMessage): { typeName: string; parts: string[] } {
+function formatCcxMessage(msg: CCXMessage): {
+  typeName: string;
+  parts: string[];
+} {
   const parts: string[] = [];
 
   switch (msg.type) {
@@ -319,7 +377,9 @@ function formatCcxMessage(msg: CCXMessage): { typeName: string; parts: string[] 
       const zoneName = getZoneName(msg.zoneId);
       parts.push(`${BOLD}${levelStr}${RESET}`);
       if (zoneName) {
-        parts.push(`${DIM}zone=${RESET}${msg.zoneId} ${CYAN}"${zoneName}"${RESET}`);
+        parts.push(
+          `${DIM}zone=${RESET}${msg.zoneId} ${CYAN}"${zoneName}"${RESET}`,
+        );
       } else {
         parts.push(`${DIM}zone=${RESET}${msg.zoneId}`);
       }
@@ -332,7 +392,9 @@ function formatCcxMessage(msg: CCXMessage): { typeName: string; parts: string[] 
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(`${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`);
+        parts.push(
+          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
+        );
       } else {
         parts.push(`${DIM}preset=${RESET}${presetId}`);
       }
@@ -342,18 +404,23 @@ function formatCcxMessage(msg: CCXMessage): { typeName: string; parts: string[] 
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(`${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`);
+        parts.push(
+          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
+        );
       } else {
         parts.push(`${DIM}preset=${RESET}${presetId}`);
       }
-      if (msg.action !== undefined) parts.push(`${DIM}action=${RESET}${msg.action}`);
+      if (msg.action !== undefined)
+        parts.push(`${DIM}action=${RESET}${msg.action}`);
       return { typeName: "DIM_HOLD", parts };
     }
     case "DIM_STEP": {
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(`${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`);
+        parts.push(
+          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
+        );
       } else {
         parts.push(`${DIM}preset=${RESET}${presetId}`);
       }
@@ -378,16 +445,20 @@ function formatCcxMessage(msg: CCXMessage): { typeName: string; parts: string[] 
     }
     case "SCENE_RECALL": {
       parts.push(`${DIM}scene=${RESET}${msg.sceneId}`);
-      if (msg.params.length > 0) parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
+      if (msg.params.length > 0)
+        parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
       return { typeName: "SCENE_RECALL", parts };
     }
     case "COMPONENT_CMD": {
       parts.push(`${DIM}group=${RESET}${msg.groupId}`);
-      if (msg.params.length > 0) parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
+      if (msg.params.length > 0)
+        parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
       return { typeName: "COMPONENT_CMD", parts };
     }
     case "STATUS": {
-      parts.push(`${DIM}dev=${RESET}0x${msg.deviceId.toString(16).padStart(8, "0")}`);
+      parts.push(
+        `${DIM}dev=${RESET}0x${msg.deviceId.toString(16).padStart(8, "0")}`,
+      );
       return { typeName: "STATUS", parts };
     }
     case "PRESENCE": {
@@ -406,7 +477,12 @@ function getSerialName(serial: number): string | undefined {
   return CCX_CONFIG.knownSerials[serial]?.name;
 }
 
-function displayCcxPacket(data: Buffer, flags: number, radioTs: number = 0, deltaMs: number = 0) {
+function displayCcxPacket(
+  data: Buffer,
+  flags: number,
+  _radioTs: number = 0,
+  deltaMs: number = 0,
+) {
   const isTx = !!(flags & FLAG_TX);
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : BLUE;
@@ -442,16 +518,25 @@ function displayCcxPacket(data: Buffer, flags: number, radioTs: number = 0, delt
     const typeColor = catColor[msg.type] || WHITE;
     const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
 
-    console.log(
-      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${deltaStr}`
-    );
+    if (raw) {
+      const rawHex = Array.from(data)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(" ");
+      console.log(
+        `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}  ${rawHex}  ${deltaStr}`,
+      );
+    } else {
+      console.log(
+        `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${deltaStr}`,
+      );
+    }
   } else {
-    // Fallback: raw hex
+    // Fallback: raw hex (always show)
     const rawHex = Array.from(data)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join(" ");
     console.log(
-      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${rawHex}  ${deltaStr}`
+      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${rawHex}  ${deltaStr}`,
     );
   }
 
@@ -489,18 +574,28 @@ function displayStatus(blob: Buffer) {
   const heapFree = readU32LE(blob, 44);
 
   const roleName =
-    ccxRole < THREAD_ROLES.length ? THREAD_ROLES[ccxRole] : `unknown(${ccxRole})`;
+    ccxRole < THREAD_ROLES.length
+      ? THREAD_ROLES[ccxRole]
+      : `unknown(${ccxRole})`;
 
   console.log(`\n${BOLD}${WHITE}── Nucleo Status ──${RESET}`);
   console.log(`  ${DIM}uptime:${RESET}          ${fmtUptime(uptime)}`);
   console.log(`  ${DIM}heap_free:${RESET}       ${fmtNum(heapFree)} bytes`);
   console.log();
-  console.log(`  ${CYAN}CCA${RESET}  rx=${fmtNum(ccaRx)}  tx=${fmtNum(ccaTx)}  drop=${ccaDrop}  crc_fail=${ccaCrc}  n81_err=${ccaN81}`);
-  console.log(`  ${CYAN}CC1101${RESET}  overflow=${ccOverflow}  runt=${ccRunt}`);
+  console.log(
+    `  ${CYAN}CCA${RESET}  rx=${fmtNum(ccaRx)}  tx=${fmtNum(ccaTx)}  drop=${ccaDrop}  crc_fail=${ccaCrc}  n81_err=${ccaN81}`,
+  );
+  console.log(
+    `  ${CYAN}CC1101${RESET}  overflow=${ccOverflow}  runt=${ccRunt}`,
+  );
   console.log();
-  console.log(`  ${YELLOW}CCX${RESET}  rx=${fmtNum(ccxRx)}  tx=${fmtNum(ccxTx)}  joined=${ccxJoined ? "yes" : "no"}  role=${roleName}`);
+  console.log(
+    `  ${YELLOW}CCX${RESET}  rx=${fmtNum(ccxRx)}  tx=${fmtNum(ccxTx)}  joined=${ccxJoined ? "yes" : "no"}  role=${roleName}`,
+  );
   console.log();
-  console.log(`  ${GREEN}ETH${RESET}  link=${ethLink ? "up" : "down"}  clients=${numClients}`);
+  console.log(
+    `  ${GREEN}ETH${RESET}  link=${ethLink ? "up" : "down"}  clients=${numClients}`,
+  );
   console.log();
 
   if (blob.length >= STATUS_BLOB_V2_SIZE) {
@@ -521,11 +616,21 @@ function displayStatus(blob: Buffer) {
     const isrLatMax = readU32LE(blob, 104);
     const isrLatSamples = readU32LE(blob, 108);
 
-    console.log(`  ${MAGENTA}CCA Radio${RESET}  ack=${fmtNum(ccaAck)}  crc_optional=${fmtNum(ccaCrcOptional)}  irq=${fmtNum(ccaIrq)}`);
-    console.log(`  ${MAGENTA}Restarts${RESET}  timeout=${fmtNum(restartTimeout)}  overflow=${fmtNum(restartOverflow)}  manual=${fmtNum(restartManual)}  packet=${fmtNum(restartPacket)}`);
-    console.log(`  ${MAGENTA}Sync${RESET}  hit=${fmtNum(syncHit)}  miss=${fmtNum(syncMiss)}  hit_rate=${syncHit + syncMiss > 0 ? ((syncHit * 100) / (syncHit + syncMiss)).toFixed(1) : "0.0"}%`);
-    console.log(`  ${MAGENTA}Ring${RESET}  max_occ=${fmtNum(ringMax)}  in=${fmtNum(ringBytesIn)}B  dropped=${fmtNum(ringBytesDropped)}B`);
-    console.log(`  ${MAGENTA}IRQ->RX${RESET}  min=${fmtNum(isrLatMin)}us  p95=${fmtNum(isrLatP95)}us  max=${fmtNum(isrLatMax)}us  n=${fmtNum(isrLatSamples)}`);
+    console.log(
+      `  ${MAGENTA}CCA Radio${RESET}  ack=${fmtNum(ccaAck)}  crc_optional=${fmtNum(ccaCrcOptional)}  irq=${fmtNum(ccaIrq)}`,
+    );
+    console.log(
+      `  ${MAGENTA}Restarts${RESET}  timeout=${fmtNum(restartTimeout)}  overflow=${fmtNum(restartOverflow)}  manual=${fmtNum(restartManual)}  packet=${fmtNum(restartPacket)}`,
+    );
+    console.log(
+      `  ${MAGENTA}Sync${RESET}  hit=${fmtNum(syncHit)}  miss=${fmtNum(syncMiss)}  hit_rate=${syncHit + syncMiss > 0 ? ((syncHit * 100) / (syncHit + syncMiss)).toFixed(1) : "0.0"}%`,
+    );
+    console.log(
+      `  ${MAGENTA}Ring${RESET}  max_occ=${fmtNum(ringMax)}  in=${fmtNum(ringBytesIn)}B  dropped=${fmtNum(ringBytesDropped)}B`,
+    );
+    console.log(
+      `  ${MAGENTA}IRQ->RX${RESET}  min=${fmtNum(isrLatMin)}us  p95=${fmtNum(isrLatP95)}us  max=${fmtNum(isrLatMax)}us  n=${fmtNum(isrLatSamples)}`,
+    );
     console.log();
   }
 }
@@ -542,7 +647,6 @@ function handleDatagram(msg: Buffer) {
 
   // Heartbeat: [0xFF][0x00]
   if (flags === 0xff && len === 0x00) {
-    lastHeartbeat = Date.now();
     return;
   }
 
@@ -614,7 +718,9 @@ function setupUdp() {
 
   udpSocket.bind(() => {
     const addr = udpSocket.address();
-    console.log(`${GREEN}UDP socket bound to :${addr.port}, sending to ${host}:${UDP_PORT}${RESET}`);
+    console.log(
+      `${GREEN}UDP socket bound to :${addr.port}, sending to ${host}:${UDP_PORT}${RESET}`,
+    );
 
     // Send initial keepalive to register with the Nucleo
     send(buildCmd(CMD.KEEPALIVE));
@@ -643,6 +749,7 @@ ${BOLD}Local commands:${RESET}
   ${GREEN}record${RESET} [name]  Start CSV recording
   ${GREEN}stop${RESET}           Stop recording
   ${GREEN}quiet${RESET}          Toggle packet display
+  ${GREEN}raw${RESET}            Toggle raw hex display
   ${GREEN}help${RESET}           This help
   ${GREEN}quit${RESET}           Exit
 
@@ -681,22 +788,27 @@ function handleCommand(line: string) {
       showPrompt();
       return;
 
+    case "raw":
+      raw = !raw;
+      console.log(`Raw hex display: ${raw ? "on" : "off"}`);
+      showPrompt();
+      return;
+
     case "record": {
       if (recording) {
-        console.log(`${YELLOW}Already recording to ${recording.file.split("/").pop()}${RESET}`);
+        console.log(
+          `${YELLOW}Already recording to ${recording.file.split("/").pop()}${RESET}`,
+        );
       } else {
         mkdirSync(CAPTURES_DIR, { recursive: true });
         const name = args[1] || "session";
-        const ts = new Date()
-          .toISOString()
-          .slice(0, 19)
-          .replace(/[:.]/g, "-");
+        const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-");
         const safeName = name.replace(/[^a-zA-Z0-9_-]/g, "_");
         const fileName = `${safeName}_${ts}.csv`;
         const filePath = join(CAPTURES_DIR, fileName);
         writeFileSync(
           filePath,
-          "timestamp,direction,protocol,type,device_id,rssi,raw_hex\n"
+          "timestamp,direction,protocol,type,device_id,rssi,raw_hex\n",
         );
         recording = { file: filePath, count: 0, startTime: Date.now() };
         console.log(`${GREEN}Recording to ${fileName}${RESET}`);
@@ -712,7 +824,7 @@ function handleCommand(line: string) {
         const elapsed = ((Date.now() - recording.startTime) / 1000).toFixed(1);
         const fileName = recording.file.split("/").pop();
         console.log(
-          `${GREEN}Stopped recording: ${fileName} (${recording.count} packets, ${elapsed}s)${RESET}`
+          `${GREEN}Stopped recording: ${fileName} (${recording.count} packets, ${elapsed}s)${RESET}`,
         );
         recording = null;
       }
@@ -724,6 +836,10 @@ function handleCommand(line: string) {
     case "exit":
       cleanup();
       process.exit(0);
+      return;
+
+    case "restart":
+      sendTextCommand("reboot");
       return;
   }
 
@@ -739,7 +855,9 @@ function cleanup() {
   if (keepaliveTimer) clearInterval(keepaliveTimer);
   if (recording) {
     const fileName = recording.file.split("/").pop();
-    console.log(`\n${YELLOW}Stopped recording: ${fileName} (${recording.count} packets)${RESET}`);
+    console.log(
+      `\n${YELLOW}Stopped recording: ${fileName} (${recording.count} packets)${RESET}`,
+    );
     recording = null;
   }
   if (udpSocket) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * CCX Packet Analyzer - Reverse engineering helper for CCX (Thread/CBOR) traffic
  *
@@ -13,17 +14,16 @@
  *   bun run tools/ccx-analyzer.ts stats --file <pcapng>
  */
 
-import { spawn } from "child_process";
 import { decode as cborDecode } from "cbor-x";
-import {
-  decodeAndParse,
-  decodeHex,
-  formatMessage,
-  getMessageTypeName,
-  buildPacket,
-} from "../ccx/decoder";
+import { spawn } from "child_process";
 import { CCX_CONFIG, getDeviceName, getZoneName } from "../ccx/config";
 import { CCXMessageTypeName } from "../ccx/constants";
+import {
+  buildPacket,
+  decodeAndParse,
+  formatMessage,
+  getMessageTypeName,
+} from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 
 // ── CLI argument parsing ────────────────────────────────────────────
@@ -37,7 +37,7 @@ function getArg(name: string): string | undefined {
 }
 
 const pcapFile = getArg("--file");
-const masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
+const _masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
 
 // ── tshark integration ──────────────────────────────────────────────
 
@@ -45,17 +45,27 @@ const masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
 async function loadPacketsFromPcap(file: string): Promise<CCXPacket[]> {
   return new Promise((resolve, reject) => {
     const tsharkArgs = [
-      "-r", file,
+      "-r",
+      file,
       // Thread key is read from Wireshark's ieee802154_keys UAT file automatically
-      "-Y", `udp.port == ${CCX_CONFIG.udpPort}`,
-      "-T", "fields",
-      "-e", "frame.time_epoch",
-      "-e", "ipv6.src",
-      "-e", "ipv6.dst",
-      "-e", "wpan.src64",
-      "-e", "wpan.dst64",
-      "-e", "udp.payload",
-      "-E", "separator=\t",
+      "-Y",
+      `udp.port == ${CCX_CONFIG.udpPort}`,
+      "-T",
+      "fields",
+      "-e",
+      "frame.time_epoch",
+      "-e",
+      "ipv6.src",
+      "-e",
+      "ipv6.dst",
+      "-e",
+      "wpan.src64",
+      "-e",
+      "wpan.dst64",
+      "-e",
+      "udp.payload",
+      "-E",
+      "separator=\t",
     ];
 
     const tshark = spawn("tshark", tsharkArgs, {
@@ -65,8 +75,12 @@ async function loadPacketsFromPcap(file: string): Promise<CCXPacket[]> {
     let stdout = "";
     let stderr = "";
 
-    tshark.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-    tshark.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    tshark.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    tshark.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     tshark.on("close", (code) => {
       if (code !== 0) {
@@ -87,14 +101,16 @@ async function loadPacketsFromPcap(file: string): Promise<CCXPacket[]> {
           const payloadHex = fields[5].replace(/:/g, "");
           if (!payloadHex) continue;
 
-          packets.push(buildPacket({
-            timestamp: new Date(epoch * 1000).toISOString(),
-            srcAddr: fields[1] ?? "",
-            dstAddr: fields[2] ?? "",
-            srcEui64: fields[3] ?? "",
-            dstEui64: fields[4] ?? "",
-            payloadHex,
-          }));
+          packets.push(
+            buildPacket({
+              timestamp: new Date(epoch * 1000).toISOString(),
+              srcAddr: fields[1] ?? "",
+              dstAddr: fields[2] ?? "",
+              srcEui64: fields[3] ?? "",
+              dstEui64: fields[4] ?? "",
+              payloadHex,
+            }),
+          );
         } catch {
           // Skip malformed packets
         }
@@ -116,7 +132,9 @@ async function loadPacketsFromPcap(file: string): Promise<CCXPacket[]> {
 // ── Hex utility ─────────────────────────────────────────────────────
 
 function bytesToHex(data: Uint8Array): string {
-  return Array.from(data).map(b => b.toString(16).padStart(2, "0")).join(" ");
+  return Array.from(data)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join(" ");
 }
 
 // ── Commands ────────────────────────────────────────────────────────
@@ -124,7 +142,9 @@ function bytesToHex(data: Uint8Array): string {
 /** Decode a single CBOR hex string with annotated dump */
 function cmdDecode(hex: string) {
   const clean = hex.replace(/[\s:,]/g, "").replace(/^0x/i, "");
-  const raw = new Uint8Array(clean.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+  const raw = new Uint8Array(
+    clean.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
+  );
 
   console.log("\nCCX Message Decode:");
   console.log("===================");
@@ -135,10 +155,16 @@ function cmdDecode(hex: string) {
   try {
     const decoded = cborDecode(raw);
     console.log(`\nCBOR structure:`);
-    console.log(JSON.stringify(decoded, (_, v) => {
-      if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
-      return v;
-    }, 2));
+    console.log(
+      JSON.stringify(
+        decoded,
+        (_, v) => {
+          if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
+          return v;
+        },
+        2,
+      ),
+    );
   } catch (err) {
     console.error(`CBOR decode error: ${(err as Error).message}`);
     return;
@@ -152,20 +178,26 @@ function cmdDecode(hex: string) {
   if (msg.type === "LEVEL_CONTROL") {
     const zoneName = getZoneName(msg.zoneId);
     console.log(`\nDetails:`);
-    console.log(`  Level: 0x${msg.level.toString(16).padStart(4, "0")} (${msg.levelPercent.toFixed(1)}%)`);
+    console.log(
+      `  Level: 0x${msg.level.toString(16).padStart(4, "0")} (${msg.levelPercent.toFixed(1)}%)`,
+    );
     console.log(`  Zone: ${msg.zoneId}${zoneName ? ` (${zoneName})` : ""}`);
     console.log(`  Zone type: ${msg.zoneType}`);
     console.log(`  Sequence: ${msg.sequence}`);
   } else if (msg.type === "BUTTON_PRESS") {
     console.log(`\nDetails:`);
     console.log(`  Device ID: ${bytesToHex(msg.deviceId)}`);
-    console.log(`  Command type: 0x${msg.cmdType.toString(16).padStart(2, "0")}`);
+    console.log(
+      `  Command type: 0x${msg.cmdType.toString(16).padStart(2, "0")}`,
+    );
     console.log(`  Button zone: ${msg.buttonZone}`);
     console.log(`  Counters: [${msg.counters.join(", ")}]`);
     console.log(`  Sequence: ${msg.sequence}`);
   } else if (msg.type === "ACK") {
     console.log(`\nDetails:`);
-    console.log(`  Response: ${bytesToHex(msg.response)} (0x${msg.responseCode.toString(16).padStart(2, "0")} = '${String.fromCharCode(msg.responseCode)}')`);
+    console.log(
+      `  Response: ${bytesToHex(msg.response)} (0x${msg.responseCode.toString(16).padStart(2, "0")} = '${String.fromCharCode(msg.responseCode)}')`,
+    );
     console.log(`  Sequence: ${msg.sequence}`);
   } else if (msg.type === "STATUS") {
     console.log(`\nDetails:`);
@@ -198,15 +230,20 @@ async function cmdTypes() {
   console.log("Type ID  | Name            | Count");
   console.log("---------|-----------------|------");
 
-  for (const [typeId, count] of [...typeCounts.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [typeId, count] of [...typeCounts.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
     const name = getMessageTypeName(typeId).padEnd(15);
-    const idStr = typeId <= 255
-      ? `0x${typeId.toString(16).padStart(2, "0").toUpperCase()}`.padEnd(7)
-      : String(typeId).padEnd(7);
+    const idStr =
+      typeId <= 255
+        ? `0x${typeId.toString(16).padStart(2, "0").toUpperCase()}`.padEnd(7)
+        : String(typeId).padEnd(7);
     console.log(`${idStr}  | ${name} | ${count}`);
   }
 
-  console.log(`\nTotal: ${packets.length} packets, ${typeCounts.size} unique types`);
+  console.log(
+    `\nTotal: ${packets.length} packets, ${typeCounts.size} unique types`,
+  );
 }
 
 /** Analyze field patterns for a specific message type */
@@ -220,19 +257,25 @@ async function cmdFields(typeStr: string) {
   const typeId = resolveTypeId(typeStr);
   if (typeId === undefined) {
     console.error(`Unknown type: ${typeStr}`);
-    console.error(`Known types: ${Object.entries(CCXMessageTypeName).map(([id, name]) => `${name}(${id})`).join(", ")}`);
+    console.error(
+      `Known types: ${Object.entries(CCXMessageTypeName)
+        .map(([id, name]) => `${name}(${id})`)
+        .join(", ")}`,
+    );
     process.exit(1);
   }
 
   const packets = await loadPacketsFromPcap(pcapFile);
-  const matched = packets.filter(p => p.msgType === typeId);
+  const matched = packets.filter((p) => p.msgType === typeId);
 
   if (matched.length === 0) {
     console.log(`No packets of type ${typeStr} (${typeId}) found.`);
     return;
   }
 
-  console.log(`\nField Analysis for ${getMessageTypeName(typeId)} (${matched.length} packets):`);
+  console.log(
+    `\nField Analysis for ${getMessageTypeName(typeId)} (${matched.length} packets):`,
+  );
   console.log("=".repeat(60));
 
   // Collect all top-level body keys
@@ -243,21 +286,27 @@ async function cmdFields(typeStr: string) {
     }
   }
 
-  console.log(`\nTop-level keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`);
+  console.log(
+    `\nTop-level keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`,
+  );
 
   for (const key of [...allKeys].sort((a, b) => a - b)) {
     console.log(`\n  Key ${key}:`);
-    const values = matched.map(p => p.body[key]).filter(v => v !== undefined);
-    const types = [...new Set(values.map(v => typeof v))];
+    const values = matched
+      .map((p) => p.body[key])
+      .filter((v) => v !== undefined);
+    const types = [...new Set(values.map((v) => typeof v))];
     console.log(`    Types: ${types.join(", ")}`);
     console.log(`    Present in: ${values.length}/${matched.length} packets`);
 
     if (types.includes("number")) {
-      const nums = values.filter(v => typeof v === "number") as number[];
+      const nums = values.filter((v) => typeof v === "number") as number[];
       console.log(`    Range: ${Math.min(...nums)} - ${Math.max(...nums)}`);
       const unique = [...new Set(nums)];
       if (unique.length <= 10) {
-        console.log(`    Unique values: [${unique.sort((a, b) => a - b).join(", ")}]`);
+        console.log(
+          `    Unique values: [${unique.sort((a, b) => a - b).join(", ")}]`,
+        );
       } else {
         console.log(`    Unique values: ${unique.length}`);
       }
@@ -295,7 +344,9 @@ async function cmdTimeline() {
       if (zoneName) annotation = ` [${zoneName}]`;
     }
 
-    console.log(`${timeStr} ${deltaStr.padStart(8)} ${src} ${msgStr}${annotation}`);
+    console.log(
+      `${timeStr} ${deltaStr.padStart(8)} ${src} ${msgStr}${annotation}`,
+    );
   }
 
   console.log(`\n${packets.length} packets total`);
@@ -310,7 +361,10 @@ async function cmdDevices() {
 
   const packets = await loadPacketsFromPcap(pcapFile);
 
-  const devices = new Map<string, { count: number; types: Set<string>; lastSeen: string; eui64: string }>();
+  const devices = new Map<
+    string,
+    { count: number; types: Set<string>; lastSeen: string; eui64: string }
+  >();
 
   for (const pkt of packets) {
     for (const addr of [pkt.srcAddr, pkt.dstAddr]) {
@@ -326,7 +380,8 @@ async function cmdDevices() {
           count: 1,
           types: new Set([getMessageTypeName(pkt.msgType)]),
           lastSeen: pkt.timestamp,
-          eui64: addr === pkt.srcAddr ? (pkt.srcEui64 ?? "") : (pkt.dstEui64 ?? ""),
+          eui64:
+            addr === pkt.srcAddr ? (pkt.srcEui64 ?? "") : (pkt.dstEui64 ?? ""),
         });
       }
     }
@@ -334,14 +389,22 @@ async function cmdDevices() {
 
   console.log("\nDevices Seen:");
   console.log("=============");
-  console.log("IPv6 Address                              | Name         | EUI-64           | Packets | Types");
-  console.log("------------------------------------------|--------------|------------------|---------|------");
+  console.log(
+    "IPv6 Address                              | Name         | EUI-64           | Packets | Types",
+  );
+  console.log(
+    "------------------------------------------|--------------|------------------|---------|------",
+  );
 
-  for (const [addr, info] of [...devices.entries()].sort((a, b) => b[1].count - a[1].count)) {
+  for (const [addr, info] of [...devices.entries()].sort(
+    (a, b) => b[1].count - a[1].count,
+  )) {
     const name = (getDeviceName(addr) ?? "").padEnd(12);
     const eui64 = info.eui64.padEnd(16);
     const types = [...info.types].join(", ");
-    console.log(`${addr.padEnd(41)} | ${name} | ${eui64} | ${info.count.toString().padStart(7)} | ${types}`);
+    console.log(
+      `${addr.padEnd(41)} | ${name} | ${eui64} | ${info.count.toString().padStart(7)} | ${types}`,
+    );
   }
 }
 
@@ -359,23 +422,27 @@ async function cmdCompare(typeStr: string) {
   }
 
   const packets = await loadPacketsFromPcap(pcapFile);
-  const matched = packets.filter(p => p.msgType === typeId);
+  const matched = packets.filter((p) => p.msgType === typeId);
 
   if (matched.length < 2) {
-    console.log(`Not enough ${typeStr} packets to compare (found ${matched.length})`);
+    console.log(
+      `Not enough ${typeStr} packets to compare (found ${matched.length})`,
+    );
     return;
   }
 
-  console.log(`\nComparing ${matched.length} ${getMessageTypeName(typeId)} packets:`);
+  console.log(
+    `\nComparing ${matched.length} ${getMessageTypeName(typeId)} packets:`,
+  );
   console.log("=".repeat(50));
 
   // Compare raw hex bytes
-  const hexArrays = matched.map(p => {
+  const hexArrays = matched.map((p) => {
     const clean = p.rawHex.replace(/\s/g, "");
-    return clean.match(/.{1,2}/g)?.map(b => parseInt(b, 16)) ?? [];
+    return clean.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) ?? [];
   });
 
-  const maxLen = Math.max(...hexArrays.map(a => a.length));
+  const maxLen = Math.max(...hexArrays.map((a) => a.length));
   const variablePositions = new Set<number>();
 
   for (let i = 0; i < maxLen; i++) {
@@ -392,13 +459,19 @@ async function cmdCompare(typeStr: string) {
     console.log("\nConstant vs variable CBOR bytes:");
     const first = hexArrays[0];
     const display = first.map((b, i) =>
-      variablePositions.has(i) ? ".." : b.toString(16).padStart(2, "0").toUpperCase()
+      variablePositions.has(i)
+        ? ".."
+        : b.toString(16).padStart(2, "0").toUpperCase(),
     );
-    console.log("Pos: " + first.map((_, i) => i.toString().padStart(2, "0")).join(" "));
+    console.log(
+      "Pos: " + first.map((_, i) => i.toString().padStart(2, "0")).join(" "),
+    );
     console.log("Val: " + display.join(" "));
   }
 
-  console.log(`\nVariable byte positions: [${[...variablePositions].sort((a, b) => a - b).join(", ")}]`);
+  console.log(
+    `\nVariable byte positions: [${[...variablePositions].sort((a, b) => a - b).join(", ")}]`,
+  );
 
   // Compare parsed field values
   console.log("\nParsed field comparison:");
@@ -418,7 +491,7 @@ async function cmdUnknown() {
   }
 
   const packets = await loadPacketsFromPcap(pcapFile);
-  const unknowns = packets.filter(p => p.parsed.type === "UNKNOWN");
+  const unknowns = packets.filter((p) => p.parsed.type === "UNKNOWN");
 
   if (unknowns.length === 0) {
     console.log("\nNo unknown message types found.");
@@ -438,20 +511,31 @@ async function cmdUnknown() {
   console.log(`\nUnknown Message Types (${unknowns.length} packets):`);
   console.log("=".repeat(50));
 
-  for (const [typeId, pkts] of [...byType.entries()].sort((a, b) => a[0] - b[0])) {
-    console.log(`\nType ${typeId} (0x${typeId.toString(16)}): ${pkts.length} packets`);
+  for (const [typeId, pkts] of [...byType.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
+    console.log(
+      `\nType ${typeId} (0x${typeId.toString(16)}): ${pkts.length} packets`,
+    );
 
     // Show CBOR structure of first example
     console.log("  Example CBOR:");
     const raw = new Uint8Array(
-      pkts[0].rawHex.match(/.{1,2}/g)!.map(b => parseInt(b, 16))
+      pkts[0].rawHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
     );
     try {
       const decoded = cborDecode(raw);
-      console.log("  " + JSON.stringify(decoded, (_, v) => {
-        if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
-        return v;
-      }, 2).replace(/\n/g, "\n  "));
+      console.log(
+        "  " +
+          JSON.stringify(
+            decoded,
+            (_, v) => {
+              if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
+              return v;
+            },
+            2,
+          ).replace(/\n/g, "\n  "),
+      );
     } catch {
       console.log(`  Raw hex: ${pkts[0].rawHex}`);
     }
@@ -461,7 +545,9 @@ async function cmdUnknown() {
     for (const pkt of pkts) {
       for (const key of Object.keys(pkt.body)) allKeys.add(Number(key));
     }
-    console.log(`  Body keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`);
+    console.log(
+      `  Body keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`,
+    );
   }
 }
 
@@ -486,12 +572,12 @@ async function cmdStats() {
   }
 
   // Unique addresses
-  const srcAddrs = new Set(packets.map(p => p.srcAddr).filter(Boolean));
-  const dstAddrs = new Set(packets.map(p => p.dstAddr).filter(Boolean));
+  const srcAddrs = new Set(packets.map((p) => p.srcAddr).filter(Boolean));
+  const dstAddrs = new Set(packets.map((p) => p.dstAddr).filter(Boolean));
   const allAddrs = new Set([...srcAddrs, ...dstAddrs]);
 
   // Time range
-  const times = packets.map(p => new Date(p.timestamp).getTime());
+  const times = packets.map((p) => new Date(p.timestamp).getTime());
   const firstTime = Math.min(...times);
   const lastTime = Math.max(...times);
   const durationMs = lastTime - firstTime;
@@ -506,16 +592,26 @@ async function cmdStats() {
   console.log("=======================");
   console.log(`Total packets: ${packets.length}`);
   console.log(`Duration: ${(durationMs / 1000).toFixed(1)}s`);
-  console.log(`Packet rate: ${(packets.length / (durationMs / 1000)).toFixed(1)} pkt/s`);
-  console.log(`Unique addresses: ${allAddrs.size} (${srcAddrs.size} sources, ${dstAddrs.size} destinations)`);
-  console.log(`Unique zones: ${zones.size}${zones.size > 0 ? ` (${[...zones].join(", ")})` : ""}`);
+  console.log(
+    `Packet rate: ${(packets.length / (durationMs / 1000)).toFixed(1)} pkt/s`,
+  );
+  console.log(
+    `Unique addresses: ${allAddrs.size} (${srcAddrs.size} sources, ${dstAddrs.size} destinations)`,
+  );
+  console.log(
+    `Unique zones: ${zones.size}${zones.size > 0 ? ` (${[...zones].join(", ")})` : ""}`,
+  );
   console.log(`\nMessage type distribution:`);
 
-  for (const [typeId, count] of [...typeCounts.entries()].sort((a, b) => b[1] - a[1])) {
+  for (const [typeId, count] of [...typeCounts.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )) {
     const name = getMessageTypeName(typeId);
     const pct = ((count / packets.length) * 100).toFixed(1);
-    const bar = "#".repeat(Math.round(count / packets.length * 40));
-    console.log(`  ${name.padEnd(16)} ${count.toString().padStart(5)} (${pct.padStart(5)}%) ${bar}`);
+    const bar = "#".repeat(Math.round((count / packets.length) * 40));
+    console.log(
+      `  ${name.padEnd(16)} ${count.toString().padStart(5)} (${pct.padStart(5)}%) ${bar}`,
+    );
   }
 }
 
@@ -525,12 +621,12 @@ async function cmdStats() {
 function resolveTypeId(typeStr: string): number | undefined {
   // Try numeric
   const num = parseInt(typeStr, 10);
-  if (!isNaN(num)) return num;
+  if (!Number.isNaN(num)) return num;
 
   // Try hex
   if (typeStr.startsWith("0x")) {
     const hex = parseInt(typeStr, 16);
-    if (!isNaN(hex)) return hex;
+    if (!Number.isNaN(hex)) return hex;
   }
 
   // Try name lookup
@@ -548,10 +644,15 @@ async function main() {
   try {
     switch (command) {
       case "decode": {
-        const hex = args.slice(1).filter(a => !a.startsWith("--")).join("");
+        const hex = args
+          .slice(1)
+          .filter((a) => !a.startsWith("--"))
+          .join("");
         if (!hex) {
           console.log("Usage: ccx-analyzer.ts decode <hex>");
-          console.log('Example: ccx-analyzer.ts decode "8200a300a20019feff03010182101903c105185c"');
+          console.log(
+            'Example: ccx-analyzer.ts decode "8200a300a20019feff03010182101903c105185c"',
+          );
           process.exit(1);
         }
         cmdDecode(hex);

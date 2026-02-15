@@ -96,21 +96,41 @@ export const CCX_CONFIG = {
     380: { name: "Off", role: "single", device: "Kitchen Backsplash" },
     429: { name: "Raise", role: "single", device: "Kitchen Backsplash" },
     433: { name: "Lower", role: "single", device: "Kitchen Backsplash" },
-    543: { name: "Good Night", role: "primary", device: "Master Bedroom Bedside" },
+    543: {
+      name: "Good Night",
+      role: "primary",
+      device: "Master Bedroom Bedside",
+    },
     585: { name: "Alert", role: "secondary", device: "Master Bedroom Bedside" },
-    589: { name: "Good Night", role: "secondary", device: "Master Bedroom Bedside" },
+    589: {
+      name: "Good Night",
+      role: "secondary",
+      device: "Master Bedroom Bedside",
+    },
     593: { name: "Alert", role: "secondary", device: "Master Bedroom Bedside" },
-    597: { name: "Good Night", role: "secondary", device: "Master Bedroom Bedside" },
+    597: {
+      name: "Good Night",
+      role: "secondary",
+      device: "Master Bedroom Bedside",
+    },
     649: { name: "Living", role: "primary", device: "Living Room Corner" },
     657: { name: "Media", role: "primary", device: "Living Room Corner" },
-    914: { name: "Fireplace On", role: "single", device: "Living Room Phantom" },
+    914: {
+      name: "Fireplace On",
+      role: "single",
+      device: "Living Room Phantom",
+    },
     939: { name: "Office", role: "primary", device: "Office Doorway" },
     943: { name: "Lamps", role: "primary", device: "Office Doorway" },
     947: { name: "Relax", role: "primary", device: "Office Doorway" },
     984: { name: "Lower", role: "single", device: "Office Doorway" },
     987: { name: "Raise", role: "single", device: "Office Doorway" },
     996: { name: "On", role: "single", device: "Living Room Coffee Table" },
-    999: { name: "Favorite", role: "single", device: "Living Room Coffee Table" },
+    999: {
+      name: "Favorite",
+      role: "single",
+      device: "Living Room Coffee Table",
+    },
     1002: { name: "Off", role: "single", device: "Living Room Coffee Table" },
     1005: { name: "Raise", role: "single", device: "Living Room Coffee Table" },
     1008: { name: "Lower", role: "single", device: "Living Room Coffee Table" },
@@ -130,7 +150,11 @@ export const CCX_CONFIG = {
     1188: { name: "Lower", role: "single", device: "Guest Room Desk" },
     1191: { name: "Off", role: "single", device: "Guest Room Desk" },
     1223: { name: "Lamps", role: "secondary", device: "Office Doorway" },
-    1260: { name: "Fireplace Off", role: "single", device: "Living Room Phantom" },
+    1260: {
+      name: "Fireplace Off",
+      role: "single",
+      device: "Living Room Phantom",
+    },
     1338: { name: "Living", role: "secondary", device: "Living Room Corner" },
     1342: { name: "Relax", role: "secondary", device: "Living Room Corner" },
     1348: { name: "Media", role: "secondary", device: "Living Room Corner" },
@@ -156,16 +180,28 @@ export const CCX_CONFIG = {
     2329: { name: "Relax", role: "secondary", device: "Stairs Base" },
     2365: { name: "Stairwell", role: "primary", device: "Hallway Stairwell" },
     2366: { name: "Stairwell", role: "secondary", device: "Hallway Stairwell" },
-    2370: { name: "Downstairs Off", role: "secondary", device: "Hallway Stairwell" },
+    2370: {
+      name: "Downstairs Off",
+      role: "secondary",
+      device: "Hallway Stairwell",
+    },
     2374: { name: "Relax", role: "secondary", device: "Hallway Stairwell" },
-    2378: { name: "Downstairs Off", role: "secondary", device: "Hallway Stairwell" },
+    2378: {
+      name: "Downstairs Off",
+      role: "secondary",
+      device: "Hallway Stairwell",
+    },
     2435: { name: "Hallway", role: "primary", device: "Hallway Doorway" },
     2436: { name: "Hallway", role: "secondary", device: "Hallway Doorway" },
     2440: { name: "Relax", role: "secondary", device: "Hallway Doorway" },
     2444: { name: "Nightlight", role: "secondary", device: "Hallway Doorway" },
     2507: { name: "Relax", role: "primary", device: "Living Room Corner" },
     2508: { name: "Upstairs Off", role: "single", device: "Stairs Base" },
-    2509: { name: "Downstairs Off", role: "primary", device: "Hallway Stairwell" },
+    2509: {
+      name: "Downstairs Off",
+      role: "primary",
+      device: "Hallway Stairwell",
+    },
     2510: { name: "Nightlight", role: "primary", device: "Hallway Doorway" },
     2925: { name: "On", role: "single", device: "Hallway Table" },
     2928: { name: "Raise", role: "single", device: "Hallway Table" },
@@ -191,7 +227,9 @@ export function getZoneName(zoneId: number): string | undefined {
 }
 
 /** Look up a preset by ID (extracted from CCX BUTTON_PRESS device_id bytes 0-1) */
-export function getPresetInfo(presetId: number): { name: string; role: string; device: string } | undefined {
+export function getPresetInfo(
+  presetId: number,
+): { name: string; role: string; device: string } | undefined {
   return CCX_CONFIG.knownPresets[presetId];
 }
 

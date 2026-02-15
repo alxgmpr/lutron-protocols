@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Enumerate Lutron application notes by probing assets.lutron.com
  *
@@ -12,9 +13,9 @@
  * Safe to Ctrl-C at any time — progress is preserved.
  */
 
-import { parseArgs } from "util";
-import { resolve, dirname } from "path";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { parseArgs } from "util";
 
 const BASE_URL = "https://assets.lutron.com/a/documents";
 const TITLE_MAX_LEN = 120;
@@ -81,14 +82,19 @@ function getLastCsvId(): number | null {
 function readCursor(): number | null {
   if (!existsSync(CURSOR_PATH)) return null;
   const val = parseInt(readFileSync(CURSOR_PATH, "utf-8").trim(), 10);
-  return isNaN(val) ? null : val;
+  return Number.isNaN(val) ? null : val;
 }
 
 function writeCursor(id: number) {
   writeFileSync(CURSOR_PATH, id.toString() + "\n");
 }
 
-function appendCsvRow(id: string, url: string, title: string, sizeKB: number | null) {
+function appendCsvRow(
+  id: string,
+  url: string,
+  title: string,
+  sizeKB: number | null,
+) {
   const line = [id, url, csvEscape(title), sizeKB ?? ""].join(",") + "\n";
   appendFileSync(CSV_PATH, line);
 }
@@ -107,7 +113,9 @@ function extractPdfTitle(buf: ArrayBuffer): string | null {
   if (hexMatch) return decodeHexString(hexMatch[1]);
 
   // Try XMP metadata
-  const xmpMatch = text.match(/<dc:title>[\s\S]*?<rdf:li[^>]*>([^<]+)<\/rdf:li>/);
+  const xmpMatch = text.match(
+    /<dc:title>[\s\S]*?<rdf:li[^>]*>([^<]+)<\/rdf:li>/,
+  );
   if (xmpMatch) return xmpMatch[1].trim();
 
   return null;
@@ -137,7 +145,9 @@ function decodeHexString(hex: string): string {
   return String.fromCharCode(...bytes).trim();
 }
 
-async function checkExists(id: string): Promise<{ exists: boolean; contentLength: number | null }> {
+async function checkExists(
+  id: string,
+): Promise<{ exists: boolean; contentLength: number | null }> {
   // Small per-request jitter to avoid burst patterns
   await sleep(Math.random() * REQUEST_JITTER_MS);
   const url = `${BASE_URL}/${id}.pdf`;
@@ -192,7 +202,10 @@ async function run() {
     const cursor = readCursor();
     const lastCsvId = getLastCsvId();
     // Use whichever is further: cursor file or last CSV entry + 1
-    const resumeFrom = Math.max(cursor ?? 0, lastCsvId != null ? lastCsvId + 1 : 0);
+    const resumeFrom = Math.max(
+      cursor ?? 0,
+      lastCsvId != null ? lastCsvId + 1 : 0,
+    );
     START = Math.max(resumeFrom, requestedStart);
   }
 
@@ -208,19 +221,25 @@ async function run() {
   let checked = alreadyChecked;
   let lastPrint = 0;
 
-  console.log(`Scanning ${START.toString().padStart(6, "0")} - ${END.toString().padStart(6, "0")} (${remaining} remaining of ${fullRange} total, concurrency=${CONCURRENCY})`);
+  console.log(
+    `Scanning ${START.toString().padStart(6, "0")} - ${END.toString().padStart(6, "0")} (${remaining} remaining of ${fullRange} total, concurrency=${CONCURRENCY})`,
+  );
   console.log(`${existingCount} existing entries in CSV`);
   console.log(`Results → ${CSV_PATH} (incremental writes)`);
-  console.log(`Rate limiting: ${BATCH_DELAY_MIN_MS}-${BATCH_DELAY_MAX_MS}ms between batches, ${REQUEST_JITTER_MS}ms per-request jitter`);
+  console.log(
+    `Rate limiting: ${BATCH_DELAY_MIN_MS}-${BATCH_DELAY_MAX_MS}ms between batches, ${REQUEST_JITTER_MS}ms per-request jitter`,
+  );
   console.log();
 
   for (let batchStart = START; batchStart <= END; batchStart += CONCURRENCY) {
     const batchEnd = Math.min(batchStart + CONCURRENCY - 1, END);
     const ids = Array.from({ length: batchEnd - batchStart + 1 }, (_, i) =>
-      (batchStart + i).toString().padStart(6, "0")
+      (batchStart + i).toString().padStart(6, "0"),
     );
 
-    const results = await Promise.all(ids.map((id) => checkExists(id).then((r) => ({ id, ...r }))));
+    const results = await Promise.all(
+      ids.map((id) => checkExists(id).then((r) => ({ id, ...r }))),
+    );
 
     const hits = results.filter((r) => r.exists);
     // Stagger title fetches too
@@ -228,9 +247,11 @@ async function run() {
       hits.map(async (hit) => {
         const rawTitle = await fetchTitle(hit.id);
         const title = rawTitle ? truncate(rawTitle, TITLE_MAX_LEN) : "";
-        const sizeKB = hit.contentLength ? Math.round(hit.contentLength / 1024) : null;
+        const sizeKB = hit.contentLength
+          ? Math.round(hit.contentLength / 1024)
+          : null;
         return { id: hit.id, title, sizeKB };
-      })
+      }),
     );
 
     for (const note of notes) {
@@ -245,7 +266,9 @@ async function run() {
     const now = Date.now();
     if (now - lastPrint > 3000 || batchEnd >= END) {
       const pct = ((checked / fullRange) * 100).toFixed(1);
-      process.stderr.write(`\r  Progress: ${checked}/${fullRange} (${pct}%) — ${found} total found`);
+      process.stderr.write(
+        `\r  Progress: ${checked}/${fullRange} (${pct}%) — ${found} total found`,
+      );
       lastPrint = now;
     }
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * LEAP API Dump - Enumerate all devices, buttons, presets, and zones
  *
@@ -15,9 +16,9 @@
  *   lutron-ra3-cert.pem, lutron-ra3-key.pem, lutron-ra3-ca.pem
  */
 
-import * as tls from "tls";
 import * as fs from "fs";
 import * as path from "path";
+import * as tls from "tls";
 
 // --- CLI args ---
 
@@ -91,7 +92,7 @@ class LeapConnection {
           ca: fs.readFileSync(path.join(CERT_DIR, "lutron-ra3-ca.pem")),
           rejectUnauthorized: false,
         },
-        () => resolve()
+        () => resolve(),
       );
 
       this.socket.on("data", (data) => this.handleData(data.toString()));
@@ -166,7 +167,7 @@ class LeapConnection {
 
 function hrefId(href: string): number {
   const match = href.match(/\/(\d+)$/);
-  return match ? parseInt(match[1]) : 0;
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 function log(msg: string): void {
@@ -213,7 +214,7 @@ async function main() {
 
     // Control stations → ganged devices
     const csBody = await leap.readBody(
-      `/area/${areaId}/associatedcontrolstation`
+      `/area/${areaId}/associatedcontrolstation`,
     );
     for (const cs of csBody?.ControlStations ?? []) {
       for (const g of cs.AssociatedGangedDevices ?? []) {
@@ -268,21 +269,26 @@ async function main() {
         if (!btn?.ProgrammingModel) continue;
 
         const pmBody = await leap.readBody(
-          `/programmingmodel/${hrefId(btn.ProgrammingModel.href)}`
+          `/programmingmodel/${hrefId(btn.ProgrammingModel.href)}`,
         );
         const pm = pmBody?.ProgrammingModel;
         if (!pm) continue;
 
         // Extract presets — structure varies by PM type
-        const refs: { href: string; role: "primary" | "secondary" | "single" }[] = [];
+        const refs: {
+          href: string;
+          role: "primary" | "secondary" | "single";
+        }[] = [];
 
         const toggleProps = pm.AdvancedToggleProperties;
         if (toggleProps?.PrimaryPreset)
           refs.push({ href: toggleProps.PrimaryPreset.href, role: "primary" });
         if (toggleProps?.SecondaryPreset)
-          refs.push({ href: toggleProps.SecondaryPreset.href, role: "secondary" });
-        if (pm.Preset)
-          refs.push({ href: pm.Preset.href, role: "single" });
+          refs.push({
+            href: toggleProps.SecondaryPreset.href,
+            role: "secondary",
+          });
+        if (pm.Preset) refs.push({ href: pm.Preset.href, role: "single" });
         if (pm.Presets)
           for (const p of pm.Presets)
             refs.push({ href: p.href, role: "single" });
@@ -326,7 +332,7 @@ async function main() {
 function printHumanOutput(
   zones: ZoneInfo[],
   devices: DeviceInfo[],
-  presets: PresetMapping[]
+  presets: PresetMapping[],
 ) {
   console.log("=".repeat(90));
   console.log("LEAP System Dump");
@@ -335,7 +341,9 @@ function printHumanOutput(
   // Zones
   console.log("\n## Zones\n");
   for (const z of zones.sort((a, b) => a.id - b.id)) {
-    console.log(`  ${String(z.id).padStart(4)}: ${z.area} / ${z.name} (${z.controlType})`);
+    console.log(
+      `  ${String(z.id).padStart(4)}: ${z.area} / ${z.name} (${z.controlType})`,
+    );
   }
 
   // Devices (only those with buttons)
@@ -346,14 +354,14 @@ function printHumanOutput(
     .sort((a, b) => a.id - b.id)) {
     const displayName = d.station ? `${d.area} ${d.station}` : d.name;
     console.log(
-      `  ${String(d.id).padStart(4)}: ${displayName} (${d.type}) serial=${d.serial}`
+      `  ${String(d.id).padStart(4)}: ${displayName} (${d.type}) serial=${d.serial}`,
     );
   }
 
   // Preset → CCX Mapping
   console.log("\n## Preset → CCX Button Mapping\n");
   console.log(
-    "  Preset  CCX Bytes   Role       Button              Device                          Area"
+    "  Preset  CCX Bytes   Role       Button              Device                          Area",
   );
   console.log("  " + "-".repeat(100));
 
@@ -361,12 +369,11 @@ function printHumanOutput(
     const ccxHex = `${p.presetId.toString(16).padStart(4, "0")} EF20`;
     const name = (p.engraving ?? p.buttonName).padEnd(18);
     const role = p.presetRole.padEnd(10);
-    const device = (p.stationName
-      ? `${p.areaName} ${p.stationName}`
-      : p.deviceName
+    const device = (
+      p.stationName ? `${p.areaName} ${p.stationName}` : p.deviceName
     ).padEnd(30);
     console.log(
-      `  ${String(p.presetId).padStart(5)}  ${ccxHex}  ${role} ${name}  ${device}  ${p.areaName}`
+      `  ${String(p.presetId).padStart(5)}  ${ccxHex}  ${role} ${name}  ${device}  ${p.areaName}`,
     );
   }
 
@@ -374,7 +381,9 @@ function printHumanOutput(
   const pmTypes = new Set(presets.map((p) => p.programmingModelType));
   console.log(`\n## Summary\n`);
   console.log(`  Zones:   ${zones.length}`);
-  console.log(`  Devices: ${devices.length} (${devicesWithButtons.size} with buttons)`);
+  console.log(
+    `  Devices: ${devices.length} (${devicesWithButtons.size} with buttons)`,
+  );
   console.log(`  Presets: ${presets.length}`);
   console.log(`  PM Types: ${[...pmTypes].join(", ")}`);
 }
@@ -382,19 +391,28 @@ function printHumanOutput(
 function printJsonOutput(
   zones: ZoneInfo[],
   devices: DeviceInfo[],
-  presets: PresetMapping[]
+  presets: PresetMapping[],
 ) {
   const output = {
     timestamp: new Date().toISOString(),
     host: HOST,
     zones: Object.fromEntries(
-      zones.map((z) => [z.id, { name: z.name, controlType: z.controlType, area: z.area }])
+      zones.map((z) => [
+        z.id,
+        { name: z.name, controlType: z.controlType, area: z.area },
+      ]),
     ),
     devices: Object.fromEntries(
       devices.map((d) => [
         d.id,
-        { name: d.name, type: d.type, serial: d.serial, station: d.station, area: d.area },
-      ])
+        {
+          name: d.name,
+          type: d.type,
+          serial: d.serial,
+          station: d.station,
+          area: d.area,
+        },
+      ]),
     ),
     presets: presets.map((p) => ({
       presetId: p.presetId,
@@ -417,7 +435,7 @@ function printJsonOutput(
 function printConfigOutput(
   zones: ZoneInfo[],
   devices: DeviceInfo[],
-  presets: PresetMapping[]
+  presets: PresetMapping[],
 ) {
   console.log("// Generated by: bun run tools/leap-dump.ts --config");
   console.log(`// Date: ${new Date().toISOString()}`);
@@ -437,7 +455,9 @@ function printConfigOutput(
     .filter((d) => d.serial && d.serial < 0xffffffff)
     .sort((a, b) => a.serial - b.serial)) {
     const name = d.station ? `${d.area} ${d.station} ${d.type}` : d.name;
-    console.log(`  ${d.serial}: { name: ${JSON.stringify(name)}, leapId: ${d.id} },`);
+    console.log(
+      `  ${d.serial}: { name: ${JSON.stringify(name)}, leapId: ${d.id} },`,
+    );
   }
   console.log("},\n");
 
@@ -452,9 +472,11 @@ function printConfigOutput(
     if (seen.has(p.presetId)) continue;
     seen.add(p.presetId);
     const label = p.engraving ?? p.buttonName;
-    const device = p.stationName ? `${p.areaName} ${p.stationName}` : p.deviceName;
+    const device = p.stationName
+      ? `${p.areaName} ${p.stationName}`
+      : p.deviceName;
     console.log(
-      `  ${p.presetId}: { name: ${JSON.stringify(label)}, role: ${JSON.stringify(p.presetRole)}, device: ${JSON.stringify(device)} },`
+      `  ${p.presetId}: { name: ${JSON.stringify(label)}, role: ${JSON.stringify(p.presetRole)}, device: ${JSON.stringify(device)} },`,
     );
   }
   console.log("},");

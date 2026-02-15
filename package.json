@@ -11,6 +11,9 @@
     "cca:reliability": "bun run tools/cca-reliability.ts",
     "cca:tune-bench": "python3 tools/cca-tune-bench.py",
     "leap:dump": "bun run tools/leap-dump.ts",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome format --fix .",
     "clean": "rm -rf node_modules"
   },
   "dependencies": {
@@ -18,6 +21,7 @@
     "js-yaml": "^4.1.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.0",
     "@types/js-yaml": "^4.0.9"
   }
 }

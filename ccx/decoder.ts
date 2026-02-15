@@ -11,37 +11,37 @@
  */
 
 import { decode as cborDecode } from "cbor-x";
-import type {
-  CCXBody,
-  CCXMessage,
-  CCXPacket,
-  CCXLevelControl,
-  CCXButtonPress,
-  CCXDimHold,
-  CCXDimStep,
-  CCXAck,
-  CCXDeviceReport,
-  CCXSceneRecall,
-  CCXComponentCmd,
-  CCXStatus,
-  CCXPresence,
-  CCXUnknown,
-} from "./types";
+import { CCX_CONFIG, getPresetInfo, presetIdFromDeviceId } from "./config";
 import {
+  BodyKey,
   CCXMessageType,
   CCXMessageTypeName,
-  BodyKey,
   Level,
   levelToPercent,
 } from "./constants";
-import { CCX_CONFIG, getPresetInfo, presetIdFromDeviceId } from "./config";
+import type {
+  CCXAck,
+  CCXBody,
+  CCXButtonPress,
+  CCXComponentCmd,
+  CCXDeviceReport,
+  CCXDimHold,
+  CCXDimStep,
+  CCXLevelControl,
+  CCXMessage,
+  CCXPacket,
+  CCXPresence,
+  CCXSceneRecall,
+  CCXStatus,
+  CCXUnknown,
+} from "./types";
 
 /** Decode raw CBOR bytes into message type + body */
 function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
   const decoded = cborDecode(raw);
   if (!Array.isArray(decoded) || decoded.length < 1) {
     throw new Error(
-      `Invalid CCX message: expected CBOR array, got ${typeof decoded}`
+      `Invalid CCX message: expected CBOR array, got ${typeof decoded}`,
     );
   }
   const msgType = decoded[0] as number;
@@ -53,6 +53,8 @@ function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
 function parseLevelControl(body: CCXBody): CCXLevelControl {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const level = (inner[0] ?? 0) as number;
+  const fade = (inner[3] ?? 1) as number;
+  const delay = (inner[4] ?? 0) as number;
   const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
@@ -62,6 +64,8 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     levelPercent: levelToPercent(level),
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
+    fade,
+    delay,
     sequence,
   };
 }
@@ -71,9 +75,7 @@ function parseButtonPress(body: CCXBody): CCXButtonPress {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const rawDeviceId = inner[0];
   const deviceId =
-    rawDeviceId instanceof Uint8Array
-      ? rawDeviceId
-      : new Uint8Array(0);
+    rawDeviceId instanceof Uint8Array ? rawDeviceId : new Uint8Array(0);
   const counters = (inner[1] ?? []) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
@@ -93,9 +95,7 @@ function parseAck(body: CCXBody): CCXAck {
   const responseInner = (inner[1] ?? {}) as Record<number, unknown>;
   const rawResponse = responseInner[0];
   const response =
-    rawResponse instanceof Uint8Array
-      ? rawResponse
-      : new Uint8Array(0);
+    rawResponse instanceof Uint8Array ? rawResponse : new Uint8Array(0);
   const responseCode = response.length > 0 ? response[0] : 0;
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
@@ -112,9 +112,7 @@ function parseStatus(body: CCXBody): CCXStatus {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const rawInnerData = inner[2];
   const innerData =
-    rawInnerData instanceof Uint8Array
-      ? rawInnerData
-      : new Uint8Array(0);
+    rawInnerData instanceof Uint8Array ? rawInnerData : new Uint8Array(0);
   const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
@@ -274,7 +272,7 @@ export function decodeHex(hex: string): {
 } {
   const clean = cleanHex(hex);
   const raw = new Uint8Array(
-    clean.match(/.{1,2}/g)!.map((b) => parseInt(b, 16))
+    clean.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
   );
   return decodeCbor(raw);
 }
@@ -329,7 +327,10 @@ export function formatMessage(msg: CCXMessage): string {
       if (msg.level === Level.OFF) state = "OFF";
       else if (msg.level === Level.FULL_ON) state = "FULL_ON";
       else state = `${msg.levelPercent.toFixed(1)}%`;
-      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}, seq=${msg.sequence})`;
+      const fadeSec = msg.fade / 4;
+      const fadeStr = fadeSec !== 0.25 ? `, fade=${fadeSec}s` : "";
+      const delayStr = msg.delay > 0 ? `, delay=${msg.delay / 4}s` : "";
+      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${fadeStr}${delayStr}, seq=${msg.sequence})`;
     }
     case "BUTTON_PRESS": {
       const idHex = Array.from(msg.deviceId)
@@ -352,7 +353,8 @@ export function formatMessage(msg: CCXMessage): string {
       const dataHex = Array.from(msg.innerData)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      const preview = dataHex.length > 32 ? dataHex.slice(0, 32) + "..." : dataHex;
+      const preview =
+        dataHex.length > 32 ? dataHex.slice(0, 32) + "..." : dataHex;
       return `STATUS(device=0x${msg.deviceId.toString(16).padStart(8, "0")}, data=${preview})`;
     }
     case "DIM_HOLD": {
@@ -361,7 +363,9 @@ export function formatMessage(msg: CCXMessage): string {
         .join("");
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
-      const label = preset ? `"${preset.name}" [${preset.device}]` : `preset=${presetId}`;
+      const label = preset
+        ? `"${preset.name}" [${preset.device}]`
+        : `preset=${presetId}`;
       return `DIM_HOLD(${label}, id=${idHex}, action=${msg.action}, seq=${msg.sequence})`;
     }
     case "DIM_STEP": {
@@ -370,12 +374,16 @@ export function formatMessage(msg: CCXMessage): string {
         .join("");
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
-      const label = preset ? `"${preset.name}" [${preset.device}]` : `preset=${presetId}`;
+      const label = preset
+        ? `"${preset.name}" [${preset.device}]`
+        : `preset=${presetId}`;
       return `DIM_STEP(${label}, id=${idHex}, step=${msg.stepValue}, seq=${msg.sequence})`;
     }
     case "DEVICE_REPORT": {
       const serialName = CCX_CONFIG.knownSerials[msg.deviceSerial]?.name;
-      const serialLabel = serialName ? `"${serialName}"` : `0x${msg.deviceSerial.toString(16).padStart(8, "0")}`;
+      const serialLabel = serialName
+        ? `"${serialName}"`
+        : `0x${msg.deviceSerial.toString(16).padStart(8, "0")}`;
       return `DEVICE_REPORT(${serialLabel}, serial=${msg.deviceSerial}, group=${msg.groupId})`;
     }
     case "SCENE_RECALL":

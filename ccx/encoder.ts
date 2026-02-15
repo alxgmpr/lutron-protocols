@@ -13,7 +13,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { CCXMessageType, BodyKey, Level } from "./constants";
+import { BodyKey, CCXMessageType, Level } from "./constants";
 
 const SEQ_FILE = join(import.meta.dir, "..", ".ccx-seq");
 
@@ -25,7 +25,13 @@ function encodeHeader(major: number, value: number): number[] {
   if (value < 24) return [mt | value];
   if (value < 0x100) return [mt | 24, value];
   if (value < 0x10000) return [mt | 25, (value >> 8) & 0xff, value & 0xff];
-  return [mt | 26, (value >> 24) & 0xff, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+  return [
+    mt | 26,
+    (value >> 24) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 8) & 0xff,
+    value & 0xff,
+  ];
 }
 
 /** Encode a single CBOR value (unsigned int, array, or integer-keyed map) */
@@ -51,7 +57,10 @@ function encodeValue(val: unknown): number[] {
 }
 
 /** Encode a full CCX message: CBOR array [msgType, body] */
-export function encodeMessage(msgType: number, body: Record<number, unknown>): Buffer {
+export function encodeMessage(
+  msgType: number,
+  body: Record<number, unknown>,
+): Buffer {
   const bytes = encodeValue([msgType, body]);
   return Buffer.from(bytes);
 }
@@ -82,13 +91,35 @@ export function encodeLevelControl(opts: LevelControlOpts): Buffer {
 }
 
 /** Encode an ON command (level = 0xFEFF) */
-export function encodeOn(zoneId: number, sequence: number, fade?: number, delay?: number): Buffer {
-  return encodeLevelControl({ zoneId, level: Level.FULL_ON, sequence, fade, delay });
+export function encodeOn(
+  zoneId: number,
+  sequence: number,
+  fade?: number,
+  delay?: number,
+): Buffer {
+  return encodeLevelControl({
+    zoneId,
+    level: Level.FULL_ON,
+    sequence,
+    fade,
+    delay,
+  });
 }
 
 /** Encode an OFF command (level = 0x0000) */
-export function encodeOff(zoneId: number, sequence: number, fade?: number, delay?: number): Buffer {
-  return encodeLevelControl({ zoneId, level: Level.OFF, sequence, fade, delay });
+export function encodeOff(
+  zoneId: number,
+  sequence: number,
+  fade?: number,
+  delay?: number,
+): Buffer {
+  return encodeLevelControl({
+    zoneId,
+    level: Level.OFF,
+    sequence,
+    fade,
+    delay,
+  });
 }
 
 export interface SceneRecallOpts {
@@ -123,7 +154,9 @@ export function nextSequence(): number {
     if (existsSync(SEQ_FILE)) {
       seq = parseInt(readFileSync(SEQ_FILE, "utf-8").trim(), 10) || 0;
     }
-  } catch { /* start at 0 */ }
+  } catch {
+    /* start at 0 */
+  }
   const next = (seq + 1) & 0xff;
   writeFileSync(SEQ_FILE, String(next), "utf-8");
   return next;

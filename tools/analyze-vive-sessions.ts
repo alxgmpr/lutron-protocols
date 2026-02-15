@@ -54,7 +54,8 @@ function loadSessions(filter?: string[]): Session[] {
 
   for (const file of files) {
     const label = file.replace(".jsonl", "");
-    if (filter && filter.length > 0 && !filter.some((f) => label.includes(f))) continue;
+    if (filter && filter.length > 0 && !filter.some((f) => label.includes(f)))
+      continue;
 
     const lines = readFileSync(join(SESSIONS_DIR, file), "utf-8")
       .trim()
@@ -95,7 +96,9 @@ function parseHex(hex: string): number[] {
 // --- Commands ---
 
 function cmdOverview(sessions: Session[]) {
-  console.log(`\n=== Vive Session Overview (${sessions.length} sessions) ===\n`);
+  console.log(
+    `\n=== Vive Session Overview (${sessions.length} sessions) ===\n`,
+  );
 
   for (const session of sessions) {
     const types: Record<string, number> = {};
@@ -113,7 +116,8 @@ function cmdOverview(sessions: Session[]) {
       }
     }
 
-    const duration = maxElapsed > 0 ? ((maxElapsed - minElapsed) / 1000).toFixed(1) : "?";
+    const duration =
+      maxElapsed > 0 ? ((maxElapsed - minElapsed) / 1000).toFixed(1) : "?";
     console.log(`--- ${session.label} ---`);
     console.log(`  Packets: ${session.packets.length}  Duration: ${duration}s`);
     console.log(`  Devices: ${Array.from(devices).join(", ") || "none"}`);
@@ -121,10 +125,12 @@ function cmdOverview(sessions: Session[]) {
       `  Types:   ${Object.entries(types)
         .sort((a, b) => b[1] - a[1])
         .map(([t, c]) => `${t}(${c})`)
-        .join(" ")}`
+        .join(" ")}`,
     );
     if (session.markers.length > 0) {
-      console.log(`  Markers: ${session.markers.map((m) => `${(m.elapsed_ms / 1000).toFixed(1)}s:${m.label}`).join(", ")}`);
+      console.log(
+        `  Markers: ${session.markers.map((m) => `${(m.elapsed_ms / 1000).toFixed(1)}s:${m.label}`).join(", ")}`,
+      );
     }
     console.log();
   }
@@ -179,7 +185,10 @@ function cmdCompare(sessions: Session[]) {
     for (const p of sessions[i].packets) {
       const t = p.type || "?";
       if (!typesBySession.has(t)) {
-        typesBySession.set(t, sessions.map(() => []));
+        typesBySession.set(
+          t,
+          sessions.map(() => []),
+        );
       }
       typesBySession.get(t)![i].push(p);
     }
@@ -190,7 +199,9 @@ function cmdCompare(sessions: Session[]) {
     if (counts.every((c) => c === 0)) continue;
 
     console.log(`--- ${type} ---`);
-    console.log(`  Counts per session: ${sessions.map((s, i) => `${s.label}=${counts[i]}`).join(", ")}`);
+    console.log(
+      `  Counts per session: ${sessions.map((s, i) => `${s.label}=${counts[i]}`).join(", ")}`,
+    );
 
     // Byte-level diff for first occurrence in each session
     const firstPackets = perSession
@@ -201,8 +212,8 @@ function cmdCompare(sessions: Session[]) {
       const bytes = firstPackets.map((p) => parseHex(p.raw_hex!));
       const maxLen = Math.max(...bytes.map((b) => b.length));
 
-      let fixedBytes: number[] = [];
-      let varBytes: number[] = [];
+      const fixedBytes: number[] = [];
+      const varBytes: number[] = [];
 
       for (let i = 0; i < maxLen; i++) {
         const vals = bytes.map((b) => b[i]).filter((v) => v !== undefined);
@@ -219,9 +230,13 @@ function cmdCompare(sessions: Session[]) {
         console.log(`  Values at variable positions:`);
         for (const pos of varBytes) {
           const vals = bytes.map((b) =>
-            b[pos] !== undefined ? `0x${b[pos].toString(16).padStart(2, "0")}` : "---"
+            b[pos] !== undefined
+              ? `0x${b[pos].toString(16).padStart(2, "0")}`
+              : "---",
           );
-          console.log(`    byte[${pos.toString().padStart(2)}]: ${vals.join(" | ")}`);
+          console.log(
+            `    byte[${pos.toString().padStart(2)}]: ${vals.join(" | ")}`,
+          );
         }
       } else {
         console.log(`  All bytes identical across sessions`);
@@ -249,7 +264,7 @@ function cmdDiff(sessions: Session[]) {
 
   for (const type of allTypes) {
     const perSession = sessions.map((s) =>
-      s.packets.filter((p) => p.type === type)
+      s.packets.filter((p) => p.type === type),
     );
 
     const maxCount = Math.max(...perSession.map((a) => a.length));
@@ -260,12 +275,13 @@ function cmdDiff(sessions: Session[]) {
     for (let idx = 0; idx < Math.min(maxCount, 5); idx++) {
       const pkts = perSession
         .map((a) => a[idx])
-        .filter((p): p is PacketRecord => p !== undefined && p.raw_hex !== undefined);
+        .filter(
+          (p): p is PacketRecord => p !== undefined && p.raw_hex !== undefined,
+        );
 
       if (pkts.length < 2) continue;
 
       const bytes = pkts.map((p) => parseHex(p.raw_hex!));
-      const maxLen = Math.max(...bytes.map((b) => b.length));
 
       console.log(`  --- Instance #${idx} ---`);
 
@@ -280,7 +296,9 @@ function cmdDiff(sessions: Session[]) {
           }
           return ` ${hex} `;
         });
-        console.log(`    ${sessions[sessionIdx].label.padEnd(20)} ${hexParts.join("")}`);
+        console.log(
+          `    ${sessions[sessionIdx].label.padEnd(20)} ${hexParts.join("")}`,
+        );
       }
     }
     console.log();
@@ -292,8 +310,12 @@ function cmdHandshake(sessions: Session[]) {
 
   // Vive-relevant packet types
   const pairingTypes = new Set([
-    "VIVE_BEACON", "VIVE_DEVICE_REQ", "VIVE_ACCEPT",
-    "PAIRING_B9", "PAIRING_B1", "PAIRING_B2",
+    "VIVE_BEACON",
+    "VIVE_DEVICE_REQ",
+    "VIVE_ACCEPT",
+    "PAIRING_B9",
+    "PAIRING_B1",
+    "PAIRING_B2",
   ]);
 
   for (const session of sessions) {
@@ -325,7 +347,7 @@ function cmdHandshake(sessions: Session[]) {
       const dir = p.direction === "tx" ? "TX" : "RX";
       const deltaStr = delta > 0 ? `+${delta}ms` : "";
       console.log(
-        `  ${(elapsed / 1000).toFixed(3).padStart(8)}s ${deltaStr.padStart(8)} ${dir} ${(p.type || "?").padEnd(18)} dev:${(p.device_id || "???").padEnd(10)} ${p.raw_hex || ""}`
+        `  ${(elapsed / 1000).toFixed(3).padStart(8)}s ${deltaStr.padStart(8)} ${dir} ${(p.type || "?").padEnd(18)} dev:${(p.device_id || "???").padEnd(10)} ${p.raw_hex || ""}`,
       );
     }
     console.log();
@@ -341,7 +363,9 @@ const sessions = loadSessions(sessionFilters);
 
 if (sessions.length === 0) {
   console.log(`No sessions found in ${SESSIONS_DIR}`);
-  console.log("Record some sessions first with: bun run tools/record-vive-sse.ts <label>");
+  console.log(
+    "Record some sessions first with: bun run tools/record-vive-sse.ts <label>",
+  );
   process.exit(1);
 }
 
