@@ -108,6 +108,7 @@ void stream_send_ccx_packet(const uint8_t *data, size_t len)
     item.flags = STREAM_FLAG_CCX;
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
+    item.timestamp_ms = HAL_GetTick();
 
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
