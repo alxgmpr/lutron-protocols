@@ -4,10 +4,51 @@
 
 meta:
   name: "Lutron Clear Connect Type A"
-  version: "1.0.0"
-  description: "RF protocol for RadioRA3, Homeworks QSX, Caseta Pro"
+  version: "1.1.0"
+  description: "RF protocol for RadioRA3, Homeworks QSX, Caseta Pro, and Vive"
+  ecosystems:
+    CASETA: { description: "Consumer-grade, bridge-based" }
+    RA3: { description: "Pro-grade, RadioRA3 / Homeworks QSX" }
+    VIVE: { description: "Commercial-grade, hub-based" }
+    HOMEWORKS: { description: "Legacy/High-end Homeworks" }
 
-# Device ID Structure
+# ID Ranges and Patterns
+id_schemas:
+  PICO:
+    pattern: "XX XX XX XX"
+    endian: big
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
+    description: "Static hardware ID printed on device"
+  CASETA_LOAD:
+    pattern: "06 [Subnet] [Suffix]"
+    endian: little
+    ecosystems: [CASETA]
+    description: "Assigned load ID. Suffix (byte 5) is typically 0x80 for primary load."
+  RA3_SUBNET:
+    pattern: "00 [Subnet] [Suffix]"
+    endian: little
+    ecosystems: [RA3, HOMEWORKS]
+    description: "Logical area address. Suffix (byte 5) is typically 0xA1 for integration."
+  VIVE_HUB:
+    pattern: "[Hub3] [Hub2] [Hub1] [Zone]"
+    endian: mixed
+    ecosystems: [VIVE]
+    description: "Vive hub-centric addressing"
+
+# Sequence Byte Analysis (Byte 1)
+# 
+# Sequence numbers typically increment by 6 (0x06).
+# However, the byte appears to be bit-fielded:
+#   bits 0-2: May encode retransmission index or repeater count
+#   bits 3-7: Primary rolling sequence counter
+sequence_analysis:
+  increment: 6
+  wrap: 0x48
+  bit_fields:
+    repeater_index: { mask: 0x07, description: "Low 3 bits often vary across repeaters" }
+    counter: { mask: 0xF8, description: "High 5 bits act as the rolling counter" }
+
+# RF Physical Layer
 #
 # Device IDs are 32-bit values with specific structure depending on device type:
 #
@@ -178,6 +219,7 @@ packet_types:
     value: 0x88
     length: 24
     category: BUTTON
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
     description: "Button press, group A"
     device_id_endian: big
     fields:
@@ -194,6 +236,7 @@ packet_types:
     value: 0x89
     length: 24
     category: BUTTON
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
     description: "Button release, group A"
     device_id_endian: big
     fields:
@@ -211,18 +254,37 @@ packet_types:
     value: 0x8A
     length: 24
     category: BUTTON
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
     description: "Button press, group B"
     device_id_endian: big
-    inherits: BTN_PRESS_A
+    fields:
+      - { name: type,      offset: 0,  size: 1, format: hex }
+      - { name: sequence,  offset: 1,  size: 1, format: decimal }
+      - { name: device_id, offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,  offset: 6,  size: 1, format: hex, description: "Always 0x21" }
+      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for press" }
+      - { name: button,    offset: 10, size: 1, format: button }
+      - { name: action,    offset: 11, size: 1, format: action }
+      - { name: crc,       offset: 22, size: 2, format: hex }
     # Legacy alias: BTN_SHORT_B
 
   BTN_RELEASE_B:
     value: 0x8B
     length: 24
     category: BUTTON
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
     description: "Button release, group B"
     device_id_endian: big
-    inherits: BTN_RELEASE_A
+    fields:
+      - { name: type,          offset: 0,  size: 1, format: hex }
+      - { name: sequence,      offset: 1,  size: 1, format: decimal }
+      - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,      offset: 6,  size: 1, format: hex }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for release" }
+      - { name: button,        offset: 10, size: 1, format: button }
+      - { name: action,        offset: 11, size: 1, format: action }
+      - { name: device_repeat, offset: 12, size: 4, format: device_id_be }
+      - { name: crc,           offset: 22, size: 2, format: hex }
     # Legacy alias: BTN_LONG_B
 
   # State report packets (24 bytes)
@@ -230,6 +292,7 @@ packet_types:
     value: 0x81
     length: 24
     category: STATE
+    ecosystems: [CASETA, RA3, HOMEWORKS]
     description: "State report (type 81)"
     device_id_endian: little
     fields:
@@ -245,6 +308,7 @@ packet_types:
     value: 0x82
     length: 24
     category: STATE
+    ecosystems: [CASETA, RA3, HOMEWORKS]
     description: "State report (type 82)"
     device_id_endian: little
     inherits: STATE_RPT_81
@@ -253,6 +317,7 @@ packet_types:
     value: 0x83
     length: 24
     category: STATE
+    ecosystems: [CASETA, RA3, HOMEWORKS]
     description: "State report (type 83)"
     device_id_endian: little
     inherits: STATE_RPT_81
@@ -262,6 +327,7 @@ packet_types:
     value: 0x80
     length: 24
     category: STATE
+    ecosystems: [CASETA, RA3]
     description: "Dimmer state report (pairing phase)"
     device_id_endian: little
     fields:
@@ -276,6 +342,7 @@ packet_types:
     value: 0xA1
     length: 24
     category: CONFIG
+    ecosystems: [CASETA, RA3]
     description: "Configuration packet (pairing)"
     device_id_endian: little
     fields:
@@ -292,6 +359,7 @@ packet_types:
     value: 0xA2
     length: 24
     category: CONFIG
+    ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
     description: "Set level command"
     device_id_endian: little
     fields:
@@ -309,6 +377,7 @@ packet_types:
     value: 0x91
     length: 24
     category: BEACON
+    ecosystems: [CASETA, RA3]
     description: "Pairing beacon"
     device_id_endian: big
     fields:
@@ -324,6 +393,7 @@ packet_types:
     value: 0x92
     length: 24
     category: BEACON
+    ecosystems: [CASETA, RA3]
     description: "Beacon stop"
     device_id_endian: big
     inherits: BEACON_91
@@ -332,6 +402,7 @@ packet_types:
     value: 0x93
     length: 24
     category: BEACON
+    ecosystems: [CASETA, RA3]
     description: "Initial pairing beacon"
     device_id_endian: big
     inherits: BEACON_91
@@ -342,6 +413,7 @@ packet_types:
     value: 0xB0
     length: 53
     category: PAIRING
+    ecosystems: [CASETA, RA3]
     description: "Dimmer discovery (announces hardware ID to bridge)"
     device_id_endian: big
     fields:
@@ -361,7 +433,8 @@ packet_types:
     value: 0xB8
     length: 53
     category: PAIRING
-    description: "Scene Pico pairing (bridge-only)"
+    ecosystems: [CASETA, RA3, VIVE]
+    description: "Device pairing request (Vive) / bridge-only pairing (pico)"
     device_id_endian: big
     fields:
       - { name: type,        offset: 0,  size: 1, format: hex }
@@ -380,7 +453,8 @@ packet_types:
     value: 0xB9
     length: 53
     category: PAIRING
-    description: "Direct-pair Pico pairing"
+    ecosystems: [CASETA, RA3, VIVE]
+    description: "Direct-pair capable / Vive beacon"
     device_id_endian: big
     inherits: PAIR_B8
 
@@ -388,7 +462,8 @@ packet_types:
     value: 0xBA
     length: 53
     category: PAIRING
-    description: "Scene Pico pairing variant"
+    ecosystems: [CASETA, RA3, VIVE]
+    description: "Bridge-only pairing (pico) / Vive accept"
     device_id_endian: big
     inherits: PAIR_B8
 
@@ -396,7 +471,8 @@ packet_types:
     value: 0xBB
     length: 53
     category: PAIRING
-    description: "Direct-pair Pico pairing variant"
+    ecosystems: [CASETA, RA3, VIVE]
+    description: "Direct-pair capable"
     device_id_endian: big
     inherits: PAIR_B8
 

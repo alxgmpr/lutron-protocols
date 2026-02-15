@@ -3,26 +3,21 @@
   "private": true,
   "version": "1.0.0",
   "packageManager": "npm@11.6.1",
-  "workspaces": [
-    "web",
-    "backend"
-  ],
   "scripts": {
-    "predev": "(lsof -ti :5001 | xargs kill -9; lsof -ti :9433 | xargs kill -9; lsof -ti :5173 | xargs kill -9) 2>/dev/null || true",
-    "dev": "concurrently -n backend,web,ccx -c blue,green,magenta \"npm run dev -w backend\" \"npm run dev -w web\" \"bun run tools/ccx-sniffer.ts --live --relay\"",
-    "build": "npm run build -w web",
-    "test": "npm run test -w web",
+    "codegen": "bun run tools/codegen.ts",
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "ccx:send": "bun run tools/ccx-send.ts",
+    "cca:reliability": "bun run tools/cca-reliability.ts",
+    "cca:tune-bench": "python3 tools/cca-tune-bench.py",
     "leap:dump": "bun run tools/leap-dump.ts",
-    "clean": "rm -rf node_modules web/node_modules backend/node_modules"
+    "clean": "rm -rf node_modules"
   },
   "dependencies": {
-    "cbor-x": "^1"
+    "cbor-x": "^1",
+    "js-yaml": "^4.1.0"
   },
   "devDependencies": {
-    "concurrently": "^9",
-    "shadcn": "^3.8.3"
+    "@types/js-yaml": "^4.0.9"
   }
 }

@@ -1,34 +1,91 @@
 /**
  * Auto-generated from protocol/cca.yaml
- * DO NOT EDIT - regenerate with: cca codegen
+ * DO NOT EDIT - regenerate with: npm run codegen
  *
- * Lutron Clear Connect Type A v1.0.0
+ * Lutron Clear Connect Type A v1.1.0
  */
 
-/** RF physical layer constants */
+export const ECOSYSTEMS = {
+  "CASETA": {
+    "description": "Consumer-grade, bridge-based"
+  },
+  "RA3": {
+    "description": "Pro-grade, RadioRA3 / Homeworks QSX"
+  },
+  "VIVE": {
+    "description": "Commercial-grade, hub-based"
+  },
+  "HOMEWORKS": {
+    "description": "Legacy/High-end Homeworks"
+  }
+} as const;
+
+export const ID_SCHEMAS = {
+  "PICO": {
+    "pattern": "XX XX XX XX",
+    "endian": "big",
+    "ecosystems": [
+      "CASETA",
+      "RA3",
+      "VIVE",
+      "HOMEWORKS"
+    ],
+    "description": "Static hardware ID printed on device"
+  },
+  "CASETA_LOAD": {
+    "pattern": "06 [Subnet] [Suffix]",
+    "endian": "little",
+    "ecosystems": [
+      "CASETA"
+    ],
+    "description": "Assigned load ID. Suffix (byte 5) is typically 0x80 for primary load."
+  },
+  "RA3_SUBNET": {
+    "pattern": "00 [Subnet] [Suffix]",
+    "endian": "little",
+    "ecosystems": [
+      "RA3",
+      "HOMEWORKS"
+    ],
+    "description": "Logical area address. Suffix (byte 5) is typically 0xA1 for integration."
+  },
+  "VIVE_HUB": {
+    "pattern": "[Hub3] [Hub2] [Hub1] [Zone]",
+    "endian": "mixed",
+    "ecosystems": [
+      "VIVE"
+    ],
+    "description": "Vive hub-centric addressing"
+  }
+} as const;
+
+/** rf constants */
 export const RF = {
   FREQUENCY_HZ: 433602844,
   DEVIATION_HZ: 41200,
   BAUD_RATE: 62484.7,
+  MODULATION: "2-FSK",
+  ENCODING: "N81",
 } as const;
 
-/** CRC configuration */
+/** crc constants */
 export const CRC = {
-  POLYNOMIAL: 0xCA0F,
+  POLYNOMIAL: 51727,
   WIDTH: 16,
-  INITIAL: 0x0000,
+  INITIAL: 0,
+  BYTE_ORDER: "big_endian",
 } as const;
 
-/** Packet framing */
+/** framing constants */
 export const FRAMING = {
   PREAMBLE_BITS: 32,
-  PREAMBLE_PATTERN: 0xAAAAAAAA,
-  SYNC_BYTE: 0xFF,
-  PREFIX: [0xFA, 0xDE],
+  PREAMBLE_PATTERN: 2863311530,
+  SYNC_BYTE: 255,
+  PREFIX: [250,222],
   TRAILING_BITS: 16,
 } as const;
 
-/** Timing constants (milliseconds) */
+/** timing constants */
 export const TIMING = {
   BUTTON_REPEAT_MS: 70,
   BEACON_INTERVAL_MS: 65,
@@ -38,174 +95,183 @@ export const TIMING = {
   LED_CONFIG_INTERVAL_MS: 75,
 } as const;
 
-/** Sequence number behavior */
+/** sequence constants */
 export const SEQUENCE = {
   INCREMENT: 6,
-  WRAP: 0x48,
+  WRAP: 72,
 } as const;
 
-/** Packet lengths */
+/** lengths constants */
 export const LENGTHS = {
   STANDARD: 24,
   PAIRING: 53,
 } as const;
 
-/** Button action codes */
-export const Action = {
-  /** Continuous hold for dimming */
-  HOLD: 0x02,
-  PRESS: 0x00,
-  RELEASE: 0x01,
-  /** Save favorite/scene */
-  SAVE: 0x03,
-} as const;
-
-export type Action = typeof Action[keyof typeof Action];
-
-export const ActionNames: Record<Action, string> = {
-  [0x02]: 'HOLD',
-  [0x00]: 'PRESS',
-  [0x01]: 'RELEASE',
-  [0x03]: 'SAVE',
-};
-
 /** Button code values */
 export const Button = {
-  /** 5-button FAV / middle */
-  FAVORITE: 0x03,
-  /** 5-button LOWER */
-  LOWER: 0x06,
-  /** 5-button OFF / bottom */
-  OFF: 0x04,
   /** 5-button ON / top */
-  ON: 0x02,
+  ON: 2,
+  /** 5-button FAV / middle */
+  FAVORITE: 3,
+  /** 5-button OFF / bottom */
+  OFF: 4,
   /** 5-button RAISE */
-  RAISE: 0x05,
-  /** Reset/unpair */
-  RESET: 0xFF,
-  /** 4-button top */
-  SCENE1: 0x0B,
-  /** 4-button second */
-  SCENE2: 0x0A,
-  /** 4-button third */
-  SCENE3: 0x09,
+  RAISE: 5,
+  /** 5-button LOWER */
+  LOWER: 6,
   /** 4-button bottom */
-  SCENE4: 0x08,
+  SCENE4: 8,
+  /** 4-button third */
+  SCENE3: 9,
+  /** 4-button second */
+  SCENE2: 10,
+  /** 4-button top */
+  SCENE1: 11,
+  /** Reset/unpair */
+  RESET: 255,
 } as const;
 
 export type Button = typeof Button[keyof typeof Button];
 
-export const ButtonNames: Record<Button, string> = {
-  [0x03]: 'FAVORITE',
-  [0x06]: 'LOWER',
-  [0x04]: 'OFF',
-  [0x02]: 'ON',
-  [0x05]: 'RAISE',
-  [0xFF]: 'RESET',
-  [0x0B]: 'SCENE1',
-  [0x0A]: 'SCENE2',
-  [0x09]: 'SCENE3',
-  [0x08]: 'SCENE4',
+export const ButtonNames: Record<number, string> = {
+  [2]: 'ON',
+  [3]: 'FAVORITE',
+  [4]: 'OFF',
+  [5]: 'RAISE',
+  [6]: 'LOWER',
+  [8]: 'SCENE4',
+  [9]: 'SCENE3',
+  [10]: 'SCENE2',
+  [11]: 'SCENE1',
+  [255]: 'RESET',
+};
+
+/** Button action codes */
+export const Action = {
+  PRESS: 0,
+  RELEASE: 1,
+  /** Continuous hold for dimming */
+  HOLD: 2,
+  /** Save favorite/scene */
+  SAVE: 3,
+} as const;
+
+export type Action = typeof Action[keyof typeof Action];
+
+export const ActionNames: Record<number, string> = {
+  [0]: 'PRESS',
+  [1]: 'RELEASE',
+  [2]: 'HOLD',
+  [3]: 'SAVE',
 };
 
 /** Packet categories for filtering */
 export const Category = {
+  /** Button press/release from Pico */
+  BUTTON: 'BUTTON',
+  /** Dimmer/switch state reports */
+  STATE: 'STATE',
+  /** Pairing beacons */
+  BEACON: 'BEACON',
+  /** Pairing announcements */
+  PAIRING: 'PAIRING',
+  /** Device configuration */
+  CONFIG: 'CONFIG',
+  /** Pairing responses */
+  HANDSHAKE: 'HANDSHAKE',
 } as const;
 
 export type Category = typeof Category[keyof typeof Category];
 
-export const CategoryNames: Record<Category, string> = {
-};
-
 /** Device class codes (byte 28 in pairing) */
 export const DeviceClass = {
-  DIMMER: 0x04,
-  FAN: 0x06,
-  KEYPAD: 0x0B,
-  SHADE: 0x0A,
-  SWITCH: 0x05,
+  DIMMER: 4,
+  SWITCH: 5,
+  FAN: 6,
+  SHADE: 10,
+  KEYPAD: 11,
 } as const;
 
 export type DeviceClass = typeof DeviceClass[keyof typeof DeviceClass];
 
-export const DeviceClassNames: Record<DeviceClass, string> = {
-  [0x04]: 'DIMMER',
-  [0x06]: 'FAN',
-  [0x0B]: 'KEYPAD',
-  [0x0A]: 'SHADE',
-  [0x05]: 'SWITCH',
+export const DeviceClassNames: Record<number, string> = {
+  [4]: 'DIMMER',
+  [5]: 'SWITCH',
+  [6]: 'FAN',
+  [10]: 'SHADE',
+  [11]: 'KEYPAD',
 };
 
 /** Packet type codes */
 export const PacketType = {
-  /** Pairing beacon */
-  BEACON_91: 0x91,
-  /** Beacon stop */
-  BEACON_92: 0x92,
-  /** Initial pairing beacon */
-  BEACON_93: 0x93,
-  /** Button press, group A */
-  BTN_PRESS_A: 0x88,
-  /** Button press, group B */
-  BTN_PRESS_B: 0x8A,
-  /** Button release, group A */
-  BTN_RELEASE_A: 0x89,
-  /** Button release, group B */
-  BTN_RELEASE_B: 0x8B,
-  /** Configuration packet (pairing) */
-  CONFIG_A1: 0xA1,
-  /** Handshake round 1 (dimmer) */
-  HS_C1: 0xC1,
-  /** Handshake round 1 (bridge) */
-  HS_C2: 0xC2,
-  /** Handshake round 2 (dimmer) */
-  HS_C7: 0xC7,
-  /** Handshake round 2 (bridge) */
-  HS_C8: 0xC8,
-  /** Handshake round 3 (dimmer) */
-  HS_CD: 0xCD,
-  /** Handshake round 3 (bridge) */
-  HS_CE: 0xCE,
-  /** Handshake round 4 (dimmer) */
-  HS_D3: 0xD3,
-  /** Handshake round 4 (bridge) */
-  HS_D4: 0xD4,
-  /** Handshake round 5 (dimmer) */
-  HS_D9: 0xD9,
-  /** Handshake round 5 (bridge) */
-  HS_DA: 0xDA,
-  /** Handshake round 6 (dimmer) */
-  HS_DF: 0xDF,
-  /** Handshake round 6 (bridge) */
-  HS_E0: 0xE0,
-  /** LED configuration (derived from STATE_RPT format 0x0A) */
-  LED_CONFIG: 0xF2,
-  /** Dimmer discovery (announces hardware ID to bridge) */
-  PAIR_B0: 0xB0,
-  /** Scene Pico pairing (bridge-only) */
-  PAIR_B8: 0xB8,
-  /** Direct-pair Pico pairing */
-  PAIR_B9: 0xB9,
-  /** Scene Pico pairing variant */
-  PAIR_BA: 0xBA,
-  /** Direct-pair Pico pairing variant */
-  PAIR_BB: 0xBB,
-  /** Pairing response */
-  PAIR_RESP_C0: 0xC0,
-  /** Set level command */
-  SET_LEVEL: 0xA2,
   /** Dimmer state report (pairing phase) */
-  STATE_80: 0x80,
+  STATE_80: 128,
   /** State report (type 81) */
-  STATE_RPT_81: 0x81,
+  STATE_RPT_81: 129,
   /** State report (type 82) */
-  STATE_RPT_82: 0x82,
+  STATE_RPT_82: 130,
   /** State report (type 83) */
-  STATE_RPT_83: 0x83,
+  STATE_RPT_83: 131,
+  /** Button press, group A */
+  BTN_PRESS_A: 136,
+  /** Button release, group A */
+  BTN_RELEASE_A: 137,
+  /** Button press, group B */
+  BTN_PRESS_B: 138,
+  /** Button release, group B */
+  BTN_RELEASE_B: 139,
+  /** Pairing beacon */
+  BEACON_91: 145,
+  /** Beacon stop */
+  BEACON_92: 146,
+  /** Initial pairing beacon */
+  BEACON_93: 147,
+  /** Configuration packet (pairing) */
+  CONFIG_A1: 161,
+  /** Set level command */
+  SET_LEVEL: 162,
+  /** Dimmer discovery (announces hardware ID to bridge) */
+  PAIR_B0: 176,
+  /** Device pairing request (Vive) / bridge-only pairing (pico) */
+  PAIR_B8: 184,
+  /** Direct-pair capable / Vive beacon */
+  PAIR_B9: 185,
+  /** Bridge-only pairing (pico) / Vive accept */
+  PAIR_BA: 186,
+  /** Direct-pair capable */
+  PAIR_BB: 187,
+  /** Pairing response */
+  PAIR_RESP_C0: 192,
+  /** Handshake round 1 (dimmer) */
+  HS_C1: 193,
+  /** Handshake round 1 (bridge) */
+  HS_C2: 194,
+  /** Handshake round 2 (dimmer) */
+  HS_C7: 199,
+  /** Handshake round 2 (bridge) */
+  HS_C8: 200,
+  /** Handshake round 3 (dimmer) */
+  HS_CD: 205,
+  /** Handshake round 3 (bridge) */
+  HS_CE: 206,
+  /** Handshake round 4 (dimmer) */
+  HS_D3: 211,
+  /** Handshake round 4 (bridge) */
+  HS_D4: 212,
+  /** Handshake round 5 (dimmer) */
+  HS_D9: 217,
+  /** Handshake round 5 (bridge) */
+  HS_DA: 218,
+  /** Handshake round 6 (dimmer) */
+  HS_DF: 223,
+  /** Handshake round 6 (bridge) */
+  HS_E0: 224,
   /** Unpair command (derived from STATE_RPT format 0x0C) */
-  UNPAIR: 0xF0,
+  UNPAIR: 240,
   /** Unpair preparation (derived from STATE_RPT format 0x09) */
-  UNPAIR_PREP: 0xF1,
+  UNPAIR_PREP: 241,
+  /** LED configuration (derived from STATE_RPT format 0x0A) */
+  LED_CONFIG: 242,
 } as const;
 
 export type PacketType = typeof PacketType[keyof typeof PacketType];
@@ -217,280 +283,315 @@ export interface PacketTypeInfo {
   description: string;
   usesBigEndianDeviceId: boolean;
   isVirtual: boolean;
+  ecosystems: string[];
 }
 
 export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
-  [0x91]: {
-    name: 'BEACON_91',
-    length: 24,
-    category: 'BEACON',
-    description: 'Pairing beacon',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x92]: {
-    name: 'BEACON_92',
-    length: 24,
-    category: 'BEACON',
-    description: 'Beacon stop',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x93]: {
-    name: 'BEACON_93',
-    length: 24,
-    category: 'BEACON',
-    description: 'Initial pairing beacon',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x88]: {
-    name: 'BTN_PRESS_A',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button press, group A',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x8A]: {
-    name: 'BTN_PRESS_B',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button press, group B',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x89]: {
-    name: 'BTN_RELEASE_A',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button release, group A',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0x8B]: {
-    name: 'BTN_RELEASE_B',
-    length: 24,
-    category: 'BUTTON',
-    description: 'Button release, group B',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xA1]: {
-    name: 'CONFIG_A1',
-    length: 24,
-    category: 'CONFIG',
-    description: 'Configuration packet (pairing)',
-    usesBigEndianDeviceId: false,
-    isVirtual: false,
-  },
-  [0xC1]: {
-    name: 'HS_C1',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 1 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC2]: {
-    name: 'HS_C2',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 1 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC7]: {
-    name: 'HS_C7',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 2 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC8]: {
-    name: 'HS_C8',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 2 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xCD]: {
-    name: 'HS_CD',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 3 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xCE]: {
-    name: 'HS_CE',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 3 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xD3]: {
-    name: 'HS_D3',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 4 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xD4]: {
-    name: 'HS_D4',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 4 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xD9]: {
-    name: 'HS_D9',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 5 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xDA]: {
-    name: 'HS_DA',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 5 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xDF]: {
-    name: 'HS_DF',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 6 (dimmer)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xE0]: {
-    name: 'HS_E0',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Handshake round 6 (bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xF2]: {
-    name: 'LED_CONFIG',
-    length: 24,
-    category: 'CONFIG',
-    description: 'LED configuration (derived from STATE_RPT format 0x0A)',
-    usesBigEndianDeviceId: false,
-    isVirtual: false,
-  },
-  [0xB0]: {
-    name: 'PAIR_B0',
-    length: 53,
-    category: 'PAIRING',
-    description: 'Dimmer discovery (announces hardware ID to bridge)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xB8]: {
-    name: 'PAIR_B8',
-    length: 53,
-    category: 'PAIRING',
-    description: 'Scene Pico pairing (bridge-only)',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xB9]: {
-    name: 'PAIR_B9',
-    length: 53,
-    category: 'PAIRING',
-    description: 'Direct-pair Pico pairing',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xBA]: {
-    name: 'PAIR_BA',
-    length: 53,
-    category: 'PAIRING',
-    description: 'Scene Pico pairing variant',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xBB]: {
-    name: 'PAIR_BB',
-    length: 53,
-    category: 'PAIRING',
-    description: 'Direct-pair Pico pairing variant',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xC0]: {
-    name: 'PAIR_RESP_C0',
-    length: 24,
-    category: 'HANDSHAKE',
-    description: 'Pairing response',
-    usesBigEndianDeviceId: true,
-    isVirtual: false,
-  },
-  [0xA2]: {
-    name: 'SET_LEVEL',
-    length: 24,
-    category: 'CONFIG',
-    description: 'Set level command',
-    usesBigEndianDeviceId: false,
-    isVirtual: false,
-  },
-  [0x80]: {
+  [128]: {
     name: 'STATE_80',
     length: 24,
     category: 'STATE',
     description: 'Dimmer state report (pairing phase)',
     usesBigEndianDeviceId: false,
     isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
   },
-  [0x81]: {
+  [129]: {
     name: 'STATE_RPT_81',
     length: 24,
     category: 'STATE',
     description: 'State report (type 81)',
     usesBigEndianDeviceId: false,
     isVirtual: false,
+    ecosystems: ["CASETA","RA3","HOMEWORKS"],
   },
-  [0x82]: {
+  [130]: {
     name: 'STATE_RPT_82',
     length: 24,
     category: 'STATE',
     description: 'State report (type 82)',
     usesBigEndianDeviceId: false,
     isVirtual: false,
+    ecosystems: ["CASETA","RA3","HOMEWORKS"],
   },
-  [0x83]: {
+  [131]: {
     name: 'STATE_RPT_83',
     length: 24,
     category: 'STATE',
     description: 'State report (type 83)',
     usesBigEndianDeviceId: false,
     isVirtual: false,
+    ecosystems: ["CASETA","RA3","HOMEWORKS"],
   },
-  [0xF0]: {
+  [136]: {
+    name: 'BTN_PRESS_A',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button press, group A',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
+  },
+  [137]: {
+    name: 'BTN_RELEASE_A',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button release, group A',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
+  },
+  [138]: {
+    name: 'BTN_PRESS_B',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button press, group B',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
+  },
+  [139]: {
+    name: 'BTN_RELEASE_B',
+    length: 24,
+    category: 'BUTTON',
+    description: 'Button release, group B',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
+  },
+  [145]: {
+    name: 'BEACON_91',
+    length: 24,
+    category: 'BEACON',
+    description: 'Pairing beacon',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
+  },
+  [146]: {
+    name: 'BEACON_92',
+    length: 24,
+    category: 'BEACON',
+    description: 'Beacon stop',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
+  },
+  [147]: {
+    name: 'BEACON_93',
+    length: 24,
+    category: 'BEACON',
+    description: 'Initial pairing beacon',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
+  },
+  [161]: {
+    name: 'CONFIG_A1',
+    length: 24,
+    category: 'CONFIG',
+    description: 'Configuration packet (pairing)',
+    usesBigEndianDeviceId: false,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
+  },
+  [162]: {
+    name: 'SET_LEVEL',
+    length: 24,
+    category: 'CONFIG',
+    description: 'Set level command',
+    usesBigEndianDeviceId: false,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
+  },
+  [176]: {
+    name: 'PAIR_B0',
+    length: 53,
+    category: 'PAIRING',
+    description: 'Dimmer discovery (announces hardware ID to bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3"],
+  },
+  [184]: {
+    name: 'PAIR_B8',
+    length: 53,
+    category: 'PAIRING',
+    description: 'Device pairing request (Vive) / bridge-only pairing (pico)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE"],
+  },
+  [185]: {
+    name: 'PAIR_B9',
+    length: 53,
+    category: 'PAIRING',
+    description: 'Direct-pair capable / Vive beacon',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE"],
+  },
+  [186]: {
+    name: 'PAIR_BA',
+    length: 53,
+    category: 'PAIRING',
+    description: 'Bridge-only pairing (pico) / Vive accept',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE"],
+  },
+  [187]: {
+    name: 'PAIR_BB',
+    length: 53,
+    category: 'PAIRING',
+    description: 'Direct-pair capable',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: ["CASETA","RA3","VIVE"],
+  },
+  [192]: {
+    name: 'PAIR_RESP_C0',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Pairing response',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [193]: {
+    name: 'HS_C1',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 1 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [194]: {
+    name: 'HS_C2',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 1 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [199]: {
+    name: 'HS_C7',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 2 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [200]: {
+    name: 'HS_C8',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 2 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [205]: {
+    name: 'HS_CD',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 3 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [206]: {
+    name: 'HS_CE',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 3 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [211]: {
+    name: 'HS_D3',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 4 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [212]: {
+    name: 'HS_D4',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 4 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [217]: {
+    name: 'HS_D9',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 5 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [218]: {
+    name: 'HS_DA',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 5 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [223]: {
+    name: 'HS_DF',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 6 (dimmer)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [224]: {
+    name: 'HS_E0',
+    length: 24,
+    category: 'HANDSHAKE',
+    description: 'Handshake round 6 (bridge)',
+    usesBigEndianDeviceId: true,
+    isVirtual: false,
+    ecosystems: [],
+  },
+  [240]: {
     name: 'UNPAIR',
     length: 24,
     category: 'CONFIG',
     description: 'Unpair command (derived from STATE_RPT format 0x0C)',
     usesBigEndianDeviceId: false,
-    isVirtual: false,
+    isVirtual: true,
+    ecosystems: [],
   },
-  [0xF1]: {
+  [241]: {
     name: 'UNPAIR_PREP',
     length: 24,
     category: 'CONFIG',
     description: 'Unpair preparation (derived from STATE_RPT format 0x09)',
     usesBigEndianDeviceId: false,
-    isVirtual: false,
+    isVirtual: true,
+    ecosystems: [],
+  },
+  [242]: {
+    name: 'LED_CONFIG',
+    length: 24,
+    category: 'CONFIG',
+    description: 'LED configuration (derived from STATE_RPT format 0x0A)',
+    usesBigEndianDeviceId: false,
+    isVirtual: true,
+    ecosystems: [],
   },
 };
 
@@ -507,51 +608,6 @@ export interface FieldDef {
 
 /** Field definitions by packet type */
 export const PacketFields: Record<string, FieldDef[]> = {
-  'BEACON_91': [
-    {
-      name: 'type',
-      offset: 0,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'sequence',
-      offset: 1,
-      size: 1,
-      format: 'decimal',
-    },
-    {
-      name: 'load_id',
-      offset: 2,
-      size: 4,
-      format: 'device_id_be',
-    },
-    {
-      name: 'protocol',
-      offset: 6,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'format',
-      offset: 7,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'broadcast',
-      offset: 9,
-      size: 5,
-      format: 'hex',
-      description: 'FF FF FF FF FF',
-    },
-    {
-      name: 'crc',
-      offset: 22,
-      size: 2,
-      format: 'hex',
-    },
-  ],
   'BTN_PRESS_A': [
     {
       name: 'type',
@@ -661,6 +717,191 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
+  'BTN_PRESS_B': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'device_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+      description: 'Always 0x21',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+      description: '0x04 for press',
+    },
+    {
+      name: 'button',
+      offset: 10,
+      size: 1,
+      format: 'button',
+    },
+    {
+      name: 'action',
+      offset: 11,
+      size: 1,
+      format: 'action',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'BTN_RELEASE_B': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'device_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+      description: '0x0E for release',
+    },
+    {
+      name: 'button',
+      offset: 10,
+      size: 1,
+      format: 'button',
+    },
+    {
+      name: 'action',
+      offset: 11,
+      size: 1,
+      format: 'action',
+    },
+    {
+      name: 'device_repeat',
+      offset: 12,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'STATE_RPT_81': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'device_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'level',
+      offset: 11,
+      size: 1,
+      format: 'level_byte',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'STATE_80': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'zone_id',
+      offset: 3,
+      size: 2,
+      format: 'hex',
+    },
+    {
+      name: 'protocol',
+      offset: 5,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
   'CONFIG_A1': [
     {
       name: 'type',
@@ -697,6 +938,101 @@ export const PacketFields: Record<string, FieldDef[]> = {
       offset: 8,
       size: 14,
       format: 'hex',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'SET_LEVEL': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'source_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'target_id',
+      offset: 9,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'level',
+      offset: 16,
+      size: 2,
+      format: 'level_16bit',
+    },
+    {
+      name: 'crc',
+      offset: 22,
+      size: 2,
+      format: 'hex',
+    },
+  ],
+  'BEACON_91': [
+    {
+      name: 'type',
+      offset: 0,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'sequence',
+      offset: 1,
+      size: 1,
+      format: 'decimal',
+    },
+    {
+      name: 'load_id',
+      offset: 2,
+      size: 4,
+      format: 'device_id_be',
+    },
+    {
+      name: 'protocol',
+      offset: 6,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'format',
+      offset: 7,
+      size: 1,
+      format: 'hex',
+    },
+    {
+      name: 'broadcast',
+      offset: 9,
+      size: 5,
+      format: 'hex',
+      description: 'FF FF FF FF FF',
     },
     {
       name: 'crc',
@@ -892,132 +1228,6 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'SET_LEVEL': [
-    {
-      name: 'type',
-      offset: 0,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'sequence',
-      offset: 1,
-      size: 1,
-      format: 'decimal',
-    },
-    {
-      name: 'source_id',
-      offset: 2,
-      size: 4,
-      format: 'device_id',
-    },
-    {
-      name: 'protocol',
-      offset: 6,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'format',
-      offset: 7,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'target_id',
-      offset: 9,
-      size: 4,
-      format: 'device_id_be',
-    },
-    {
-      name: 'level',
-      offset: 16,
-      size: 2,
-      format: 'level_16bit',
-    },
-    {
-      name: 'crc',
-      offset: 22,
-      size: 2,
-      format: 'hex',
-    },
-  ],
-  'STATE_80': [
-    {
-      name: 'type',
-      offset: 0,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'sequence',
-      offset: 1,
-      size: 1,
-      format: 'decimal',
-    },
-    {
-      name: 'zone_id',
-      offset: 3,
-      size: 2,
-      format: 'hex',
-    },
-    {
-      name: 'protocol',
-      offset: 5,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'crc',
-      offset: 22,
-      size: 2,
-      format: 'hex',
-    },
-  ],
-  'STATE_RPT_81': [
-    {
-      name: 'type',
-      offset: 0,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'sequence',
-      offset: 1,
-      size: 1,
-      format: 'decimal',
-    },
-    {
-      name: 'device_id',
-      offset: 2,
-      size: 4,
-      format: 'device_id',
-    },
-    {
-      name: 'protocol',
-      offset: 6,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'format',
-      offset: 7,
-      size: 1,
-      format: 'hex',
-    },
-    {
-      name: 'level',
-      offset: 11,
-      size: 1,
-      format: 'level_byte',
-    },
-    {
-      name: 'crc',
-      offset: 22,
-      size: 2,
-      format: 'hex',
-    },
-  ],
   'UNPAIR': [
     {
       name: 'type',
@@ -1088,19 +1298,12 @@ export interface Sequence {
 
 /** Transmission sequences */
 export const Sequences: Record<string, Sequence> = {
-  'button_hold': {
-    name: 'button_hold',
-    description: 'Dimming hold (raise/lower)',
-    steps: [
-      { packetType: 'BTN_PRESS_A', count: null, intervalMs: 65 },
-    ],
-  },
   'button_press': {
     name: 'button_press',
     description: 'Standard 5-button Pico press',
     steps: [
       { packetType: 'BTN_PRESS_A', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_RELEASE_A', count: 1, intervalMs: 70 },
+      { packetType: 'BTN_RELEASE_A', count: 1, intervalMs: 0 },
     ],
   },
   'button_release': {
@@ -1108,7 +1311,21 @@ export const Sequences: Record<string, Sequence> = {
     description: 'Button release (sent after press)',
     steps: [
       { packetType: 'BTN_PRESS_B', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_RELEASE_B', count: 1, intervalMs: 70 },
+      { packetType: 'BTN_RELEASE_B', count: 1, intervalMs: 0 },
+    ],
+  },
+  'button_hold': {
+    name: 'button_hold',
+    description: 'Dimming hold (raise/lower)',
+    steps: [
+      { packetType: 'BTN_PRESS_A', count: null, intervalMs: 65 },
+    ],
+  },
+  'set_level': {
+    name: 'set_level',
+    description: 'Set dimmer level',
+    steps: [
+      { packetType: 'SET_LEVEL', count: 20, intervalMs: 60 },
     ],
   },
   'pairing_beacon': {
@@ -1123,13 +1340,6 @@ export const Sequences: Record<string, Sequence> = {
     description: 'Pico pairing announcement',
     steps: [
       { packetType: 'PAIR_B9', count: 15, intervalMs: 75 },
-    ],
-  },
-  'set_level': {
-    name: 'set_level',
-    description: 'Set dimmer level',
-    steps: [
-      { packetType: 'SET_LEVEL', count: 20, intervalMs: 60 },
     ],
   },
   'unpair': {
@@ -1153,7 +1363,7 @@ export function getPacketLength(typeCode: number): number {
 
 /** Check if packet type is a button packet */
 export function isButtonPacket(typeCode: number): boolean {
-  return PacketTypeInfo[typeCode]?.category === 'button';
+  return PacketTypeInfo[typeCode]?.category === 'BUTTON';
 }
 
 /** Check if packet type belongs to a category */
