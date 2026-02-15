@@ -95,6 +95,7 @@ static void reset_isr_latency_stats(void)
 struct CcaRxPending {
     DecodedPacket pkt;
     int8_t        rssi;
+    uint32_t      timestamp_ms;
     bool          valid;     /* true = decoded packet, false = drop */
     uint8_t       drop_hex[16];
     size_t        drop_hex_len;
@@ -158,7 +159,7 @@ static uint32_t isr_latency_p95_us_internal(void)
  * Logging and streaming happen later in the task loop after all
  * pending FIFO data has been drained.
  * ----------------------------------------------------------------------- */
-static void on_rx_packet(const uint8_t *data, size_t len, int8_t rssi)
+static void on_rx_packet(const uint8_t *data, size_t len, int8_t rssi, uint32_t timestamp_ms)
 {
     DecodedPacket pkt;
     pkt.clear();
@@ -176,6 +177,7 @@ static void on_rx_packet(const uint8_t *data, size_t len, int8_t rssi)
             CcaRxPending &p = rx_pending[rx_pend_count++];
             p.pkt = pkt;
             p.rssi = rssi;
+            p.timestamp_ms = timestamp_ms;
             p.valid = true;
         }
     } else if (rssi > -85) {
@@ -185,6 +187,7 @@ static void on_rx_packet(const uint8_t *data, size_t len, int8_t rssi)
             CcaRxPending &p = rx_pending[rx_pend_count++];
             p.valid = false;
             p.rssi = rssi;
+            p.timestamp_ms = timestamp_ms;
             p.drop_raw_len = len;
             size_t dump_len = len < 16 ? len : 16;
             memcpy(p.drop_hex, data, dump_len);
@@ -276,12 +279,13 @@ static void flush_rx_pending(void)
         }
     }
 
-    /* Stream decoded packets to TCP */
+    /* Stream decoded packets to UDP */
     for (size_t i = 0; i < rx_pend_count; i++) {
         if (rx_pending[i].valid) {
             stream_send_cca_packet(rx_pending[i].pkt.raw,
                                    rx_pending[i].pkt.raw_len,
-                                   rx_pending[i].rssi, false);
+                                   rx_pending[i].rssi, false,
+                                   rx_pending[i].timestamp_ms);
         }
     }
 
@@ -374,7 +378,7 @@ static void cca_task_func(void *param)
                 bool ok = cc1101_transmit_raw(encoded, encoded_len);
                 if (ok) {
                     tx_count++;
-                    stream_send_cca_packet(tx_item.data, tx_item.len, 0, true);
+                    stream_send_cca_packet(tx_item.data, tx_item.len, 0, true, HAL_GetTick());
                 } else {
                     printf("[cca] TX failed\r\n");
                 }

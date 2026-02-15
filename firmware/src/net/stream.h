@@ -62,8 +62,9 @@ extern "C" {
 /** Start the UDP stream FreeRTOS task */
 void stream_task_start(void);
 
-/** Send a CCA packet to all registered UDP clients */
-void stream_send_cca_packet(const uint8_t *data, size_t len, int8_t rssi, bool is_tx);
+/** Send a CCA packet to all registered UDP clients.
+ *  timestamp_ms is the radio-side HAL_GetTick() when the packet was first heard. */
+void stream_send_cca_packet(const uint8_t *data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms);
 
 /** Send a CCX packet to all registered UDP clients */
 void stream_send_ccx_packet(const uint8_t *data, size_t len);

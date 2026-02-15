@@ -6,7 +6,7 @@
  * Client registrations expire after 30s of silence.
  *
  * Binary framing (one datagram = one frame):
- *   STM32 → host:  [FLAGS:1][LEN:1][DATA:N]
+ *   STM32 → host:  [FLAGS:1][LEN:1][TS_MS:4 LE][DATA:N]
  *   host → STM32:  [CMD:1][LEN:1][DATA:N]
  *   Heartbeat:      [0xFF][0x00]
  *   Status resp:    [0xFE][len][blob]
@@ -55,9 +55,10 @@
  * TX queue item
  * ----------------------------------------------------------------------- */
 struct StreamTxItem {
-    uint8_t flags;
-    uint8_t data[TX_ITEM_MAX_DATA];
-    uint8_t len;
+    uint8_t  flags;
+    uint8_t  data[TX_ITEM_MAX_DATA];
+    uint8_t  len;
+    uint32_t timestamp_ms;
 };
 
 /* -----------------------------------------------------------------------
@@ -85,7 +86,7 @@ static volatile uint32_t udp_fail_count = 0;
 /* -----------------------------------------------------------------------
  * Public API: enqueue packets for streaming
  * ----------------------------------------------------------------------- */
-void stream_send_cca_packet(const uint8_t *data, size_t len, int8_t rssi, bool is_tx)
+void stream_send_cca_packet(const uint8_t *data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms)
 {
     if (tx_queue == NULL || len > TX_ITEM_MAX_DATA) return;
 
@@ -93,6 +94,7 @@ void stream_send_cca_packet(const uint8_t *data, size_t len, int8_t rssi, bool i
     item.flags = is_tx ? STREAM_FLAG_TX : (static_cast<uint8_t>(-rssi) & STREAM_FLAG_RSSI_MASK);
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
+    item.timestamp_ms = timestamp_ms;
 
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
@@ -648,11 +650,12 @@ static void stream_task_func(void *param)
          * are non-blocking to flush the entire burst immediately. */
         if (xQueueReceive(tx_queue, &tx_item, pdMS_TO_TICKS(1)) == pdTRUE) {
             do {
-                uint8_t frame[TX_ITEM_MAX_DATA + 2];
+                uint8_t frame[TX_ITEM_MAX_DATA + 6]; /* FLAGS + LEN + TS(4) + DATA */
                 frame[0] = tx_item.flags;
                 frame[1] = tx_item.len;
-                memcpy(frame + 2, tx_item.data, tx_item.len);
-                broadcast_frame(frame, (uint16_t)(2 + tx_item.len));
+                put_le32(frame + 2, tx_item.timestamp_ms);
+                memcpy(frame + 6, tx_item.data, tx_item.len);
+                broadcast_frame(frame, (uint16_t)(6 + tx_item.len));
             } while (xQueueReceive(tx_queue, &tx_item, 0) == pdTRUE);
         }
 

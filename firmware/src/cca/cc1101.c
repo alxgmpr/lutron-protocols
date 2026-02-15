@@ -440,7 +440,7 @@ bool cc1101_check_rx(void)
     if (accum_len_ >= RX_PKT_LEN) {
         peek_hit_count_++;
         if (rx_callback_) {
-            rx_callback_(accum_, accum_len_, accum_rssi_);
+            rx_callback_(accum_, accum_len_, accum_rssi_, accum_start_ms_);
         }
         restart_rx();
         return true;

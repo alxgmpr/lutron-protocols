@@ -101,7 +101,7 @@ extern "C" {
 /* -----------------------------------------------------------------------
  * RX callback type
  * ----------------------------------------------------------------------- */
-typedef void (*cc1101_rx_callback_t)(const uint8_t *data, size_t len, int8_t rssi);
+typedef void (*cc1101_rx_callback_t)(const uint8_t *data, size_t len, int8_t rssi, uint32_t timestamp_ms);
 
 typedef enum {
     CC1101_TUNE_PROFILE_DEFAULT = 0,

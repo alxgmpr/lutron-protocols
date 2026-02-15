@@ -89,6 +89,7 @@ let lastHeartbeat = 0;
 let quiet = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval>;
+let lastRadioTimestamp = 0; // for inter-packet delta display
 
 // ============================================================================
 // Helpers
@@ -148,7 +149,7 @@ function send(frame: Buffer): boolean {
 // RX packet display
 // ============================================================================
 
-function displayCcaPacket(data: Buffer, flags: number) {
+function displayCcaPacket(data: Buffer, flags: number, radioTs: number = 0, deltaMs: number = 0) {
   const isTx = !!(flags & FLAG_TX);
   const rssi = isTx ? 0 : -(flags & FLAG_RSSI_MASK);
   const direction = isTx ? "TX" : "RX";
@@ -279,11 +280,14 @@ function displayCcaPacket(data: Buffer, flags: number) {
   const rssiStr = isTx
     ? `${DIM}(echo)${RESET}`
     : `${DIM}rssi=${RESET}${rssi}`;
+  const deltaStr = deltaMs > 0
+    ? `${DIM}+${deltaMs}ms${RESET}`
+    : "";
   const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
   const ts = new Date().toISOString().slice(11, 23);
 
   console.log(
-    `${DIM}${ts}${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}`
+    `${DIM}${ts}${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}`
   );
 
   // CSV recording
@@ -315,7 +319,7 @@ function displayCcaPacket(data: Buffer, flags: number) {
   }
 }
 
-function displayCcxPacket(data: Buffer, flags: number) {
+function displayCcxPacket(data: Buffer, flags: number, radioTs: number = 0, deltaMs: number = 0) {
   const isTx = !!(flags & FLAG_TX);
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : BLUE;
@@ -324,8 +328,9 @@ function displayCcxPacket(data: Buffer, flags: number) {
     .join(" ");
   const ts = new Date().toISOString().slice(11, 23);
 
+  const deltaStr = deltaMs > 0 ? `  ${DIM}+${deltaMs}ms${RESET}` : "";
   console.log(
-    `${DIM}${ts}${RESET} ${YELLOW}[ccx]${RESET} ${dirColor}${direction}${RESET} ${rawHex}`
+    `${DIM}${ts}${RESET} ${YELLOW}[ccx]${RESET} ${dirColor}${direction}${RESET} ${rawHex}${deltaStr}`
   );
 
   if (recording) {
@@ -409,10 +414,6 @@ function handleDatagram(msg: Buffer) {
   const flags = msg[0];
   const len = msg[1];
 
-  if (msg.length < 2 + len) return;
-
-  const data = msg.subarray(2, 2 + len);
-
   // Heartbeat: [0xFF][0x00]
   if (flags === 0xff && len === 0x00) {
     lastHeartbeat = Date.now();
@@ -421,17 +422,31 @@ function handleDatagram(msg: Buffer) {
 
   // Status response: [0xFE][len][status blob]
   if (flags === 0xfe) {
+    const data = msg.subarray(2, 2 + len);
     displayStatus(data);
     return;
   }
+
+  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][DATA:N]
+  if (msg.length < 6 + len) return;
+
+  const radioTs = readU32LE(msg, 2);
+  const data = msg.subarray(6, 6 + len);
+
+  // Compute inter-packet delta
+  let deltaMs = 0;
+  if (lastRadioTimestamp > 0) {
+    deltaMs = (radioTs - lastRadioTimestamp) & 0xffffffff; // handle wrap
+  }
+  lastRadioTimestamp = radioTs;
 
   if (quiet) return;
 
   // Protocol dispatch
   if (flags & FLAG_CCX) {
-    displayCcxPacket(data, flags);
+    displayCcxPacket(data, flags, radioTs, deltaMs);
   } else {
-    displayCcaPacket(data, flags);
+    displayCcaPacket(data, flags, radioTs, deltaMs);
   }
 }
 

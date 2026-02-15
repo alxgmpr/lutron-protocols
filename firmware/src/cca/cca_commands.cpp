@@ -74,7 +74,7 @@ static bool transmit_one(const uint8_t *packet, size_t len)
     bool ok = cc1101_transmit_raw(encoded, encoded_len);
     if (ok) {
         cmd_tx_count++;
-        stream_send_cca_packet(packet, len, 0, true);
+        stream_send_cca_packet(packet, len, 0, true, HAL_GetTick());
     }
     return ok;
 }
