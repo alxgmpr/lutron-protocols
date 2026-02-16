@@ -168,10 +168,10 @@ enums:
       OFF:      { value: 0x04, description: "5-button OFF / bottom" }
       RAISE:    { value: 0x05, description: "5-button RAISE" }
       LOWER:    { value: 0x06, description: "5-button LOWER" }
-      SCENE4:   { value: 0x08, description: "4-button bottom" }
-      SCENE3:   { value: 0x09, description: "4-button third" }
-      SCENE2:   { value: 0x0A, description: "4-button second" }
-      SCENE1:   { value: 0x0B, description: "4-button top" }
+      SCENE4:   { value: 0x08, description: "4-button top (scene: BRIGHT, rl: ON)" }
+      SCENE3:   { value: 0x09, description: "4-button second (scene: 2nd, rl: RAISE)" }
+      SCENE2:   { value: 0x0A, description: "4-button third (scene: 3rd, rl: LOWER)" }
+      SCENE1:   { value: 0x0B, description: "4-button bottom (scene: OFF, rl: OFF)" }
       RESET:    { value: 0xFF, description: "Reset/unpair" }
 
   action:
@@ -215,6 +215,33 @@ packet_types:
   #   Group B release: 0x8B (BTN_RELEASE_B)  - long format
   #
   # Bit pattern: base 0x88 | bit 1 = group (0=A, 1=B) | bit 0 = action (0=press, 1=release)
+  # Button packet format notes:
+  #
+  # All 4-button picos (scene + raise/lower) use button codes SCENE1-SCENE4 (0x08-0x0B).
+  # The press/release semantics are INVERTED between pico types:
+  #
+  #   Scene pico:  PRESS = short (fmt 0x04, action 0x00, CC padding)
+  #                RELEASE = extended (fmt 0x0E, action 0x01, cmd_class + preset_id)
+  #
+  #   R/L pico:    PRESS = extended (fmt 0x0E, action 0x01, cmd_class + payload)
+  #                RELEASE = short (fmt 0x04 for on/off, fmt 0x0C for raise/lower)
+  #
+  # Extended payload (bytes 12-21, present when format = 0x0E):
+  #   12-15: device_id repeat
+  #   16:    0x00
+  #   17:    cmd_class — 0x40 = scene/preset select, 0x42 = dim control
+  #   18:    cmd_action — 0x00 (scene) or 0x02 (dim)
+  #   19:    cmd_param — preset_id (0x20+) when class=0x40, direction when class=0x42
+  #   20-21: tail — 0x00 0x00 (scene) or 0x00 0x1E (dim)
+  #
+  # cmd_class 0x40 preset IDs (byte 19):
+  #   Sequential from 0x20: top button = 0x20, second = 0x21, third = 0x22, bottom = 0x23
+  #   R/L pico only has 2 scene buttons (ON=0x20, OFF=0x21)
+  #   Scene pico has 4 (BRIGHT=0x20, 2nd=0x21, 3rd=0x22, OFF=0x23)
+  #
+  # cmd_class 0x42 dim direction (byte 19):
+  #   0x01 = raise, 0x00 = lower
+
   BTN_PRESS_A:
     value: 0x88
     length: 24
@@ -223,14 +250,18 @@ packet_types:
     description: "Button press, group A"
     device_id_endian: big
     fields:
-      - { name: type,      offset: 0,  size: 1, format: hex }
-      - { name: sequence,  offset: 1,  size: 1, format: decimal }
-      - { name: device_id, offset: 2,  size: 4, format: device_id_be }
-      - { name: protocol,  offset: 6,  size: 1, format: hex, description: "Always 0x21" }
-      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for press" }
-      - { name: button,    offset: 10, size: 1, format: button }
-      - { name: action,    offset: 11, size: 1, format: action }
-      - { name: crc,       offset: 22, size: 2, format: hex }
+      - { name: type,          offset: 0,  size: 1, format: hex }
+      - { name: sequence,      offset: 1,  size: 1, format: decimal }
+      - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,      offset: 6,  size: 1, format: hex, description: "Always 0x21" }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x04=tap, 0x0E=extended cmd" }
+      - { name: pico_frame,    offset: 8,  size: 1, format: hex, description: "0x03 for pico" }
+      - { name: button,        offset: 10, size: 1, format: button }
+      - { name: action,        offset: 11, size: 1, format: action, description: "0x00=no payload, 0x01=has payload" }
+      - { name: device_repeat, offset: 12, size: 4, format: device_id_be, description: "Present when format=0x0E" }
+      - { name: cmd_class,     offset: 17, size: 1, format: hex, description: "0x40=scene, 0x42=dim (when format=0x0E)" }
+      - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
+      - { name: crc,           offset: 22, size: 2, format: hex }
 
   BTN_RELEASE_A:
     value: 0x89
@@ -244,10 +275,13 @@ packet_types:
       - { name: sequence,      offset: 1,  size: 1, format: decimal }
       - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
       - { name: protocol,      offset: 6,  size: 1, format: hex }
-      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for release" }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E=extended cmd, 0x04=tap, 0x0C=dim stop" }
+      - { name: pico_frame,    offset: 8,  size: 1, format: hex, description: "0x03 for pico" }
       - { name: button,        offset: 10, size: 1, format: button }
-      - { name: action,        offset: 11, size: 1, format: action }
+      - { name: action,        offset: 11, size: 1, format: action, description: "0x00=no payload, 0x01=has payload" }
       - { name: device_repeat, offset: 12, size: 4, format: device_id_be }
+      - { name: cmd_class,     offset: 17, size: 1, format: hex, description: "0x40=scene, 0x42=dim (when format=0x0E)" }
+      - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
       - { name: crc,           offset: 22, size: 2, format: hex }
 
   BTN_PRESS_B:
@@ -258,15 +292,18 @@ packet_types:
     description: "Button press, group B"
     device_id_endian: big
     fields:
-      - { name: type,      offset: 0,  size: 1, format: hex }
-      - { name: sequence,  offset: 1,  size: 1, format: decimal }
-      - { name: device_id, offset: 2,  size: 4, format: device_id_be }
-      - { name: protocol,  offset: 6,  size: 1, format: hex, description: "Always 0x21" }
-      - { name: format,    offset: 7,  size: 1, format: hex, description: "0x04 for press" }
-      - { name: button,    offset: 10, size: 1, format: button }
-      - { name: action,    offset: 11, size: 1, format: action }
-      - { name: crc,       offset: 22, size: 2, format: hex }
-    # Legacy alias: BTN_SHORT_B
+      - { name: type,          offset: 0,  size: 1, format: hex }
+      - { name: sequence,      offset: 1,  size: 1, format: decimal }
+      - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
+      - { name: protocol,      offset: 6,  size: 1, format: hex, description: "Always 0x21" }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x04=tap, 0x0E=extended cmd" }
+      - { name: pico_frame,    offset: 8,  size: 1, format: hex, description: "0x03 for pico" }
+      - { name: button,        offset: 10, size: 1, format: button }
+      - { name: action,        offset: 11, size: 1, format: action, description: "0x00=no payload, 0x01=has payload" }
+      - { name: device_repeat, offset: 12, size: 4, format: device_id_be, description: "Present when format=0x0E" }
+      - { name: cmd_class,     offset: 17, size: 1, format: hex, description: "0x40=scene, 0x42=dim (when format=0x0E)" }
+      - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
+      - { name: crc,           offset: 22, size: 2, format: hex }
 
   BTN_RELEASE_B:
     value: 0x8B
@@ -280,36 +317,49 @@ packet_types:
       - { name: sequence,      offset: 1,  size: 1, format: decimal }
       - { name: device_id,     offset: 2,  size: 4, format: device_id_be }
       - { name: protocol,      offset: 6,  size: 1, format: hex }
-      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E for release" }
+      - { name: format,        offset: 7,  size: 1, format: hex, description: "0x0E=extended cmd, 0x04=tap, 0x0C=dim stop" }
+      - { name: pico_frame,    offset: 8,  size: 1, format: hex, description: "0x03 for pico" }
       - { name: button,        offset: 10, size: 1, format: button }
-      - { name: action,        offset: 11, size: 1, format: action }
+      - { name: action,        offset: 11, size: 1, format: action, description: "0x00=no payload, 0x01=has payload" }
       - { name: device_repeat, offset: 12, size: 4, format: device_id_be }
+      - { name: cmd_class,     offset: 17, size: 1, format: hex, description: "0x40=scene, 0x42=dim (when format=0x0E)" }
+      - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
       - { name: crc,           offset: 22, size: 2, format: hex }
-    # Legacy alias: BTN_LONG_B
 
   # State report packets (24 bytes)
+  # Type byte cycles 81 → 82 → 83 → 81... on each periodic report.
+  # Burst structure: 52 packets (seq 0-51), pairs spaced ~50ms apart,
+  # ~12.5ms between retransmissions within a pair.
+  # Byte 11 = actual light output level (0x00 when off).
+  # Byte 15 = slider/preset level — the level the dimmer WILL go to when
+  # turned on. Reports slider position even while off. This is how the
+  # bridge knows the dimmer's preset level without the light being on.
+  # Byte 14 = 0x92 observed consistently (purpose unknown, may encode
+  # on/off state or device capability flags).
+  # LEAP correlation: each burst triggers a /device/status/deviceheard event.
   STATE_RPT_81:
     value: 0x81
     length: 24
     category: STATE
     ecosystems: [CASETA, RA3, HOMEWORKS]
-    description: "State report (type 81)"
+    description: "State report (type 81, cycles 81→82→83)"
     device_id_endian: little
     fields:
-      - { name: type,      offset: 0,  size: 1, format: hex }
-      - { name: sequence,  offset: 1,  size: 1, format: decimal }
-      - { name: device_id, offset: 2,  size: 4, format: device_id }
-      - { name: protocol,  offset: 6,  size: 1, format: hex }
-      - { name: format,    offset: 7,  size: 1, format: hex }
-      - { name: level,     offset: 11, size: 1, format: level_byte }
-      - { name: crc,       offset: 22, size: 2, format: hex }
+      - { name: type,         offset: 0,  size: 1, format: hex }
+      - { name: sequence,     offset: 1,  size: 1, format: decimal }
+      - { name: device_id,    offset: 2,  size: 4, format: device_id }
+      - { name: protocol,     offset: 6,  size: 1, format: hex }
+      - { name: format,       offset: 7,  size: 1, format: hex, description: "0x08 = periodic state report" }
+      - { name: level,        offset: 11, size: 1, format: level_byte, description: "Light output level (0x00=off)" }
+      - { name: slider_level, offset: 15, size: 1, format: level_byte, description: "Slider/preset level (position even when off)" }
+      - { name: crc,          offset: 22, size: 2, format: hex }
 
   STATE_RPT_82:
     value: 0x82
     length: 24
     category: STATE
     ecosystems: [CASETA, RA3, HOMEWORKS]
-    description: "State report (type 82)"
+    description: "State report (type 82, cycles 81→82→83)"
     device_id_endian: little
     inherits: STATE_RPT_81
 
@@ -318,7 +368,7 @@ packet_types:
     length: 24
     category: STATE
     ecosystems: [CASETA, RA3, HOMEWORKS]
-    description: "State report (type 83)"
+    description: "State report (type 83, cycles 81→82→83)"
     device_id_endian: little
     inherits: STATE_RPT_81
 

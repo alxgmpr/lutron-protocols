@@ -12,7 +12,7 @@
  */
 
 import { createSocket, type Socket } from "dgram";
-import { appendFileSync, mkdirSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
   getPresetInfo,
@@ -251,11 +251,17 @@ function displayCcaPacket(
   const seq = data[1];
   const seqStr = `${DIM}#${RESET}${String(seq).padEnd(3)}`;
 
-  // Format device ID with highlighted suffix
+  // Format device ID with highlighted suffix + LEAP name if available
   const fmtId = (label: string, val: string) => {
     const base = val.slice(0, 4);
     const tail = val.slice(4);
-    return `${DIM}${label}=${RESET}${base}${YELLOW}${tail}${RESET}`;
+    let result = `${DIM}${label}=${RESET}${base}${YELLOW}${tail}${RESET}`;
+    const serial = parseInt(val, 16);
+    if (serial > 0) {
+      const name = getSerialName(serial);
+      if (name) result += ` ${CYAN}"${name}"${RESET}`;
+    }
+    return result;
   };
 
   // Build semantic parts
@@ -318,10 +324,16 @@ function displayCcaPacket(
   } else if (category === "STATE" || category === "CONFIG") {
     // Level as percentage
     const level = fieldValues.get("level");
+    const sliderLevel = fieldValues.get("slider_level");
     if (level) {
       parts.push(`${BOLD}${level}${RESET}`);
       fieldValues.delete("level");
     }
+    // Show slider_level when it differs from level (e.g. light off but slider at position)
+    if (sliderLevel && sliderLevel !== level) {
+      parts.push(`${DIM}slider=${RESET}${BOLD}${sliderLevel}${RESET}`);
+    }
+    fieldValues.delete("slider_level");
     // Format byte as fmt=XX (read raw since hex format doesn't decode)
     if (data.length > 7) {
       parts.push(`${DIM}fmt=${RESET}${data[7].toString(16).padStart(2, "0")}`);
@@ -352,16 +364,10 @@ function displayCcaPacket(
   const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
   const ts = new Date().toISOString().slice(11, 23);
 
-  if (raw) {
-    const rawHex = hexBytes.join(" ");
-    console.log(
-      `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}  ${rawHex}  ${rssiStr}  ${deltaStr}`,
-    );
-  } else {
-    console.log(
-      `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}`,
-    );
-  }
+  const rawSuffix = raw ? `  ${DIM}${hexBytes.join(" ")}${RESET}` : "";
+  console.log(
+    `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}${rawSuffix}`,
+  );
 
   // CSV recording
   if (recording) {
@@ -543,18 +549,12 @@ function displayCcxPacket(
     const typeColor = catColor[msg.type] || WHITE;
     const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
 
-    if (raw) {
-      const rawHex = Array.from(data)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(" ");
-      console.log(
-        `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}  ${rawHex}  ${deltaStr}`,
-      );
-    } else {
-      console.log(
-        `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${deltaStr}`,
-      );
-    }
+    const rawSuffix = raw
+      ? `  ${DIM}${Array.from(data).map((b) => b.toString(16).padStart(2, "0")).join(" ")}${RESET}`
+      : "";
+    console.log(
+      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${deltaStr}${rawSuffix}`,
+    );
   } else {
     // Fallback: raw hex (always show)
     const rawHex = Array.from(data)
@@ -914,13 +914,52 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
+/** Load saved LEAP data from data/leap-*.json, merging all files */
+function loadSavedLeapData(): boolean {
+  const dataDir = join(import.meta.dir, "../data");
+  if (!existsSync(dataDir)) return false;
+
+  const files = readdirSync(dataDir).filter(
+    (f) => f.startsWith("leap-") && f.endsWith(".json"),
+  );
+  if (files.length === 0) return false;
+
+  // Merge all LEAP dump files into one combined dataset
+  const merged = {
+    zones: {} as Record<string, any>,
+    devices: {} as Record<string, any>,
+    serials: {} as Record<string, any>,
+    presets: {} as Record<string, any>,
+  };
+
+  for (const file of files) {
+    try {
+      const data = JSON.parse(readFileSync(join(dataDir, file), "utf-8"));
+      Object.assign(merged.zones, data.zones ?? {});
+      Object.assign(merged.devices, data.devices ?? {});
+      Object.assign(merged.serials, data.serials ?? {});
+      Object.assign(merged.presets, data.presets ?? {});
+    } catch {
+      // Skip malformed files
+    }
+  }
+
+  const nSerials = Object.keys(merged.serials).length;
+  if (nSerials === 0) return false;
+
+  setLeapData(merged as any);
+  const nZones = Object.keys(merged.zones).length;
+  console.log(
+    `${DIM}LEAP: loaded ${nSerials} devices, ${nZones} zones from ${files.length} saved file(s)${RESET}`,
+  );
+  return true;
+}
+
 // Fetch LEAP data if requested, then start
 async function startup() {
   if (UPDATE_LEAP) {
     try {
       const { LeapConnection, fetchLeapData, buildDumpData } = await import("../tools/leap-client");
-      const { mkdirSync, writeFileSync } = await import("fs");
-      const { join } = await import("path");
 
       console.log(`${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`);
       const leap = new LeapConnection({ host: LEAP_HOST, certName: LEAP_CERTS });
@@ -941,7 +980,12 @@ async function startup() {
       console.log(`${GREEN}LEAP: ${nZones} zones, ${nDevices} devices, ${nPresets} presets → saved to ${filePath}${RESET}\n`);
     } catch (err: any) {
       console.error(`${YELLOW}LEAP fetch failed: ${err.message} — using hardcoded config${RESET}\n`);
+      // Fall back to saved data
+      loadSavedLeapData();
     }
+  } else {
+    // Auto-load saved LEAP data from data/ directory
+    loadSavedLeapData();
   }
 
   // Start UDP socket

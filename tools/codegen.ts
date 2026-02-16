@@ -172,23 +172,31 @@ function generateTS(def: ProtocolDef) {
   out += "  description?: string;\n";
   out += "}\n\n";
 
-  out += "/** Field definitions by packet type */\n";
-  out += "export const PacketFields: Record<string, FieldDef[]> = {\n";
+  // Resolve inheritance: if a type has `inherits` but no `fields`, use parent's fields
+  const resolvedFields: Record<string, any[]> = {};
   for (const [k, v] of Object.entries(def.packet_types) as any) {
     if (v.fields) {
-      out += "  '" + k + "': [\n";
-      for (const f of v.fields) {
-        out += "    {\n";
-        out += "      name: '" + f.name + "',\n";
-        out += "      offset: " + f.offset + ",\n";
-        out += "      size: " + f.size + ",\n";
-        out += "      format: '" + f.format + "',\n";
-        if (f.description)
-          out += "      description: '" + f.description + "',\n";
-        out += "    },\n";
-      }
-      out += "  ],\n";
+      resolvedFields[k] = v.fields;
+    } else if (v.inherits && def.packet_types[v.inherits]?.fields) {
+      resolvedFields[k] = def.packet_types[v.inherits].fields;
     }
+  }
+
+  out += "/** Field definitions by packet type */\n";
+  out += "export const PacketFields: Record<string, FieldDef[]> = {\n";
+  for (const [k, fields] of Object.entries(resolvedFields)) {
+    out += "  '" + k + "': [\n";
+    for (const f of fields as any[]) {
+      out += "    {\n";
+      out += "      name: '" + f.name + "',\n";
+      out += "      offset: " + f.offset + ",\n";
+      out += "      size: " + f.size + ",\n";
+      out += "      format: '" + f.format + "',\n";
+      if (f.description)
+        out += "      description: '" + f.description + "',\n";
+      out += "    },\n";
+    }
+    out += "  ],\n";
   }
   out += "};\n\n";
 
