@@ -11,7 +11,7 @@
  */
 
 import { decode as cborDecode } from "cbor-x";
-import { CCX_CONFIG, getPresetInfo, presetIdFromDeviceId } from "./config";
+import { getPresetInfo, getSerialName, presetIdFromDeviceId } from "./config";
 import {
   BodyKey,
   CCXMessageType,
@@ -380,7 +380,7 @@ export function formatMessage(msg: CCXMessage): string {
       return `DIM_STEP(${label}, id=${idHex}, step=${msg.stepValue}, seq=${msg.sequence})`;
     }
     case "DEVICE_REPORT": {
-      const serialName = CCX_CONFIG.knownSerials[msg.deviceSerial]?.name;
+      const serialName = getSerialName(msg.deviceSerial);
       const serialLabel = serialName
         ? `"${serialName}"`
         : `0x${msg.deviceSerial.toString(16).padStart(8, "0")}`;

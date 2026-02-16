@@ -15,10 +15,11 @@ import { createSocket, type Socket } from "dgram";
 import { appendFileSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
-  CCX_CONFIG,
   getPresetInfo,
+  getSerialName,
   getZoneName,
   presetIdFromDeviceId,
+  setLeapData,
 } from "../ccx/config";
 import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
@@ -69,9 +70,38 @@ const FLAG_RSSI_MASK = 0x3f;
 const THREAD_ROLES = ["detached", "child", "router", "leader"] as const;
 
 // ============================================================================
+// CLI flags
+// ============================================================================
+function getCliArg(name: string): string | undefined {
+  const idx = process.argv.indexOf(name);
+  return idx !== -1 ? process.argv[idx + 1] : undefined;
+}
+const hasCliFlag = (name: string) => process.argv.includes(name);
+
+const UPDATE_LEAP = hasCliFlag("--update-leap");
+const LEAP_HOST = getCliArg("--leap-host") ?? "10.0.0.1";
+const LEAP_CERTS = getCliArg("--leap-certs") ?? "ra3";
+
+// ============================================================================
 // State
 // ============================================================================
-const host = process.argv[2] || process.env.NUCLEO_HOST || "";
+// Find first positional arg (skip flags and their values)
+const FLAG_WITH_VALUE = new Set(["--leap-host", "--leap-certs"]);
+let host = process.env.NUCLEO_HOST || "";
+{
+  const cliArgs = process.argv.slice(2);
+  for (let i = 0; i < cliArgs.length; ) {
+    const a = cliArgs[i];
+    if (FLAG_WITH_VALUE.has(a)) {
+      i += 2;
+    } else if (a.startsWith("--")) {
+      i += 1;
+    } else {
+      host = a;
+      break;
+    }
+  }
+}
 let udpSocket: Socket;
 let quiet = false;
 let raw = false;
@@ -472,11 +502,6 @@ function formatCcxMessage(msg: CCXMessage): {
   }
 }
 
-/** Look up device serial name from config */
-function getSerialName(serial: number): string | undefined {
-  return CCX_CONFIG.knownSerials[serial]?.name;
-}
-
 function displayCcxPacket(
   data: Buffer,
   flags: number,
@@ -870,8 +895,12 @@ function cleanup() {
 // ============================================================================
 
 if (!host) {
-  console.error(`Usage: bun cli/nucleo.ts <host>`);
+  console.error(`Usage: bun cli/nucleo.ts <host> [--update-leap] [--leap-host <ip>] [--leap-certs <name>]`);
   console.error(`  or set NUCLEO_HOST environment variable`);
+  console.error(`\nFlags:`);
+  console.error(`  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`);
+  console.error(`  --leap-host <ip>      LEAP processor IP (default: 10.0.0.1)`);
+  console.error(`  --leap-certs <name>   Cert name prefix (default: ra3)`);
   process.exit(1);
 }
 
@@ -885,8 +914,41 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-// Start UDP socket
-setupUdp();
+// Fetch LEAP data if requested, then start
+async function startup() {
+  if (UPDATE_LEAP) {
+    try {
+      const { LeapConnection, fetchLeapData, buildDumpData } = await import("../tools/leap-client");
+      const { mkdirSync, writeFileSync } = await import("fs");
+      const { join } = await import("path");
+
+      console.log(`${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`);
+      const leap = new LeapConnection({ host: LEAP_HOST, certName: LEAP_CERTS });
+      await leap.connect();
+      const result = await fetchLeapData(leap);
+      leap.close();
+
+      const dumpData = buildDumpData(LEAP_HOST, result);
+      const dataDir = join(import.meta.dir, "../data");
+      mkdirSync(dataDir, { recursive: true });
+      const filePath = join(dataDir, `leap-${LEAP_HOST}.json`);
+      writeFileSync(filePath, JSON.stringify(dumpData, null, 2) + "\n");
+
+      setLeapData(dumpData);
+      const nZones = Object.keys(dumpData.zones).length;
+      const nDevices = Object.keys(dumpData.devices).length;
+      const nPresets = Object.keys(dumpData.presets).length;
+      console.log(`${GREEN}LEAP: ${nZones} zones, ${nDevices} devices, ${nPresets} presets → saved to ${filePath}${RESET}\n`);
+    } catch (err: any) {
+      console.error(`${YELLOW}LEAP fetch failed: ${err.message} — using hardcoded config${RESET}\n`);
+    }
+  }
+
+  // Start UDP socket
+  setupUdp();
+}
+
+startup();
 
 // Read stdin line by line
 const decoder = new TextDecoder();

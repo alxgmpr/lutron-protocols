@@ -3,22 +3,31 @@
 /**
  * LEAP API Dump - Enumerate all devices, buttons, presets, and zones
  *
- * Connects to the RadioRA3 processor via LEAP (port 8081) and walks the
+ * Connects to a Lutron processor via LEAP (port 8081) and walks the
  * full device hierarchy to build preset→button mappings needed for CCX decoding.
+ * Auto-detects RA3 vs Caseta LEAP endpoint style.
  *
  * Usage:
- *   bun run tools/leap-dump.ts                     # Full human-readable dump
- *   bun run tools/leap-dump.ts --json               # JSON output
- *   bun run tools/leap-dump.ts --config             # Generate ccx/config.ts updates
- *   bun run tools/leap-dump.ts --host 10.0.0.1    # Custom host
+ *   bun run tools/leap-dump.ts                          # Full human-readable dump (RA3)
+ *   bun run tools/leap-dump.ts --json                   # JSON output
+ *   bun run tools/leap-dump.ts --config                 # Generate ccx/config.ts updates
+ *   bun run tools/leap-dump.ts --host 10.0.0.2 --certs caseta   # Caseta dump
+ *   bun run tools/leap-dump.ts --save                   # Save to data/leap-<host>.json
  *
  * Requires TLS certificates in the project root:
- *   lutron-ra3-cert.pem, lutron-ra3-key.pem, lutron-ra3-ca.pem
+ *   lutron-{certName}-cert.pem, lutron-{certName}-key.pem, lutron-{certName}-ca.pem
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as tls from "tls";
+import { mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
+import {
+  LeapConnection,
+  buildDumpData,
+  fetchLeapData,
+  type DeviceInfo,
+  type PresetMapping,
+  type ZoneInfo,
+} from "./leap-client";
 
 // --- CLI args ---
 
@@ -32,143 +41,11 @@ function hasFlag(name: string): boolean {
 }
 
 const HOST = getArg("--host") ?? "10.0.0.1";
-const PORT = 8081;
+const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
-const CERT_DIR = path.resolve(import.meta.dir, "..");
-
-// --- Types ---
-
-interface PresetMapping {
-  presetId: number;
-  buttonId: number;
-  buttonNumber: number;
-  buttonName: string;
-  engraving?: string;
-  programmingModelType: string;
-  presetRole: "primary" | "secondary" | "single";
-  deviceId: number;
-  deviceName: string;
-  deviceType: string;
-  serialNumber: number;
-  stationName: string;
-  areaName: string;
-}
-
-interface DeviceInfo {
-  id: number;
-  name: string;
-  type: string;
-  serial: number;
-  station: string;
-  area: string;
-}
-
-interface ZoneInfo {
-  id: number;
-  name: string;
-  controlType: string;
-  area: string;
-}
-
-// --- LEAP Connection ---
-
-class LeapConnection {
-  private socket: tls.TLSSocket | null = null;
-  private buffer = "";
-  private pendingRequests: Map<
-    string,
-    { resolve: (value: any) => void; reject: (err: Error) => void }
-  > = new Map();
-
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.socket = tls.connect(
-        PORT,
-        HOST,
-        {
-          cert: fs.readFileSync(path.join(CERT_DIR, "lutron-ra3-cert.pem")),
-          key: fs.readFileSync(path.join(CERT_DIR, "lutron-ra3-key.pem")),
-          ca: fs.readFileSync(path.join(CERT_DIR, "lutron-ra3-ca.pem")),
-          rejectUnauthorized: false,
-        },
-        () => resolve(),
-      );
-
-      this.socket.on("data", (data) => this.handleData(data.toString()));
-      this.socket.on("error", (err) => {
-        for (const [, req] of this.pendingRequests) {
-          req.reject(err);
-        }
-        this.pendingRequests.clear();
-        reject(err);
-      });
-    });
-  }
-
-  private handleData(data: string): void {
-    this.buffer += data;
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop()!;
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const resp = JSON.parse(line);
-        const url = resp.Header?.Url ?? "";
-        const pending = this.pendingRequests.get(url);
-        if (pending) {
-          this.pendingRequests.delete(url);
-          pending.resolve(resp);
-        }
-      } catch {}
-    }
-  }
-
-  async read(url: string): Promise<any> {
-    if (!this.socket) throw new Error("Not connected");
-
-    return new Promise((resolve, reject) => {
-      this.pendingRequests.set(url, { resolve, reject });
-
-      const req = JSON.stringify({
-        CommuniqueType: "ReadRequest",
-        Header: { Url: url },
-      });
-      this.socket!.write(req + "\n");
-
-      setTimeout(() => {
-        if (this.pendingRequests.has(url)) {
-          this.pendingRequests.delete(url);
-          reject(new Error(`Timeout reading ${url}`));
-        }
-      }, 10000);
-    });
-  }
-
-  async readBody(url: string): Promise<any | null> {
-    try {
-      const resp = await this.read(url);
-      const status = resp.Header?.StatusCode ?? "";
-      if (status.startsWith("204") || status.startsWith("404")) return null;
-      return resp.Body ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  close(): void {
-    this.socket?.destroy();
-    this.socket = null;
-  }
-}
-
-// --- Helpers ---
-
-function hrefId(href: string): number {
-  const match = href.match(/\/(\d+)$/);
-  return match ? parseInt(match[1], 10) : 0;
-}
+const SAVE_OUTPUT = hasFlag("--save");
+const DATA_DIR = join(import.meta.dir, "../data");
 
 function log(msg: string): void {
   if (!JSON_OUTPUT && !CONFIG_OUTPUT) {
@@ -179,147 +56,30 @@ function log(msg: string): void {
 // --- Main ---
 
 async function main() {
-  const leap = new LeapConnection();
-  log(`Connecting to ${HOST}:${PORT}...`);
+  const leap = new LeapConnection({ host: HOST, certName: CERT_NAME });
+  log(`Connecting to ${HOST}:8081 (certs: ${CERT_NAME})...`);
   await leap.connect();
   log("Connected.\n");
 
-  // Step 1: Get all areas
-  log("Fetching areas...");
-  const areasBody = await leap.readBody("/area");
-  const areas: { href: string; Name: string; IsLeaf: boolean }[] =
-    areasBody?.Areas ?? [];
-  const areaNames = new Map<number, string>();
-  for (const a of areas) areaNames.set(hrefId(a.href), a.Name);
-  log(`  ${areas.length} areas`);
-
-  // Step 2: Walk leaf areas → zones + control stations → devices
-  const zones: ZoneInfo[] = [];
-  const deviceMeta = new Map<number, { area: string; station: string }>();
-
-  for (const area of areas) {
-    if (!area.IsLeaf) continue;
-    const areaId = hrefId(area.href);
-
-    // Zones
-    const zonesBody = await leap.readBody(`/area/${areaId}/associatedzone`);
-    for (const z of zonesBody?.Zones ?? []) {
-      zones.push({
-        id: hrefId(z.href),
-        name: z.Name,
-        controlType: z.ControlType,
-        area: area.Name,
-      });
-    }
-
-    // Control stations → ganged devices
-    const csBody = await leap.readBody(
-      `/area/${areaId}/associatedcontrolstation`,
-    );
-    for (const cs of csBody?.ControlStations ?? []) {
-      for (const g of cs.AssociatedGangedDevices ?? []) {
-        if (g.Device?.href) {
-          deviceMeta.set(hrefId(g.Device.href), {
-            area: area.Name,
-            station: cs.Name ?? "",
-          });
-        }
-      }
-    }
-  }
-
-  log(`  ${zones.length} zones, ${deviceMeta.size} devices`);
-
-  // Also add the processor
-  const projBody = await leap.readBody("/project");
-  for (const d of projBody?.Project?.MasterDeviceList?.Devices ?? []) {
-    const id = hrefId(d.href);
-    if (!deviceMeta.has(id)) deviceMeta.set(id, { area: "", station: "" });
-  }
-
-  // Step 3: Fetch each device details + buttons → presets
-  log("Fetching buttons and presets...");
-  const devices: DeviceInfo[] = [];
-  const presets: PresetMapping[] = [];
-
-  for (const [devId, meta] of deviceMeta) {
-    const devBody = await leap.readBody(`/device/${devId}`);
-    const dev = devBody?.Device;
-    if (!dev) continue;
-
-    devices.push({
-      id: devId,
-      name: dev.Name,
-      type: dev.DeviceType,
-      serial: dev.SerialNumber,
-      station: meta.station,
-      area: meta.area,
-    });
-
-    // Get button groups
-    const bgBody = await leap.readBody(`/device/${devId}/buttongroup`);
-    const buttonGroups = bgBody?.ButtonGroups ?? [];
-
-    for (const bg of buttonGroups) {
-      for (const btnRef of bg.Buttons ?? []) {
-        const btnId = hrefId(btnRef.href);
-
-        const btnBody = await leap.readBody(`/button/${btnId}`);
-        const btn = btnBody?.Button;
-        if (!btn?.ProgrammingModel) continue;
-
-        const pmBody = await leap.readBody(
-          `/programmingmodel/${hrefId(btn.ProgrammingModel.href)}`,
-        );
-        const pm = pmBody?.ProgrammingModel;
-        if (!pm) continue;
-
-        // Extract presets — structure varies by PM type
-        const refs: {
-          href: string;
-          role: "primary" | "secondary" | "single";
-        }[] = [];
-
-        const toggleProps = pm.AdvancedToggleProperties;
-        if (toggleProps?.PrimaryPreset)
-          refs.push({ href: toggleProps.PrimaryPreset.href, role: "primary" });
-        if (toggleProps?.SecondaryPreset)
-          refs.push({
-            href: toggleProps.SecondaryPreset.href,
-            role: "secondary",
-          });
-        if (pm.Preset) refs.push({ href: pm.Preset.href, role: "single" });
-        if (pm.Presets)
-          for (const p of pm.Presets)
-            refs.push({ href: p.href, role: "single" });
-
-        for (const ref of refs) {
-          presets.push({
-            presetId: hrefId(ref.href),
-            buttonId: btnId,
-            buttonNumber: btn.ButtonNumber,
-            buttonName: btn.Name,
-            engraving: btn.Engraving?.Text,
-            programmingModelType: pm.ProgrammingModelType,
-            presetRole: ref.role,
-            deviceId: devId,
-            deviceName: dev.Name,
-            deviceType: dev.DeviceType,
-            serialNumber: dev.SerialNumber,
-            stationName: meta.station,
-            areaName: meta.area,
-          });
-        }
-      }
-    }
-  }
-
-  log(`  ${presets.length} presets from ${devices.length} devices\n`);
+  const result = await fetchLeapData(leap, log);
   leap.close();
+
+  log("");
+  const { zones, devices, presets } = result;
+
+  // Save to JSON file
+  if (SAVE_OUTPUT) {
+    const dumpData = buildDumpData(HOST, result);
+    mkdirSync(DATA_DIR, { recursive: true });
+    const filePath = join(DATA_DIR, `leap-${HOST}.json`);
+    writeFileSync(filePath, JSON.stringify(dumpData, null, 2) + "\n");
+    log(`Saved to ${filePath}`);
+  }
 
   // --- Output ---
   if (JSON_OUTPUT) {
-    printJsonOutput(zones, devices, presets);
+    const dumpData = buildDumpData(HOST, result);
+    console.log(JSON.stringify(dumpData, null, 2));
   } else if (CONFIG_OUTPUT) {
     printConfigOutput(zones, devices, presets);
   } else {
@@ -388,50 +148,6 @@ function printHumanOutput(
   console.log(`  PM Types: ${[...pmTypes].join(", ")}`);
 }
 
-function printJsonOutput(
-  zones: ZoneInfo[],
-  devices: DeviceInfo[],
-  presets: PresetMapping[],
-) {
-  const output = {
-    timestamp: new Date().toISOString(),
-    host: HOST,
-    zones: Object.fromEntries(
-      zones.map((z) => [
-        z.id,
-        { name: z.name, controlType: z.controlType, area: z.area },
-      ]),
-    ),
-    devices: Object.fromEntries(
-      devices.map((d) => [
-        d.id,
-        {
-          name: d.name,
-          type: d.type,
-          serial: d.serial,
-          station: d.station,
-          area: d.area,
-        },
-      ]),
-    ),
-    presets: presets.map((p) => ({
-      presetId: p.presetId,
-      ccxDeviceId: `${p.presetId.toString(16).padStart(4, "0")}ef20`,
-      buttonId: p.buttonId,
-      buttonNumber: p.buttonNumber,
-      name: p.engraving ?? p.buttonName,
-      role: p.presetRole,
-      pmType: p.programmingModelType,
-      deviceId: p.deviceId,
-      device: p.stationName ? `${p.areaName} ${p.stationName}` : p.deviceName,
-      deviceType: p.deviceType,
-      serial: p.serialNumber,
-      area: p.areaName,
-    })),
-  };
-  console.log(JSON.stringify(output, null, 2));
-}
-
 function printConfigOutput(
   zones: ZoneInfo[],
   devices: DeviceInfo[],
@@ -466,7 +182,6 @@ function printConfigOutput(
   console.log(" *  CCX device_id bytes 0-1 = preset ID as big-endian uint16");
   console.log(" *  CCX device_id bytes 2-3 = 0xEF20 (constant) */");
   console.log("knownPresets: {");
-  // Deduplicate presets (same preset can appear on multiple devices for shared scenes)
   const seen = new Set<number>();
   for (const p of presets.sort((a, b) => a.presetId - b.presetId)) {
     if (seen.has(p.presetId)) continue;

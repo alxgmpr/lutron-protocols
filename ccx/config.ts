@@ -216,6 +216,17 @@ export const CCX_CONFIG = {
   } as Record<number, { name: string; role: string; device: string }>,
 };
 
+// --- LEAP data override ---
+
+import type { LeapDumpData } from "../tools/leap-client";
+
+let _leapOverride: LeapDumpData | null = null;
+
+/** Override hardcoded config with live LEAP data */
+export function setLeapData(data: LeapDumpData): void {
+  _leapOverride = data;
+}
+
 /** Look up a device name by IPv6 address */
 export function getDeviceName(ipv6: string): string | undefined {
   return CCX_CONFIG.knownDevices[ipv6]?.name;
@@ -223,13 +234,27 @@ export function getDeviceName(ipv6: string): string | undefined {
 
 /** Look up a zone name by zone ID */
 export function getZoneName(zoneId: number): string | undefined {
+  if (_leapOverride) {
+    return _leapOverride.zones[zoneId]?.name;
+  }
   return CCX_CONFIG.knownZones[zoneId]?.name;
+}
+
+/** Look up a device name by serial number */
+export function getSerialName(serial: number): string | undefined {
+  if (_leapOverride) {
+    return _leapOverride.serials[serial]?.name;
+  }
+  return CCX_CONFIG.knownSerials[serial]?.name;
 }
 
 /** Look up a preset by ID (extracted from CCX BUTTON_PRESS device_id bytes 0-1) */
 export function getPresetInfo(
   presetId: number,
 ): { name: string; role: string; device: string } | undefined {
+  if (_leapOverride) {
+    return _leapOverride.presets[presetId];
+  }
   return CCX_CONFIG.knownPresets[presetId];
 }
 
