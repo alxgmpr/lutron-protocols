@@ -1521,14 +1521,14 @@ static void cmd_eth(void)
 
     /* Read PHY Basic Control Register (0x00) */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x00, &reg) == HAL_OK) {
-        printf("PHY BCR  (0x00) = 0x%04lX\r\n", reg);
+        printf("PHY BCR  (0x00) = 0x%04lX\r\n", (unsigned long)reg);
     } else {
         printf("PHY BCR  read FAILED\r\n");
     }
 
     /* Read PHY Basic Status Register (0x01) */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x01, &reg) == HAL_OK) {
-        printf("PHY BSR  (0x01) = 0x%04lX  link=%s\r\n", reg,
+        printf("PHY BSR  (0x01) = 0x%04lX  link=%s\r\n", (unsigned long)reg,
                (reg & (1 << 2)) ? "UP" : "DOWN");
     } else {
         printf("PHY BSR  read FAILED\r\n");
@@ -1536,15 +1536,15 @@ static void cmd_eth(void)
 
     /* PHY Identifier (0x02, 0x03) */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x02, &reg) == HAL_OK) {
-        printf("PHY ID1  (0x02) = 0x%04lX\r\n", reg);
+        printf("PHY ID1  (0x02) = 0x%04lX\r\n", (unsigned long)reg);
     }
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x03, &reg) == HAL_OK) {
-        printf("PHY ID2  (0x03) = 0x%04lX\r\n", reg);
+        printf("PHY ID2  (0x03) = 0x%04lX\r\n", (unsigned long)reg);
     }
 
     /* PHY Special Status (0x1F) — link speed/duplex on LAN8742A */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x1F, &reg) == HAL_OK) {
-        printf("PHY SCSR (0x1F) = 0x%04lX\r\n", reg);
+        printf("PHY SCSR (0x1F) = 0x%04lX\r\n", (unsigned long)reg);
     }
 
     /* ETH TX/RX counters */

@@ -1,0 +1,63 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+IndentPPDirectives: None
+NamespaceIndentation: None
+
+# Line length
+ColumnLimit: 120
+
+# Braces — function definitions on next line, control flow on same line
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeElse: true
+  SplitEmptyFunction: false
+
+# Pointers/references attach to type: `uint8_t *data`
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyBlock: false
+SpacesInParentheses: false
+
+# Alignment
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveAssignments: false
+AlignTrailingComments: true
+AlignOperands: true
+AlignEscapedNewlines: Left
+
+# Arguments / parameters
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+
+# Includes
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# Misc
+InsertBraces: false
+MaxEmptyLinesToKeep: 2
+ReflowComments: false
+---

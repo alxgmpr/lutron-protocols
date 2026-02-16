@@ -259,7 +259,7 @@ void eth_poll_link(void)
     bool phy_link = (regval & PHY_BSR_LINK_STATUS) != 0;
 
     if (phy_link && !prev_link) {
-        printf("[eth] PHY link UP (BSR=0x%04lX)\r\n", regval);
+        printf("[eth] PHY link UP (BSR=0x%04lX)\r\n", (unsigned long)regval);
 
         /* Read negotiated speed/duplex from PHY SCSR */
         uint32_t scsr = 0;

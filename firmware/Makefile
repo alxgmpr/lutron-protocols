@@ -2,7 +2,11 @@
 BUILD_DIR := build
 PROJECT   := nucleo-firmware
 
-.PHONY: build clean flash monitor reset test
+# Source files for formatting/linting (excludes vendor code in build/_deps/)
+APP_SOURCES := $(shell find src -name '*.c' -o -name '*.cpp' -o -name '*.h')
+INCLUDE_DIRS := -I include -I src -I src/bsp -I src/cca -I src/ccx -I src/net -I src/shell -I src/storage
+
+.PHONY: build clean flash monitor reset test format format-check lint
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -39,3 +43,15 @@ test:
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    -o $(BUILD_DIR)/test_runner && ./$(BUILD_DIR)/test_runner
+
+format:
+	clang-format -i $(APP_SOURCES)
+
+format-check:
+	clang-format --dry-run --Werror $(APP_SOURCES)
+
+lint:
+	cppcheck --enable=warning,style,performance \
+	    --std=c11 --std=c++17 \
+	    --suppressions-list=.cppcheck-suppress \
+	    $(INCLUDE_DIRS) src/
