@@ -51,8 +51,7 @@ void UsageFault_Handler(void)
 }
 
 void DebugMon_Handler(void)
-{
-}
+{}
 
 /* -----------------------------------------------------------------------
  * SysTick — shared between HAL (1ms timebase) and FreeRTOS (1kHz tick)
@@ -71,7 +70,8 @@ void SysTick_Handler(void)
  * ----------------------------------------------------------------------- */
 
 /* Weak callback — overridden in cca_task.cpp */
-__attribute__((weak)) void cca_gdo0_isr_callback(void) {}
+__attribute__((weak)) void cca_gdo0_isr_callback(void)
+{}
 
 void EXTI0_IRQHandler(void)
 {

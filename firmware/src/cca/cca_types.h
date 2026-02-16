@@ -97,74 +97,114 @@ static const uint16_t LUTRON_CRC_POLY = 0xCA0F;
 #ifdef __cplusplus
 
 // Get human-readable packet type name
-inline const char *cca_packet_type_name(uint8_t type_byte) {
-  switch (type_byte) {
-    case 0x88: return "BTN_PRESS_A";
-    case 0x89: return "BTN_RELEASE_A";
-    case 0x8A: return "BTN_PRESS_B";
-    case 0x8B: return "BTN_RELEASE_B";
-    case 0x81: return "STATE_RPT_81";
-    case 0x82: return "STATE_RPT_82";
-    case 0x83: return "STATE_RPT_83";
-    case 0x80: return "STATE_80";
-    case 0xA1: return "CONFIG_A1";
-    case 0xA2: return "SET_LEVEL";
-    case 0x91: return "BEACON_91";
-    case 0x92: return "BEACON_92";
-    case 0x93: return "BEACON_93";
-    case 0xB0: return "PAIR_B0";
-    case 0xB8: return "PAIR_B8";
-    case 0xB9: return "PAIR_B9";
-    case 0xBA: return "PAIR_BA";
-    case 0xBB: return "PAIR_BB";
-    case 0xC0: return "PAIR_RESP_C0";
-    case 0xC1: return "HS_C1";
-    case 0xC2: return "HS_C2";
-    case 0xC7: return "HS_C7";
-    case 0xC8: return "HS_C8";
-    case 0xCD: return "HS_CD";
-    case 0xCE: return "HS_CE";
-    case 0xD3: return "HS_D3";
-    case 0xD4: return "HS_D4";
-    case 0xD9: return "HS_D9";
-    case 0xDA: return "HS_DA";
-    case 0xDF: return "HS_DF";
-    case 0xE0: return "HS_E0";
-    case 0xF0: return "UNPAIR";
-    case 0xF1: return "UNPAIR_PREP";
-    case 0xF2: return "LED_CONFIG";
-    default: return "UNKNOWN";
-  }
+inline const char* cca_packet_type_name(uint8_t type_byte)
+{
+    switch (type_byte) {
+    case 0x88:
+        return "BTN_PRESS_A";
+    case 0x89:
+        return "BTN_RELEASE_A";
+    case 0x8A:
+        return "BTN_PRESS_B";
+    case 0x8B:
+        return "BTN_RELEASE_B";
+    case 0x81:
+        return "STATE_RPT_81";
+    case 0x82:
+        return "STATE_RPT_82";
+    case 0x83:
+        return "STATE_RPT_83";
+    case 0x80:
+        return "STATE_80";
+    case 0xA1:
+        return "CONFIG_A1";
+    case 0xA2:
+        return "SET_LEVEL";
+    case 0x91:
+        return "BEACON_91";
+    case 0x92:
+        return "BEACON_92";
+    case 0x93:
+        return "BEACON_93";
+    case 0xB0:
+        return "PAIR_B0";
+    case 0xB8:
+        return "PAIR_B8";
+    case 0xB9:
+        return "PAIR_B9";
+    case 0xBA:
+        return "PAIR_BA";
+    case 0xBB:
+        return "PAIR_BB";
+    case 0xC0:
+        return "PAIR_RESP_C0";
+    case 0xC1:
+        return "HS_C1";
+    case 0xC2:
+        return "HS_C2";
+    case 0xC7:
+        return "HS_C7";
+    case 0xC8:
+        return "HS_C8";
+    case 0xCD:
+        return "HS_CD";
+    case 0xCE:
+        return "HS_CE";
+    case 0xD3:
+        return "HS_D3";
+    case 0xD4:
+        return "HS_D4";
+    case 0xD9:
+        return "HS_D9";
+    case 0xDA:
+        return "HS_DA";
+    case 0xDF:
+        return "HS_DF";
+    case 0xE0:
+        return "HS_E0";
+    case 0xF0:
+        return "UNPAIR";
+    case 0xF1:
+        return "UNPAIR_PREP";
+    case 0xF2:
+        return "LED_CONFIG";
+    default:
+        return "UNKNOWN";
+    }
 }
 
 // Get expected packet length for a type byte.
-inline int cca_get_packet_length(uint8_t type_byte) {
-  if (type_byte == 0x0B) return 5;
-  if (type_byte >= 0x80 && type_byte <= 0x9F) return 24;
-  if (type_byte >= 0xA0 && type_byte <= 0xBF) return 53;
-  if (type_byte >= 0xC0 && type_byte <= 0xEF) return 24;
-  return 0;
+inline int cca_get_packet_length(uint8_t type_byte)
+{
+    if (type_byte == 0x0B) return 5;
+    if (type_byte >= 0x80 && type_byte <= 0x9F) return 24;
+    if (type_byte >= 0xA0 && type_byte <= 0xBF) return 53;
+    if (type_byte >= 0xC0 && type_byte <= 0xEF) return 24;
+    return 0;
 }
 
 // Check if type byte is a button press
-inline bool cca_is_button_type(uint8_t type_byte) {
-  return type_byte >= 0x88 && type_byte <= 0x8B;
+inline bool cca_is_button_type(uint8_t type_byte)
+{
+    return type_byte >= 0x88 && type_byte <= 0x8B;
 }
 
 // Check if type byte is a pairing announcement
-inline bool cca_is_pairing_type(uint8_t type_byte) {
-  return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 ||
-         type_byte == 0xBA || type_byte == 0xBB;
+inline bool cca_is_pairing_type(uint8_t type_byte)
+{
+    return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 || type_byte == 0xBA || type_byte == 0xBB;
 }
 
 // Check if type byte is a handshake
-inline bool cca_is_handshake_type(uint8_t type_byte) {
-  return (type_byte >= 0xC1 && type_byte <= 0xE0 && type_byte != 0xC0);
+inline bool cca_is_handshake_type(uint8_t type_byte)
+{
+    return (type_byte >= 0xC1 && type_byte <= 0xE0 && type_byte != 0xC0);
 }
 
 // Check if type byte uses big-endian device ID
-inline bool cca_uses_be_device_id(uint8_t type_byte) {
-  switch (type_byte) {
+inline bool cca_uses_be_device_id(uint8_t type_byte)
+{
+    switch (type_byte) {
     case 0x88:
     case 0x89:
     case 0x8A:
@@ -190,73 +230,87 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xDA:
     case 0xDF:
     case 0xE0:
-      return true;
+        return true;
     default:
-      return false;
-  }
+        return false;
+    }
 }
 
 // Get human-readable button name
-inline const char *cca_button_name(uint8_t button) {
-  switch (button) {
-    case 0x2: return "ON";
-    case 0x3: return "FAVORITE";
-    case 0x4: return "OFF";
-    case 0x5: return "RAISE";
-    case 0x6: return "LOWER";
-    case 0x8: return "SCENE4";
-    case 0x9: return "SCENE3";
-    case 0xA: return "SCENE2";
-    case 0xB: return "SCENE1";
-    case 0xFF: return "RESET";
-    default: return "?";
-  }
+inline const char* cca_button_name(uint8_t button)
+{
+    switch (button) {
+    case 0x2:
+        return "ON";
+    case 0x3:
+        return "FAVORITE";
+    case 0x4:
+        return "OFF";
+    case 0x5:
+        return "RAISE";
+    case 0x6:
+        return "LOWER";
+    case 0x8:
+        return "SCENE4";
+    case 0x9:
+        return "SCENE3";
+    case 0xA:
+        return "SCENE2";
+    case 0xB:
+        return "SCENE1";
+    case 0xFF:
+        return "RESET";
+    default:
+        return "?";
+    }
 }
 
 // Format device ID as hex string (needs buffer of at least 9 bytes)
-inline void cca_format_device_id(uint32_t device_id, char *buffer, size_t buffer_len) {
-  if (buffer_len >= 9) {
-    snprintf(buffer, buffer_len, "%08X", (unsigned)device_id);
-  }
+inline void cca_format_device_id(uint32_t device_id, char* buffer, size_t buffer_len)
+{
+    if (buffer_len >= 9) {
+        snprintf(buffer, buffer_len, "%08X", (unsigned)device_id);
+    }
 }
 
 // Decoded packet structure
 struct DecodedPacket {
-  bool valid;
-  uint8_t type;
-  uint8_t type_byte;
-  uint8_t sequence;
-  uint32_t device_id;
-  uint8_t button;
-  uint8_t action;
-  uint8_t level;
-  uint32_t target_id;
-  uint8_t format_byte;
-  bool has_format;
-  uint16_t crc;
-  bool crc_valid;
-  uint8_t n81_errors;
-  uint8_t raw[64];
-  size_t raw_len;
+    bool     valid;
+    uint8_t  type;
+    uint8_t  type_byte;
+    uint8_t  sequence;
+    uint32_t device_id;
+    uint8_t  button;
+    uint8_t  action;
+    uint8_t  level;
+    uint32_t target_id;
+    uint8_t  format_byte;
+    bool     has_format;
+    uint16_t crc;
+    bool     crc_valid;
+    uint8_t  n81_errors;
+    uint8_t  raw[64];
+    size_t   raw_len;
 
-  void clear() {
-    valid = false;
-    type = 0xFF;
-    type_byte = 0;
-    sequence = 0;
-    device_id = 0;
-    button = 0;
-    action = 0;
-    level = 0;
-    target_id = 0;
-    format_byte = 0;
-    has_format = false;
-    crc = 0;
-    crc_valid = false;
-    n81_errors = 0;
-    raw_len = 0;
-    memset(raw, 0, sizeof(raw));
-  }
+    void clear()
+    {
+        valid = false;
+        type = 0xFF;
+        type_byte = 0;
+        sequence = 0;
+        device_id = 0;
+        button = 0;
+        action = 0;
+        level = 0;
+        target_id = 0;
+        format_byte = 0;
+        has_format = false;
+        crc = 0;
+        crc_valid = false;
+        n81_errors = 0;
+        raw_len = 0;
+        memset(raw, 0, sizeof(raw));
+    }
 };
 
 #endif

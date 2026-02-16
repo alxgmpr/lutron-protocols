@@ -19,14 +19,14 @@
 /* -----------------------------------------------------------------------
  * Accumulation buffer — FIFO drains here, one packet at a time
  * ----------------------------------------------------------------------- */
-#define RX_PKT_LEN        80   /* fixed-length RX: covers all CCA packet types */
-#define ACCUM_TIMEOUT_MS  25   /* max time to accumulate one packet      */
+#define RX_PKT_LEN       80 /* fixed-length RX: covers all CCA packet types */
+#define ACCUM_TIMEOUT_MS 25 /* max time to accumulate one packet      */
 
 /* -----------------------------------------------------------------------
  * Private state
  * ----------------------------------------------------------------------- */
-static bool     initialized_ = false;
-static bool     rx_active_ = false;
+static bool                 initialized_ = false;
+static bool                 rx_active_ = false;
 static cc1101_rx_callback_t rx_callback_ = NULL;
 
 static uint8_t  accum_[RX_PKT_LEN + 4]; /* +4 margin */
@@ -58,8 +58,14 @@ static inline void delay_us(uint32_t us)
 /* -----------------------------------------------------------------------
  * SPI primitives
  * ----------------------------------------------------------------------- */
-static inline void spi_enable(void)  { HAL_GPIO_WritePin(CC1101_CS_PORT, CC1101_CS_PIN, GPIO_PIN_RESET); }
-static inline void spi_disable(void) { HAL_GPIO_WritePin(CC1101_CS_PORT, CC1101_CS_PIN, GPIO_PIN_SET); }
+static inline void spi_enable(void)
+{
+    HAL_GPIO_WritePin(CC1101_CS_PORT, CC1101_CS_PIN, GPIO_PIN_RESET);
+}
+static inline void spi_disable(void)
+{
+    HAL_GPIO_WritePin(CC1101_CS_PORT, CC1101_CS_PIN, GPIO_PIN_SET);
+}
 
 static inline uint8_t spi_transfer(uint8_t data)
 {
@@ -101,7 +107,7 @@ uint8_t cc1101_read_status_register(uint8_t reg)
     return value;
 }
 
-void cc1101_write_burst(uint8_t reg, const uint8_t *data, size_t len)
+void cc1101_write_burst(uint8_t reg, const uint8_t* data, size_t len)
 {
     spi_enable();
     spi_transfer(reg | CC1101_WRITE_BURST);
@@ -112,14 +118,15 @@ void cc1101_write_burst(uint8_t reg, const uint8_t *data, size_t len)
     spi_disable();
 }
 
-void cc1101_read_burst(uint8_t reg, uint8_t *data, size_t len)
+void cc1101_read_burst(uint8_t reg, uint8_t* data, size_t len)
 {
     spi_enable();
     spi_transfer(reg | CC1101_READ_BURST);
     if (len <= 64) {
         uint8_t tx_zeros[64] = {0};
         HAL_SPI_TransmitReceive(&hspi3, tx_zeros, data, (uint16_t)len, 10);
-    } else {
+    }
+    else {
         for (size_t i = 0; i < len; i++) data[i] = spi_transfer(0);
     }
     spi_disable();
@@ -128,12 +135,30 @@ void cc1101_read_burst(uint8_t reg, uint8_t *data, size_t len)
 /* -----------------------------------------------------------------------
  * Radio control
  * ----------------------------------------------------------------------- */
-void    cc1101_set_idle(void) { cc1101_strobe(CC1101_SIDLE); }
-void    cc1101_flush_rx(void) { cc1101_strobe(CC1101_SFRX); }
-void    cc1101_flush_tx(void) { cc1101_strobe(CC1101_SFTX); }
-uint8_t cc1101_get_state(void)    { return cc1101_read_status_register(CC1101_MARCSTATE) & 0x1F; }
-uint8_t cc1101_get_tx_bytes(void) { return cc1101_read_status_register(CC1101_TXBYTES) & 0x7F; }
-uint8_t cc1101_get_rx_bytes(void) { return cc1101_read_status_register(CC1101_RXBYTES) & 0x7F; }
+void cc1101_set_idle(void)
+{
+    cc1101_strobe(CC1101_SIDLE);
+}
+void cc1101_flush_rx(void)
+{
+    cc1101_strobe(CC1101_SFRX);
+}
+void cc1101_flush_tx(void)
+{
+    cc1101_strobe(CC1101_SFTX);
+}
+uint8_t cc1101_get_state(void)
+{
+    return cc1101_read_status_register(CC1101_MARCSTATE) & 0x1F;
+}
+uint8_t cc1101_get_tx_bytes(void)
+{
+    return cc1101_read_status_register(CC1101_TXBYTES) & 0x7F;
+}
+uint8_t cc1101_get_rx_bytes(void)
+{
+    return cc1101_read_status_register(CC1101_RXBYTES) & 0x7F;
+}
 
 /** Double-read RXBYTES to avoid SPI glitches */
 static uint8_t cc1101_read_rxbytes_safe(void)
@@ -149,27 +174,75 @@ static uint8_t cc1101_read_rxbytes_safe(void)
 /* -----------------------------------------------------------------------
  * Counter getters
  * ----------------------------------------------------------------------- */
-bool     cc1101_is_initialized(void) { return initialized_; }
-bool     cc1101_is_rx_active(void)   { return rx_active_; }
-uint32_t cc1101_overflow_count(void) { return overflow_count_; }
-uint32_t cc1101_runt_count(void)     { return runt_count_; }
-uint32_t cc1101_short_packet_count(void) { return short_packet_count_; }
+bool cc1101_is_initialized(void)
+{
+    return initialized_;
+}
+bool cc1101_is_rx_active(void)
+{
+    return rx_active_;
+}
+uint32_t cc1101_overflow_count(void)
+{
+    return overflow_count_;
+}
+uint32_t cc1101_runt_count(void)
+{
+    return runt_count_;
+}
+uint32_t cc1101_short_packet_count(void)
+{
+    return short_packet_count_;
+}
 
-uint32_t cc1101_rx_restart_timeout_count(void)  { return timeout_count_; }
-uint32_t cc1101_rx_restart_overflow_count(void) { return restart_overflow_count_; }
-uint32_t cc1101_rx_restart_manual_count(void)   { return restart_manual_count_; }
-uint32_t cc1101_rx_restart_packet_count(void)   { return 0; }  /* no ring bail-outs */
+uint32_t cc1101_rx_restart_timeout_count(void)
+{
+    return timeout_count_;
+}
+uint32_t cc1101_rx_restart_overflow_count(void)
+{
+    return restart_overflow_count_;
+}
+uint32_t cc1101_rx_restart_manual_count(void)
+{
+    return restart_manual_count_;
+}
+uint32_t cc1101_rx_restart_packet_count(void)
+{
+    return 0;
+} /* no ring bail-outs */
 
-uint32_t cc1101_sync_peek_hit_count(void)  { return peek_hit_count_; }
-uint32_t cc1101_sync_peek_miss_count(void) { return peek_miss_count_; }
+uint32_t cc1101_sync_peek_hit_count(void)
+{
+    return peek_hit_count_;
+}
+uint32_t cc1101_sync_peek_miss_count(void)
+{
+    return peek_miss_count_;
+}
 
 /* Ring buffer removed — stubs return 0 */
-uint32_t cc1101_ring_bytes_in_count(void)      { return 0; }
-uint32_t cc1101_ring_bytes_dropped_count(void) { return 0; }
-uint32_t cc1101_ring_max_occupancy(void)       { return 0; }
-uint32_t cc1101_ring_current_occupancy(void)   { return 0; }
+uint32_t cc1101_ring_bytes_in_count(void)
+{
+    return 0;
+}
+uint32_t cc1101_ring_bytes_dropped_count(void)
+{
+    return 0;
+}
+uint32_t cc1101_ring_max_occupancy(void)
+{
+    return 0;
+}
+uint32_t cc1101_ring_current_occupancy(void)
+{
+    return 0;
+}
 
-void cc1101_set_rx_callback(cc1101_rx_callback_t callback) { rx_callback_ = callback; }
+void cc1101_set_rx_callback(cc1101_rx_callback_t callback)
+{
+    rx_callback_ = callback;
+}
 
 void cc1101_reset_counters(void)
 {
@@ -186,7 +259,7 @@ void cc1101_reset_counters(void)
 /* -----------------------------------------------------------------------
  * Tuning stubs — API surface preserved for shell.cpp compatibility
  * ----------------------------------------------------------------------- */
-static cc1101_tune_profile_t tune_profile_ = CC1101_TUNE_PROFILE_DEFAULT;
+static cc1101_tune_profile_t   tune_profile_ = CC1101_TUNE_PROFILE_DEFAULT;
 static cc1101_runtime_tuning_t runtime_tuning_ = {
     .fifo_drain_passes = 1,
     .max_packets_per_check = 1,
@@ -196,18 +269,17 @@ static cc1101_runtime_tuning_t runtime_tuning_ = {
     .fifothr = 0x07,
 };
 
-void cc1101_get_runtime_tuning(cc1101_runtime_tuning_t *out)
+void cc1101_get_runtime_tuning(cc1101_runtime_tuning_t* out)
 {
     if (out) *out = runtime_tuning_;
 }
 
-bool cc1101_set_runtime_tuning(const cc1101_runtime_tuning_t *in)
+bool cc1101_set_runtime_tuning(const cc1101_runtime_tuning_t* in)
 {
     if (!in || in->fifothr > 0x0F) return false;
     runtime_tuning_ = *in;
     tune_profile_ = CC1101_TUNE_PROFILE_CUSTOM;
-    if (initialized_)
-        cc1101_write_register(CC1101_FIFOTHR, in->fifothr);
+    if (initialized_) cc1101_write_register(CC1101_FIFOTHR, in->fifothr);
     return true;
 }
 
@@ -217,16 +289,24 @@ bool cc1101_apply_tune_profile(cc1101_tune_profile_t profile)
     return true;
 }
 
-cc1101_tune_profile_t cc1101_get_tune_profile(void) { return tune_profile_; }
+cc1101_tune_profile_t cc1101_get_tune_profile(void)
+{
+    return tune_profile_;
+}
 
-const char *cc1101_tune_profile_name(cc1101_tune_profile_t profile)
+const char* cc1101_tune_profile_name(cc1101_tune_profile_t profile)
 {
     switch (profile) {
-        case CC1101_TUNE_PROFILE_DEFAULT: return "default";
-        case CC1101_TUNE_PROFILE_BURST:   return "burst";
-        case CC1101_TUNE_PROFILE_NOISY:   return "noisy";
-        case CC1101_TUNE_PROFILE_CUSTOM:  return "custom";
-        default:                          return "unknown";
+    case CC1101_TUNE_PROFILE_DEFAULT:
+        return "default";
+    case CC1101_TUNE_PROFILE_BURST:
+        return "burst";
+    case CC1101_TUNE_PROFILE_NOISY:
+        return "noisy";
+    case CC1101_TUNE_PROFILE_CUSTOM:
+        return "custom";
+    default:
+        return "unknown";
     }
 }
 
@@ -420,9 +500,8 @@ bool cc1101_check_rx(void)
             accum_len_ = 0;
             /* Capture RSSI while signal is present */
             uint8_t rssi_raw = cc1101_read_status_register(CC1101_RSSI_REG);
-            accum_rssi_ = (rssi_raw >= 128)
-                ? (int8_t)((int16_t)(rssi_raw - 256) / 2 - 74)
-                : (int8_t)(rssi_raw / 2 - 74);
+            accum_rssi_ =
+                (rssi_raw >= 128) ? (int8_t)((int16_t)(rssi_raw - 256) / 2 - 74) : (int8_t)(rssi_raw / 2 - 74);
         }
 
         size_t space = sizeof(accum_) - accum_len_;
@@ -461,7 +540,7 @@ bool cc1101_check_rx(void)
 /* -----------------------------------------------------------------------
  * TX
  * ----------------------------------------------------------------------- */
-bool cc1101_transmit_raw(const uint8_t *data, size_t len)
+bool cc1101_transmit_raw(const uint8_t* data, size_t len)
 {
     if (!initialized_) return false;
 
@@ -483,7 +562,8 @@ bool cc1101_transmit_raw(const uint8_t *data, size_t len)
         cc1101_write_register(CC1101_PKTLEN, (uint8_t)len);
         cc1101_write_burst(CC1101_TXFIFO, data, len);
         cc1101_strobe(CC1101_STX);
-    } else {
+    }
+    else {
         cc1101_write_register(CC1101_PKTCTRL0, 0x02); /* infinite length */
         cc1101_write_burst(CC1101_TXFIFO, data, 64);
         size_t written = 64;

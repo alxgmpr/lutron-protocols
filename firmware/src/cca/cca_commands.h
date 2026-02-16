@@ -13,22 +13,22 @@ extern "C" {
  * Command types for the CCA command queue
  * ----------------------------------------------------------------------- */
 enum CcaCmdType : uint8_t {
-    CCA_CMD_BUTTON       = 0x01,
+    CCA_CMD_BUTTON = 0x01,
     CCA_CMD_BRIDGE_LEVEL = 0x02,
-    CCA_CMD_PICO_LEVEL   = 0x03,
+    CCA_CMD_PICO_LEVEL = 0x03,
     CCA_CMD_STATE_REPORT = 0x04,
-    CCA_CMD_BEACON       = 0x05,
-    CCA_CMD_UNPAIR       = 0x06,
-    CCA_CMD_LED_CONFIG   = 0x07,
-    CCA_CMD_FADE_CONFIG  = 0x08,
-    CCA_CMD_TRIM_CONFIG  = 0x09,
+    CCA_CMD_BEACON = 0x05,
+    CCA_CMD_UNPAIR = 0x06,
+    CCA_CMD_LED_CONFIG = 0x07,
+    CCA_CMD_FADE_CONFIG = 0x08,
+    CCA_CMD_TRIM_CONFIG = 0x09,
     CCA_CMD_PHASE_CONFIG = 0x0A,
-    CCA_CMD_PICO_PAIR    = 0x0B,
-    CCA_CMD_BRIDGE_PAIR  = 0x0C,
-    CCA_CMD_SAVE_FAV     = 0x0D,
-    CCA_CMD_VIVE_LEVEL   = 0x0E,
-    CCA_CMD_VIVE_DIM     = 0x0F,
-    CCA_CMD_VIVE_PAIR    = 0x10,
+    CCA_CMD_PICO_PAIR = 0x0B,
+    CCA_CMD_BRIDGE_PAIR = 0x0C,
+    CCA_CMD_SAVE_FAV = 0x0D,
+    CCA_CMD_VIVE_LEVEL = 0x0E,
+    CCA_CMD_VIVE_DIM = 0x0F,
+    CCA_CMD_VIVE_PAIR = 0x10,
 };
 
 /* -----------------------------------------------------------------------
@@ -49,28 +49,28 @@ struct CcaCmdItem {
     uint8_t  phase_byte;   /* phase config byte */
     uint8_t  pico_type;    /* 0=5btn, 1=2btn, 2=4btn-rl, 3=4btn-scene */
     uint8_t  duration_sec; /* pairing/beacon duration */
-    uint8_t  zone_byte;   /* Vive single-byte zone ID */
-    uint8_t  direction;   /* Vive dim direction: 0x03=raise, 0x02=lower */
+    uint8_t  zone_byte;    /* Vive single-byte zone ID */
+    uint8_t  direction;    /* Vive dim direction: 0x03=raise, 0x02=lower */
 };
 
 /* -----------------------------------------------------------------------
  * Enqueue a high-level CCA command for execution by the CCA task.
  * Thread-safe (uses FreeRTOS queue).
  * ----------------------------------------------------------------------- */
-bool cca_cmd_enqueue(const CcaCmdItem *item);
+bool cca_cmd_enqueue(const CcaCmdItem* item);
 
 /* -----------------------------------------------------------------------
  * Execute a CCA command synchronously (called from CCA task context).
  * Stops RX, builds + transmits the full packet burst with delays,
  * then restarts RX.
  * ----------------------------------------------------------------------- */
-void cca_cmd_execute(const CcaCmdItem *item);
+void cca_cmd_execute(const CcaCmdItem* item);
 
 /** Initialize the command queue (called from cca_task_start) */
 void cca_cmd_queue_init(void);
 
 /** Get command queue handle for CCA task to poll */
-void *cca_cmd_queue_handle(void);
+void* cca_cmd_queue_handle(void);
 
 /** Get total packets transmitted by command functions */
 uint32_t cca_cmd_tx_count(void);

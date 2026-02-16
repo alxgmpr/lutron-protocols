@@ -39,7 +39,7 @@ void sys_init(void)
 /* -----------------------------------------------------------------------
  * Semaphores
  * ----------------------------------------------------------------------- */
-err_t sys_sem_new(sys_sem_t *sem, u8_t count)
+err_t sys_sem_new(sys_sem_t* sem, u8_t count)
 {
     *sem = xSemaphoreCreateCounting(0xFFFF, count);
     if (*sem == NULL) {
@@ -50,19 +50,19 @@ err_t sys_sem_new(sys_sem_t *sem, u8_t count)
     return ERR_OK;
 }
 
-void sys_sem_free(sys_sem_t *sem)
+void sys_sem_free(sys_sem_t* sem)
 {
     SYS_STATS_DEC(sem);
     vSemaphoreDelete(*sem);
     *sem = NULL;
 }
 
-void sys_sem_signal(sys_sem_t *sem)
+void sys_sem_signal(sys_sem_t* sem)
 {
     xSemaphoreGive(*sem);
 }
 
-u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout)
+u32_t sys_arch_sem_wait(sys_sem_t* sem, u32_t timeout)
 {
     TickType_t start = xTaskGetTickCount();
     TickType_t ticks = (timeout == 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout);
@@ -74,12 +74,12 @@ u32_t sys_arch_sem_wait(sys_sem_t *sem, u32_t timeout)
     return SYS_ARCH_TIMEOUT;
 }
 
-int sys_sem_valid(sys_sem_t *sem)
+int sys_sem_valid(sys_sem_t* sem)
 {
     return (*sem != NULL);
 }
 
-void sys_sem_set_invalid(sys_sem_t *sem)
+void sys_sem_set_invalid(sys_sem_t* sem)
 {
     *sem = NULL;
 }
@@ -87,7 +87,7 @@ void sys_sem_set_invalid(sys_sem_t *sem)
 /* -----------------------------------------------------------------------
  * Mutexes
  * ----------------------------------------------------------------------- */
-err_t sys_mutex_new(sys_mutex_t *mutex)
+err_t sys_mutex_new(sys_mutex_t* mutex)
 {
     *mutex = xSemaphoreCreateMutex();
     if (*mutex == NULL) {
@@ -98,29 +98,29 @@ err_t sys_mutex_new(sys_mutex_t *mutex)
     return ERR_OK;
 }
 
-void sys_mutex_free(sys_mutex_t *mutex)
+void sys_mutex_free(sys_mutex_t* mutex)
 {
     SYS_STATS_DEC(mutex);
     vSemaphoreDelete(*mutex);
     *mutex = NULL;
 }
 
-void sys_mutex_lock(sys_mutex_t *mutex)
+void sys_mutex_lock(sys_mutex_t* mutex)
 {
     xSemaphoreTake(*mutex, portMAX_DELAY);
 }
 
-void sys_mutex_unlock(sys_mutex_t *mutex)
+void sys_mutex_unlock(sys_mutex_t* mutex)
 {
     xSemaphoreGive(*mutex);
 }
 
-int sys_mutex_valid(sys_mutex_t *mutex)
+int sys_mutex_valid(sys_mutex_t* mutex)
 {
     return (*mutex != NULL);
 }
 
-void sys_mutex_set_invalid(sys_mutex_t *mutex)
+void sys_mutex_set_invalid(sys_mutex_t* mutex)
 {
     *mutex = NULL;
 }
@@ -128,9 +128,9 @@ void sys_mutex_set_invalid(sys_mutex_t *mutex)
 /* -----------------------------------------------------------------------
  * Mailboxes (FreeRTOS queues)
  * ----------------------------------------------------------------------- */
-err_t sys_mbox_new(sys_mbox_t *mbox, int size)
+err_t sys_mbox_new(sys_mbox_t* mbox, int size)
 {
-    *mbox = xQueueCreate((UBaseType_t)size, sizeof(void *));
+    *mbox = xQueueCreate((UBaseType_t)size, sizeof(void*));
     if (*mbox == NULL) {
         SYS_STATS_INC(mbox.err);
         return ERR_MEM;
@@ -139,19 +139,19 @@ err_t sys_mbox_new(sys_mbox_t *mbox, int size)
     return ERR_OK;
 }
 
-void sys_mbox_free(sys_mbox_t *mbox)
+void sys_mbox_free(sys_mbox_t* mbox)
 {
     SYS_STATS_DEC(mbox);
     vQueueDelete(*mbox);
     *mbox = NULL;
 }
 
-void sys_mbox_post(sys_mbox_t *mbox, void *msg)
+void sys_mbox_post(sys_mbox_t* mbox, void* msg)
 {
     while (xQueueSend(*mbox, &msg, portMAX_DELAY) != pdTRUE);
 }
 
-err_t sys_mbox_trypost(sys_mbox_t *mbox, void *msg)
+err_t sys_mbox_trypost(sys_mbox_t* mbox, void* msg)
 {
     if (xQueueSend(*mbox, &msg, 0) == pdTRUE) {
         return ERR_OK;
@@ -160,7 +160,7 @@ err_t sys_mbox_trypost(sys_mbox_t *mbox, void *msg)
     return ERR_MEM;
 }
 
-err_t sys_mbox_trypost_fromisr(sys_mbox_t *mbox, void *msg)
+err_t sys_mbox_trypost_fromisr(sys_mbox_t* mbox, void* msg)
 {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     if (xQueueSendFromISR(*mbox, &msg, &xHigherPriorityTaskWoken) == pdTRUE) {
@@ -171,9 +171,9 @@ err_t sys_mbox_trypost_fromisr(sys_mbox_t *mbox, void *msg)
     return ERR_MEM;
 }
 
-u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout)
+u32_t sys_arch_mbox_fetch(sys_mbox_t* mbox, void** msg, u32_t timeout)
 {
-    void *dummy;
+    void* dummy;
     if (msg == NULL) msg = &dummy;
 
     TickType_t start = xTaskGetTickCount();
@@ -188,9 +188,9 @@ u32_t sys_arch_mbox_fetch(sys_mbox_t *mbox, void **msg, u32_t timeout)
     return SYS_ARCH_TIMEOUT;
 }
 
-u32_t sys_arch_mbox_tryfetch(sys_mbox_t *mbox, void **msg)
+u32_t sys_arch_mbox_tryfetch(sys_mbox_t* mbox, void** msg)
 {
-    void *dummy;
+    void* dummy;
     if (msg == NULL) msg = &dummy;
 
     if (xQueueReceive(*mbox, msg, 0) == pdTRUE) {
@@ -201,12 +201,12 @@ u32_t sys_arch_mbox_tryfetch(sys_mbox_t *mbox, void **msg)
     return SYS_MBOX_EMPTY;
 }
 
-int sys_mbox_valid(sys_mbox_t *mbox)
+int sys_mbox_valid(sys_mbox_t* mbox)
 {
     return (*mbox != NULL);
 }
 
-void sys_mbox_set_invalid(sys_mbox_t *mbox)
+void sys_mbox_set_invalid(sys_mbox_t* mbox)
 {
     *mbox = NULL;
 }
@@ -214,12 +214,10 @@ void sys_mbox_set_invalid(sys_mbox_t *mbox)
 /* -----------------------------------------------------------------------
  * Threads
  * ----------------------------------------------------------------------- */
-sys_thread_t sys_thread_new(const char *name, lwip_thread_fn thread,
-                            void *arg, int stacksize, int prio)
+sys_thread_t sys_thread_new(const char* name, lwip_thread_fn thread, void* arg, int stacksize, int prio)
 {
     TaskHandle_t handle;
-    BaseType_t ret = xTaskCreate(thread, name, (uint16_t)stacksize, arg,
-                                 (UBaseType_t)prio, &handle);
+    BaseType_t   ret = xTaskCreate(thread, name, (uint16_t)stacksize, arg, (UBaseType_t)prio, &handle);
     if (ret != pdPASS) {
         return NULL;
     }

@@ -6,15 +6,15 @@
  * Encoder helpers — append to buffer, advance pointer
  * ----------------------------------------------------------------------- */
 
-#define EMIT(fn, ...) do {                           \
-    size_t _n = fn(p, (size_t)(end - p), __VA_ARGS__); \
-    if (_n == 0) return 0;                           \
-    p += _n;                                         \
-} while (0)
+#define EMIT(fn, ...)                                      \
+    do {                                                   \
+        size_t _n = fn(p, (size_t)(end - p), __VA_ARGS__); \
+        if (_n == 0) return 0;                             \
+        p += _n;                                           \
+    } while (0)
 
-size_t ccx_encode_level_control(uint8_t *buf, size_t buf_size,
-                                 uint16_t zone_id, uint16_t level,
-                                 uint8_t fade, uint8_t sequence)
+size_t ccx_encode_level_control(uint8_t* buf, size_t buf_size, uint16_t zone_id, uint16_t level, uint8_t fade,
+                                uint8_t sequence)
 {
     /*
      * Target CBOR structure (matches encoder.ts):
@@ -23,8 +23,8 @@ size_t ccx_encode_level_control(uint8_t *buf, size_t buf_size,
      * Known-good hex for ON zone=961 seq=92:
      *   82 00 a3 00 a2 00 19feff 03 01 01 82 10 1903c1 05 185c
      */
-    uint8_t *p = buf;
-    uint8_t *end = buf + buf_size;
+    uint8_t* p = buf;
+    uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
     EMIT(cbor_encode_array, 2);
@@ -38,10 +38,10 @@ size_t ccx_encode_level_control(uint8_t *buf, size_t buf_size,
     /* Key 0: COMMAND → map(2) { 0: level, 3: fade } */
     EMIT(cbor_encode_uint, CCX_KEY_COMMAND);
     EMIT(cbor_encode_map, 2);
-    EMIT(cbor_encode_uint, 0);              /* key 0 */
-    EMIT(cbor_encode_uint, level);          /* value: level */
-    EMIT(cbor_encode_uint, 3);              /* key 3 (fade) */
-    EMIT(cbor_encode_uint, fade);           /* value: fade */
+    EMIT(cbor_encode_uint, 0);     /* key 0 */
+    EMIT(cbor_encode_uint, level); /* value: level */
+    EMIT(cbor_encode_uint, 3);     /* key 3 (fade) */
+    EMIT(cbor_encode_uint, fade);  /* value: fade */
 
     /* Key 1: ZONE → array(2) [zone_type, zone_id] */
     EMIT(cbor_encode_uint, CCX_KEY_ZONE);
@@ -56,15 +56,14 @@ size_t ccx_encode_level_control(uint8_t *buf, size_t buf_size,
     return (size_t)(p - buf);
 }
 
-size_t ccx_encode_scene_recall(uint8_t *buf, size_t buf_size,
-                                uint16_t scene_id, uint8_t sequence)
+size_t ccx_encode_scene_recall(uint8_t* buf, size_t buf_size, uint16_t scene_id, uint8_t sequence)
 {
     /*
      * Target CBOR structure (matches encoder.ts):
      *   [36, { 0: {0: [4]}, 1: [0], 3: {0: scene_id}, 5: sequence }]
      */
-    uint8_t *p = buf;
-    uint8_t *end = buf + buf_size;
+    uint8_t* p = buf;
+    uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
     EMIT(cbor_encode_array, 2);
@@ -104,8 +103,8 @@ size_t ccx_encode_scene_recall(uint8_t *buf, size_t buf_size,
 
 uint16_t ccx_percent_to_level(uint8_t percent)
 {
-    if (percent == 0)    return CCX_LEVEL_OFF;
-    if (percent >= 100)  return CCX_LEVEL_FULL_ON;
+    if (percent == 0) return CCX_LEVEL_OFF;
+    if (percent >= 100) return CCX_LEVEL_FULL_ON;
     return (uint16_t)(((uint32_t)percent * CCX_LEVEL_FULL_ON) / 100);
 }
 
@@ -117,7 +116,7 @@ uint16_t ccx_percent_to_level(uint8_t percent)
  * ----------------------------------------------------------------------- */
 
 /* Advance past one complete CBOR item (recursively skips containers) */
-static size_t cbor_skip_item(const uint8_t *buf, size_t len)
+static size_t cbor_skip_item(const uint8_t* buf, size_t len)
 {
     cbor_item_t item;
     if (!cbor_decode_item(buf, len, &item)) return 0;
@@ -125,42 +124,42 @@ static size_t cbor_skip_item(const uint8_t *buf, size_t len)
     size_t pos = item.header_len;
 
     switch (item.major) {
-        case CBOR_MAJOR_UINT:
-        case CBOR_MAJOR_NINT:
-            return pos;
+    case CBOR_MAJOR_UINT:
+    case CBOR_MAJOR_NINT:
+        return pos;
 
-        case CBOR_MAJOR_BSTR:
-        case CBOR_MAJOR_TSTR:
-            return pos + item.value;
+    case CBOR_MAJOR_BSTR:
+    case CBOR_MAJOR_TSTR:
+        return pos + item.value;
 
-        case CBOR_MAJOR_ARRAY:
-            for (uint32_t i = 0; i < item.value; i++) {
-                size_t skip = cbor_skip_item(buf + pos, len - pos);
-                if (skip == 0) return 0;
-                pos += skip;
-            }
-            return pos;
+    case CBOR_MAJOR_ARRAY:
+        for (uint32_t i = 0; i < item.value; i++) {
+            size_t skip = cbor_skip_item(buf + pos, len - pos);
+            if (skip == 0) return 0;
+            pos += skip;
+        }
+        return pos;
 
-        case CBOR_MAJOR_MAP:
-            for (uint32_t i = 0; i < item.value; i++) {
-                /* key */
-                size_t skip = cbor_skip_item(buf + pos, len - pos);
-                if (skip == 0) return 0;
-                pos += skip;
-                /* value */
-                skip = cbor_skip_item(buf + pos, len - pos);
-                if (skip == 0) return 0;
-                pos += skip;
-            }
-            return pos;
+    case CBOR_MAJOR_MAP:
+        for (uint32_t i = 0; i < item.value; i++) {
+            /* key */
+            size_t skip = cbor_skip_item(buf + pos, len - pos);
+            if (skip == 0) return 0;
+            pos += skip;
+            /* value */
+            skip = cbor_skip_item(buf + pos, len - pos);
+            if (skip == 0) return 0;
+            pos += skip;
+        }
+        return pos;
 
-        default:
-            return 0;
+    default:
+        return 0;
     }
 }
 
 /* Read a uint from current position, advance pos */
-static bool read_uint(const uint8_t *buf, size_t len, size_t *pos, uint32_t *val)
+static bool read_uint(const uint8_t* buf, size_t len, size_t* pos, uint32_t* val)
 {
     size_t consumed;
     if (!cbor_decode_uint(buf + *pos, len - *pos, val, &consumed)) return false;
@@ -169,11 +168,10 @@ static bool read_uint(const uint8_t *buf, size_t len, size_t *pos, uint32_t *val
 }
 
 /* Decode the inner COMMAND map for LEVEL_CONTROL: {0: level, 3: fade} */
-static void decode_level_command(const uint8_t *buf, size_t len,
-                                  ccx_decoded_msg_t *out)
+static void decode_level_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -187,36 +185,35 @@ static void decode_level_command(const uint8_t *buf, size_t len,
         uint32_t val;
         if (!read_uint(buf, len, &pos, &val)) return;
 
-        if (key == 0)      out->level = (uint16_t)val;
-        else if (key == 3) out->fade  = (uint8_t)val;
-        else if (key == 4) out->delay = (uint8_t)val;
+        if (key == 0)
+            out->level = (uint16_t)val;
+        else if (key == 3)
+            out->fade = (uint8_t)val;
+        else if (key == 4)
+            out->delay = (uint8_t)val;
     }
 }
 
 /* Decode ZONE array: [zone_type, zone_id] */
-static void decode_zone(const uint8_t *buf, size_t len,
-                         ccx_decoded_msg_t *out)
+static void decode_zone(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_ARRAY) return;
     pos += item.header_len;
 
     uint32_t val;
-    if (item.value >= 1 && read_uint(buf, len, &pos, &val))
-        out->zone_type = (uint8_t)val;
-    if (item.value >= 2 && read_uint(buf, len, &pos, &val))
-        out->zone_id = (uint16_t)val;
+    if (item.value >= 1 && read_uint(buf, len, &pos, &val)) out->zone_type = (uint8_t)val;
+    if (item.value >= 2 && read_uint(buf, len, &pos, &val)) out->zone_id = (uint16_t)val;
 }
 
 /* Decode DEVICE array: [device_type, device_serial] */
-static void decode_device(const uint8_t *buf, size_t len,
-                           ccx_decoded_msg_t *out)
+static void decode_device(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_ARRAY) return;
@@ -229,16 +226,14 @@ static void decode_device(const uint8_t *buf, size_t len,
         if (skip == 0) return;
         pos += skip;
     }
-    if (item.value >= 2 && read_uint(buf, len, &pos, &val))
-        out->device_serial = val;
+    if (item.value >= 2 && read_uint(buf, len, &pos, &val)) out->device_serial = val;
 }
 
 /* Decode EXTRA map: {0: scene_id/group_id, 1: group_id, 2: [type, value]} */
-static void decode_extra(const uint8_t *buf, size_t len,
-                          ccx_decoded_msg_t *out)
+static void decode_extra(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -253,32 +248,34 @@ static void decode_extra(const uint8_t *buf, size_t len,
             uint32_t val;
             if (!read_uint(buf, len, &pos, &val)) return;
             out->scene_id = (uint16_t)val;
-        } else if (key == 1) {
+        }
+        else if (key == 1) {
             uint32_t val;
             if (!read_uint(buf, len, &pos, &val)) return;
             out->group_id = (uint16_t)val;
-        } else if (key == 2) {
+        }
+        else if (key == 2) {
             /* Array [component_type, component_value] */
             cbor_item_t arr;
             if (!cbor_decode_item(buf + pos, len - pos, &arr)) return;
             if (arr.major == CBOR_MAJOR_ARRAY) {
                 pos += arr.header_len;
                 uint32_t val;
-                if (arr.value >= 1 && read_uint(buf, len, &pos, &val))
-                    out->component_type = (uint16_t)val;
-                if (arr.value >= 2 && read_uint(buf, len, &pos, &val))
-                    out->component_value = (uint16_t)val;
+                if (arr.value >= 1 && read_uint(buf, len, &pos, &val)) out->component_type = (uint16_t)val;
+                if (arr.value >= 2 && read_uint(buf, len, &pos, &val)) out->component_value = (uint16_t)val;
                 for (uint32_t k = 2; k < arr.value; k++) {
                     size_t skip = cbor_skip_item(buf + pos, len - pos);
                     if (skip == 0) return;
                     pos += skip;
                 }
-            } else {
+            }
+            else {
                 size_t skip = cbor_skip_item(buf + pos, len - pos);
                 if (skip == 0) return;
                 pos += skip;
             }
-        } else {
+        }
+        else {
             size_t skip = cbor_skip_item(buf + pos, len - pos);
             if (skip == 0) return;
             pos += skip;
@@ -287,11 +284,10 @@ static void decode_extra(const uint8_t *buf, size_t len,
 }
 
 /* Decode COMMAND for BUTTON_PRESS/DIM: {0: bstr(device_id), ...} */
-static void decode_button_command(const uint8_t *buf, size_t len,
-                                   ccx_decoded_msg_t *out)
+static void decode_button_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -310,21 +306,25 @@ static void decode_button_command(const uint8_t *buf, size_t len,
             if (val_item.major == CBOR_MAJOR_BSTR && val_item.value <= 4) {
                 memcpy(out->device_id, buf + pos, val_item.value);
                 pos += val_item.value;
-            } else {
+            }
+            else {
                 /* skip value */
                 size_t skip = cbor_skip_item(buf + pos - val_item.header_len, len - pos + val_item.header_len);
                 if (skip == 0) return;
                 pos = pos - val_item.header_len + skip;
             }
-        } else if (key == 1) {
+        }
+        else if (key == 1) {
             uint32_t val;
             if (!read_uint(buf, len, &pos, &val)) return;
             out->action = (uint8_t)val;
-        } else if (key == 2) {
+        }
+        else if (key == 2) {
             uint32_t val;
             if (!read_uint(buf, len, &pos, &val)) return;
             out->step_value = (uint16_t)val;
-        } else {
+        }
+        else {
             /* skip value */
             size_t skip = cbor_skip_item(buf + pos, len - pos);
             if (skip == 0) return;
@@ -334,11 +334,10 @@ static void decode_button_command(const uint8_t *buf, size_t len,
 }
 
 /* Decode COMMAND for ACK: {1: {0: bstr(response)}} */
-static void decode_ack_command(const uint8_t *buf, size_t len,
-                                ccx_decoded_msg_t *out)
+static void decode_ack_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t pos = 0;
+    size_t      pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -370,24 +369,26 @@ static void decode_ack_command(const uint8_t *buf, size_t len,
                     cbor_item_t bstr;
                     if (!cbor_decode_item(buf + pos, len - pos, &bstr)) return;
                     pos += bstr.header_len;
-                    if (bstr.major == CBOR_MAJOR_BSTR &&
-                        bstr.value <= sizeof(out->response)) {
+                    if (bstr.major == CBOR_MAJOR_BSTR && bstr.value <= sizeof(out->response)) {
                         memcpy(out->response, buf + pos, bstr.value);
                         out->response_len = (uint8_t)bstr.value;
                         pos += bstr.value;
-                    } else {
+                    }
+                    else {
                         pos -= bstr.header_len;
                         size_t skip = cbor_skip_item(buf + pos, len - pos);
                         if (skip == 0) return;
                         pos += skip;
                     }
-                } else {
+                }
+                else {
                     size_t skip = cbor_skip_item(buf + pos, len - pos);
                     if (skip == 0) return;
                     pos += skip;
                 }
             }
-        } else {
+        }
+        else {
             size_t skip = cbor_skip_item(buf + pos, len - pos);
             if (skip == 0) return;
             pos += skip;
@@ -395,11 +396,11 @@ static void decode_ack_command(const uint8_t *buf, size_t len,
     }
 }
 
-bool ccx_decode_message(const uint8_t *cbor, size_t len, ccx_decoded_msg_t *out)
+bool ccx_decode_message(const uint8_t* cbor, size_t len, ccx_decoded_msg_t* out)
 {
     memset(out, 0, sizeof(*out));
 
-    size_t pos = 0;
+    size_t      pos = 0;
     cbor_item_t item;
 
     /* Outer array(2): [msg_type, body_map] */
@@ -429,74 +430,85 @@ bool ccx_decode_message(const uint8_t *cbor, size_t len, ccx_decoded_msg_t *out)
         pos += val_size;
 
         switch (key) {
-            case CCX_KEY_COMMAND:
-                if (out->msg_type == CCX_MSG_LEVEL_CONTROL) {
-                    decode_level_command(cbor + val_start, val_size, out);
-                } else if (out->msg_type == CCX_MSG_BUTTON_PRESS ||
-                           out->msg_type == CCX_MSG_DIM_HOLD ||
-                           out->msg_type == CCX_MSG_DIM_STEP) {
-                    decode_button_command(cbor + val_start, val_size, out);
-                } else if (out->msg_type == CCX_MSG_ACK) {
-                    decode_ack_command(cbor + val_start, val_size, out);
-                }
-                /* STATUS/COMPONENT_CMD: COMMAND is variable, skip */
-                break;
-
-            case CCX_KEY_ZONE:
-                decode_zone(cbor + val_start, val_size, out);
-                break;
-
-            case CCX_KEY_DEVICE:
-                decode_device(cbor + val_start, val_size, out);
-                break;
-
-            case CCX_KEY_EXTRA:
-                if (out->msg_type == CCX_MSG_SCENE_RECALL ||
-                    out->msg_type == CCX_MSG_COMPONENT_CMD ||
-                    out->msg_type == CCX_MSG_DEVICE_REPORT) {
-                    decode_extra(cbor + val_start, val_size, out);
-                }
-                break;
-
-            case CCX_KEY_STATUS: {
-                uint32_t val;
-                size_t dummy;
-                if (cbor_decode_uint(cbor + val_start, val_size, &val, &dummy)) {
-                    out->status_value = (uint8_t)val;
-                }
-                break;
+        case CCX_KEY_COMMAND:
+            if (out->msg_type == CCX_MSG_LEVEL_CONTROL) {
+                decode_level_command(cbor + val_start, val_size, out);
             }
-
-            case CCX_KEY_SEQUENCE: {
-                uint32_t seq;
-                size_t dummy;
-                if (cbor_decode_uint(cbor + val_start, val_size, &seq, &dummy)) {
-                    out->sequence = (uint8_t)seq;
-                }
-                break;
+            else if (out->msg_type == CCX_MSG_BUTTON_PRESS || out->msg_type == CCX_MSG_DIM_HOLD ||
+                     out->msg_type == CCX_MSG_DIM_STEP) {
+                decode_button_command(cbor + val_start, val_size, out);
             }
+            else if (out->msg_type == CCX_MSG_ACK) {
+                decode_ack_command(cbor + val_start, val_size, out);
+            }
+            /* STATUS/COMPONENT_CMD: COMMAND is variable, skip */
+            break;
 
-            default:
-                break;
+        case CCX_KEY_ZONE:
+            decode_zone(cbor + val_start, val_size, out);
+            break;
+
+        case CCX_KEY_DEVICE:
+            decode_device(cbor + val_start, val_size, out);
+            break;
+
+        case CCX_KEY_EXTRA:
+            if (out->msg_type == CCX_MSG_SCENE_RECALL || out->msg_type == CCX_MSG_COMPONENT_CMD ||
+                out->msg_type == CCX_MSG_DEVICE_REPORT) {
+                decode_extra(cbor + val_start, val_size, out);
+            }
+            break;
+
+        case CCX_KEY_STATUS: {
+            uint32_t val;
+            size_t   dummy;
+            if (cbor_decode_uint(cbor + val_start, val_size, &val, &dummy)) {
+                out->status_value = (uint8_t)val;
+            }
+            break;
+        }
+
+        case CCX_KEY_SEQUENCE: {
+            uint32_t seq;
+            size_t   dummy;
+            if (cbor_decode_uint(cbor + val_start, val_size, &seq, &dummy)) {
+                out->sequence = (uint8_t)seq;
+            }
+            break;
+        }
+
+        default:
+            break;
         }
     }
 
     return true;
 }
 
-const char *ccx_msg_type_name(uint16_t msg_type)
+const char* ccx_msg_type_name(uint16_t msg_type)
 {
     switch (msg_type) {
-        case CCX_MSG_LEVEL_CONTROL:  return "LEVEL_CONTROL";
-        case CCX_MSG_BUTTON_PRESS:   return "BUTTON_PRESS";
-        case CCX_MSG_DIM_HOLD:       return "DIM_HOLD";
-        case CCX_MSG_DIM_STEP:       return "DIM_STEP";
-        case CCX_MSG_ACK:            return "ACK";
-        case CCX_MSG_DEVICE_REPORT:  return "DEVICE_REPORT";
-        case CCX_MSG_SCENE_RECALL:   return "SCENE_RECALL";
-        case CCX_MSG_COMPONENT_CMD:  return "COMPONENT_CMD";
-        case CCX_MSG_STATUS:         return "STATUS";
-        case CCX_MSG_PRESENCE:       return "PRESENCE";
-        default:                     return "UNKNOWN";
+    case CCX_MSG_LEVEL_CONTROL:
+        return "LEVEL_CONTROL";
+    case CCX_MSG_BUTTON_PRESS:
+        return "BUTTON_PRESS";
+    case CCX_MSG_DIM_HOLD:
+        return "DIM_HOLD";
+    case CCX_MSG_DIM_STEP:
+        return "DIM_STEP";
+    case CCX_MSG_ACK:
+        return "ACK";
+    case CCX_MSG_DEVICE_REPORT:
+        return "DEVICE_REPORT";
+    case CCX_MSG_SCENE_RECALL:
+        return "SCENE_RECALL";
+    case CCX_MSG_COMPONENT_CMD:
+        return "COMPONENT_CMD";
+    case CCX_MSG_STATUS:
+        return "STATUS";
+    case CCX_MSG_PRESENCE:
+        return "PRESENCE";
+    default:
+        return "UNKNOWN";
     }
 }

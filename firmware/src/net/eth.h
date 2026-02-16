@@ -12,7 +12,7 @@ extern "C" {
 void bsp_eth_init(void);
 
 /** Get current IP address as string (returns "0.0.0.0" if no link) */
-const char *eth_get_ip_str(void);
+const char* eth_get_ip_str(void);
 
 /** Check if Ethernet link is up */
 bool eth_link_is_up(void);

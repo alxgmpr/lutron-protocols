@@ -5,8 +5,7 @@
  * Internal: encode a CBOR major type + additional info header.
  * Returns bytes written (1, 2, 3, or 5), or 0 if buf too small.
  * ----------------------------------------------------------------------- */
-static size_t cbor_encode_header(uint8_t *buf, size_t buf_size,
-                                  uint8_t major, uint32_t value)
+static size_t cbor_encode_header(uint8_t* buf, size_t buf_size, uint8_t major, uint32_t value)
 {
     uint8_t mt = (uint8_t)(major << 5);
 
@@ -42,23 +41,22 @@ static size_t cbor_encode_header(uint8_t *buf, size_t buf_size,
  * Encoder
  * ----------------------------------------------------------------------- */
 
-size_t cbor_encode_uint(uint8_t *buf, size_t buf_size, uint32_t val)
+size_t cbor_encode_uint(uint8_t* buf, size_t buf_size, uint32_t val)
 {
     return cbor_encode_header(buf, buf_size, CBOR_MAJOR_UINT, val);
 }
 
-size_t cbor_encode_array(uint8_t *buf, size_t buf_size, uint32_t count)
+size_t cbor_encode_array(uint8_t* buf, size_t buf_size, uint32_t count)
 {
     return cbor_encode_header(buf, buf_size, CBOR_MAJOR_ARRAY, count);
 }
 
-size_t cbor_encode_map(uint8_t *buf, size_t buf_size, uint32_t count)
+size_t cbor_encode_map(uint8_t* buf, size_t buf_size, uint32_t count)
 {
     return cbor_encode_header(buf, buf_size, CBOR_MAJOR_MAP, count);
 }
 
-size_t cbor_encode_bstr(uint8_t *buf, size_t buf_size,
-                        const uint8_t *data, size_t len)
+size_t cbor_encode_bstr(uint8_t* buf, size_t buf_size, const uint8_t* data, size_t len)
 {
     size_t hdr_len = cbor_encode_header(buf, buf_size, CBOR_MAJOR_BSTR, (uint32_t)len);
     if (hdr_len == 0) return 0;
@@ -67,8 +65,7 @@ size_t cbor_encode_bstr(uint8_t *buf, size_t buf_size,
     return hdr_len + len;
 }
 
-size_t cbor_encode_tstr(uint8_t *buf, size_t buf_size,
-                        const char *str, size_t len)
+size_t cbor_encode_tstr(uint8_t* buf, size_t buf_size, const char* str, size_t len)
 {
     size_t hdr_len = cbor_encode_header(buf, buf_size, CBOR_MAJOR_TSTR, (uint32_t)len);
     if (hdr_len == 0) return 0;
@@ -81,7 +78,7 @@ size_t cbor_encode_tstr(uint8_t *buf, size_t buf_size,
  * Decoder
  * ----------------------------------------------------------------------- */
 
-bool cbor_decode_item(const uint8_t *buf, size_t len, cbor_item_t *item)
+bool cbor_decode_item(const uint8_t* buf, size_t len, cbor_item_t* item)
 {
     if (len < 1) return false;
 
@@ -107,10 +104,7 @@ bool cbor_decode_item(const uint8_t *buf, size_t len, cbor_item_t *item)
     }
     if (ai == 26) {
         if (len < 5) return false;
-        item->value = ((uint32_t)buf[1] << 24)
-                    | ((uint32_t)buf[2] << 16)
-                    | ((uint32_t)buf[3] << 8)
-                    | buf[4];
+        item->value = ((uint32_t)buf[1] << 24) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 8) | buf[4];
         item->header_len = 5;
         return true;
     }
@@ -119,8 +113,7 @@ bool cbor_decode_item(const uint8_t *buf, size_t len, cbor_item_t *item)
     return false;
 }
 
-bool cbor_decode_uint(const uint8_t *buf, size_t len,
-                      uint32_t *val, size_t *consumed)
+bool cbor_decode_uint(const uint8_t* buf, size_t len, uint32_t* val, size_t* consumed)
 {
     cbor_item_t item;
     if (!cbor_decode_item(buf, len, &item)) return false;

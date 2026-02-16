@@ -9,11 +9,9 @@
 #include "stm32h7xx.h"
 
 /* CMSIS global variables required by the HAL */
-uint32_t SystemCoreClock = 64000000UL;  /* Default HSI, updated by bsp_clock_init() */
-uint32_t SystemD2Clock   = 64000000UL;  /* D2 domain clock */
-const uint8_t D1CorePrescTable[16] = {
-    0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 8, 9
-};
+uint32_t      SystemCoreClock = 64000000UL; /* Default HSI, updated by bsp_clock_init() */
+uint32_t      SystemD2Clock = 64000000UL;   /* D2 domain clock */
+const uint8_t D1CorePrescTable[16] = {0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 8, 9};
 
 /**
  * Configure MPU to mark ETH DMA memory (RAM_D2) as non-cacheable.
@@ -32,16 +30,16 @@ static void MPU_Config(void)
     MPU->CTRL = 0;
 
     /* Region 0: RAM_D2 (0x30000000, 32 KB) — Non-cacheable */
-    MPU->RNR  = 0;                          /* Region number 0 */
-    MPU->RBAR = 0x30000000;                 /* Base address */
-    MPU->RASR = (0x01 << 28)               /* XN = 1: no execute */
-              | (0x03 << 24)               /* AP = 011: full access */
-              | (0x01 << 19)               /* TEX = 001 */
-              | (0x00 << 17)               /* S = 0 */
-              | (0x00 << 16)               /* C = 0 */
-              | (0x00 << 15)               /* B = 0: non-cacheable, non-bufferable */
-              | (14 << 1)                  /* SIZE = 14 → 2^(14+1) = 32 KB */
-              | (0x01 << 0);               /* ENABLE = 1 */
+    MPU->RNR = 0;              /* Region number 0 */
+    MPU->RBAR = 0x30000000;    /* Base address */
+    MPU->RASR = (0x01 << 28)   /* XN = 1: no execute */
+                | (0x03 << 24) /* AP = 011: full access */
+                | (0x01 << 19) /* TEX = 001 */
+                | (0x00 << 17) /* S = 0 */
+                | (0x00 << 16) /* C = 0 */
+                | (0x00 << 15) /* B = 0: non-cacheable, non-bufferable */
+                | (14 << 1)    /* SIZE = 14 → 2^(14+1) = 32 KB */
+                | (0x01 << 0); /* ENABLE = 1 */
 
     /* Enable MPU with PRIVDEFENA (default map for regions not covered) */
     MPU->CTRL = MPU_CTRL_ENABLE_Msk | MPU_CTRL_PRIVDEFENA_Msk;
@@ -58,7 +56,7 @@ void SystemInit(void)
 {
     /* FPU settings: enable CP10 and CP11 (full access) */
 #if (__FPU_PRESENT == 1) && (__FPU_USED == 1)
-    SCB->CPACR |= ((3UL << 20U) | (3UL << 22U));  /* CP10 + CP11 Full Access */
+    SCB->CPACR |= ((3UL << 20U) | (3UL << 22U)); /* CP10 + CP11 Full Access */
 #endif
 
     /* Reset the RCC clock configuration to default reset state */

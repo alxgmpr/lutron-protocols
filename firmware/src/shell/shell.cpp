@@ -39,19 +39,19 @@
 #include <cstring>
 #include <cstdlib>
 
-#define SHELL_TASK_STACK_SIZE  1024
-#define SHELL_TASK_PRIORITY    1
-#define CMD_BUF_SIZE           128
+#define SHELL_TASK_STACK_SIZE 1024
+#define SHELL_TASK_PRIORITY   1
+#define CMD_BUF_SIZE          128
 
-#define HISTORY_SIZE  8
-#define HISTORY_LEN   CMD_BUF_SIZE
+#define HISTORY_SIZE 8
+#define HISTORY_LEN  CMD_BUF_SIZE
 
 /* -----------------------------------------------------------------------
  * Raw UART helpers — bypass printf/_write to avoid reentrancy
  * ----------------------------------------------------------------------- */
-static void uart_write(const char *data, size_t len)
+static void uart_write(const char* data, size_t len)
 {
-    HAL_UART_Transmit(&huart3, (const uint8_t *)data, (uint16_t)len, 10);
+    HAL_UART_Transmit(&huart3, (const uint8_t*)data, (uint16_t)len, 10);
 }
 
 static void uart_putc(char c)
@@ -59,7 +59,7 @@ static void uart_putc(char c)
     uart_write(&c, 1);
 }
 
-static void uart_puts(const char *s)
+static void uart_puts(const char* s)
 {
     uart_write(s, strlen(s));
 }
@@ -86,12 +86,12 @@ static void vt100_cursor_forward(size_t n)
 /* -----------------------------------------------------------------------
  * Command history ring buffer
  * ----------------------------------------------------------------------- */
-static char    hist_buf[HISTORY_SIZE][HISTORY_LEN];
-static int     hist_count = 0;  /* total entries stored */
-static int     hist_write = 0;  /* next write slot */
-static int     hist_nav   = 0;  /* navigation index during up/down */
+static char hist_buf[HISTORY_SIZE][HISTORY_LEN];
+static int  hist_count = 0; /* total entries stored */
+static int  hist_write = 0; /* next write slot */
+static int  hist_nav = 0;   /* navigation index during up/down */
 
-static void hist_add(const char *line)
+static void hist_add(const char* line)
 {
     if (line[0] == '\0') return;
 
@@ -108,7 +108,7 @@ static void hist_add(const char *line)
 }
 
 /* Get history entry by offset from most recent (0 = newest) */
-static const char *hist_get(int offset)
+static const char* hist_get(int offset)
 {
     if (offset < 0 || offset >= hist_count) return nullptr;
     int idx = (hist_write - 1 - offset + HISTORY_SIZE * 2) % HISTORY_SIZE;
@@ -123,13 +123,13 @@ enum esc_state { ESC_NONE, ESC_GOT_ESC, ESC_GOT_CSI };
 /* -----------------------------------------------------------------------
  * Line editor — full readline with history and cursor movement
  * ----------------------------------------------------------------------- */
-static size_t shell_readline(char *buf, size_t max_len)
+static size_t shell_readline(char* buf, size_t max_len)
 {
-    size_t len = 0;       /* chars in buffer */
-    size_t cursor = 0;    /* cursor position */
+    size_t         len = 0;    /* chars in buffer */
+    size_t         cursor = 0; /* cursor position */
     enum esc_state esc = ESC_NONE;
-    char saved_line[CMD_BUF_SIZE] = {0};  /* saved line when navigating history */
-    int saved_valid = 0;
+    char           saved_line[CMD_BUF_SIZE] = {0}; /* saved line when navigating history */
+    int            saved_valid = 0;
 
     TaskHandle_t me = xTaskGetCurrentTaskHandle();
 
@@ -143,9 +143,7 @@ static size_t shell_readline(char *buf, size_t max_len)
     shell_register_state(me, buf, 0, 0, 1);
     uart_puts("> ");
 
-    auto sync = [&]() {
-        shell_register_state(me, buf, len, cursor, 1);
-    };
+    auto sync = [&]() { shell_register_state(me, buf, len, cursor, 1); };
 
     /* Redraw the entire line from scratch (after replace, clear, etc.) */
     auto redraw_line = [&]() {
@@ -157,7 +155,7 @@ static size_t shell_readline(char *buf, size_t max_len)
     };
 
     /* Replace entire line with new content */
-    auto replace_line = [&](const char *newline) {
+    auto replace_line = [&](const char* newline) {
         len = strlen(newline);
         if (len >= max_len) len = max_len - 1;
         memcpy(buf, newline, len);
@@ -201,7 +199,7 @@ static size_t shell_readline(char *buf, size_t max_len)
                         saved_line[len] = '\0';
                         saved_valid = 1;
                     }
-                    const char *h = hist_get(hist_nav);
+                    const char* h = hist_get(hist_nav);
                     if (h) {
                         hist_nav++;
                         replace_line(h);
@@ -213,8 +211,9 @@ static size_t shell_readline(char *buf, size_t max_len)
                     hist_nav--;
                     if (hist_nav == 0 && saved_valid) {
                         replace_line(saved_line);
-                    } else {
-                        const char *h = hist_get(hist_nav - 1);
+                    }
+                    else {
+                        const char* h = hist_get(hist_nav - 1);
                         if (h) replace_line(h);
                     }
                 }
@@ -246,8 +245,7 @@ static size_t shell_readline(char *buf, size_t max_len)
             case '3': {
                 /* Delete key: ESC [ 3 ~ */
                 uint8_t tilde;
-                if (HAL_UART_Receive(&huart3, &tilde, 1, 50) == HAL_OK
-                    && tilde == '~') {
+                if (HAL_UART_Receive(&huart3, &tilde, 1, 50) == HAL_OK && tilde == '~') {
                     if (cursor < len) {
                         memmove(&buf[cursor], &buf[cursor + 1], len - cursor - 1);
                         len--;
@@ -376,7 +374,7 @@ static size_t shell_readline(char *buf, size_t max_len)
 /* -----------------------------------------------------------------------
  * Parse hex string to bytes
  * ----------------------------------------------------------------------- */
-static size_t hex_to_bytes(const char *hex, uint8_t *out, size_t max_len)
+static size_t hex_to_bytes(const char* hex, uint8_t* out, size_t max_len)
 {
     size_t slen = strlen(hex);
     if (slen % 2 != 0) return 0;
@@ -399,92 +397,73 @@ static void cmd_status(void)
     /* CCA (ISM) — CC1101 sub-GHz radio */
     if (cc1101_is_initialized()) {
         uint8_t state = cc1101_get_state();
-        printf("CCA (ISM): %s  RX=%lu TX=%lu\r\n",
-               cc1101_is_rx_active() ? "RX" : (state == 0x01 ? "IDLE" : "INIT"),
-               (unsigned long)cca_rx_count(),
-               (unsigned long)cca_tx_count());
-        printf("  drops=%lu crc_fail=%lu n81_err=%lu ack=%lu crc_optional=%lu\r\n",
-               (unsigned long)cca_drop_count(),
-               (unsigned long)cca_crc_fail_count(),
-               (unsigned long)cca_n81_err_count(),
-               (unsigned long)cca_ack_count(),
+        printf("CCA (ISM): %s  RX=%lu TX=%lu\r\n", cc1101_is_rx_active() ? "RX" : (state == 0x01 ? "IDLE" : "INIT"),
+               (unsigned long)cca_rx_count(), (unsigned long)cca_tx_count());
+        printf("  drops=%lu crc_fail=%lu n81_err=%lu ack=%lu crc_optional=%lu\r\n", (unsigned long)cca_drop_count(),
+               (unsigned long)cca_crc_fail_count(), (unsigned long)cca_n81_err_count(), (unsigned long)cca_ack_count(),
                (unsigned long)cca_crc_optional_count());
-        printf("  overflows=%lu runts=%lu short=%lu irq=%lu\r\n",
-               (unsigned long)cc1101_overflow_count(),
-               (unsigned long)cc1101_runt_count(),
-               (unsigned long)cc1101_short_packet_count(),
+        printf("  overflows=%lu runts=%lu short=%lu irq=%lu\r\n", (unsigned long)cc1101_overflow_count(),
+               (unsigned long)cc1101_runt_count(), (unsigned long)cc1101_short_packet_count(),
                (unsigned long)cca_irq_count());
-        printf("  gpio: gdo0=%u gdo2=%u\r\n",
-               (unsigned)HAL_GPIO_ReadPin(CC1101_GDO0_PORT, CC1101_GDO0_PIN),
+        printf("  gpio: gdo0=%u gdo2=%u\r\n", (unsigned)HAL_GPIO_ReadPin(CC1101_GDO0_PORT, CC1101_GDO0_PIN),
 #if CC1101_GDO2_BACKUP_ENABLE
                (unsigned)HAL_GPIO_ReadPin(CC1101_GDO2_PORT, CC1101_GDO2_PIN)
 #else
                0u
 #endif
         );
-        printf("  exti: gdo0=%lu gdo2=%lu\r\n",
-               (unsigned long)bsp_exti_gdo0_count(),
+        printf("  exti: gdo0=%lu gdo2=%lu\r\n", (unsigned long)bsp_exti_gdo0_count(),
                (unsigned long)bsp_exti_gdo2_count());
         printf("  restart: timeout=%lu overflow=%lu manual=%lu packet=%lu\r\n",
-               (unsigned long)cc1101_rx_restart_timeout_count(),
-               (unsigned long)cc1101_rx_restart_overflow_count(),
-               (unsigned long)cc1101_rx_restart_manual_count(),
-               (unsigned long)cc1101_rx_restart_packet_count());
+               (unsigned long)cc1101_rx_restart_timeout_count(), (unsigned long)cc1101_rx_restart_overflow_count(),
+               (unsigned long)cc1101_rx_restart_manual_count(), (unsigned long)cc1101_rx_restart_packet_count());
         printf("  sync: hit=%lu miss=%lu  ring: now=%lu max=%lu in=%lu drop=%lu\r\n",
-               (unsigned long)cc1101_sync_peek_hit_count(),
-               (unsigned long)cc1101_sync_peek_miss_count(),
-               (unsigned long)cc1101_ring_current_occupancy(),
-               (unsigned long)cc1101_ring_max_occupancy(),
-               (unsigned long)cc1101_ring_bytes_in_count(),
-               (unsigned long)cc1101_ring_bytes_dropped_count());
-        printf("  isr_latency_us: min=%lu p95=%lu max=%lu n=%lu\r\n",
-               (unsigned long)cca_isr_latency_min_us(),
-               (unsigned long)cca_isr_latency_p95_us(),
-               (unsigned long)cca_isr_latency_max_us(),
+               (unsigned long)cc1101_sync_peek_hit_count(), (unsigned long)cc1101_sync_peek_miss_count(),
+               (unsigned long)cc1101_ring_current_occupancy(), (unsigned long)cc1101_ring_max_occupancy(),
+               (unsigned long)cc1101_ring_bytes_in_count(), (unsigned long)cc1101_ring_bytes_dropped_count());
+        printf("  isr_latency_us: min=%lu p95=%lu max=%lu n=%lu\r\n", (unsigned long)cca_isr_latency_min_us(),
+               (unsigned long)cca_isr_latency_p95_us(), (unsigned long)cca_isr_latency_max_us(),
                (unsigned long)cca_isr_latency_samples());
-    } else {
+    }
+    else {
         printf("CCA (ISM): NOT INITIALIZED\r\n");
     }
 
     /* Ethernet */
-    printf("Ethernet: %s IP=%s\r\n",
-           eth_link_is_up() ? "UP" : "DOWN", eth_get_ip_str());
-    printf("  UDP clients: %d/%d  sent=%lu fail=%lu qdrop=%lu\r\n",
-           stream_num_clients(), MAX_STREAM_CLIENTS,
-           (unsigned long)stream_udp_sent_count(),
-           (unsigned long)stream_udp_fail_count(),
+    printf("Ethernet: %s IP=%s\r\n", eth_link_is_up() ? "UP" : "DOWN", eth_get_ip_str());
+    printf("  UDP clients: %d/%d  sent=%lu fail=%lu qdrop=%lu\r\n", stream_num_clients(), MAX_STREAM_CLIENTS,
+           (unsigned long)stream_udp_sent_count(), (unsigned long)stream_udp_fail_count(),
            (unsigned long)stream_tx_drop_count());
 
     /* CCX */
     if (ccx_is_running()) {
         if (ccx_thread_joined()) {
-            printf("CCX (Thread): %s  RX=%lu TX=%lu\r\n",
-                   ccx_thread_role_str(),
-                   (unsigned long)ccx_rx_count(),
+            printf("CCX (Thread): %s  RX=%lu TX=%lu\r\n", ccx_thread_role_str(), (unsigned long)ccx_rx_count(),
                    (unsigned long)ccx_tx_count());
-        } else {
+        }
+        else {
             printf("CCX (Thread): DETACHED (joining...)\r\n");
         }
-    } else {
+    }
+    else {
         printf("CCX (Thread): NOT STARTED\r\n");
     }
 
     /* FreeRTOS heap */
-    printf("FreeRTOS heap: %lu free of %lu\r\n",
-           (unsigned long)xPortGetFreeHeapSize(),
+    printf("FreeRTOS heap: %lu free of %lu\r\n", (unsigned long)xPortGetFreeHeapSize(),
            (unsigned long)configTOTAL_HEAP_SIZE);
 }
 
 /* -----------------------------------------------------------------------
  * Parse button name to code
  * ----------------------------------------------------------------------- */
-static int parse_button_name(const char *name)
+static int parse_button_name(const char* name)
 {
-    if (strcmp(name, "on") == 0)     return BTN_ON;
-    if (strcmp(name, "off") == 0)    return BTN_OFF;
-    if (strcmp(name, "fav") == 0)    return BTN_FAVORITE;
-    if (strcmp(name, "raise") == 0)  return BTN_RAISE;
-    if (strcmp(name, "lower") == 0)  return BTN_LOWER;
+    if (strcmp(name, "on") == 0) return BTN_ON;
+    if (strcmp(name, "off") == 0) return BTN_OFF;
+    if (strcmp(name, "fav") == 0) return BTN_FAVORITE;
+    if (strcmp(name, "raise") == 0) return BTN_RAISE;
+    if (strcmp(name, "lower") == 0) return BTN_LOWER;
     if (strcmp(name, "scene1") == 0) return BTN_SCENE1;
     if (strcmp(name, "scene2") == 0) return BTN_SCENE2;
     if (strcmp(name, "scene3") == 0) return BTN_SCENE3;
@@ -492,10 +471,10 @@ static int parse_button_name(const char *name)
     return -1;
 }
 
-static void cmd_tx(const char *hex)
+static void cmd_tx(const char* hex)
 {
     uint8_t pkt[64];
-    size_t len = hex_to_bytes(hex, pkt, sizeof(pkt));
+    size_t  len = hex_to_bytes(hex, pkt, sizeof(pkt));
     if (len == 0) {
         printf("Usage: tx <hex bytes>\r\n");
         printf("Example: tx 88014E10A2C703020001\r\n");
@@ -508,7 +487,8 @@ static void cmd_tx(const char *hex)
 
     if (cca_tx_enqueue(pkt, len)) {
         printf("Queued for TX\r\n");
-    } else {
+    }
+    else {
         printf("TX queue full!\r\n");
     }
 }
@@ -531,11 +511,11 @@ struct CcaTuneSnapshot {
 };
 
 static struct {
-    bool valid;
+    bool            valid;
     CcaTuneSnapshot snap;
 } g_cca_tune_baseline = {false, {}};
 
-static void cca_tune_snapshot(CcaTuneSnapshot *out)
+static void cca_tune_snapshot(CcaTuneSnapshot* out)
 {
     if (out == nullptr) return;
     out->tick_ms = HAL_GetTick();
@@ -559,7 +539,7 @@ static uint32_t delta32(uint32_t now, uint32_t then)
     return now - then;
 }
 
-static bool next_token(const char **cursor, char *out, size_t out_len)
+static bool next_token(const char** cursor, char* out, size_t out_len)
 {
     if (cursor == nullptr || *cursor == nullptr || out == nullptr || out_len == 0) return false;
 
@@ -579,10 +559,10 @@ static bool next_token(const char **cursor, char *out, size_t out_len)
     return true;
 }
 
-static bool parse_u32_token(const char *token, uint32_t *out)
+static bool parse_u32_token(const char* token, uint32_t* out)
 {
     if (token == nullptr || out == nullptr || token[0] == '\0') return false;
-    char *endptr = nullptr;
+    char*         endptr = nullptr;
     unsigned long v = strtoul(token, &endptr, 0);
     if (endptr == token || *endptr != '\0') return false;
     *out = (uint32_t)v;
@@ -611,41 +591,24 @@ static void cmd_cca_tune_show(void)
 
     printf("CCA tune profile: %s\r\n", cc1101_tune_profile_name(cc1101_get_tune_profile()));
     printf("  params: drain_passes=%u max_packets=%u miss_streak=%u miss_ring=%u timeout_ms=%u fifothr=0x%02X\r\n",
-           tuning.fifo_drain_passes,
-           tuning.max_packets_per_check,
-           tuning.sync_miss_bail_streak,
-           tuning.sync_miss_bail_ring,
-           tuning.stale_timeout_ms,
-           tuning.fifothr);
+           tuning.fifo_drain_passes, tuning.max_packets_per_check, tuning.sync_miss_bail_streak,
+           tuning.sync_miss_bail_ring, tuning.stale_timeout_ms, tuning.fifothr);
 
     struct RegDef {
-        uint8_t reg;
-        const char *name;
+        uint8_t     reg;
+        const char* name;
     };
     static const RegDef cfg_regs[] = {
-        {CC1101_IOCFG0, "IOCFG0"},
-        {CC1101_FIFOTHR, "FIFOTHR"},
-        {CC1101_SYNC1, "SYNC1"},
-        {CC1101_SYNC0, "SYNC0"},
-        {CC1101_FSCTRL1, "FSCTRL1"},
-        {CC1101_MDMCFG4, "MDMCFG4"},
-        {CC1101_MDMCFG3, "MDMCFG3"},
-        {CC1101_MDMCFG2, "MDMCFG2"},
-        {CC1101_DEVIATN, "DEVIATN"},
-        {CC1101_MCSM1, "MCSM1"},
-        {CC1101_MCSM0, "MCSM0"},
-        {CC1101_FOCCFG, "FOCCFG"},
-        {CC1101_BSCFG, "BSCFG"},
-        {CC1101_AGCCTRL2, "AGC2"},
-        {CC1101_AGCCTRL1, "AGC1"},
+        {CC1101_IOCFG0, "IOCFG0"},   {CC1101_FIFOTHR, "FIFOTHR"}, {CC1101_SYNC1, "SYNC1"},
+        {CC1101_SYNC0, "SYNC0"},     {CC1101_FSCTRL1, "FSCTRL1"}, {CC1101_MDMCFG4, "MDMCFG4"},
+        {CC1101_MDMCFG3, "MDMCFG3"}, {CC1101_MDMCFG2, "MDMCFG2"}, {CC1101_DEVIATN, "DEVIATN"},
+        {CC1101_MCSM1, "MCSM1"},     {CC1101_MCSM0, "MCSM0"},     {CC1101_FOCCFG, "FOCCFG"},
+        {CC1101_BSCFG, "BSCFG"},     {CC1101_AGCCTRL2, "AGC2"},   {CC1101_AGCCTRL1, "AGC1"},
         {CC1101_AGCCTRL0, "AGC0"},
     };
     static const RegDef st_regs[] = {
-        {CC1101_MARCSTATE, "MARCSTATE"},
-        {CC1101_PKTSTATUS, "PKTSTATUS"},
-        {CC1101_RXBYTES, "RXBYTES"},
-        {CC1101_RSSI_REG, "RSSI"},
-        {CC1101_LQI_REG, "LQI"},
+        {CC1101_MARCSTATE, "MARCSTATE"}, {CC1101_PKTSTATUS, "PKTSTATUS"}, {CC1101_RXBYTES, "RXBYTES"},
+        {CC1101_RSSI_REG, "RSSI"},       {CC1101_LQI_REG, "LQI"},
     };
 
     printf("  cfg regs:\r\n");
@@ -663,16 +626,19 @@ static void cmd_cca_tune_show(void)
     }
 }
 
-static void cmd_cca_tune_profile(const char *profile_name)
+static void cmd_cca_tune_profile(const char* profile_name)
 {
     cc1101_tune_profile_t profile = CC1101_TUNE_PROFILE_DEFAULT;
     if (strcmp(profile_name, "default") == 0) {
         profile = CC1101_TUNE_PROFILE_DEFAULT;
-    } else if (strcmp(profile_name, "burst") == 0) {
+    }
+    else if (strcmp(profile_name, "burst") == 0) {
         profile = CC1101_TUNE_PROFILE_BURST;
-    } else if (strcmp(profile_name, "noisy") == 0) {
+    }
+    else if (strcmp(profile_name, "noisy") == 0) {
         profile = CC1101_TUNE_PROFILE_NOISY;
-    } else {
+    }
+    else {
         printf("Unknown profile '%s' (use default|burst|noisy)\r\n", profile_name);
         return;
     }
@@ -686,7 +652,7 @@ static void cmd_cca_tune_profile(const char *profile_name)
     cmd_cca_tune_show();
 }
 
-static void cmd_cca_tune_reg_get(const char *addr_tok)
+static void cmd_cca_tune_reg_get(const char* addr_tok)
 {
     uint32_t reg32 = 0;
     if (!parse_u32_token(addr_tok, &reg32) || reg32 > 0x3F) {
@@ -717,13 +683,11 @@ static void cmd_cca_tune_reg_get(const char *addr_tok)
     printf("Unsupported register 0x%02X\r\n", reg);
 }
 
-static void cmd_cca_tune_reg_set(const char *addr_tok, const char *value_tok)
+static void cmd_cca_tune_reg_set(const char* addr_tok, const char* value_tok)
 {
     uint32_t reg32 = 0;
     uint32_t value32 = 0;
-    if (!parse_u32_token(addr_tok, &reg32) ||
-        !parse_u32_token(value_tok, &value32) ||
-        reg32 > 0x3F || value32 > 0xFF) {
+    if (!parse_u32_token(addr_tok, &reg32) || !parse_u32_token(value_tok, &value32) || reg32 > 0x3F || value32 > 0xFF) {
         printf("Usage: cca tune reg set <addr> <value>\r\n");
         return;
     }
@@ -747,7 +711,8 @@ static void cmd_cca_tune_reg_set(const char *addr_tok, const char *value_tok)
     if (reg == CC1101_IOCFG0) {
         cc1101_write_register(CC1101_IOCFG2, value);
         mirrored = true;
-    } else if (reg == CC1101_IOCFG2) {
+    }
+    else if (reg == CC1101_IOCFG2) {
         cc1101_write_register(CC1101_IOCFG0, value);
         mirrored = true;
     }
@@ -756,7 +721,8 @@ static void cmd_cca_tune_reg_set(const char *addr_tok, const char *value_tok)
     cc1101_apply_tune_profile(CC1101_TUNE_PROFILE_CUSTOM);
     if (mirrored) {
         printf("CC1101 reg[0x%02X] <= 0x%02X (mirrored IOCFG0/2)\r\n", reg, value);
-    } else {
+    }
+    else {
         printf("CC1101 reg[0x%02X] <= 0x%02X\r\n", reg, value);
     }
 }
@@ -765,16 +731,13 @@ static void cmd_cca_tune_param_show(void)
 {
     cc1101_runtime_tuning_t tuning = {};
     cc1101_get_runtime_tuning(&tuning);
-    printf("CCA tune params: drain_passes=%u max_packets=%u miss_streak=%u miss_ring=%u timeout_ms=%u fifothr=0x%02X\r\n",
-           tuning.fifo_drain_passes,
-           tuning.max_packets_per_check,
-           tuning.sync_miss_bail_streak,
-           tuning.sync_miss_bail_ring,
-           tuning.stale_timeout_ms,
-           tuning.fifothr);
+    printf(
+        "CCA tune params: drain_passes=%u max_packets=%u miss_streak=%u miss_ring=%u timeout_ms=%u fifothr=0x%02X\r\n",
+        tuning.fifo_drain_passes, tuning.max_packets_per_check, tuning.sync_miss_bail_streak,
+        tuning.sync_miss_bail_ring, tuning.stale_timeout_ms, tuning.fifothr);
 }
 
-static void cmd_cca_tune_param_set(const char *name, const char *value_tok)
+static void cmd_cca_tune_param_set(const char* name, const char* value_tok)
 {
     uint32_t value32 = 0;
     if (!parse_u32_token(value_tok, &value32)) {
@@ -791,17 +754,23 @@ static void cmd_cca_tune_param_set(const char *name, const char *value_tok)
 
     if (strcmp(name, "drain_passes") == 0) {
         tuning.fifo_drain_passes = (uint8_t)value32;
-    } else if (strcmp(name, "max_packets") == 0) {
+    }
+    else if (strcmp(name, "max_packets") == 0) {
         tuning.max_packets_per_check = (uint8_t)value32;
-    } else if (strcmp(name, "miss_streak") == 0) {
+    }
+    else if (strcmp(name, "miss_streak") == 0) {
         tuning.sync_miss_bail_streak = (uint8_t)value32;
-    } else if (strcmp(name, "miss_ring") == 0) {
+    }
+    else if (strcmp(name, "miss_ring") == 0) {
         tuning.sync_miss_bail_ring = (uint8_t)value32;
-    } else if (strcmp(name, "timeout_ms") == 0) {
+    }
+    else if (strcmp(name, "timeout_ms") == 0) {
         tuning.stale_timeout_ms = (uint8_t)value32;
-    } else if (strcmp(name, "fifothr") == 0) {
+    }
+    else if (strcmp(name, "fifothr") == 0) {
         tuning.fifothr = (uint8_t)value32;
-    } else {
+    }
+    else {
         printf("Unknown param '%s'\r\n", name);
         printf("Known params: drain_passes max_packets miss_streak miss_ring timeout_ms fifothr\r\n");
         return;
@@ -828,8 +797,7 @@ static void cmd_cca_tune_score_reset(void)
 {
     cca_tune_snapshot(&g_cca_tune_baseline.snap);
     g_cca_tune_baseline.valid = true;
-    printf("CCA tune score baseline reset (t=%lu ms)\r\n",
-           (unsigned long)g_cca_tune_baseline.snap.tick_ms);
+    printf("CCA tune score baseline reset (t=%lu ms)\r\n", (unsigned long)g_cca_tune_baseline.snap.tick_ms);
 }
 
 static void cmd_cca_tune_score_show(void)
@@ -844,21 +812,21 @@ static void cmd_cca_tune_score_show(void)
         return;
     }
 
-    const CcaTuneSnapshot &base = g_cca_tune_baseline.snap;
-    uint32_t dt_ms = delta32(now.tick_ms, base.tick_ms);
-    uint32_t d_rx = delta32(now.rx, base.rx);
-    uint32_t d_drop = delta32(now.drop, base.drop);
-    uint32_t d_crc = delta32(now.crc_fail, base.crc_fail);
-    uint32_t d_n81 = delta32(now.n81_err, base.n81_err);
-    uint32_t d_ack = delta32(now.ack, base.ack);
-    uint32_t d_over = delta32(now.overflows, base.overflows);
-    uint32_t d_restart_timeout = delta32(now.restart_timeout, base.restart_timeout);
-    uint32_t d_restart_overflow = delta32(now.restart_overflow, base.restart_overflow);
-    uint32_t d_restart_packet = delta32(now.restart_packet, base.restart_packet);
-    uint32_t d_sync_hit = delta32(now.sync_hit, base.sync_hit);
-    uint32_t d_sync_miss = delta32(now.sync_miss, base.sync_miss);
-    uint32_t d_ring_drop = delta32(now.ring_drop, base.ring_drop);
-    uint32_t d_irq = delta32(now.irq, base.irq);
+    const CcaTuneSnapshot& base = g_cca_tune_baseline.snap;
+    uint32_t               dt_ms = delta32(now.tick_ms, base.tick_ms);
+    uint32_t               d_rx = delta32(now.rx, base.rx);
+    uint32_t               d_drop = delta32(now.drop, base.drop);
+    uint32_t               d_crc = delta32(now.crc_fail, base.crc_fail);
+    uint32_t               d_n81 = delta32(now.n81_err, base.n81_err);
+    uint32_t               d_ack = delta32(now.ack, base.ack);
+    uint32_t               d_over = delta32(now.overflows, base.overflows);
+    uint32_t               d_restart_timeout = delta32(now.restart_timeout, base.restart_timeout);
+    uint32_t               d_restart_overflow = delta32(now.restart_overflow, base.restart_overflow);
+    uint32_t               d_restart_packet = delta32(now.restart_packet, base.restart_packet);
+    uint32_t               d_sync_hit = delta32(now.sync_hit, base.sync_hit);
+    uint32_t               d_sync_miss = delta32(now.sync_miss, base.sync_miss);
+    uint32_t               d_ring_drop = delta32(now.ring_drop, base.ring_drop);
+    uint32_t               d_irq = delta32(now.irq, base.irq);
 
     uint32_t sync_total = d_sync_hit + d_sync_miss;
     uint32_t sync_hit_permille = 0;
@@ -867,21 +835,14 @@ static void cmd_cca_tune_score_show(void)
     }
 
     uint64_t good = (uint64_t)d_rx * 100ULL + (uint64_t)d_ack * 15ULL;
-    uint64_t bad = (uint64_t)d_drop * 120ULL +
-                   (uint64_t)d_over * 180ULL +
-                   (uint64_t)d_restart_overflow * 120ULL +
-                   (uint64_t)d_restart_packet * 60ULL +
-                   (uint64_t)d_restart_timeout * 40ULL +
-                   (uint64_t)d_crc * 35ULL +
-                   (uint64_t)d_n81 * 25ULL +
-                   (uint64_t)d_ring_drop * 220ULL;
+    uint64_t bad = (uint64_t)d_drop * 120ULL + (uint64_t)d_over * 180ULL + (uint64_t)d_restart_overflow * 120ULL +
+                   (uint64_t)d_restart_packet * 60ULL + (uint64_t)d_restart_timeout * 40ULL + (uint64_t)d_crc * 35ULL +
+                   (uint64_t)d_n81 * 25ULL + (uint64_t)d_ring_drop * 220ULL;
     uint32_t quality_pct = 100;
     if ((good + bad) > 0) {
         quality_pct = (uint32_t)((good * 100ULL) / (good + bad));
     }
-    int32_t net_score = (good >= bad)
-        ? (int32_t)(good - bad)
-        : -(int32_t)(bad - good);
+    int32_t net_score = (good >= bad) ? (int32_t)(good - bad) : -(int32_t)(bad - good);
 
     uint32_t rx_per_min = 0;
     if (dt_ms > 0) {
@@ -893,25 +854,22 @@ static void cmd_cca_tune_score_show(void)
     }
 
     printf("CCA tune score window: %lu ms\r\n", (unsigned long)dt_ms);
-    printf("  delta: rx=%lu ack=%lu drop=%lu crc_fail=%lu n81=%lu\r\n",
-           (unsigned long)d_rx, (unsigned long)d_ack, (unsigned long)d_drop,
-           (unsigned long)d_crc, (unsigned long)d_n81);
+    printf("  delta: rx=%lu ack=%lu drop=%lu crc_fail=%lu n81=%lu\r\n", (unsigned long)d_rx, (unsigned long)d_ack,
+           (unsigned long)d_drop, (unsigned long)d_crc, (unsigned long)d_n81);
     printf("  radio: overflows=%lu restart(timeout=%lu overflow=%lu packet=%lu) ring_drop=%lu\r\n",
-           (unsigned long)d_over, (unsigned long)d_restart_timeout,
-           (unsigned long)d_restart_overflow, (unsigned long)d_restart_packet,
-           (unsigned long)d_ring_drop);
+           (unsigned long)d_over, (unsigned long)d_restart_timeout, (unsigned long)d_restart_overflow,
+           (unsigned long)d_restart_packet, (unsigned long)d_ring_drop);
     printf("  sync: hit=%lu miss=%lu hit_rate=%lu.%lu%%  irq=%lu (%lu%% of rx) rx_rate=%lu/min\r\n",
-           (unsigned long)d_sync_hit, (unsigned long)d_sync_miss,
-           (unsigned long)(sync_hit_permille / 10), (unsigned long)(sync_hit_permille % 10),
-           (unsigned long)d_irq, (unsigned long)irq_per_rx_percent, (unsigned long)rx_per_min);
-    printf("  quality: %lu%%  net_score=%ld\r\n",
-           (unsigned long)quality_pct, (long)net_score);
+           (unsigned long)d_sync_hit, (unsigned long)d_sync_miss, (unsigned long)(sync_hit_permille / 10),
+           (unsigned long)(sync_hit_permille % 10), (unsigned long)d_irq, (unsigned long)irq_per_rx_percent,
+           (unsigned long)rx_per_min);
+    printf("  quality: %lu%%  net_score=%ld\r\n", (unsigned long)quality_pct, (long)net_score);
 }
 
-static void cmd_cca_tune(const char *arg)
+static void cmd_cca_tune(const char* arg)
 {
-    const char *cursor = arg;
-    char t0[24];
+    const char* cursor = arg;
+    char        t0[24];
     if (!next_token(&cursor, t0, sizeof(t0))) {
         cmd_cca_tune_print_usage();
         return;
@@ -1008,7 +966,7 @@ static void cmd_cca_tune(const char *arg)
     cmd_cca_tune_print_usage();
 }
 
-static void cmd_cca(const char *arg)
+static void cmd_cca(const char* arg)
 {
     if (strncmp(arg, "tune", 4) == 0 && (arg[4] == '\0' || arg[4] == ' ')) {
         cmd_cca_tune(arg[4] == ' ' ? arg + 5 : "");
@@ -1032,7 +990,7 @@ static void cmd_cca(const char *arg)
 
     /* cca button <device_id> <button_name> */
     if (strncmp(arg, "button ", 7) == 0) {
-        char *endptr;
+        char*    endptr;
         uint32_t dev_id = (uint32_t)strtoul(arg + 7, &endptr, 16);
         if (*endptr != ' ') {
             printf("Usage: cca button <device_id_hex> <on|off|fav|raise|lower|scene1-4>\r\n");
@@ -1051,7 +1009,8 @@ static void cmd_cca(const char *arg)
         item.button = (uint8_t)btn;
         if (cca_cmd_enqueue(&item)) {
             printf("Button command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1059,7 +1018,7 @@ static void cmd_cca(const char *arg)
 
     /* cca level <zone_id> <target_id> <0-100> [fade_qs] */
     if (strncmp(arg, "level ", 6) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca level <zone_id_hex> <target_id_hex> <0-100> [fade_qs]\r\n");
@@ -1071,7 +1030,7 @@ static void cmd_cca(const char *arg)
             return;
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
-        uint8_t fade = 4;  /* default 1 second */
+        uint8_t fade = 4; /* default 1 second */
         if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1082,7 +1041,8 @@ static void cmd_cca(const char *arg)
         item.fade_qs = fade;
         if (cca_cmd_enqueue(&item)) {
             printf("Bridge level command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1090,7 +1050,7 @@ static void cmd_cca(const char *arg)
 
     /* cca pico-level <device_id> <0-100> */
     if (strncmp(arg, "pico-level ", 11) == 0) {
-        char *p;
+        char*    p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca pico-level <device_id_hex> <0-100>\r\n");
@@ -1104,7 +1064,8 @@ static void cmd_cca(const char *arg)
         item.level_pct = pct;
         if (cca_cmd_enqueue(&item)) {
             printf("Pico level command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1112,7 +1073,7 @@ static void cmd_cca(const char *arg)
 
     /* cca state <device_id> <0-100> */
     if (strncmp(arg, "state ", 6) == 0) {
-        char *p;
+        char*    p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca state <device_id_hex> <0-100>\r\n");
@@ -1126,7 +1087,8 @@ static void cmd_cca(const char *arg)
         item.level_pct = pct;
         if (cca_cmd_enqueue(&item)) {
             printf("State report command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1134,9 +1096,9 @@ static void cmd_cca(const char *arg)
 
     /* cca beacon <device_id> [duration] */
     if (strncmp(arg, "beacon ", 7) == 0) {
-        char *p;
+        char*    p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 7, &p, 16);
-        uint8_t dur = 5;
+        uint8_t  dur = 5;
         if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1145,7 +1107,8 @@ static void cmd_cca(const char *arg)
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
             printf("Beacon command queued (%us)\r\n", dur);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1153,7 +1116,7 @@ static void cmd_cca(const char *arg)
 
     /* cca unpair <zone_id> <target_id> */
     if (strncmp(arg, "unpair ", 7) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 7, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca unpair <zone_id_hex> <target_id_hex>\r\n");
@@ -1167,7 +1130,8 @@ static void cmd_cca(const char *arg)
         item.target_id = target_id;
         if (cca_cmd_enqueue(&item)) {
             printf("Unpair command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1175,7 +1139,7 @@ static void cmd_cca(const char *arg)
 
     /* cca led <zone_id> <target_id> <0-3> */
     if (strncmp(arg, "led ", 4) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 4, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca led <zone_id_hex> <target_id_hex> <0-3>\r\n");
@@ -1195,7 +1159,8 @@ static void cmd_cca(const char *arg)
         item.led_mode = mode;
         if (cca_cmd_enqueue(&item)) {
             printf("LED config command queued (mode=%u)\r\n", mode);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1203,7 +1168,7 @@ static void cmd_cca(const char *arg)
 
     /* cca fade <zone_id> <target_id> <on_qs> <off_qs> */
     if (strncmp(arg, "fade ", 5) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 5, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca fade <zone_id_hex> <target_id_hex> <on_qs> <off_qs>\r\n");
@@ -1229,7 +1194,8 @@ static void cmd_cca(const char *arg)
         item.fade_off_qs = off_qs;
         if (cca_cmd_enqueue(&item)) {
             printf("Fade config command queued (on=%uqs off=%uqs)\r\n", on_qs, off_qs);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1237,7 +1203,7 @@ static void cmd_cca(const char *arg)
 
     /* cca trim <zone_id> <target_id> <high%> <low%> */
     if (strncmp(arg, "trim ", 5) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 5, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca trim <zone_id_hex> <target_id_hex> <high%%> <low%%>\r\n");
@@ -1263,7 +1229,8 @@ static void cmd_cca(const char *arg)
         item.low_trim = low;
         if (cca_cmd_enqueue(&item)) {
             printf("Trim config command queued (high=%u%% low=%u%%)\r\n", high, low);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1271,7 +1238,7 @@ static void cmd_cca(const char *arg)
 
     /* cca phase <zone_id> <target_id> <byte_hex> */
     if (strncmp(arg, "phase ", 6) == 0) {
-        char *p;
+        char*    p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca phase <zone_id_hex> <target_id_hex> <byte_hex>\r\n");
@@ -1291,7 +1258,8 @@ static void cmd_cca(const char *arg)
         item.phase_byte = phase;
         if (cca_cmd_enqueue(&item)) {
             printf("Phase config command queued (0x%02X)\r\n", phase);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1299,7 +1267,7 @@ static void cmd_cca(const char *arg)
 
     /* cca save-fav <device_id> */
     if (strncmp(arg, "save-fav ", 9) == 0) {
-        char *endptr;
+        char*    endptr;
         uint32_t dev_id = (uint32_t)strtoul(arg + 9, &endptr, 16);
         if (*endptr != '\0' && *endptr != ' ') {
             printf("Usage: cca save-fav <device_id_hex>\r\n");
@@ -1310,7 +1278,8 @@ static void cmd_cca(const char *arg)
         item.device_id = dev_id;
         if (cca_cmd_enqueue(&item)) {
             printf("Save-fav command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1318,7 +1287,7 @@ static void cmd_cca(const char *arg)
 
     /* cca vive-level <hub_id> <zone_hex> <0-100> [fade_qs] */
     if (strncmp(arg, "vive-level ", 11) == 0) {
-        char *p;
+        char*    p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-level <hub_id_hex> <zone_hex> <0-100> [fade_qs]\r\n");
@@ -1330,7 +1299,7 @@ static void cmd_cca(const char *arg)
             return;
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
-        uint8_t fade = 4;  /* default 1 second */
+        uint8_t fade = 4; /* default 1 second */
         if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1341,7 +1310,8 @@ static void cmd_cca(const char *arg)
         item.fade_qs = fade;
         if (cca_cmd_enqueue(&item)) {
             printf("Vive level command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1349,7 +1319,7 @@ static void cmd_cca(const char *arg)
 
     /* cca vive-raise <hub_id> <zone_hex> */
     if (strncmp(arg, "vive-raise ", 11) == 0) {
-        char *p;
+        char*    p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-raise <hub_id_hex> <zone_hex>\r\n");
@@ -1361,10 +1331,11 @@ static void cmd_cca(const char *arg)
         item.cmd = CCA_CMD_VIVE_DIM;
         item.device_id = hub_id;
         item.zone_byte = zone;
-        item.direction = 0x03;  /* raise */
+        item.direction = 0x03; /* raise */
         if (cca_cmd_enqueue(&item)) {
             printf("Vive raise command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1372,7 +1343,7 @@ static void cmd_cca(const char *arg)
 
     /* cca vive-lower <hub_id> <zone_hex> */
     if (strncmp(arg, "vive-lower ", 11) == 0) {
-        char *p;
+        char*    p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-lower <hub_id_hex> <zone_hex>\r\n");
@@ -1384,10 +1355,11 @@ static void cmd_cca(const char *arg)
         item.cmd = CCA_CMD_VIVE_DIM;
         item.device_id = hub_id;
         item.zone_byte = zone;
-        item.direction = 0x02;  /* lower */
+        item.direction = 0x02; /* lower */
         if (cca_cmd_enqueue(&item)) {
             printf("Vive lower command queued\r\n");
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1395,7 +1367,7 @@ static void cmd_cca(const char *arg)
 
     /* cca vive-pair <hub_id> <zone_hex> [duration] */
     if (strncmp(arg, "vive-pair ", 10) == 0) {
-        char *p;
+        char*    p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 10, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-pair <hub_id_hex> <zone_hex> [duration_sec]\r\n");
@@ -1412,7 +1384,8 @@ static void cmd_cca(const char *arg)
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
             printf("Vive pair command queued (zone=0x%02X dur=%us)\r\n", zone, dur);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1420,17 +1393,29 @@ static void cmd_cca(const char *arg)
 
     /* cca pair pico <device_id> [5btn|2btn|4btn-rl|4btn-scene] [duration] */
     if (strncmp(arg, "pair pico ", 10) == 0) {
-        char *p;
+        char*    p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 10, &p, 16);
-        uint8_t pico_type = 0;  /* default 5-button */
-        uint8_t dur = 10;
+        uint8_t  pico_type = 0; /* default 5-button */
+        uint8_t  dur = 10;
 
         if (*p == ' ') {
             p++;
-            if (strncmp(p, "5btn", 4) == 0)       { pico_type = 0; p += 4; }
-            else if (strncmp(p, "2btn", 4) == 0)   { pico_type = 1; p += 4; }
-            else if (strncmp(p, "4btn-rl", 7) == 0) { pico_type = 2; p += 7; }
-            else if (strncmp(p, "4btn-scene", 10) == 0) { pico_type = 3; p += 10; }
+            if (strncmp(p, "5btn", 4) == 0) {
+                pico_type = 0;
+                p += 4;
+            }
+            else if (strncmp(p, "2btn", 4) == 0) {
+                pico_type = 1;
+                p += 4;
+            }
+            else if (strncmp(p, "4btn-rl", 7) == 0) {
+                pico_type = 2;
+                p += 7;
+            }
+            else if (strncmp(p, "4btn-scene", 10) == 0) {
+                pico_type = 3;
+                p += 10;
+            }
 
             if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
         }
@@ -1442,7 +1427,8 @@ static void cmd_cca(const char *arg)
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
             printf("Pico pair command queued (type=%u dur=%us)\r\n", pico_type, dur);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1450,14 +1436,14 @@ static void cmd_cca(const char *arg)
 
     /* cca pair bridge <bridge_id> <target_id> [beacon_sec] */
     if (strncmp(arg, "pair bridge ", 12) == 0) {
-        char *p;
+        char*    p;
         uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca pair bridge <bridge_id_hex> <target_id_hex> [beacon_sec]\r\n");
             return;
         }
         uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
-        uint8_t dur = 5;
+        uint8_t  dur = 5;
         if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1467,7 +1453,8 @@ static void cmd_cca(const char *arg)
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
             printf("Bridge pair command queued (beacon=%us)\r\n", dur);
-        } else {
+        }
+        else {
             printf("Command queue full!\r\n");
         }
         return;
@@ -1495,19 +1482,22 @@ static void cmd_cca(const char *arg)
     printf("  cca log [on|off]                      — CCA RX UART log toggle\r\n");
 }
 
-static void cmd_rx(const char *arg)
+static void cmd_rx(const char* arg)
 {
     if (strcmp(arg, "on") == 0) {
         if (!cc1101_is_rx_active()) {
             cc1101_start_rx();
             printf("RX enabled\r\n");
-        } else {
+        }
+        else {
             printf("RX already active\r\n");
         }
-    } else if (strcmp(arg, "off") == 0) {
+    }
+    else if (strcmp(arg, "off") == 0) {
         cc1101_stop_rx();
         printf("RX disabled\r\n");
-    } else {
+    }
+    else {
         printf("Usage: rx on|off\r\n");
     }
 }
@@ -1515,22 +1505,23 @@ static void cmd_rx(const char *arg)
 static void cmd_eth(void)
 {
     extern ETH_HandleTypeDef heth;
-    uint32_t reg;
+    uint32_t                 reg;
 
     printf("--- ETH PHY Debug ---\r\n");
 
     /* Read PHY Basic Control Register (0x00) */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x00, &reg) == HAL_OK) {
         printf("PHY BCR  (0x00) = 0x%04lX\r\n", (unsigned long)reg);
-    } else {
+    }
+    else {
         printf("PHY BCR  read FAILED\r\n");
     }
 
     /* Read PHY Basic Status Register (0x01) */
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, 0x01, &reg) == HAL_OK) {
-        printf("PHY BSR  (0x01) = 0x%04lX  link=%s\r\n", (unsigned long)reg,
-               (reg & (1 << 2)) ? "UP" : "DOWN");
-    } else {
+        printf("PHY BSR  (0x01) = 0x%04lX  link=%s\r\n", (unsigned long)reg, (reg & (1 << 2)) ? "UP" : "DOWN");
+    }
+    else {
         printf("PHY BSR  read FAILED\r\n");
     }
 
@@ -1548,9 +1539,7 @@ static void cmd_eth(void)
     }
 
     /* ETH TX/RX counters */
-    printf("TX ok=%lu fail=%lu  RX frames=%lu\r\n",
-           (unsigned long)eth_get_tx_ok(),
-           (unsigned long)eth_get_tx_fail(),
+    printf("TX ok=%lu fail=%lu  RX frames=%lu\r\n", (unsigned long)eth_get_tx_ok(), (unsigned long)eth_get_tx_fail(),
            (unsigned long)eth_get_rx_frames());
 
     /* Force a link poll */
@@ -1558,18 +1547,16 @@ static void cmd_eth(void)
     printf("eth_link_is_up() = %s\r\n", eth_link_is_up() ? "true" : "false");
 }
 
-static void cmd_stream(const char *arg)
+static void cmd_stream(const char* arg)
 {
     (void)arg;
     printf("UDP stream on port %d\r\n", STREAM_UDP_PORT);
     printf("  clients: %d/%d\r\n", stream_num_clients(), MAX_STREAM_CLIENTS);
-    printf("  sent=%lu fail=%lu qdrop=%lu\r\n",
-           (unsigned long)stream_udp_sent_count(),
-           (unsigned long)stream_udp_fail_count(),
-           (unsigned long)stream_tx_drop_count());
+    printf("  sent=%lu fail=%lu qdrop=%lu\r\n", (unsigned long)stream_udp_sent_count(),
+           (unsigned long)stream_udp_fail_count(), (unsigned long)stream_tx_drop_count());
 }
 
-static void cmd_ccx(const char *arg)
+static void cmd_ccx(const char* arg)
 {
     if (strlen(arg) == 0) {
         /* ccx — status */
@@ -1578,8 +1565,7 @@ static void cmd_ccx(const char *arg)
             return;
         }
         printf("Thread role: %s\r\n", ccx_thread_role_str());
-        printf("RX: %lu  TX: %lu\r\n",
-               (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count());
+        printf("RX: %lu  TX: %lu\r\n", (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count());
         printf("RX log: %s\r\n", ccx_rx_log_enabled() ? "ON" : "OFF");
         return;
     }
@@ -1603,44 +1589,61 @@ static void cmd_ccx(const char *arg)
 
     if (strncmp(arg, "on ", 3) == 0) {
         uint16_t zone = (uint16_t)strtoul(arg + 3, NULL, 10);
-        if (zone == 0) { printf("Usage: ccx on <zone>\r\n"); return; }
+        if (zone == 0) {
+            printf("Usage: ccx on <zone>\r\n");
+            return;
+        }
         if (ccx_send_on(zone, 0)) {
             printf("CCX ON zone=%u queued\r\n", zone);
-        } else {
+        }
+        else {
             printf("CCX TX failed (not joined?)\r\n");
         }
-    } else if (strncmp(arg, "off ", 4) == 0) {
+    }
+    else if (strncmp(arg, "off ", 4) == 0) {
         uint16_t zone = (uint16_t)strtoul(arg + 4, NULL, 10);
-        if (zone == 0) { printf("Usage: ccx off <zone>\r\n"); return; }
+        if (zone == 0) {
+            printf("Usage: ccx off <zone>\r\n");
+            return;
+        }
         if (ccx_send_off(zone, 0)) {
             printf("CCX OFF zone=%u queued\r\n", zone);
-        } else {
+        }
+        else {
             printf("CCX TX failed (not joined?)\r\n");
         }
-    } else if (strncmp(arg, "level ", 6) == 0) {
+    }
+    else if (strncmp(arg, "level ", 6) == 0) {
         /* ccx level <zone> <0-100> */
-        char *endptr;
+        char*    endptr;
         uint16_t zone = (uint16_t)strtoul(arg + 6, &endptr, 10);
         if (zone == 0 || *endptr != ' ') {
             printf("Usage: ccx level <zone> <0-100>\r\n");
             return;
         }
-        uint8_t pct = (uint8_t)strtoul(endptr + 1, NULL, 10);
+        uint8_t  pct = (uint8_t)strtoul(endptr + 1, NULL, 10);
         uint16_t level = ccx_percent_to_level(pct);
         if (ccx_send_level(zone, level, 1, 0)) {
             printf("CCX LEVEL zone=%u %u%% (0x%04X) queued\r\n", zone, pct, level);
-        } else {
+        }
+        else {
             printf("CCX TX failed (not joined?)\r\n");
         }
-    } else if (strncmp(arg, "scene ", 6) == 0) {
+    }
+    else if (strncmp(arg, "scene ", 6) == 0) {
         uint16_t scene = (uint16_t)strtoul(arg + 6, NULL, 10);
-        if (scene == 0) { printf("Usage: ccx scene <id>\r\n"); return; }
+        if (scene == 0) {
+            printf("Usage: ccx scene <id>\r\n");
+            return;
+        }
         if (ccx_send_scene(scene, 0)) {
             printf("CCX SCENE %u queued\r\n", scene);
-        } else {
+        }
+        else {
             printf("CCX TX failed (not joined?)\r\n");
         }
-    } else {
+    }
+    else {
         printf("Usage: ccx [log|on|off|level|scene] ...\r\n");
         printf("  ccx             — Thread status\r\n");
         printf("  ccx log         — show CCX RX log state\r\n");
@@ -1655,25 +1658,30 @@ static void cmd_ccx(const char *arg)
 /* -----------------------------------------------------------------------
  * ot — Human-readable OpenThread CLI-like commands
  * ----------------------------------------------------------------------- */
-static const char *ot_role_name(uint8_t role)
+static const char* ot_role_name(uint8_t role)
 {
     switch (role) {
-        case 0: return "detached";
-        case 1: return "child";
-        case 2: return "router";
-        case 3: return "leader";
-        default: return "unknown";
+    case 0:
+        return "detached";
+    case 1:
+        return "child";
+    case 2:
+        return "router";
+    case 3:
+        return "leader";
+    default:
+        return "unknown";
     }
 }
 
-static void cmd_ot(const char *arg)
+static void cmd_ot(const char* arg)
 {
     if (!ccx_is_running()) {
         printf("CCX task not running\r\n");
         return;
     }
 
-    ccx_spinel_request_t req;
+    ccx_spinel_request_t  req;
     ccx_spinel_response_t resp;
     memset(&req, 0, sizeof(req));
 
@@ -1684,7 +1692,8 @@ static void cmd_ot(const char *arg)
         req.prop_id = 0x43;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 1) {
             printf("Role: %s\r\n", ot_role_name(resp.data[0]));
-        } else {
+        }
+        else {
             printf("Role: (error)\r\n");
         }
 
@@ -1692,7 +1701,8 @@ static void cmd_ot(const char *arg)
         req.prop_id = 0x21;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 1) {
             printf("Channel: %u\r\n", resp.data[0]);
-        } else {
+        }
+        else {
             printf("Channel: (error)\r\n");
         }
 
@@ -1701,7 +1711,8 @@ static void cmd_ot(const char *arg)
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 2) {
             uint16_t panid = (uint16_t)resp.data[0] | ((uint16_t)resp.data[1] << 8);
             printf("PAN ID: 0x%04X\r\n", panid);
-        } else {
+        }
+        else {
             printf("PAN ID: (error)\r\n");
         }
         return;
@@ -1713,7 +1724,8 @@ static void cmd_ot(const char *arg)
         req.prop_id = 0x21;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 1) {
             printf("Channel: %u\r\n", resp.data[0]);
-        } else {
+        }
+        else {
             printf("Error reading channel\r\n");
         }
         return;
@@ -1726,7 +1738,8 @@ static void cmd_ot(const char *arg)
         req.value_len = 1;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("Channel set to %u\r\n", chan);
-        } else {
+        }
+        else {
             printf("Error setting channel\r\n");
         }
         return;
@@ -1739,7 +1752,8 @@ static void cmd_ot(const char *arg)
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 2) {
             uint16_t panid = (uint16_t)resp.data[0] | ((uint16_t)resp.data[1] << 8);
             printf("PAN ID: 0x%04X\r\n", panid);
-        } else {
+        }
+        else {
             printf("Error reading PAN ID\r\n");
         }
         return;
@@ -1753,7 +1767,8 @@ static void cmd_ot(const char *arg)
         req.value_len = 2;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("PAN ID set to 0x%04X\r\n", panid);
-        } else {
+        }
+        else {
             printf("Error setting PAN ID\r\n");
         }
         return;
@@ -1765,7 +1780,8 @@ static void cmd_ot(const char *arg)
         req.prop_id = 0x43;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success && resp.data_len >= 1) {
             printf("%s\r\n", ot_role_name(resp.data[0]));
-        } else {
+        }
+        else {
             printf("Error reading role\r\n");
         }
         return;
@@ -1780,8 +1796,9 @@ static void cmd_ot(const char *arg)
             size_t slen = resp.data_len;
             if (slen >= sizeof(resp.data)) slen = sizeof(resp.data) - 1;
             resp.data[slen] = '\0';
-            printf("%s\r\n", (char *)resp.data);
-        } else {
+            printf("%s\r\n", (char*)resp.data);
+        }
+        else {
             printf("Error reading network name\r\n");
         }
         return;
@@ -1796,7 +1813,8 @@ static void cmd_ot(const char *arg)
                 printf("%02x", resp.data[i]);
             }
             printf("\r\n");
-        } else {
+        }
+        else {
             printf("Error reading extended PAN ID\r\n");
         }
         return;
@@ -1811,7 +1829,8 @@ static void cmd_ot(const char *arg)
                 printf("%02x", resp.data[i]);
             }
             printf("\r\n");
-        } else {
+        }
+        else {
             printf("Error reading network key\r\n");
         }
         return;
@@ -1827,7 +1846,8 @@ static void cmd_ot(const char *arg)
                 printf("%02x", resp.data[i]);
             }
             printf("\r\n");
-        } else {
+        }
+        else {
             printf("Error reading EUI-64\r\n");
         }
         return;
@@ -1844,19 +1864,19 @@ static void cmd_ot(const char *arg)
              * but Spinel wraps each in a 't(...)' with a 2-byte length prefix. */
             size_t offset = 0;
             while (offset + 2 < resp.data_len) {
-                uint16_t entry_len = (uint16_t)resp.data[offset] |
-                                     ((uint16_t)resp.data[offset + 1] << 8);
+                uint16_t entry_len = (uint16_t)resp.data[offset] | ((uint16_t)resp.data[offset + 1] << 8);
                 offset += 2;
                 if (entry_len >= 16 && offset + entry_len <= resp.data_len) {
-                    const uint8_t *a = &resp.data[offset];
+                    const uint8_t* a = &resp.data[offset];
                     printf("  %02x%02x:%02x%02x:%02x%02x:%02x%02x:"
                            "%02x%02x:%02x%02x:%02x%02x:%02x%02x\r\n",
-                           a[0],a[1],a[2],a[3],a[4],a[5],a[6],a[7],
-                           a[8],a[9],a[10],a[11],a[12],a[13],a[14],a[15]);
+                           a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10], a[11], a[12], a[13],
+                           a[14], a[15]);
                 }
                 offset += entry_len;
             }
-        } else {
+        }
+        else {
             printf("Error reading IPv6 addresses\r\n");
         }
         return;
@@ -1864,21 +1884,24 @@ static void cmd_ot(const char *arg)
 
     /* ot ifconfig up|down */
     if (strncmp(arg, "ifconfig ", 9) == 0) {
-        const char *subcmd = arg + 9;
+        const char* subcmd = arg + 9;
         req.cmd_type = CCX_SPINEL_PROP_SET;
         req.prop_id = 0x41;
         req.value_len = 1;
         if (strcmp(subcmd, "up") == 0) {
             req.value[0] = 1;
-        } else if (strcmp(subcmd, "down") == 0) {
+        }
+        else if (strcmp(subcmd, "down") == 0) {
             req.value[0] = 0;
-        } else {
+        }
+        else {
             printf("Usage: ot ifconfig up|down\r\n");
             return;
         }
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("Interface %s\r\n", req.value[0] ? "up" : "down");
-        } else {
+        }
+        else {
             printf("Error setting interface state\r\n");
         }
         return;
@@ -1886,21 +1909,24 @@ static void cmd_ot(const char *arg)
 
     /* ot thread start|stop */
     if (strncmp(arg, "thread ", 7) == 0) {
-        const char *subcmd = arg + 7;
+        const char* subcmd = arg + 7;
         req.cmd_type = CCX_SPINEL_PROP_SET;
         req.prop_id = 0x42;
         req.value_len = 1;
         if (strcmp(subcmd, "start") == 0) {
             req.value[0] = 1;
-        } else if (strcmp(subcmd, "stop") == 0) {
+        }
+        else if (strcmp(subcmd, "stop") == 0) {
             req.value[0] = 0;
-        } else {
+        }
+        else {
             printf("Usage: ot thread start|stop\r\n");
             return;
         }
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("Thread %s\r\n", req.value[0] ? "started" : "stopped");
-        } else {
+        }
+        else {
             printf("Error setting Thread stack state\r\n");
         }
         return;
@@ -1911,7 +1937,8 @@ static void cmd_ot(const char *arg)
         req.cmd_type = CCX_SPINEL_RESET;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("NCP reset sent\r\n");
-        } else {
+        }
+        else {
             printf("Error sending reset\r\n");
         }
         return;
@@ -1924,7 +1951,7 @@ static void cmd_ot(const char *arg)
 /* -----------------------------------------------------------------------
  * spinel — Raw Spinel property access for low-level debugging
  * ----------------------------------------------------------------------- */
-static size_t hex_to_bytes_spaced(const char *hex, uint8_t *out, size_t max_len)
+static size_t hex_to_bytes_spaced(const char* hex, uint8_t* out, size_t max_len)
 {
     /* Parse hex bytes separated by spaces or concatenated pairs.
      * Accepts: "7E 02 21" or "7E0221" */
@@ -1934,21 +1961,21 @@ static size_t hex_to_bytes_spaced(const char *hex, uint8_t *out, size_t max_len)
         if (*hex == '\0') break;
         char byte_str[3] = {0};
         byte_str[0] = *hex++;
-        if (*hex == '\0') break;  /* incomplete nibble */
+        if (*hex == '\0') break; /* incomplete nibble */
         byte_str[1] = *hex++;
         out[count++] = (uint8_t)strtoul(byte_str, NULL, 16);
     }
     return count;
 }
 
-static void cmd_spinel(const char *arg)
+static void cmd_spinel(const char* arg)
 {
     if (!ccx_is_running()) {
         printf("CCX task not running\r\n");
         return;
     }
 
-    ccx_spinel_request_t req;
+    ccx_spinel_request_t  req;
     ccx_spinel_response_t resp;
     memset(&req, 0, sizeof(req));
 
@@ -1963,10 +1990,12 @@ static void cmd_spinel(const char *arg)
                     printf(" %02X", resp.data[i]);
                 }
                 printf("\r\n");
-            } else {
+            }
+            else {
                 printf("PROP_GET 0x%02X failed\r\n", req.prop_id);
             }
-        } else {
+        }
+        else {
             printf("Timeout\r\n");
         }
         return;
@@ -1974,7 +2003,7 @@ static void cmd_spinel(const char *arg)
 
     /* spinel set <prop_hex> <value_hex> */
     if (strncmp(arg, "set ", 4) == 0) {
-        char *endptr;
+        char* endptr;
         req.cmd_type = CCX_SPINEL_PROP_SET;
         req.prop_id = (uint8_t)strtoul(arg + 4, &endptr, 16);
         while (*endptr == ' ') endptr++;
@@ -1984,9 +2013,9 @@ static void cmd_spinel(const char *arg)
             return;
         }
         if (ccx_spinel_command(&req, &resp, 5000)) {
-            printf("PROP_SET 0x%02X: %s\r\n", req.prop_id,
-                   resp.success ? "OK" : "FAILED");
-        } else {
+            printf("PROP_SET 0x%02X: %s\r\n", req.prop_id, resp.success ? "OK" : "FAILED");
+        }
+        else {
             printf("Timeout\r\n");
         }
         return;
@@ -1994,7 +2023,7 @@ static void cmd_spinel(const char *arg)
 
     /* spinel insert <prop_hex> <value_hex> */
     if (strncmp(arg, "insert ", 7) == 0) {
-        char *endptr;
+        char* endptr;
         req.cmd_type = CCX_SPINEL_PROP_INSERT;
         req.prop_id = (uint8_t)strtoul(arg + 7, &endptr, 16);
         while (*endptr == ' ') endptr++;
@@ -2004,9 +2033,9 @@ static void cmd_spinel(const char *arg)
             return;
         }
         if (ccx_spinel_command(&req, &resp, 5000)) {
-            printf("PROP_INSERT 0x%02X: %s\r\n", req.prop_id,
-                   resp.success ? "OK" : "FAILED");
-        } else {
+            printf("PROP_INSERT 0x%02X: %s\r\n", req.prop_id, resp.success ? "OK" : "FAILED");
+        }
+        else {
             printf("Timeout\r\n");
         }
         return;
@@ -2017,7 +2046,8 @@ static void cmd_spinel(const char *arg)
         req.cmd_type = CCX_SPINEL_RESET;
         if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
             printf("RESET sent\r\n");
-        } else {
+        }
+        else {
             printf("Error sending reset\r\n");
         }
         return;
@@ -2038,10 +2068,12 @@ static void cmd_spinel(const char *arg)
                     printf(" %02X", resp.data[i]);
                 }
                 printf("\r\n");
-            } else {
+            }
+            else {
                 printf("No response\r\n");
             }
-        } else {
+        }
+        else {
             printf("Timeout\r\n");
         }
         return;
@@ -2077,54 +2109,74 @@ static void cmd_help(void)
  * Execute a single shell command line.
  * Called from the UART shell task and from UDP text passthrough.
  * ----------------------------------------------------------------------- */
-void shell_execute(const char *line)
+void shell_execute(const char* line)
 {
     if (strcmp(line, "status") == 0) {
         cmd_status();
-    } else if (strcmp(line, "help") == 0) {
+    }
+    else if (strcmp(line, "help") == 0) {
         cmd_help();
-    } else if (strcmp(line, "clear") == 0) {
+    }
+    else if (strcmp(line, "clear") == 0) {
         printf("\033[2J\033[3J\033[H");
         fflush(stdout);
-    } else if (strcmp(line, "config") == 0) {
+    }
+    else if (strcmp(line, "config") == 0) {
         flash_store_print();
-    } else if (strcmp(line, "save") == 0) {
+    }
+    else if (strcmp(line, "save") == 0) {
         if (flash_store_save()) {
             printf("Settings saved to flash\r\n");
-        } else {
+        }
+        else {
             printf("Save FAILED\r\n");
         }
-    } else if (strcmp(line, "reboot") == 0) {
+    }
+    else if (strcmp(line, "reboot") == 0) {
         printf("Rebooting...\r\n");
         HAL_Delay(100);
         NVIC_SystemReset();
-    } else if (strncmp(line, "tx ", 3) == 0) {
+    }
+    else if (strncmp(line, "tx ", 3) == 0) {
         cmd_tx(line + 3);
-    } else if (strcmp(line, "cca") == 0) {
+    }
+    else if (strcmp(line, "cca") == 0) {
         cmd_cca("");
-    } else if (strncmp(line, "cca ", 4) == 0) {
+    }
+    else if (strncmp(line, "cca ", 4) == 0) {
         cmd_cca(line + 4);
-    } else if (strcmp(line, "eth") == 0) {
+    }
+    else if (strcmp(line, "eth") == 0) {
         cmd_eth();
-    } else if (strncmp(line, "rx ", 3) == 0) {
+    }
+    else if (strncmp(line, "rx ", 3) == 0) {
         cmd_rx(line + 3);
-    } else if (strcmp(line, "ccx") == 0) {
+    }
+    else if (strcmp(line, "ccx") == 0) {
         cmd_ccx("");
-    } else if (strncmp(line, "ccx ", 4) == 0) {
+    }
+    else if (strncmp(line, "ccx ", 4) == 0) {
         cmd_ccx(line + 4);
-    } else if (strcmp(line, "stream") == 0) {
+    }
+    else if (strcmp(line, "stream") == 0) {
         cmd_stream("");
-    } else if (strncmp(line, "stream ", 7) == 0) {
+    }
+    else if (strncmp(line, "stream ", 7) == 0) {
         cmd_stream(line + 7);
-    } else if (strcmp(line, "ot") == 0) {
+    }
+    else if (strcmp(line, "ot") == 0) {
         cmd_ot("");
-    } else if (strncmp(line, "ot ", 3) == 0) {
+    }
+    else if (strncmp(line, "ot ", 3) == 0) {
         cmd_ot(line + 3);
-    } else if (strncmp(line, "spinel ", 7) == 0) {
+    }
+    else if (strncmp(line, "spinel ", 7) == 0) {
         cmd_spinel(line + 7);
-    } else if (strcmp(line, "spinel") == 0) {
+    }
+    else if (strcmp(line, "spinel") == 0) {
         cmd_spinel("");
-    } else {
+    }
+    else {
         printf("Unknown command: '%s' (type 'help')\r\n", line);
     }
 }
@@ -2132,7 +2184,7 @@ void shell_execute(const char *line)
 /* -----------------------------------------------------------------------
  * Shell task
  * ----------------------------------------------------------------------- */
-static void shell_task_func(void *param)
+static void shell_task_func(void* param)
 {
     (void)param;
 
@@ -2159,10 +2211,5 @@ static void shell_task_func(void *param)
 
 void shell_task_start(void)
 {
-    xTaskCreate(shell_task_func,
-                "Shell",
-                SHELL_TASK_STACK_SIZE,
-                NULL,
-                SHELL_TASK_PRIORITY,
-                NULL);
+    xTaskCreate(shell_task_func, "Shell", SHELL_TASK_STACK_SIZE, NULL, SHELL_TASK_PRIORITY, NULL);
 }

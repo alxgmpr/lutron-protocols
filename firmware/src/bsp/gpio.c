@@ -27,8 +27,8 @@ void bsp_gpio_init(void)
     __HAL_RCC_GPIOG_CLK_ENABLE();
 
     /* --- User LEDs (push-pull output) --- */
-    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull  = GPIO_NOPULL;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
 
     gpio.Pin = LED_GREEN_PIN;
@@ -47,9 +47,9 @@ void bsp_gpio_init(void)
 
     /* --- CC1101 CS (software NSS, push-pull, start HIGH) --- */
     HAL_GPIO_WritePin(CC1101_CS_PORT, CC1101_CS_PIN, GPIO_PIN_SET);
-    gpio.Pin   = CC1101_CS_PIN;
-    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull  = GPIO_NOPULL;
+    gpio.Pin = CC1101_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(CC1101_CS_PORT, &gpio);
 
@@ -57,9 +57,9 @@ void bsp_gpio_init(void)
      * IOCFG0 modes used for tuning can assert/deassert differently depending
      * on infinite-length RX framing. Catch both transitions to avoid starving
      * task notifications when one polarity is sparse. */
-    gpio.Pin   = CC1101_GDO0_PIN;
-    gpio.Mode  = GPIO_MODE_IT_RISING_FALLING;
-    gpio.Pull  = GPIO_PULLUP;
+    gpio.Pin = CC1101_GDO0_PIN;
+    gpio.Mode = GPIO_MODE_IT_RISING_FALLING;
+    gpio.Pull = GPIO_PULLUP;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(CC1101_GDO0_PORT, &gpio);
 
@@ -69,9 +69,9 @@ void bsp_gpio_init(void)
 
 #if CC1101_GDO2_BACKUP_ENABLE
     /* Optional backup IRQ line (GDO2) */
-    gpio.Pin   = CC1101_GDO2_PIN;
-    gpio.Mode  = GPIO_MODE_IT_RISING_FALLING;
-    gpio.Pull  = GPIO_PULLUP;
+    gpio.Pin = CC1101_GDO2_PIN;
+    gpio.Mode = GPIO_MODE_IT_RISING_FALLING;
+    gpio.Pull = GPIO_PULLUP;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
     HAL_GPIO_Init(CC1101_GDO2_PORT, &gpio);
 
@@ -80,9 +80,9 @@ void bsp_gpio_init(void)
 #endif
 
     /* --- SPI3 pins: PC10 SCK, PC11 MISO, PC12 MOSI (AF6) --- */
-    gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Pull      = GPIO_NOPULL;
-    gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF6_SPI3;
 
     gpio.Pin = CC1101_SCK_PIN;
@@ -113,9 +113,9 @@ void bsp_gpio_init(void)
     HAL_GPIO_Init(SHELL_RX_PORT, &gpio);
 
     /* --- Ethernet RMII pins --- */
-    gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Pull      = GPIO_NOPULL;
-    gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF11_ETH;
 
     /* PA1 REF_CLK, PA2 MDIO, PA7 CRS_DV */

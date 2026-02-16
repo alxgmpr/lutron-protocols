@@ -19,7 +19,7 @@ bool ccx_is_running(void);
 bool ccx_thread_joined(void);
 
 /** Get Thread role string ("DETACHED", "CHILD", "ROUTER", "LEADER") */
-const char *ccx_thread_role_str(void);
+const char* ccx_thread_role_str(void);
 
 /** Get Thread role as numeric ID (0=detached, 1=child, 2=router, 3=leader) */
 uint8_t ccx_thread_role_id(void);
@@ -57,7 +57,7 @@ bool ccx_rx_log_enabled(void);
 bool ccx_dfu_start(uint32_t image_size);
 
 /** Feed the next chunk of firmware data (called from stream task as TCP data arrives) */
-bool ccx_dfu_write_chunk(const uint8_t *data, size_t len);
+bool ccx_dfu_write_chunk(const uint8_t* data, size_t len);
 
 /* -----------------------------------------------------------------------
  * Shell → CCX Spinel command passthrough
@@ -72,15 +72,15 @@ typedef enum {
 
 typedef struct {
     ccx_spinel_cmd_type_t cmd_type;
-    uint8_t  prop_id;
-    uint8_t  value[128];
-    size_t   value_len;
+    uint8_t               prop_id;
+    uint8_t               value[128];
+    size_t                value_len;
 } ccx_spinel_request_t;
 
 typedef struct {
-    bool     success;
-    uint8_t  data[256];
-    size_t   data_len;
+    bool    success;
+    uint8_t data[256];
+    size_t  data_len;
 } ccx_spinel_response_t;
 
 /**
@@ -88,9 +88,7 @@ typedef struct {
  * Called from the shell task; blocks until the CCX task processes it.
  * @return true if response received within timeout
  */
-bool ccx_spinel_command(const ccx_spinel_request_t *req,
-                        ccx_spinel_response_t *resp,
-                        uint32_t timeout_ms);
+bool ccx_spinel_command(const ccx_spinel_request_t* req, ccx_spinel_response_t* resp, uint32_t timeout_ms);
 
 /** Check DFU state */
 typedef enum {

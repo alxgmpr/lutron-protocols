@@ -11,10 +11,10 @@ void watchdog_init(void)
      * Prescaler /128 → 250 Hz counter
      * Reload 2500 → 2500 / 250 = 10 seconds timeout
      */
-    hiwdg.Instance       = IWDG1;
+    hiwdg.Instance = IWDG1;
     hiwdg.Init.Prescaler = IWDG_PRESCALER_128;
-    hiwdg.Init.Reload    = 2500;
-    hiwdg.Init.Window    = IWDG_WINDOW_DISABLE;
+    hiwdg.Init.Reload = 2500;
+    hiwdg.Init.Window = IWDG_WINDOW_DISABLE;
 
     if (HAL_IWDG_Init(&hiwdg) != HAL_OK) {
         printf("[wdg] IWDG init failed!\r\n");

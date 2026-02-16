@@ -13,7 +13,7 @@ extern "C" {
 void cca_task_start(void);
 
 /** Enqueue a raw CCA packet for transmission. Thread-safe. */
-bool cca_tx_enqueue(const uint8_t *packet, size_t len);
+bool cca_tx_enqueue(const uint8_t* packet, size_t len);
 
 /** Get RX packet count */
 uint32_t cca_rx_count(void);
@@ -56,7 +56,7 @@ bool cca_uart_log_enabled(void);
 uint32_t cca_cmd_tx_count(void);
 
 /** RX hook callback type — set during bridge pairing handshake */
-typedef void (*cca_rx_hook_t)(const struct DecodedPacket *pkt);
+typedef void (*cca_rx_hook_t)(const struct DecodedPacket* pkt);
 
 /** Set/clear the RX hook. Called from pairing engine (CCA task context). */
 void cca_set_rx_hook(cca_rx_hook_t hook);

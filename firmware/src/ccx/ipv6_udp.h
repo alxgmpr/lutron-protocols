@@ -18,8 +18,8 @@
 extern "C" {
 #endif
 
-#define IPV6_HEADER_SIZE  40
-#define UDP_HEADER_SIZE    8
+#define IPV6_HEADER_SIZE 40
+#define UDP_HEADER_SIZE  8
 
 /**
  * Build an IPv6+UDP packet wrapping a payload.
@@ -33,10 +33,8 @@ extern "C" {
  * @param payload_len Payload length
  * @return Total packet length, or 0 on error
  */
-size_t ipv6_udp_build(uint8_t *pkt, size_t pkt_size,
-                       const uint8_t *dst_addr,
-                       uint16_t src_port, uint16_t dst_port,
-                       const uint8_t *payload, size_t payload_len);
+size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, uint16_t src_port, uint16_t dst_port,
+                      const uint8_t* payload, size_t payload_len);
 
 /**
  * Parse an incoming IPv6+UDP packet.
@@ -49,10 +47,8 @@ size_t ipv6_udp_build(uint8_t *pkt, size_t pkt_size,
  * @param payload_len Output for payload length
  * @return Pointer to UDP payload, or NULL if not UDP/malformed
  */
-const uint8_t *ipv6_udp_parse(const uint8_t *pkt, size_t pkt_len,
-                               uint8_t *src_addr,
-                               uint16_t *src_port, uint16_t *dst_port,
-                               size_t *payload_len);
+const uint8_t* ipv6_udp_parse(const uint8_t* pkt, size_t pkt_len, uint8_t* src_addr, uint16_t* src_port,
+                              uint16_t* dst_port, size_t* payload_len);
 
 #ifdef __cplusplus
 }

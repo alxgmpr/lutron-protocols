@@ -39,10 +39,10 @@
 /* -----------------------------------------------------------------------
  * ETH handle and lwIP netif
  * ----------------------------------------------------------------------- */
-ETH_HandleTypeDef heth;
+ETH_HandleTypeDef   heth;
 static struct netif gnetif;
-static char ip_str[16] = "0.0.0.0";
-static bool link_up = false;
+static char         ip_str[16] = "0.0.0.0";
+static bool         link_up = false;
 
 /* TX complete semaphore — signals when DMA is done with a frame */
 static SemaphoreHandle_t tx_sem = NULL;
@@ -51,24 +51,18 @@ static SemaphoreHandle_t tx_sem = NULL;
 static SemaphoreHandle_t rx_sem = NULL;
 
 /* MAC address array (ETH_InitTypeDef.MACAddr is a pointer) */
-static uint8_t mac_addr[6] = {
-    ETH_MAC_ADDR0, ETH_MAC_ADDR1, ETH_MAC_ADDR2,
-    ETH_MAC_ADDR3, ETH_MAC_ADDR4, ETH_MAC_ADDR5
-};
+static uint8_t mac_addr[6] = {ETH_MAC_ADDR0, ETH_MAC_ADDR1, ETH_MAC_ADDR2, ETH_MAC_ADDR3, ETH_MAC_ADDR4, ETH_MAC_ADDR5};
 
 /* -----------------------------------------------------------------------
  * Ethernet DMA descriptors + buffers in RAM_D2
  * ----------------------------------------------------------------------- */
-#define ETH_RX_BUF_SIZE  1536
+#define ETH_RX_BUF_SIZE 1536
 
-__attribute__((section(".eth_mem"), aligned(4)))
-static ETH_DMADescTypeDef dma_rx_desc_tab[ETH_RX_DESC_CNT];
+__attribute__((section(".eth_mem"), aligned(4))) static ETH_DMADescTypeDef dma_rx_desc_tab[ETH_RX_DESC_CNT];
 
-__attribute__((section(".eth_mem"), aligned(4)))
-static ETH_DMADescTypeDef dma_tx_desc_tab[ETH_TX_DESC_CNT];
+__attribute__((section(".eth_mem"), aligned(4))) static ETH_DMADescTypeDef dma_tx_desc_tab[ETH_TX_DESC_CNT];
 
-__attribute__((section(".eth_mem"), aligned(4)))
-static uint8_t rx_buff[ETH_RX_DESC_CNT][ETH_RX_BUF_SIZE];
+__attribute__((section(".eth_mem"), aligned(4))) static uint8_t rx_buff[ETH_RX_DESC_CNT][ETH_RX_BUF_SIZE];
 
 /* RX buffer allocation index (round-robin through pre-allocated pool) */
 static volatile uint8_t rx_alloc_idx = 0;
@@ -80,8 +74,8 @@ static volatile uint32_t eth_rx_frames = 0;
 /* -----------------------------------------------------------------------
  * Forward declarations
  * ----------------------------------------------------------------------- */
-static err_t ethernetif_init(struct netif *netif);
-static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p);
+static err_t ethernetif_init(struct netif* netif);
+static err_t ethernetif_linkoutput(struct netif* netif, struct pbuf* p);
 
 /* -----------------------------------------------------------------------
  * HAL ETH RX callbacks (weak overrides — no REGISTER_CALLBACKS needed)
@@ -91,7 +85,7 @@ static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p);
  * Called by HAL ETH_UpdateDescriptor to get an RX buffer for a DMA descriptor.
  * We provide buffers from our pre-allocated pool in RAM_D2.
  */
-void HAL_ETH_RxAllocateCallback(uint8_t **buffer)
+void HAL_ETH_RxAllocateCallback(uint8_t** buffer)
 {
     *buffer = rx_buff[rx_alloc_idx];
     rx_alloc_idx = (rx_alloc_idx + 1) % ETH_RX_DESC_CNT;
@@ -104,19 +98,19 @@ void HAL_ETH_RxAllocateCallback(uint8_t **buffer)
  * NOTE: This is called from the RX task (not ISR) since we moved
  * HAL_ETH_ReadData out of the interrupt handler.
  */
-void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd,
-                             uint8_t *buff, uint16_t Length)
+void HAL_ETH_RxLinkCallback(void** pStart, void** pEnd, uint8_t* buff, uint16_t Length)
 {
-    struct pbuf *p = pbuf_alloc(PBUF_RAW, Length, PBUF_POOL);
+    struct pbuf* p = pbuf_alloc(PBUF_RAW, Length, PBUF_POOL);
     if (p == NULL) return;
 
     memcpy(p->payload, buff, Length);
 
     if (*pStart == NULL) {
         *pStart = p;
-    } else if (*pEnd != NULL) {
+    }
+    else if (*pEnd != NULL) {
         /* Use pbuf_cat for proper chaining (updates tot_len) */
-        pbuf_cat((struct pbuf *)*pStart, p);
+        pbuf_cat((struct pbuf*)*pStart, p);
     }
     *pEnd = p;
 }
@@ -124,13 +118,14 @@ void HAL_ETH_RxLinkCallback(void **pStart, void **pEnd,
 /* -----------------------------------------------------------------------
  * Netif status callback — log IP address
  * ----------------------------------------------------------------------- */
-static void netif_status_cb(struct netif *netif)
+static void netif_status_cb(struct netif* netif)
 {
     if (netif_is_up(netif) && !ip4_addr_isany_val(*netif_ip4_addr(netif))) {
         snprintf(ip_str, sizeof(ip_str), "%s", ip4addr_ntoa(netif_ip4_addr(netif)));
         printf("[eth] DHCP assigned IP: %s\r\n", ip_str);
         link_up = true;
-    } else {
+    }
+    else {
         snprintf(ip_str, sizeof(ip_str), "0.0.0.0");
         link_up = false;
     }
@@ -139,16 +134,16 @@ static void netif_status_cb(struct netif *netif)
 /* -----------------------------------------------------------------------
  * ETH RX task — processes received frames in task context
  * ----------------------------------------------------------------------- */
-static void eth_rx_task(void *param)
+static void eth_rx_task(void* param)
 {
     (void)param;
 
     for (;;) {
         /* Wait for ISR to signal that frames are available */
         if (xSemaphoreTake(rx_sem, portMAX_DELAY) == pdTRUE) {
-            struct pbuf *p = NULL;
+            struct pbuf* p = NULL;
 
-            while (HAL_ETH_ReadData(&heth, (void **)&p) == HAL_OK) {
+            while (HAL_ETH_ReadData(&heth, (void**)&p) == HAL_OK) {
                 if (p != NULL) {
                     eth_rx_frames++;
                     if (gnetif.input(p, &gnetif) != ERR_OK) {
@@ -211,8 +206,7 @@ void bsp_eth_init(void)
     ip4_addr_set_zero(&netmask);
     ip4_addr_set_zero(&gateway);
 
-    netif_add(&gnetif, &ipaddr, &netmask, &gateway, NULL,
-              ethernetif_init, tcpip_input);
+    netif_add(&gnetif, &ipaddr, &netmask, &gateway, NULL, ethernetif_init, tcpip_input);
     netif_set_default(&gnetif);
     netif_set_up(&gnetif);
     netif_set_status_callback(&gnetif, netif_status_cb);
@@ -225,7 +219,7 @@ void bsp_eth_init(void)
     printf("[eth] DHCP client started, waiting for IP...\r\n");
 }
 
-const char *eth_get_ip_str(void)
+const char* eth_get_ip_str(void)
 {
     return ip_str;
 }
@@ -236,20 +230,20 @@ bool eth_link_is_up(void)
 }
 
 /* LAN8742A PHY register addresses */
-#define PHY_BSR   0x01   /* Basic Status Register */
-#define PHY_BSR_LINK_STATUS  (1U << 2)
+#define PHY_BSR             0x01 /* Basic Status Register */
+#define PHY_BSR_LINK_STATUS (1U << 2)
 
 /* LAN8742A Special Control/Status Register */
-#define PHY_SCSR  0x1F
-#define PHY_SCSR_SPEED_MASK    (0x1CU)  /* bits [4:2] */
-#define PHY_SCSR_100BTX_FD     (0x18U)  /* 100Base-TX full duplex */
-#define PHY_SCSR_100BTX_HD     (0x08U)  /* 100Base-TX half duplex */
-#define PHY_SCSR_10BT_FD       (0x14U)  /* 10Base-T full duplex */
-#define PHY_SCSR_10BT_HD       (0x04U)  /* 10Base-T half duplex */
+#define PHY_SCSR            0x1F
+#define PHY_SCSR_SPEED_MASK (0x1CU) /* bits [4:2] */
+#define PHY_SCSR_100BTX_FD  (0x18U) /* 100Base-TX full duplex */
+#define PHY_SCSR_100BTX_HD  (0x08U) /* 100Base-TX half duplex */
+#define PHY_SCSR_10BT_FD    (0x14U) /* 10Base-T full duplex */
+#define PHY_SCSR_10BT_HD    (0x04U) /* 10Base-T half duplex */
 
 void eth_poll_link(void)
 {
-    uint32_t regval = 0;
+    uint32_t    regval = 0;
     static bool prev_link = false;
 
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, PHY_BSR, &regval) != HAL_OK) {
@@ -274,15 +268,18 @@ void eth_poll_link(void)
             mac_cfg.DuplexMode = ETH_FULLDUPLEX_MODE;
             mac_cfg.Speed = ETH_SPEED_100M;
             printf("[eth] 100 Mbps Full Duplex\r\n");
-        } else if (speed_bits == PHY_SCSR_100BTX_HD) {
+        }
+        else if (speed_bits == PHY_SCSR_100BTX_HD) {
             mac_cfg.DuplexMode = ETH_HALFDUPLEX_MODE;
             mac_cfg.Speed = ETH_SPEED_100M;
             printf("[eth] 100 Mbps Half Duplex\r\n");
-        } else if (speed_bits == PHY_SCSR_10BT_FD) {
+        }
+        else if (speed_bits == PHY_SCSR_10BT_FD) {
             mac_cfg.DuplexMode = ETH_FULLDUPLEX_MODE;
             mac_cfg.Speed = ETH_SPEED_10M;
             printf("[eth] 10 Mbps Full Duplex\r\n");
-        } else {
+        }
+        else {
             mac_cfg.DuplexMode = ETH_HALFDUPLEX_MODE;
             mac_cfg.Speed = ETH_SPEED_10M;
             printf("[eth] 10 Mbps Half Duplex\r\n");
@@ -298,7 +295,8 @@ void eth_poll_link(void)
         netif_set_link_up(&gnetif);
         dhcp_start(&gnetif);
         UNLOCK_TCPIP_CORE();
-    } else if (!phy_link && prev_link) {
+    }
+    else if (!phy_link && prev_link) {
         printf("[eth] PHY link DOWN\r\n");
         LOCK_TCPIP_CORE();
         netif_set_link_down(&gnetif);
@@ -314,7 +312,7 @@ void eth_poll_link(void)
 /* -----------------------------------------------------------------------
  * lwIP ethernetif callbacks
  * ----------------------------------------------------------------------- */
-static err_t ethernetif_init(struct netif *netif)
+static err_t ethernetif_init(struct netif* netif)
 {
     netif->name[0] = 's';
     netif->name[1] = 't';
@@ -329,10 +327,9 @@ static err_t ethernetif_init(struct netif *netif)
 }
 
 /* TX buffer must be in D2 SRAM — ETH DMA cannot access D1 RAM */
-__attribute__((section(".eth_mem"), aligned(4)))
-static uint8_t tx_data[ETH_RX_BUF_SIZE];
+__attribute__((section(".eth_mem"), aligned(4))) static uint8_t tx_data[ETH_RX_BUF_SIZE];
 
-static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p)
+static err_t ethernetif_linkoutput(struct netif* netif, struct pbuf* p)
 {
     (void)netif;
 
@@ -341,7 +338,7 @@ static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p)
 
     /* Copy pbuf chain into contiguous TX buffer (in D2 SRAM) */
     size_t offset = 0;
-    for (struct pbuf *q = p; q != NULL; q = q->next) {
+    for (struct pbuf* q = p; q != NULL; q = q->next) {
         if (offset + q->len > sizeof(tx_data)) break;
         memcpy(tx_data + offset, q->payload, q->len);
         offset += q->len;
@@ -366,7 +363,7 @@ static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p)
     HAL_StatusTypeDef status = HAL_ETH_Transmit_IT(&heth, &tx_config);
     if (status != HAL_OK) {
         eth_tx_fail++;
-        xSemaphoreGive(tx_sem);  /* Release on failure */
+        xSemaphoreGive(tx_sem); /* Release on failure */
         return ERR_IF;
     }
     eth_tx_ok++;
@@ -376,7 +373,7 @@ static err_t ethernetif_linkoutput(struct netif *netif, struct pbuf *p)
 /* -----------------------------------------------------------------------
  * ETH IRQ callbacks — minimal work, signal tasks
  * ----------------------------------------------------------------------- */
-void HAL_ETH_TxCpltCallback(ETH_HandleTypeDef *h)
+void HAL_ETH_TxCpltCallback(ETH_HandleTypeDef* h)
 {
     (void)h;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -384,7 +381,7 @@ void HAL_ETH_TxCpltCallback(ETH_HandleTypeDef *h)
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *h)
+void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef* h)
 {
     (void)h;
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -392,6 +389,15 @@ void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *h)
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-uint32_t eth_get_tx_ok(void)   { return eth_tx_ok; }
-uint32_t eth_get_tx_fail(void) { return eth_tx_fail; }
-uint32_t eth_get_rx_frames(void) { return eth_rx_frames; }
+uint32_t eth_get_tx_ok(void)
+{
+    return eth_tx_ok;
+}
+uint32_t eth_get_tx_fail(void)
+{
+    return eth_tx_fail;
+}
+uint32_t eth_get_rx_frames(void)
+{
+    return eth_rx_frames;
+}

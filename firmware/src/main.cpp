@@ -30,11 +30,11 @@ int main(void)
     HAL_Init();
 
     /* BSP initialization */
-    bsp_clock_init();    /* 548 MHz SYSCLK from HSE PLL */
-    bsp_gpio_init();     /* Pin mux: SPI1, USART2/3, ETH, LEDs, GDO0 */
-    bsp_spi_init();      /* SPI1 for CC1101 (4 MHz, mode 0) */
-    bsp_uart_init();     /* USART2 (nRF52840 NCP), USART3 (shell VCP) */
-    bsp_eth_init();      /* Ethernet MAC + LAN8742A PHY, lwIP + DHCP */
+    bsp_clock_init(); /* 548 MHz SYSCLK from HSE PLL */
+    bsp_gpio_init();  /* Pin mux: SPI1, USART2/3, ETH, LEDs, GDO0 */
+    bsp_spi_init();   /* SPI1 for CC1101 (4 MHz, mode 0) */
+    bsp_uart_init();  /* USART2 (nRF52840 NCP), USART3 (shell VCP) */
+    bsp_eth_init();   /* Ethernet MAC + LAN8742A PHY, lwIP + DHCP */
 
     printf("\r\n[main] Nucleo H723ZG — CCA/CCX Coordinator\r\n");
     printf("[main] SYSCLK=%lu MHz\r\n", (unsigned long)(SystemCoreClock / 1000000));

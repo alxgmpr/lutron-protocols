@@ -30,16 +30,14 @@ extern "C" {
  * Caller must provide a buffer large enough for base64 overhead.
  * Rule of thumb: out_size >= 4 * ((10 + data_len + 20) / 3) + 10
  */
-size_t smp_build_upload(uint8_t *out, size_t out_size,
-                        uint32_t offset, const uint8_t *data,
-                        size_t data_len, uint32_t image_size,
-                        uint8_t seq);
+size_t smp_build_upload(uint8_t* out, size_t out_size, uint32_t offset, const uint8_t* data, size_t data_len,
+                        uint32_t image_size, uint8_t seq);
 
 /**
  * Build an SMP serial image-list (read) frame for probing the bootloader.
  * Returns wire frame length, 0 on error.
  */
-size_t smp_build_image_list(uint8_t *out, size_t out_size, uint8_t seq);
+size_t smp_build_image_list(uint8_t* out, size_t out_size, uint8_t seq);
 
 /**
  * Parse an SMP serial response line.
@@ -50,8 +48,7 @@ size_t smp_build_image_list(uint8_t *out, size_t out_size, uint8_t seq);
  * @param off      [out] Byte offset acknowledged by bootloader
  * @return true if response was valid and parsed
  */
-bool smp_parse_response(const uint8_t *in, size_t in_len,
-                        int *rc, uint32_t *off);
+bool smp_parse_response(const uint8_t* in, size_t in_len, int* rc, uint32_t* off);
 
 #ifdef __cplusplus
 }

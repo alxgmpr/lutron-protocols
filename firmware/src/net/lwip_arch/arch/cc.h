@@ -25,11 +25,15 @@ typedef uintptr_t mem_ptr_t;
 #define PACK_STRUCT_FIELD(x) x
 
 /* Diagnostics */
-#define LWIP_PLATFORM_DIAG(x) do { printf x; } while(0)
-#define LWIP_PLATFORM_ASSERT(x) do { \
-    printf("lwIP ASSERT: %s\n", x); \
-    while(1); \
-} while(0)
+#define LWIP_PLATFORM_DIAG(x) \
+    do {                      \
+        printf x;             \
+    } while (0)
+#define LWIP_PLATFORM_ASSERT(x)         \
+    do {                                \
+        printf("lwIP ASSERT: %s\n", x); \
+        while (1);                      \
+    } while (0)
 
 /* Byte order: Cortex-M7 is little-endian */
 #ifndef BYTE_ORDER
