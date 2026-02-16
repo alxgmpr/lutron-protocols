@@ -139,13 +139,19 @@ export interface LeapConnectionOptions {
   certDir?: string;
 }
 
+export type LeapEventHandler = (msg: any) => void;
+
 export class LeapConnection {
   private socket: tls.TLSSocket | null = null;
   private buffer = "";
+  private tagCounter = 0;
   private pendingRequests: Map<
     string,
     { resolve: (value: any) => void; reject: (err: Error) => void }
   > = new Map();
+
+  /** Called for unsolicited messages (subscription events, etc.) */
+  onEvent: LeapEventHandler | null = null;
 
   readonly host: string;
   readonly port: number;
@@ -182,6 +188,10 @@ export class LeapConnection {
     });
   }
 
+  private nextTag(): string {
+    return `lt-${++this.tagCounter}`;
+  }
+
   private handleData(data: string): void {
     this.buffer += data;
     const lines = this.buffer.split("\n");
@@ -191,38 +201,55 @@ export class LeapConnection {
       if (!line.trim()) continue;
       try {
         const resp = JSON.parse(line);
-        // Skip unsolicited messages — Caseta sends SubscribeResponse on connect
-        const ct = resp.CommuniqueType;
-        if (ct !== "ReadResponse" && ct !== "ExceptionResponse") continue;
-        const url = resp.Header?.Url ?? "";
-        const pending = this.pendingRequests.get(url);
-        if (pending) {
-          this.pendingRequests.delete(url);
+        const tag = resp.Header?.ClientTag;
+
+        // Match by ClientTag if present
+        if (tag && this.pendingRequests.has(tag)) {
+          const pending = this.pendingRequests.get(tag)!;
+          this.pendingRequests.delete(tag);
           pending.resolve(resp);
+          continue;
+        }
+
+        // Unsolicited message — pass to event handler
+        if (this.onEvent) {
+          this.onEvent(resp);
         }
       } catch {}
     }
   }
 
-  async read(url: string): Promise<any> {
+  /** Send a raw LEAP request and wait for the response */
+  async send(
+    communiqueType: string,
+    url: string,
+    body?: any,
+    timeout = 10000,
+  ): Promise<any> {
     if (!this.socket) throw new Error("Not connected");
 
+    const tag = this.nextTag();
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(url, { resolve, reject });
+      this.pendingRequests.set(tag, { resolve, reject });
 
-      const req = JSON.stringify({
-        CommuniqueType: "ReadRequest",
-        Header: { Url: url },
-      });
-      this.socket!.write(req + "\n");
+      const req: any = {
+        CommuniqueType: communiqueType,
+        Header: { Url: url, ClientTag: tag },
+      };
+      if (body !== undefined) req.Body = body;
+      this.socket!.write(JSON.stringify(req) + "\n");
 
       setTimeout(() => {
-        if (this.pendingRequests.has(url)) {
-          this.pendingRequests.delete(url);
-          reject(new Error(`Timeout reading ${url}`));
+        if (this.pendingRequests.has(tag)) {
+          this.pendingRequests.delete(tag);
+          reject(new Error(`Timeout: ${communiqueType} ${url}`));
         }
-      }, 10000);
+      }, timeout);
     });
+  }
+
+  async read(url: string): Promise<any> {
+    return this.send("ReadRequest", url);
   }
 
   async readBody(url: string): Promise<any | null> {
@@ -235,6 +262,21 @@ export class LeapConnection {
     } catch {
       return null;
     }
+  }
+
+  /** Send a CreateRequest (zone commands, device pairing, etc.) */
+  async create(url: string, body: any): Promise<any> {
+    return this.send("CreateRequest", url, body);
+  }
+
+  /** Send an UpdateRequest (config changes: tuning, phase, presets, etc.) */
+  async update(url: string, body: any): Promise<any> {
+    return this.send("UpdateRequest", url, body);
+  }
+
+  /** Send a SubscribeRequest. Events arrive via onEvent callback. */
+  async subscribe(url: string): Promise<any> {
+    return this.send("SubscribeRequest", url);
   }
 
   close(): void {

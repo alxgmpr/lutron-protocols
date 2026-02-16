@@ -15,6 +15,8 @@ export interface CCXLevelControl {
   levelPercent: number; // 0-100
   zoneType: number; // Usually 16
   zoneId: number; // Internal Lutron zone ID
+  fade: number; // Quarter-seconds (1 = 0.25s instant)
+  delay: number; // Quarter-seconds (0 = no delay)
   sequence: number;
 }
 

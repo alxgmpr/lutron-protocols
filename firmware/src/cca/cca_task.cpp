@@ -39,6 +39,19 @@
 #define CCA_DRAIN_SILENCE_MS 18 /* absorb short retrans+ACK bursts before flush */
 #define CCA_ISR_LAT_BINS     12
 #define CCA_MAIN_POLL_MS     2
+#define CCA_HOT_POLL_MS      1
+
+/* Slot-lock model: dt_ms ~= dseq * 12.5ms (25 half-ms units). */
+#define CCA_SLOT_LOCK_MAX_DEVICES      32
+#define CCA_SLOT_LOCK_MAX_DSEQ         32
+#define CCA_SLOT_LOCK_WARMUP_SAMPLES   8
+#define CCA_SLOT_LOCK_GOOD_ERR_Q2      5   /* 2.5ms */
+#define CCA_SLOT_LOCK_MAX_DT_MS        400 /* ignore long gaps */
+#define CCA_SLOT_LOCK_STALE_MS         1200
+#define CCA_SLOT_LOCK_HOT_WINDOW_MS    7
+#define CCA_SLOT_LOCK_MIN_CONFIDENCE   60
+#define CCA_SLOT_MS_X2                 25 /* 12.5ms in 0.5ms units */
+#define CCA_SLOT_ERR_SCORE_SPAN_Q2     12 /* 6ms */
 
 /* -----------------------------------------------------------------------
  * TX queue item
@@ -64,6 +77,22 @@ static uint32_t      crc_optional_count = 0; /* accepted with crc_valid=false */
 /* High-rate UART packet logs can disrupt shell interactivity. Keep off by default. */
 static volatile bool cca_uart_log_enabled_ = false;
 
+struct CcaSlotLockState {
+    bool     in_use;
+    bool     have_anchor;
+    uint32_t device_id;
+    uint32_t last_ts_ms;
+    uint32_t last_seen_ms;
+    uint8_t  last_seq;
+    uint8_t  dominant_stride;
+    uint8_t  confidence;
+    uint16_t samples;
+    uint16_t good_samples;
+    uint16_t ema_abs_err_q2;
+    uint16_t stride_hist[CCA_SLOT_LOCK_MAX_DSEQ + 1];
+};
+static CcaSlotLockState slot_locks_[CCA_SLOT_LOCK_MAX_DEVICES] = {};
+
 /* GDO0/latency telemetry */
 static volatile uint32_t gdo0_irq_count = 0;
 static volatile uint32_t gdo0_last_cycle = 0;
@@ -84,6 +113,171 @@ static void reset_isr_latency_stats(void)
     isr_latency_max_us = 0;
     isr_latency_samples = 0;
     memset(isr_latency_hist, 0, sizeof(isr_latency_hist));
+}
+
+static void clear_slot_lock_state(CcaSlotLockState& s)
+{
+    s.in_use = false;
+    s.have_anchor = false;
+    s.device_id = 0;
+    s.last_ts_ms = 0;
+    s.last_seen_ms = 0;
+    s.last_seq = 0;
+    s.dominant_stride = 0;
+    s.confidence = 0;
+    s.samples = 0;
+    s.good_samples = 0;
+    s.ema_abs_err_q2 = 0;
+    memset(s.stride_hist, 0, sizeof(s.stride_hist));
+}
+
+static void reset_slot_lock_stats(void)
+{
+    for (size_t i = 0; i < CCA_SLOT_LOCK_MAX_DEVICES; i++) {
+        clear_slot_lock_state(slot_locks_[i]);
+    }
+}
+
+static uint8_t slot_lock_compute_confidence(const CcaSlotLockState& s)
+{
+    if (s.samples == 0) return 0;
+
+    uint32_t warmup_pct =
+        (s.samples >= CCA_SLOT_LOCK_WARMUP_SAMPLES) ? 100u : (uint32_t)s.samples * 100u / CCA_SLOT_LOCK_WARMUP_SAMPLES;
+    uint32_t good_rate_pct = (uint32_t)s.good_samples * 100u / s.samples;
+
+    uint32_t err_score_pct = 0;
+    if (s.ema_abs_err_q2 < CCA_SLOT_ERR_SCORE_SPAN_Q2) {
+        err_score_pct = 100u - ((uint32_t)s.ema_abs_err_q2 * 100u / CCA_SLOT_ERR_SCORE_SPAN_Q2);
+    }
+
+    uint32_t quality_pct = (7u * good_rate_pct + 3u * err_score_pct + 5u) / 10u;
+    uint32_t confidence_pct = (quality_pct * warmup_pct + 50u) / 100u;
+    if (confidence_pct > 100u) confidence_pct = 100u;
+    return (uint8_t)confidence_pct;
+}
+
+static uint8_t slot_lock_find_dominant_stride(const CcaSlotLockState& s)
+{
+    uint8_t  best_stride = 0;
+    uint16_t best_count = 0;
+    for (uint8_t stride = 1; stride <= CCA_SLOT_LOCK_MAX_DSEQ; stride++) {
+        uint16_t count = s.stride_hist[stride];
+        if (count > best_count || (count == best_count && count > 0 && stride < best_stride)) {
+            best_count = count;
+            best_stride = stride;
+        }
+    }
+    return best_stride;
+}
+
+static CcaSlotLockState* slot_lock_get_or_alloc(uint32_t device_id, uint32_t now_ms)
+{
+    CcaSlotLockState* free_slot = NULL;
+    CcaSlotLockState* oldest = NULL;
+    uint32_t          oldest_age = 0;
+
+    for (size_t i = 0; i < CCA_SLOT_LOCK_MAX_DEVICES; i++) {
+        CcaSlotLockState& s = slot_locks_[i];
+        if (s.in_use) {
+            if (s.device_id == device_id) return &s;
+
+            uint32_t age = now_ms - s.last_seen_ms;
+            if (!oldest || age > oldest_age) {
+                oldest = &s;
+                oldest_age = age;
+            }
+        }
+        else if (!free_slot) {
+            free_slot = &s;
+        }
+    }
+
+    CcaSlotLockState* target = free_slot ? free_slot : oldest;
+    if (!target) return NULL;
+
+    clear_slot_lock_state(*target);
+    target->in_use = true;
+    target->device_id = device_id;
+    target->last_seen_ms = now_ms;
+    return target;
+}
+
+static void slot_lock_on_packet(const DecodedPacket& pkt, uint32_t timestamp_ms)
+{
+    /* Keep timing model strict: only learn from CRC-valid packets with a real source ID. */
+    if (!pkt.crc_valid || pkt.device_id == 0) return;
+
+    CcaSlotLockState* s = slot_lock_get_or_alloc(pkt.device_id, timestamp_ms);
+    if (!s) return;
+
+    if (!s->have_anchor) {
+        s->last_ts_ms = timestamp_ms;
+        s->last_seq = pkt.sequence;
+        s->last_seen_ms = timestamp_ms;
+        s->have_anchor = true;
+        return;
+    }
+
+    uint32_t dt_ms = timestamp_ms - s->last_ts_ms;
+    uint8_t  dseq = (uint8_t)((pkt.sequence - s->last_seq) & 0xFFu);
+
+    s->last_ts_ms = timestamp_ms;
+    s->last_seq = pkt.sequence;
+    s->last_seen_ms = timestamp_ms;
+
+    if (dt_ms == 0 || dt_ms > CCA_SLOT_LOCK_MAX_DT_MS) return;
+    if (dseq == 0 || dseq > CCA_SLOT_LOCK_MAX_DSEQ) return;
+
+    int32_t err_q2 = (int32_t)(dt_ms * 2u) - (int32_t)(CCA_SLOT_MS_X2 * dseq);
+    uint16_t abs_err_q2 = (uint16_t)((err_q2 < 0) ? -err_q2 : err_q2);
+
+    if (s->samples < 0xFFFFu) s->samples++;
+    if (abs_err_q2 <= CCA_SLOT_LOCK_GOOD_ERR_Q2 && s->good_samples < 0xFFFFu) s->good_samples++;
+
+    if (s->samples == 1) {
+        s->ema_abs_err_q2 = abs_err_q2;
+    }
+    else {
+        /* EMA alpha = 0.2 without floats: ema = 0.8*ema + 0.2*new. */
+        uint32_t ema = (uint32_t)s->ema_abs_err_q2 * 8u + (uint32_t)abs_err_q2 * 2u;
+        s->ema_abs_err_q2 = (uint16_t)((ema + 5u) / 10u);
+    }
+
+    if (s->stride_hist[dseq] < 0xFFFFu) s->stride_hist[dseq]++;
+    s->dominant_stride = slot_lock_find_dominant_stride(*s);
+    s->confidence = slot_lock_compute_confidence(*s);
+}
+
+static bool slot_lock_hot_poll_due(uint32_t now_ms)
+{
+    uint32_t now_q2 = now_ms * 2u;
+
+    for (size_t i = 0; i < CCA_SLOT_LOCK_MAX_DEVICES; i++) {
+        CcaSlotLockState& s = slot_locks_[i];
+        if (!s.in_use) continue;
+
+        uint32_t age_ms = now_ms - s.last_seen_ms;
+        if (age_ms > CCA_SLOT_LOCK_STALE_MS) {
+            clear_slot_lock_state(s);
+            continue;
+        }
+
+        if (s.confidence < CCA_SLOT_LOCK_MIN_CONFIDENCE || s.dominant_stride == 0) continue;
+
+        uint32_t step_q2 = (uint32_t)s.dominant_stride * CCA_SLOT_MS_X2;
+        if (step_q2 == 0) continue;
+
+        uint32_t elapsed_q2 = now_q2 - s.last_ts_ms * 2u;
+        uint32_t phase_q2 = elapsed_q2 % step_q2;
+        uint32_t dist_q2 = phase_q2;
+        uint32_t to_next_q2 = step_q2 - phase_q2;
+        if (to_next_q2 < dist_q2) dist_q2 = to_next_q2;
+
+        if (dist_q2 <= (uint32_t)CCA_SLOT_LOCK_HOT_WINDOW_MS * 2u) return true;
+    }
+
+    return false;
 }
 
 /* -----------------------------------------------------------------------
@@ -171,6 +365,7 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
         }
         if (pkt.n81_errors > 0) n81_err_count++;
         if (pkt.type_byte == 0x0B) ack_count++;
+        slot_lock_on_packet(pkt, timestamp_ms);
 
         if (rx_pend_count < CCA_RX_PEND_MAX) {
             CcaRxPending& p = rx_pending[rx_pend_count++];
@@ -301,6 +496,7 @@ static void cca_task_func(void* param)
     cc1101_set_rx_callback(on_rx_packet);
     cc1101_start_rx();
     reset_isr_latency_stats();
+    reset_slot_lock_stats();
 
     LED_GREEN_ON();
     printf("[cca] RX mode active\r\n");
@@ -311,7 +507,10 @@ static void cca_task_func(void* param)
         watchdog_feed();
 
         /* Poll RX frequently; CCA bursts can overflow CC1101 FIFO in a few ms. */
-        uint32_t notified = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CCA_MAIN_POLL_MS));
+        bool hot_poll = slot_lock_hot_poll_due(HAL_GetTick());
+        TickType_t wait_ticks = pdMS_TO_TICKS(hot_poll ? CCA_HOT_POLL_MS : CCA_MAIN_POLL_MS);
+        if (wait_ticks == 0) wait_ticks = 1;
+        uint32_t notified = ulTaskNotifyTake(pdTRUE, wait_ticks);
         if (notified > 0 && gdo0_stamp_valid) {
             uint32_t irq_cycle = gdo0_last_cycle;
             gdo0_stamp_valid = 0;
@@ -343,7 +542,13 @@ static void cca_task_func(void* param)
         }
         else {
             /* Lightweight fallback poll in case one IRQ edge is missed. */
-            if (cc1101_check_rx()) {
+            bool got_packet = cc1101_check_rx();
+            if (!got_packet && hot_poll) {
+                /* In hot windows, probe a few extra times to catch slot-edge arrivals. */
+                got_packet = cc1101_check_rx();
+                if (!got_packet) got_packet = cc1101_check_rx();
+            }
+            if (got_packet) {
                 flush_rx_pending();
             }
         }
@@ -480,6 +685,7 @@ void cca_reset_stats(void)
     ack_count = 0;
     crc_optional_count = 0;
     reset_isr_latency_stats();
+    reset_slot_lock_stats();
 }
 
 void cca_set_rx_hook(cca_rx_hook_t hook)

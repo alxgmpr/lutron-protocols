@@ -60,3 +60,12 @@ node_modules/
 
 # SQLite databases
 *.db
+
+*.app
+*.msix
+*.pdf
+*.har
+
+.obsidian/
+
+tmp/

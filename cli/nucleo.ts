@@ -65,6 +65,13 @@ const TEXT_CMD_TIMEOUT_MS = 10000;
 const FLAG_TX = 0x80;
 const FLAG_CCX = 0x40;
 const FLAG_RSSI_MASK = 0x3f;
+const CCA_SLOT_MS = 12.5;
+const CCA_SLOT_MAX_DT_MS = 400;
+const CCA_SLOT_MAX_DSEQ = 32;
+const CCA_SLOT_MAX_FLOWS = 256;
+const CCA_SLOT_WARMUP_SAMPLES = 8;
+const CCA_SLOT_GOOD_ERR_MS = 2.5;
+const CCA_SLOT_MISS_MIN_CONFIDENCE = 85;
 
 // Thread role names
 const THREAD_ROLES = ["detached", "child", "router", "leader"] as const;
@@ -110,6 +117,29 @@ let keepaliveTimer: ReturnType<typeof setInterval>;
 let lastCcaRadioTs = 0; // for CCA inter-packet delta
 let lastCcxRadioTs = 0; // for CCX inter-packet delta
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
+let slotTracking = true;
+let lockDetails = false;
+
+interface CcaSlotFlowState {
+  key: string;
+  lastTs: number;
+  lastSeq: number;
+  samples: number;
+  goodSamples: number;
+  emaAbsErrMs: number;
+  strideCounts: Map<number, number>;
+  lastSeenTick: number;
+}
+
+interface CcaSlotIndicator {
+  status: "LEARN" | "TRACK" | "LOCK";
+  confidencePct: number;
+  dSeq?: number;
+  errMs?: number;
+  missedPackets?: number;
+}
+
+const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
 
 // ============================================================================
 // Helpers
@@ -171,6 +201,148 @@ function sendTextCommand(text: string) {
   }, TEXT_CMD_TIMEOUT_MS);
 }
 
+function pruneCcaSlotFlows() {
+  if (ccaSlotFlows.size <= CCA_SLOT_MAX_FLOWS) return;
+  const entries = Array.from(ccaSlotFlows.values()).sort(
+    (a, b) => a.lastSeenTick - b.lastSeenTick,
+  );
+  const removeCount = ccaSlotFlows.size - CCA_SLOT_MAX_FLOWS;
+  for (let i = 0; i < removeCount; i++) {
+    ccaSlotFlows.delete(entries[i].key);
+  }
+}
+
+function slotConfidence(state: CcaSlotFlowState): number {
+  if (state.samples <= 0) return 0;
+  const warmup = Math.min(1, state.samples / CCA_SLOT_WARMUP_SAMPLES);
+  const goodRate = state.goodSamples / state.samples;
+  const errScore = Math.max(0, Math.min(1, 1 - state.emaAbsErrMs / 6));
+  const score = warmup * (0.7 * goodRate + 0.3 * errScore);
+  return Math.round(score * 100);
+}
+
+function slotStatus(confidencePct: number): "LEARN" | "TRACK" | "LOCK" {
+  if (confidencePct >= 75) return "LOCK";
+  if (confidencePct >= 45) return "TRACK";
+  return "LEARN";
+}
+
+function formatDevKey(data: Buffer): string {
+  if (data.length < 6) return "NA";
+  return Array.from(data.subarray(2, 6))
+    .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+    .join("");
+}
+
+function slotFlowKey(data: Buffer): string {
+  if (data.length >= 6) return formatDevKey(data);
+  const typeByte = data.length > 0 ? data[0] : 0;
+  const typeHex = typeByte.toString(16).toUpperCase().padStart(2, "0");
+
+  // Dimmer ACK short packets: 0B [seq] [response_class] [seq^0x26] [response_subtype]
+  // Key by stable fields so parallel ACK sources don't blend into one lock flow.
+  if (typeByte === 0x0b && data.length >= 5) {
+    const clsHex = data[2].toString(16).toUpperCase().padStart(2, "0");
+    const subHex = data[4].toString(16).toUpperCase().padStart(2, "0");
+    return `T${typeHex}-${clsHex}-${subHex}`;
+  }
+
+  return `T${typeHex}`;
+}
+
+function dominantStride(strideCounts: Map<number, number>): number | null {
+  let bestStride = 0;
+  let bestCount = 0;
+  for (const [stride, count] of strideCounts) {
+    if (count > bestCount || (count === bestCount && stride < bestStride)) {
+      bestStride = stride;
+      bestCount = count;
+    }
+  }
+  return bestCount > 0 ? bestStride : null;
+}
+
+function updateCcaSlotTracker(
+  data: Buffer,
+  isTx: boolean,
+  radioTs: number,
+): CcaSlotIndicator | null {
+  if (!slotTracking || isTx || data.length < 2) return null;
+
+  const seq = data[1];
+  // Track per-device when possible; for short packets (e.g. 0x0B ACK),
+  // fall back to a per-type flow key.
+  const key = slotFlowKey(data);
+  const nowTick = Date.now();
+
+  let state = ccaSlotFlows.get(key);
+  if (!state) {
+    state = {
+      key,
+      lastTs: radioTs >>> 0,
+      lastSeq: seq,
+      samples: 0,
+      goodSamples: 0,
+      emaAbsErrMs: 0,
+      strideCounts: new Map<number, number>(),
+      lastSeenTick: nowTick,
+    };
+    ccaSlotFlows.set(key, state);
+    pruneCcaSlotFlows();
+    return { status: "LEARN", confidencePct: 0 };
+  }
+
+  state.lastSeenTick = nowTick;
+  const dtMs = ((radioTs >>> 0) - (state.lastTs >>> 0)) >>> 0;
+  const dSeq = ((seq - state.lastSeq + 256) & 0xff) >>> 0;
+  state.lastTs = radioTs >>> 0;
+  state.lastSeq = seq;
+
+  let errMs: number | undefined;
+  let sampleDSeq: number | undefined;
+  if (
+    dtMs > 0 &&
+    dtMs <= CCA_SLOT_MAX_DT_MS &&
+    dSeq > 0 &&
+    dSeq <= CCA_SLOT_MAX_DSEQ
+  ) {
+    sampleDSeq = dSeq;
+    const predictedMs = CCA_SLOT_MS * dSeq;
+    errMs = dtMs - predictedMs;
+    const absErrMs = Math.abs(errMs);
+
+    state.samples++;
+    if (absErrMs <= CCA_SLOT_GOOD_ERR_MS) state.goodSamples++;
+    state.emaAbsErrMs =
+      state.samples === 1 ? absErrMs : state.emaAbsErrMs * 0.8 + absErrMs * 0.2;
+    state.strideCounts.set(dSeq, (state.strideCounts.get(dSeq) || 0) + 1);
+  }
+
+  const confidencePct = slotConfidence(state);
+  let status = slotStatus(confidencePct);
+  const stride = dominantStride(state.strideCounts);
+  // If confidence is still warming but stride is stable, show TRACK for usability.
+  if (status === "LEARN" && stride !== null && state.samples >= 4 && confidencePct >= 40) {
+    status = "TRACK";
+  }
+
+  let missedPackets: number | undefined;
+  if (
+    sampleDSeq !== undefined &&
+    errMs !== undefined &&
+    stride !== null &&
+    stride > 0 &&
+    confidencePct >= CCA_SLOT_MISS_MIN_CONFIDENCE &&
+    sampleDSeq >= stride * 2 &&
+    sampleDSeq % stride === 0 &&
+    Math.abs(errMs) <= CCA_SLOT_GOOD_ERR_MS
+  ) {
+    missedPackets = sampleDSeq / stride - 1;
+  }
+
+  return { status, confidencePct, dSeq: sampleDSeq, errMs, missedPackets };
+}
+
 // ============================================================================
 // RX packet display
 // ============================================================================
@@ -178,7 +350,7 @@ function sendTextCommand(text: string) {
 function displayCcaPacket(
   data: Buffer,
   flags: number,
-  _radioTs: number = 0,
+  radioTs: number = 0,
   deltaMs: number = 0,
 ) {
   const isTx = !!(flags & FLAG_TX);
@@ -357,6 +529,31 @@ function displayCcaPacket(
   for (const [name, val] of fieldValues) {
     if (name === "format") continue; // already handled or not needed
     parts.push(`${DIM}${name}=${RESET}${val}`);
+  }
+
+  const slot = updateCcaSlotTracker(data, isTx, radioTs);
+  if (slot) {
+    const slotColor =
+      slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
+    const slotLabel = lockDetails
+      ? `${slot.status}${slot.confidencePct}%`
+      : slot.status;
+    if (lockDetails) {
+      const dseqPart =
+        slot.dSeq && slot.dSeq > 0 ? `${DIM}d${slot.dSeq}${RESET}` : `${DIM}d?${RESET}`;
+      const errPart =
+        slot.errMs !== undefined
+          ? `${DIM}e${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms${RESET}`
+          : `${DIM}e?${RESET}`;
+      parts.push(
+        `${DIM}slot=${RESET}${slotColor}${slotLabel}${RESET} ${dseqPart} ${errPart}`,
+      );
+    } else {
+      parts.push(`${DIM}slot=${RESET}${slotColor}${slotLabel}${RESET}`);
+    }
+    if (slot.missedPackets && slot.missedPackets > 0) {
+      parts.push(`${RED}${BOLD}miss=${slot.missedPackets}${RESET}`);
+    }
   }
 
   const rssiStr = isTx ? `${DIM}(echo)${RESET}` : `${DIM}rssi=${RESET}${rssi}`;
@@ -775,6 +972,8 @@ ${BOLD}Local commands:${RESET}
   ${GREEN}stop${RESET}           Stop recording
   ${GREEN}quiet${RESET}          Toggle packet display
   ${GREEN}raw${RESET}            Toggle raw hex display
+  ${GREEN}lock${RESET} [on|off]  Toggle lock detail fields (%/d/e)
+  ${GREEN}slot${RESET} [reset]   Toggle slot-tracking overlay or reset tracker
   ${GREEN}help${RESET}           This help
   ${GREEN}quit${RESET}           Exit
 
@@ -816,6 +1015,27 @@ function handleCommand(line: string) {
     case "raw":
       raw = !raw;
       console.log(`Raw hex display: ${raw ? "on" : "off"}`);
+      showPrompt();
+      return;
+
+    case "lock": {
+      const mode = (args[1] || "").toLowerCase();
+      if (mode === "on") lockDetails = true;
+      else if (mode === "off") lockDetails = false;
+      else lockDetails = !lockDetails;
+      console.log(`Lock details: ${lockDetails ? "on" : "off"}`);
+      showPrompt();
+      return;
+    }
+
+    case "slot":
+      if ((args[1] || "").toLowerCase() === "reset") {
+        ccaSlotFlows.clear();
+        console.log("Slot tracker: reset");
+      } else {
+        slotTracking = !slotTracking;
+        console.log(`Slot tracker: ${slotTracking ? "on" : "off"}`);
+      }
       showPrompt();
       return;
 
