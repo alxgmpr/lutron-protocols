@@ -76,7 +76,7 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 | 0x8A | BTN_PRESS_B | 24 | Button press, group B |
 | 0x8B | BTN_RELEASE_B | 24 | Button release, group B |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
-| 0xA1-0xA3 | CONFIG | 53 | Configuration commands (53 bytes with CC padding + CRC) |
+| 0xA1-0xA3 | CONFIG | 53 | Configuration commands (53 bytes with 0x00 padding + CRC) |
 | 0xB0/0xB2 | DEVICE_ANNOUNCE | 53 | Device announcement during bridge pairing |
 | 0xB8 | PAIR_REQ | 53 | Device pairing request (Vive) / bridge-only pairing (pico) |
 | 0xB9 | PAIR_BEACON | 53 | Direct-pair capable / Vive beacon |
@@ -87,7 +87,7 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 ### Size Rules
 
 - **0x80-0x9F**: 24 bytes (22 data + 2 CRC)
-- **0xA0-0xBF**: 53 bytes (51 data + 2 CRC) — must use 0xCC padding
+- **0xA0-0xBF**: 53 bytes (51 data + 2 CRC) — must use 0x00 padding
 - **0xC0-0xEF**: 24 bytes (handshake)
 
 ### Button A/B Alternation
@@ -276,7 +276,7 @@ Vive uses the same CCA radio but addresses devices by hub ID + zone ID for room-
 
 ### Vive Pairing
 
-All packets are **53 bytes** (51 data + 2 CRC) with 0xCC padding.
+All packets are **53 bytes** (51 data + 2 CRC) with 0x00 padding.
 
 | Phase | Packet | Direction | Description |
 |-------|--------|-----------|-------------|
@@ -306,7 +306,7 @@ All packets are **53 bytes** (51 data + 2 CRC) with 0xCC padding.
 
 ## 8. Device Configuration
 
-All config packets use **type bytes A1-A3** and must be **53 bytes** with 0xCC padding. Type byte rotates A1→A2→A3 across separate config calls (constant within a burst). Zone alternation: first packet on primary zone, rest on alternate (low byte +2).
+All config packets use **type bytes A1-A3** and must be **53 bytes** with 0x00 padding. Type byte rotates A1→A2→A3 across separate config calls (constant within a burst). Zone alternation: first packet on primary zone, rest on alternate (low byte +2).
 
 ### Format 0x11: LED Mode
 
@@ -335,8 +335,8 @@ High/low trim levels for dimmers. Wrapped in a 3-phase sandwich: 0x82 (OFF) → 
 | 20 | high trim | `percent * 254 / 100` |
 | 21 | low trim | `percent * 254 / 100` |
 | 22-26 | `23 0B 60 00 00` | Constants |
-| **27-28** | **`00 FE`** | **Data, NOT CC padding!** Using CC here causes device lockup |
-| 29-50 | 0xCC | Actual padding starts here |
+| **27-28** | **`00 FE`** | **Data, NOT padding. Keep fixed values.** |
+| 29-50 | 0x00 | Actual padding starts here |
 
 Only 2 config packets (seq 0x01 on primary zone, seq 0x02 on alternate). Phase (forward/reverse) encoding is **unsolved**.
 

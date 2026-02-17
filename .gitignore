@@ -65,7 +65,13 @@ node_modules/
 *.msix
 *.pdf
 *.har
+*.bndb
+*.csv
+*.vive
 
 .obsidian/
+.mcp.json
 
 tmp/
+src/
+captures/lutron-runtime/

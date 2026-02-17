@@ -220,7 +220,7 @@ packet_types:
   # All 4-button picos (scene + raise/lower) use button codes SCENE1-SCENE4 (0x08-0x0B).
   # The press/release semantics are INVERTED between pico types:
   #
-  #   Scene pico:  PRESS = short (fmt 0x04, action 0x00, CC padding)
+  #   Scene pico:  PRESS = short (fmt 0x04, action 0x00, 0x00 padding)
   #                RELEASE = extended (fmt 0x0E, action 0x01, cmd_class + preset_id)
   #
   #   R/L pico:    PRESS = extended (fmt 0x0E, action 0x01, cmd_class + payload)

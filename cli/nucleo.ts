@@ -14,6 +14,7 @@
 import { createSocket, type Socket } from "dgram";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { stripVTControlCharacters } from "util";
 import {
   getPresetInfo,
   getSerialName,
@@ -72,6 +73,8 @@ const CCA_SLOT_MAX_FLOWS = 256;
 const CCA_SLOT_WARMUP_SAMPLES = 8;
 const CCA_SLOT_GOOD_ERR_MS = 2.5;
 const CCA_SLOT_MISS_MIN_CONFIDENCE = 85;
+const CCA_SLOT_MISS_MIN_SAMPLES = 10;
+const CCA_SLOT_MISS_STRIDE_PURITY_MIN = 0.75;
 
 // Thread role names
 const THREAD_ROLES = ["detached", "child", "router", "leader"] as const;
@@ -140,6 +143,55 @@ interface CcaSlotIndicator {
 }
 
 const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
+let packetRowsSinceHeader = 0;
+let packetHeaderSig = "";
+
+const PACKET_HEADER_INTERVAL = 40;
+const MIN_PACKET_STATE_WIDTH = 10;
+const MIN_PACKET_RAW_WIDTH = 12;
+const MIN_PACKET_DELTA_WIDTH = 6;
+const MIN_PACKET_SLOT_WIDTH = 6;
+const MIN_PACKET_MISS_WIDTH = 4;
+const MIN_PACKET_SEQ_WIDTH = 3;
+
+interface PacketLayout {
+  showRaw: boolean;
+  totalWidth: number;
+  time: number;
+  proto: number;
+  dir: number;
+  seq: number;
+  type: number;
+  device: number;
+  action: number;
+  state: number;
+  raw: number;
+  delta: number;
+  slot: number;
+  miss: number;
+}
+
+interface PacketRow {
+  ts: string;
+  proto: string;
+  protoColor: string;
+  direction: string;
+  dirColor: string;
+  seq: string;
+  type: string;
+  typeColor: string;
+  device: string;
+  deviceColor?: string;
+  action: string;
+  actionColor?: string;
+  state: string;
+  raw: string;
+  delta: string;
+  slot: string;
+  slotColor?: string;
+  miss: string;
+  missColor?: string;
+}
 
 // ============================================================================
 // Helpers
@@ -262,6 +314,202 @@ function dominantStride(strideCounts: Map<number, number>): number | null {
   return bestCount > 0 ? bestStride : null;
 }
 
+function stripAnsi(text: string): string {
+  return stripVTControlCharacters(text);
+}
+
+function clipCell(
+  text: string,
+  width: number,
+  align: "left" | "right" | "center" = "left",
+): string {
+  if (width <= 0) return "";
+  const plain = stripAnsi(text);
+  const clipped =
+    plain.length > width
+      ? width <= 3
+        ? plain.slice(0, width)
+        : `${plain.slice(0, width - 3)}...`
+      : plain;
+
+  if (align === "right") return clipped.padStart(width);
+  if (align === "center") {
+    const left = Math.floor((width - clipped.length) / 2);
+    const right = width - clipped.length - left;
+    return `${" ".repeat(Math.max(0, left))}${clipped}${" ".repeat(Math.max(0, right))}`;
+  }
+  return clipped.padEnd(width);
+}
+
+function colorCell(text: string, color: string, bold = false): string {
+  if (!color) return text;
+  return `${bold ? BOLD : ""}${color}${text}${RESET}`;
+}
+
+function getPacketLayout(showRaw: boolean): PacketLayout {
+  const termWidth =
+    typeof process.stdout.columns === "number" && process.stdout.columns > 0
+      ? process.stdout.columns
+      : 120;
+
+  const layout: PacketLayout = {
+    showRaw,
+    totalWidth: 0,
+    time: 12,
+    proto: 1,
+    dir: 2,
+    seq: 4,
+    type: 16,
+    device: 20,
+    action: 12,
+    state: MIN_PACKET_STATE_WIDTH,
+    raw: showRaw ? 24 : 0,
+    delta: 8,
+    slot: 12,
+    miss: 5,
+  };
+
+  const columns = showRaw ? 12 : 11;
+  const spaces = columns - 1;
+  const fixedNoState =
+    layout.time +
+    layout.proto +
+    layout.dir +
+    layout.seq +
+    layout.type +
+    layout.device +
+    layout.action +
+    layout.delta +
+    layout.slot +
+    layout.miss +
+    (showRaw ? layout.raw : 0);
+
+  let availableState = termWidth - fixedNoState - spaces;
+  while (availableState < MIN_PACKET_STATE_WIDTH) {
+    if (showRaw && layout.raw > MIN_PACKET_RAW_WIDTH) {
+      layout.raw--;
+      availableState++;
+      continue;
+    }
+    if (layout.slot > MIN_PACKET_SLOT_WIDTH) {
+      layout.slot--;
+      availableState++;
+      continue;
+    }
+    if (layout.delta > MIN_PACKET_DELTA_WIDTH) {
+      layout.delta--;
+      availableState++;
+      continue;
+    }
+    if (layout.miss > MIN_PACKET_MISS_WIDTH) {
+      layout.miss--;
+      availableState++;
+      continue;
+    }
+    if (layout.seq > MIN_PACKET_SEQ_WIDTH) {
+      layout.seq--;
+      availableState++;
+      continue;
+    }
+    if (layout.device > 10) {
+      layout.device--;
+      availableState++;
+      continue;
+    }
+    if (layout.action > 8) {
+      layout.action--;
+      availableState++;
+      continue;
+    }
+    if (layout.type > 10) {
+      layout.type--;
+      availableState++;
+      continue;
+    }
+    if (layout.time > 8) {
+      layout.time--;
+      availableState++;
+      continue;
+    }
+    break;
+  }
+
+  layout.state = Math.max(MIN_PACKET_STATE_WIDTH, availableState);
+  layout.totalWidth =
+    layout.time +
+    layout.proto +
+    layout.dir +
+    layout.seq +
+    layout.type +
+    layout.action +
+    layout.device +
+    layout.state +
+    (showRaw ? layout.raw : 0) +
+    layout.delta +
+    layout.slot +
+    layout.miss +
+    spaces;
+
+  return layout;
+}
+
+function renderPacketHeader(layout: PacketLayout) {
+  const headerCells: string[] = [
+    clipCell("TIME", layout.time),
+    clipCell("P", layout.proto, "center"),
+    clipCell("D", layout.dir, "center"),
+    clipCell("S", layout.seq, "right"),
+    clipCell("TYPE", layout.type),
+    clipCell("DEVICE", layout.device),
+    clipCell("ACTION", layout.action),
+    clipCell("STATE", layout.state),
+  ];
+  if (layout.showRaw) {
+    headerCells.push(clipCell("RAW", layout.raw, "right"));
+  }
+  headerCells.push(clipCell("DELTA", layout.delta, "right"));
+  headerCells.push(clipCell("SLOT", layout.slot));
+  headerCells.push(clipCell("MISS", layout.miss, "right"));
+  const headerLine = headerCells.join(" ");
+  console.log(`${DIM}${headerLine}${RESET}`);
+  console.log(`${DIM}${"-".repeat(layout.totalWidth)}${RESET}`);
+}
+
+function renderPacketRow(row: PacketRow) {
+  const layout = getPacketLayout(raw);
+  const headerSig = `${layout.totalWidth}:${layout.showRaw ? 1 : 0}`;
+  if (
+    packetHeaderSig !== headerSig ||
+    packetRowsSinceHeader >= PACKET_HEADER_INTERVAL
+  ) {
+    renderPacketHeader(layout);
+    packetHeaderSig = headerSig;
+    packetRowsSinceHeader = 0;
+  }
+
+  const cells: string[] = [
+    clipCell(row.ts, layout.time),
+    colorCell(clipCell(row.proto, layout.proto, "center"), row.protoColor),
+    colorCell(clipCell(row.direction, layout.dir, "center"), row.dirColor),
+    clipCell(row.seq, layout.seq, "right"),
+    colorCell(clipCell(row.type, layout.type), row.typeColor, true),
+    colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
+    colorCell(clipCell(row.action, layout.action), row.actionColor ?? WHITE),
+    clipCell(row.state, layout.state),
+  ];
+  if (layout.showRaw) {
+    cells.push(clipCell(row.raw, layout.raw, "right"));
+  }
+  cells.push(clipCell(row.delta, layout.delta, "right"));
+  cells.push(colorCell(clipCell(row.slot, layout.slot), row.slotColor ?? WHITE));
+  cells.push(
+    colorCell(clipCell(row.miss, layout.miss, "right"), row.missColor ?? RED),
+  );
+
+  console.log(cells.join(" "));
+  packetRowsSinceHeader++;
+}
+
 function updateCcaSlotTracker(
   data: Buffer,
   isTx: boolean,
@@ -321,6 +569,10 @@ function updateCcaSlotTracker(
   const confidencePct = slotConfidence(state);
   let status = slotStatus(confidencePct);
   const stride = dominantStride(state.strideCounts);
+  const dominantCount =
+    stride !== null ? (state.strideCounts.get(stride) || 0) : 0;
+  const stridePurity =
+    state.samples > 0 ? dominantCount / state.samples : 0;
   // If confidence is still warming but stride is stable, show TRACK for usability.
   if (status === "LEARN" && stride !== null && state.samples >= 4 && confidencePct >= 40) {
     status = "TRACK";
@@ -333,6 +585,8 @@ function updateCcaSlotTracker(
     stride !== null &&
     stride > 0 &&
     confidencePct >= CCA_SLOT_MISS_MIN_CONFIDENCE &&
+    state.samples >= CCA_SLOT_MISS_MIN_SAMPLES &&
+    stridePurity >= CCA_SLOT_MISS_STRIDE_PURITY_MIN &&
     sampleDSeq >= stride * 2 &&
     sampleDSeq % stride === 0 &&
     Math.abs(errMs) <= CCA_SLOT_GOOD_ERR_MS
@@ -362,6 +616,8 @@ function displayCcaPacket(
   const identified = identifyPacket(data);
   const typeName = identified.typeName;
   const category = identified.category;
+  const seq = data.length > 1 ? data[1] : 0;
+  const ts = new Date().toISOString().slice(11, 23);
 
   // Category color for type name
   const catColor: Record<string, string> = {
@@ -376,6 +632,7 @@ function displayCcaPacket(
 
   // Build hex strings for field parsing
   const hexBytes = Array.from(data).map((b) => b.toString(16).padStart(2, "0"));
+  const rawHex = hexBytes.join(" ");
 
   // Fields to skip in output
   const SKIP_FIELDS = new Set([
@@ -419,53 +676,33 @@ function displayCcaPacket(
     }
   }
 
-  // Sequence as decimal
-  const seq = data[1];
-  const seqStr = `${DIM}#${RESET}${String(seq).padEnd(3)}`;
-
-  // Format device ID with highlighted suffix + LEAP name if available
-  const fmtId = (label: string, val: string) => {
-    const base = val.slice(0, 4);
-    const tail = val.slice(4);
-    let result = `${DIM}${label}=${RESET}${base}${YELLOW}${tail}${RESET}`;
+  let deviceText = "";
+  let deviceColor = WHITE;
+  const takeDevice = (fieldName: string, label: string): boolean => {
+    const val = fieldValues.get(fieldName);
+    if (!val || deviceText) return false;
+    let text = `${label}:${val}`;
     const serial = parseInt(val, 16);
     if (serial > 0) {
       const name = getSerialName(serial);
-      if (name) result += ` ${CYAN}"${name}"${RESET}`;
+      if (name) text += ` "${name}"`;
     }
-    return result;
+    deviceText = text;
+    deviceColor = YELLOW;
+    fieldValues.delete(fieldName);
+    return true;
   };
+  takeDevice("device_id", "dev") ||
+    takeDevice("source_id", "src") ||
+    takeDevice("load_id", "load") ||
+    takeDevice("hardware_id", "hw") ||
+    takeDevice("target_id", "target");
 
-  // Build semantic parts
-  const parts: string[] = [];
+  let actionText = "";
+  let actionColor = WHITE;
+  const stateParts: string[] = [];
 
-  // Device IDs with role-based labels
-  for (const idField of ["device_id", "source_id", "load_id", "hardware_id"]) {
-    const val = fieldValues.get(idField);
-    if (val) {
-      const label =
-        idField === "device_id"
-          ? "dev"
-          : idField === "source_id"
-            ? "src"
-            : idField === "load_id"
-              ? "load"
-              : "hw";
-      parts.push(fmtId(label, val));
-      fieldValues.delete(idField);
-    }
-  }
-
-  // Target ID
-  const targetVal = fieldValues.get("target_id");
-  if (targetVal) {
-    parts.push(fmtId("target", targetVal));
-    fieldValues.delete("target_id");
-  }
-
-  // Category-specific display
   fieldValues.delete("sequence");
-
   if (category === "BUTTON") {
     let btn = fieldValues.get("button") || "";
     const act = fieldValues.get("action") || "";
@@ -474,8 +711,8 @@ function displayCcaPacket(
     // Action byte means "has payload" not "press/release" — don't display it
     // when we have command semantics; the packet type name already says press/release
     const fmtByte = data.length > 7 ? data[7] : 0;
-    const cmdClass = data.length > 17 ? data[17] : 0xcc;
-    const cmdParam = data.length > 19 ? data[19] : 0xcc;
+    const cmdClass = data.length > 17 ? data[17] : 0x00;
+    const cmdParam = data.length > 19 ? data[19] : 0x00;
     let hasCmd = false;
     if ((fmtByte === 0x0e || fmtByte === 0x0c) && cmdClass === 0x42) {
       // Dim command or dim stop — resolve SCENE3/SCENE2 to RAISE/LOWER
@@ -486,89 +723,118 @@ function displayCcaPacket(
       hasCmd = true;
     }
     if (hasCmd) {
-      parts.push(`${BOLD}${btn}${RESET}`);
+      actionText = btn;
     } else {
       // 5-button pico or short 4-button tap — use action as-is
-      if (btn || act) parts.push(`${BOLD}${btn} ${act}${RESET}`);
+      const btnAct = `${btn}${btn && act ? " " : ""}${act}`.trim();
+      actionText = btnAct;
     }
+    actionColor = GREEN;
     fieldValues.delete("button");
     fieldValues.delete("action");
   } else if (category === "STATE" || category === "CONFIG") {
+    actionText = category === "STATE" ? "REPORT" : "CONFIG";
+    actionColor = BLUE;
     // Level as percentage
     const level = fieldValues.get("level");
     const sliderLevel = fieldValues.get("slider_level");
     if (level) {
-      parts.push(`${BOLD}${level}${RESET}`);
+      stateParts.push(level);
       fieldValues.delete("level");
     }
     // Show slider_level when it differs from level (e.g. light off but slider at position)
     if (sliderLevel && sliderLevel !== level) {
-      parts.push(`${DIM}slider=${RESET}${BOLD}${sliderLevel}${RESET}`);
+      stateParts.push(`slider=${sliderLevel}`);
     }
     fieldValues.delete("slider_level");
     // Format byte as fmt=XX (read raw since hex format doesn't decode)
     if (data.length > 7) {
-      parts.push(`${DIM}fmt=${RESET}${data[7].toString(16).padStart(2, "0")}`);
+      stateParts.push(`fmt=${data[7].toString(16).padStart(2, "0")}`);
     }
   } else if (category === "PAIRING") {
+    actionText = "PAIR";
+    actionColor = MAGENTA;
     // Translate device_class — read raw byte since hex format doesn't auto-decode
     const dcField = identified.fields.find((f) => f.name === "device_class");
     if (dcField && data.length > dcField.offset) {
       const code = data[dcField.offset];
       const name =
         DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
-      parts.push(`${DIM}class=${RESET}${BOLD}${name}${RESET}`);
+      stateParts.push(`class=${name}`);
     }
     fieldValues.delete("device_class");
   } else if (category === "HANDSHAKE") {
-    // Show description
-    parts.push(`${DIM}"${identified.description}"${RESET}`);
+    actionText = "HS";
+    actionColor = RED;
+    stateParts.push(identified.description);
+  } else if (category === "BEACON") {
+    actionText = "BEACON";
+    actionColor = YELLOW;
   }
 
-  // Remaining fields (zone_id, data, etc.)
+  // Remaining fields
   for (const [name, val] of fieldValues) {
     if (name === "format") continue; // already handled or not needed
-    parts.push(`${DIM}${name}=${RESET}${val}`);
+    stateParts.push(`${name}=${val}`);
   }
 
   const slot = updateCcaSlotTracker(data, isTx, radioTs);
+  const deltaText = deltaMs > 0 ? `+${deltaMs}ms` : "";
+  let slotText = "";
+  let slotColor = WHITE;
+  let missText = "";
+  let missColor = RED;
   if (slot) {
-    const slotColor =
+    slotColor =
       slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
     const slotLabel = lockDetails
       ? `${slot.status}${slot.confidencePct}%`
       : slot.status;
+    const slotParts: string[] = [slotLabel];
+    if (slot.dSeq && slot.dSeq > 0) slotParts.push(`d${slot.dSeq}`);
     if (lockDetails) {
-      const dseqPart =
-        slot.dSeq && slot.dSeq > 0 ? `${DIM}d${slot.dSeq}${RESET}` : `${DIM}d?${RESET}`;
       const errPart =
         slot.errMs !== undefined
-          ? `${DIM}e${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms${RESET}`
-          : `${DIM}e?${RESET}`;
-      parts.push(
-        `${DIM}slot=${RESET}${slotColor}${slotLabel}${RESET} ${dseqPart} ${errPart}`,
-      );
-    } else {
-      parts.push(`${DIM}slot=${RESET}${slotColor}${slotLabel}${RESET}`);
+          ? `e${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms`
+          : "e?";
+      slotParts.push(errPart);
     }
     if (slot.missedPackets && slot.missedPackets > 0) {
-      parts.push(`${RED}${BOLD}miss=${slot.missedPackets}${RESET}`);
+      missText = String(slot.missedPackets);
+      missColor = RED;
     }
+    slotText = slotParts.join(" ");
   }
 
-  const rssiStr = isTx ? `${DIM}(echo)${RESET}` : `${DIM}rssi=${RESET}${rssi}`;
-  const deltaStr = deltaMs > 0 ? `${DIM}+${deltaMs}ms${RESET}` : "";
-  const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
-  const ts = new Date().toISOString().slice(11, 23);
+  if (!actionText && stateParts.length === 0) {
+    // Unknown/unparsed packets: state falls back to raw bytes.
+    stateParts.push(rawHex);
+  }
 
-  const rawSuffix = raw ? `  ${DIM}${hexBytes.join(" ")}${RESET}` : "";
-  console.log(
-    `${DIM}${ts}${RESET} ${CYAN}A${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${rssiStr}  ${deltaStr}${rawSuffix}`,
-  );
+  renderPacketRow({
+    ts,
+    proto: "A",
+    protoColor: CYAN,
+    direction,
+    dirColor,
+    seq: `#${seq}`,
+    type: typeName,
+    typeColor,
+    device: deviceText,
+    deviceColor,
+    action: actionText,
+    actionColor,
+    state: stateParts.join("  "),
+    raw: raw ? rawHex : "",
+    delta: deltaText,
+    slot: slotText,
+    slotColor,
+    miss: missText,
+    missColor,
+  });
 
   // CSV recording
   if (recording) {
-    const rawHex = hexBytes.join(" ");
     // Find device_id from fields
     let deviceId = "";
     for (const field of identified.fields) {
@@ -608,28 +874,24 @@ function formatCcxMessage(msg: CCXMessage): {
       else if (msg.level === Level.FULL_ON) levelStr = "ON";
       else levelStr = `${msg.levelPercent.toFixed(0)}%`;
       const zoneName = getZoneName(msg.zoneId);
-      parts.push(`${BOLD}${levelStr}${RESET}`);
+      parts.push(levelStr);
       if (zoneName) {
-        parts.push(
-          `${DIM}zone=${RESET}${msg.zoneId} ${CYAN}"${zoneName}"${RESET}`,
-        );
+        parts.push(`zone=${msg.zoneId} "${zoneName}"`);
       } else {
-        parts.push(`${DIM}zone=${RESET}${msg.zoneId}`);
+        parts.push(`zone=${msg.zoneId}`);
       }
       const fadeSec = msg.fade / 4;
-      if (fadeSec !== 0.25) parts.push(`${DIM}fade=${RESET}${fadeSec}s`);
-      if (msg.delay > 0) parts.push(`${DIM}delay=${RESET}${msg.delay / 4}s`);
+      if (fadeSec !== 0.25) parts.push(`fade=${fadeSec}s`);
+      if (msg.delay > 0) parts.push(`delay=${msg.delay / 4}s`);
       return { typeName: "LEVEL_CONTROL", parts };
     }
     case "BUTTON_PRESS": {
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(
-          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
-        );
+        parts.push(`"${preset.name}" [${preset.device}]`);
       } else {
-        parts.push(`${DIM}preset=${RESET}${presetId}`);
+        parts.push(`preset=${presetId}`);
       }
       return { typeName: "BUTTON_PRESS", parts };
     }
@@ -637,69 +899,60 @@ function formatCcxMessage(msg: CCXMessage): {
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(
-          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
-        );
+        parts.push(`"${preset.name}" [${preset.device}]`);
       } else {
-        parts.push(`${DIM}preset=${RESET}${presetId}`);
+        parts.push(`preset=${presetId}`);
       }
-      if (msg.action !== undefined)
-        parts.push(`${DIM}action=${RESET}${msg.action}`);
+      if (msg.action !== undefined) parts.push(`action=${msg.action}`);
       return { typeName: "DIM_HOLD", parts };
     }
     case "DIM_STEP": {
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       if (preset) {
-        parts.push(
-          `${BOLD}"${preset.name}"${RESET} ${DIM}[${preset.device}]${RESET}`,
-        );
+        parts.push(`"${preset.name}" [${preset.device}]`);
       } else {
-        parts.push(`${DIM}preset=${RESET}${presetId}`);
+        parts.push(`preset=${presetId}`);
       }
-      parts.push(`${DIM}step=${RESET}${msg.stepValue}`);
+      parts.push(`step=${msg.stepValue}`);
       return { typeName: "DIM_STEP", parts };
     }
     case "ACK": {
       const respHex = Array.from(msg.response)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      parts.push(`${DIM}response=${RESET}${respHex}`);
+      parts.push(`response=${respHex}`);
       return { typeName: "ACK", parts };
     }
     case "DEVICE_REPORT": {
       const serialInfo = getSerialName(msg.deviceSerial);
       if (serialInfo) {
-        parts.push(`${BOLD}"${serialInfo}"${RESET}`);
+        parts.push(`"${serialInfo}"`);
       }
-      parts.push(`${DIM}serial=${RESET}${msg.deviceSerial}`);
-      if (msg.groupId) parts.push(`${DIM}group=${RESET}${msg.groupId}`);
+      parts.push(`serial=${msg.deviceSerial}`);
+      if (msg.groupId) parts.push(`group=${msg.groupId}`);
       return { typeName: "DEVICE_REPORT", parts };
     }
     case "SCENE_RECALL": {
-      parts.push(`${DIM}scene=${RESET}${msg.sceneId}`);
-      if (msg.params.length > 0)
-        parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
+      parts.push(`scene=${msg.sceneId}`);
+      if (msg.params.length > 0) parts.push(`params=[${msg.params.join(",")}]`);
       return { typeName: "SCENE_RECALL", parts };
     }
     case "COMPONENT_CMD": {
-      parts.push(`${DIM}group=${RESET}${msg.groupId}`);
-      if (msg.params.length > 0)
-        parts.push(`${DIM}params=${RESET}[${msg.params.join(",")}]`);
+      parts.push(`group=${msg.groupId}`);
+      if (msg.params.length > 0) parts.push(`params=[${msg.params.join(",")}]`);
       return { typeName: "COMPONENT_CMD", parts };
     }
     case "STATUS": {
-      parts.push(
-        `${DIM}dev=${RESET}0x${msg.deviceId.toString(16).padStart(8, "0")}`,
-      );
+      parts.push(`dev=0x${msg.deviceId.toString(16).padStart(8, "0")}`);
       return { typeName: "STATUS", parts };
     }
     case "PRESENCE": {
-      parts.push(`${DIM}status=${RESET}${msg.status}`);
+      parts.push(`status=${msg.status}`);
       return { typeName: "PRESENCE", parts };
     }
     case "UNKNOWN": {
-      parts.push(`${DIM}type=${RESET}${msg.msgType}`);
+      parts.push(`type=${msg.msgType}`);
       return { typeName: `UNKNOWN_${msg.msgType}`, parts };
     }
   }
@@ -715,7 +968,7 @@ function displayCcxPacket(
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : BLUE;
   const ts = new Date().toISOString().slice(11, 23);
-  const deltaStr = deltaMs > 0 ? `${DIM}+${deltaMs}ms${RESET}` : "";
+  const deltaStr = deltaMs > 0 ? `+${deltaMs}ms` : "";
 
   // Try to decode CBOR
   let msg: CCXMessage | null = null;
@@ -728,7 +981,6 @@ function displayCcxPacket(
   if (msg) {
     const { typeName, parts } = formatCcxMessage(msg);
     const seq = "sequence" in msg ? (msg as { sequence: number }).sequence : 0;
-    const seqStr = `${DIM}#${RESET}${String(seq).padEnd(3)}`;
 
     // Category color
     const catColor: Record<string, string> = {
@@ -736,30 +988,72 @@ function displayCcxPacket(
       BUTTON_PRESS: GREEN,
       DIM_HOLD: GREEN,
       DIM_STEP: GREEN,
-      ACK: DIM,
+      ACK: WHITE,
       DEVICE_REPORT: CYAN,
       SCENE_RECALL: MAGENTA,
       COMPONENT_CMD: MAGENTA,
       STATUS: YELLOW,
-      PRESENCE: DIM,
+      PRESENCE: WHITE,
     };
     const typeColor = catColor[msg.type] || WHITE;
-    const summary = parts.length > 0 ? "  " + parts.join("  ") : "";
+    const rawHex = Array.from(data)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ");
+    let deviceText = "";
+    if ("deviceId" in msg) {
+      const devId = (msg as { deviceId: number }).deviceId;
+      deviceText = `dev:${devId.toString(16).toUpperCase().padStart(8, "0")}`;
+    } else if ("deviceSerial" in msg) {
+      const serial = (msg as { deviceSerial: number }).deviceSerial;
+      const name = getSerialName(serial);
+      deviceText = name
+        ? `serial:${serial} "${name}"`
+        : `serial:${serial}`;
+    }
+    const actionText = msg.type.replaceAll("_", " ");
 
-    const rawSuffix = raw
-      ? `  ${DIM}${Array.from(data).map((b) => b.toString(16).padStart(2, "0")).join(" ")}${RESET}`
-      : "";
-    console.log(
-      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${typeColor}${BOLD}${typeName.padEnd(16)}${RESET}${seqStr}${summary}  ${deltaStr}${rawSuffix}`,
-    );
+    renderPacketRow({
+      ts,
+      proto: "X",
+      protoColor: YELLOW,
+      direction,
+      dirColor,
+      seq: seq ? `#${seq}` : "",
+      type: typeName,
+      typeColor,
+      device: deviceText,
+      deviceColor: CYAN,
+      action: actionText,
+      actionColor: typeColor,
+      state: parts.join("  "),
+      raw: raw ? rawHex : "",
+      delta: deltaStr,
+      slot: "",
+      miss: "",
+    });
   } else {
     // Fallback: raw hex (always show)
     const rawHex = Array.from(data)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join(" ");
-    console.log(
-      `${DIM}${ts}${RESET} ${YELLOW}X${RESET} ${dirColor}${direction}${RESET} ${rawHex}  ${deltaStr}`,
-    );
+    renderPacketRow({
+      ts,
+      proto: "X",
+      protoColor: YELLOW,
+      direction,
+      dirColor,
+      seq: "",
+      type: "RAW",
+      typeColor: WHITE,
+      device: "",
+      action: "RAW",
+      actionColor: WHITE,
+      state: raw ? "" : rawHex,
+      raw: raw ? rawHex : "",
+      delta: deltaStr,
+      slot: "",
+      miss: "",
+    });
   }
 
   if (recording) {
