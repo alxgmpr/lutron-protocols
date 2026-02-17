@@ -5,12 +5,13 @@
  * with inter-packet delays, matching the timing of real Lutron devices.
  * Must be called from the CCA task context (uses vTaskDelay + cc1101 API).
  *
- * Byte layouts verified against ESP32 lutron-tools source:
- *   esphome/custom_components/cc1101_cca/cc1101_cca.cpp
+ * Byte layouts verified against ESP32 lutron-tools source and ESN-QS
+ * firmware (QS Link protocol, 2009). Field names from cca_protocol.h.
  */
 
 #include "cca_commands.h"
 #include "cca_pairing.h"
+#include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
 #include "cca_types.h"
@@ -96,7 +97,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
 
     /* --- Phase 1: SHORT format (6 packets) --- */
     for (int rep = 0; rep < 6; rep++) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         packet[0] = type_base;
         packet[1] = seq;
@@ -104,25 +105,25 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[3] = (device_id >> 16) & 0xFF;
         packet[4] = (device_id >> 8) & 0xFF;
         packet[5] = device_id & 0xFF;
-        packet[6] = 0x21;
-        packet[8] = 0x03;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[8] = QS_PICO_FRAME;
         packet[9] = 0x00;
         packet[10] = button;
-        packet[11] = 0x00; /* ACTION_PRESS */
+        packet[11] = ACTION_PRESS;
 
         if (is_dimming) {
-            packet[7] = 0x0C;
+            packet[7] = QS_FMT_BEACON;  /* 0x0C — dim start uses beacon format */
             packet[12] = (device_id >> 24) & 0xFF;
             packet[13] = (device_id >> 16) & 0xFF;
             packet[14] = (device_id >> 8) & 0xFF;
             packet[15] = device_id & 0xFF;
             packet[16] = 0x00;
-            packet[17] = 0x42;
-            packet[18] = 0x00;
+            packet[17] = QS_CLASS_DIM;
+            packet[18] = QS_TYPE_HOLD;
             packet[19] = (button == BTN_RAISE) ? 0x03 : 0x02;
         }
         else {
-            packet[7] = 0x04;
+            packet[7] = QS_FMT_TAP;
         }
 
         transmit_one(packet, 22);
@@ -142,14 +143,14 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[3] = (device_id >> 16) & 0xFF;
         packet[4] = (device_id >> 8) & 0xFF;
         packet[5] = device_id & 0xFF;
-        packet[6] = 0x21;
-        packet[7] = 0x0E;
-        packet[8] = 0x03;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
+        packet[8] = QS_PICO_FRAME;
         packet[9] = 0x00;
         packet[10] = button;
-        packet[11] = 0x01; /* ACTION_RELEASE */
+        packet[11] = ACTION_RELEASE;
 
-        /* Second device ID instance */
+        /* Second device ID instance (pico embeds object_id twice) */
         packet[12] = (device_id >> 24) & 0xFF;
         packet[13] = (device_id >> 16) & 0xFF;
         packet[14] = (device_id >> 8) & 0xFF;
@@ -157,23 +158,23 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[16] = 0x00;
 
         if (button == BTN_RAISE) {
-            packet[17] = 0x42;
-            packet[18] = 0x02;
-            packet[19] = 0x01;
+            packet[17] = QS_CLASS_DIM;
+            packet[18] = QS_TYPE_EXECUTE;
+            packet[19] = 0x01;  /* direction: raise */
             packet[20] = 0x00;
             packet[21] = 0x16;
         }
         else if (button == BTN_LOWER) {
-            packet[17] = 0x42;
-            packet[18] = 0x02;
-            packet[19] = 0x00;
+            packet[17] = QS_CLASS_DIM;
+            packet[18] = QS_TYPE_EXECUTE;
+            packet[19] = 0x00;  /* direction: lower */
             packet[20] = 0x00;
             packet[21] = 0x43;
         }
         else {
-            packet[17] = 0x40;
-            packet[18] = 0x00;
-            packet[19] = 0x1E + button;
+            packet[17] = QS_CLASS_LEVEL;
+            packet[18] = QS_TYPE_HOLD;
+            packet[19] = 0x1E + button;  /* preset base offset */
             packet[20] = 0x00;
             packet[21] = 0x00;
         }
@@ -225,26 +226,26 @@ static void exec_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t leve
         packet[4] = (zone_id >> 16) & 0xFF;
         packet[5] = (zone_id >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x0E;
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
+        packet[8] = 0x00;  /* flags: normal */
 
-        /* Target device ID in big-endian */
+        /* Target device ID (object_id) in big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
-        packet[14] = 0x40;
-        packet[15] = 0x02;
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_LEVEL;
+        packet[15] = QS_TYPE_EXECUTE;
 
         /* Level value (big-endian) */
         packet[16] = (level_value >> 8) & 0xFF;
         packet[17] = level_value & 0xFF;
 
         packet[18] = 0x00;
-        packet[19] = fade_qs;
+        packet[19] = fade_qs;  /* fade time in quarter-seconds */
         packet[20] = 0x00;
         packet[21] = 0x00;
 
@@ -258,6 +259,75 @@ static void exec_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t leve
 
     cc1101_start_rx();
     printf("[cca] CMD bridge_level complete\r\n");
+}
+
+/* -----------------------------------------------------------------------
+ * Broadcast level — format 0x0E with addr_mode=0xFF (broadcast)
+ * Tests QS Link hypothesis: does broadcast addressing control all devices?
+ * Same as bridge_level but target=0xFFFFFFFF, addr_mode=BROADCAST.
+ * ----------------------------------------------------------------------- */
+static void exec_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8_t fade_qs)
+{
+    if (level_pct > 100) level_pct = 100;
+
+    uint16_t level_value;
+    if (level_pct == 100)
+        level_value = QS_LEVEL_MAX;
+    else if (level_pct == 0)
+        level_value = 0x0000;
+    else
+        level_value = (uint16_t)((uint32_t)level_pct * 65279 / 100);
+
+    printf("[cca] CMD broadcast_level zone=%08X %u%% fade=%uqs\r\n",
+           (unsigned)zone_id, level_pct, fade_qs);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
+
+    for (int rep = 0; rep < 20; rep++) {
+        memset(packet, 0x00, sizeof(packet));
+
+        packet[0] = 0x81 + (rep % 3);
+        packet[1] = seq;
+
+        /* Source: bridge zone ID (little-endian) */
+        packet[2] = zone_id & 0xFF;
+        packet[3] = (zone_id >> 8) & 0xFF;
+        packet[4] = (zone_id >> 16) & 0xFF;
+        packet[5] = (zone_id >> 24) & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
+        packet[8] = 0x00;  /* flags: normal */
+
+        /* Broadcast target: all 0xFF */
+        packet[9]  = 0xFF;
+        packet[10] = 0xFF;
+        packet[11] = 0xFF;
+        packet[12] = 0xFF;
+
+        packet[13] = QS_ADDR_BROADCAST;  /* 0xFF = broadcast */
+        packet[14] = QS_CLASS_LEVEL;
+        packet[15] = QS_TYPE_EXECUTE;
+
+        /* Level value (big-endian) */
+        packet[16] = (level_value >> 8) & 0xFF;
+        packet[17] = level_value & 0xFF;
+
+        packet[18] = 0x00;
+        packet[19] = fade_qs;
+        packet[20] = 0x00;
+        packet[21] = 0x00;
+
+        transmit_one(packet, 22);
+        seq = (seq + 5 + (rep % 2)) & 0xFF;
+        if (rep < 19) vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD broadcast_level complete\r\n");
 }
 
 /* -----------------------------------------------------------------------
@@ -294,23 +364,23 @@ static void exec_pico_level(uint32_t device_id, uint8_t level_pct)
         packet[4] = (device_id >> 16) & 0xFF;
         packet[5] = (device_id >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x0E;
-        packet[8] = 0x00;
-        packet[9] = 0x07;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
+        packet[8] = 0x00;  /* flags */
+        packet[9] = 0x07;  /* pico-specific field */
         packet[10] = 0x03;
         packet[11] = 0xC3;
         packet[12] = 0xC6;
-        packet[13] = 0xFE;
-        packet[14] = 0x40;
-        packet[15] = 0x02;
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_LEVEL;
+        packet[15] = QS_TYPE_EXECUTE;
 
         /* Level value (big-endian) */
         packet[16] = (level_value >> 8) & 0xFF;
         packet[17] = level_value & 0xFF;
 
         packet[18] = 0x00;
-        packet[19] = 0x01;
+        packet[19] = 0x01;  /* fade: 0.25s (minimum) */
         packet[20] = 0x00;
         packet[21] = 0x00;
 
@@ -332,7 +402,7 @@ static void exec_state_report(uint32_t device_id, uint8_t level_pct)
 
     uint8_t level_byte;
     if (level_pct == 100) {
-        level_byte = 0xFE;
+        level_byte = QS_LEVEL_MAX_8;
     }
     else {
         level_byte = (uint8_t)((uint32_t)level_pct * 254 / 100);
@@ -346,7 +416,7 @@ static void exec_state_report(uint32_t device_id, uint8_t level_pct)
     uint8_t seq = 0x00;
 
     for (int rep = 0; rep < 20; rep++) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
@@ -373,7 +443,7 @@ static void exec_state_report(uint32_t device_id, uint8_t level_pct)
         /* Level byte (second instance) */
         packet[15] = level_byte;
 
-        /* [16-21] remain 0xCC from memset */
+        /* [16-21] remain 0x00 from memset */
 
         transmit_one(packet, 22);
         seq = (seq + 2) & 0xFF;
@@ -413,16 +483,16 @@ static void exec_beacon(uint32_t device_id, uint8_t duration_sec)
             packet[4] = (device_id >> 8) & 0xFF;
             packet[5] = device_id & 0xFF;
 
-            packet[6] = 0x21;
-            packet[7] = 0x0C; /* format byte */
-            packet[8] = 0x00;
+            packet[6] = QS_PROTO_RADIO_TX;
+            packet[7] = QS_FMT_BEACON;
+            packet[8] = 0x00;  /* flags */
 
-            /* Broadcast address at [9-13] */
-            packet[9] = 0xFF;
-            packet[10] = 0xFF;
-            packet[11] = 0xFF;
-            packet[12] = 0xFF;
-            packet[13] = 0xFF;
+            /* Broadcast address: object_id=0xFFFFFFFF, addr_mode=BROADCAST */
+            packet[9] = QS_ADDR_BROADCAST;
+            packet[10] = QS_ADDR_BROADCAST;
+            packet[11] = QS_ADDR_BROADCAST;
+            packet[12] = QS_ADDR_BROADCAST;
+            packet[13] = QS_ADDR_BROADCAST;
 
             transmit_one(packet, 22);
             vTaskDelay(pdMS_TO_TICKS(65));
@@ -461,17 +531,17 @@ static void exec_unpair(uint32_t zone_id, uint32_t target_id)
         packet[4] = (zone_id >> 16) & 0xFF;
         packet[5] = (zone_id >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x09; /* format: prepare */
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_CTRL;   /* format 0x09: device control / prepare */
+        packet[8] = 0x00;  /* flags */
 
-        /* Target ID big-endian */
+        /* Target object_id big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
+        packet[13] = QS_ADDR_COMPONENT;
 
         transmit_one(packet, 22);
         seq = (seq + 5 + (rep & 1)) & 0xFF;
@@ -495,17 +565,17 @@ static void exec_unpair(uint32_t zone_id, uint32_t target_id)
             packet[4] = (zone_id >> 16) & 0xFF;
             packet[5] = (zone_id >> 24) & 0xFF;
 
-            packet[6] = 0x21;
-            packet[7] = 0x0C; /* format: unpair */
-            packet[8] = 0x00;
+            packet[6] = QS_PROTO_RADIO_TX;
+            packet[7] = QS_FMT_BEACON;  /* format 0x0C: unpair */
+            packet[8] = 0x00;  /* flags */
 
-            /* Target ID big-endian */
+            /* Target object_id big-endian */
             packet[9] = (target_id >> 24) & 0xFF;
             packet[10] = (target_id >> 16) & 0xFF;
             packet[11] = (target_id >> 8) & 0xFF;
             packet[12] = target_id & 0xFF;
 
-            packet[13] = 0xFE;
+            packet[13] = QS_ADDR_COMPONENT;
 
             transmit_one(packet, 22);
             seq = (seq + 5 + (rep & 1)) & 0xFF;
@@ -570,17 +640,17 @@ static void exec_led_config(uint32_t zone_id, uint32_t target_id, uint8_t led_mo
         packet[4] = (active_zone >> 16) & 0xFF;
         packet[5] = (active_zone >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x11; /* format: LED config */
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LED;
+        packet[8] = 0x00;  /* flags */
 
-        /* Target ID big-endian */
+        /* Target object_id big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
+        packet[13] = QS_ADDR_COMPONENT;
 
         /* LED state bytes at [23-24] */
         packet[23] = led_off_state;
@@ -627,17 +697,17 @@ static void exec_fade_config(uint32_t zone_id, uint32_t target_id, uint16_t fade
         packet[4] = (active_zone >> 16) & 0xFF;
         packet[5] = (active_zone >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x1C; /* format: fade config */
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_FADE;
+        packet[8] = 0x00;  /* flags */
 
-        /* Target ID big-endian */
+        /* Target object_id big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
+        packet[13] = QS_ADDR_COMPONENT;
 
         /* Fade values LE16 at [23-26] */
         packet[23] = fade_on_qs & 0xFF;
@@ -691,17 +761,17 @@ static void exec_trim_config(uint32_t zone_id, uint32_t target_id, uint8_t high_
         packet[4] = (active_zone >> 16) & 0xFF;
         packet[5] = (active_zone >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x15; /* format: trim config */
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_TRIM;
+        packet[8] = 0x00;  /* flags */
 
-        /* Target ID big-endian */
+        /* Target object_id big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
+        packet[13] = QS_ADDR_COMPONENT;
 
         /* Trim at [20-21] */
         packet[20] = high_val;
@@ -743,20 +813,20 @@ static void exec_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t phas
         packet[4] = (active_zone >> 16) & 0xFF;
         packet[5] = (active_zone >> 24) & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x15; /* format: trim/phase config */
-        packet[8] = 0x00;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_TRIM;  /* trim/phase share same format */
+        packet[8] = 0x00;  /* flags */
 
-        /* Target ID big-endian */
+        /* Target object_id big-endian */
         packet[9] = (target_id >> 24) & 0xFF;
         packet[10] = (target_id >> 16) & 0xFF;
         packet[11] = (target_id >> 8) & 0xFF;
         packet[12] = target_id & 0xFF;
 
-        packet[13] = 0xFE;
+        packet[13] = QS_ADDR_COMPONENT;
 
         /* Neutral trim values */
-        packet[20] = 0xFE; /* high trim = 100% */
+        packet[20] = QS_LEVEL_MAX_8; /* high trim = 100% */
         packet[21] = 0x03; /* low trim ≈ 1% */
 
         /* Phase byte at [22] */
@@ -810,14 +880,14 @@ static void exec_vive_level(uint32_t hub_id, uint8_t zone_byte, uint8_t level_pc
         packet[4] = (hub_id >> 8) & 0xFF;
         packet[5] = hub_id & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x0E; /* format: set-level */
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
         /* [8-11] = 0x00 */
 
         packet[12] = zone_byte;
-        packet[13] = 0xEF;
-        packet[14] = 0x40; /* command class: level */
-        packet[15] = 0x02;
+        packet[13] = QS_ADDR_GROUP;
+        packet[14] = QS_CLASS_LEVEL;
+        packet[15] = QS_TYPE_EXECUTE;
 
         /* Level value big-endian */
         packet[16] = (level_value >> 8) & 0xFF;
@@ -854,7 +924,7 @@ static void exec_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
 
     /* Phase 1: 6 hold-start packets (format 0x09) */
     for (int rep = 0; rep < 6; rep++) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         packet[0] = 0x89 + (rep % 3);
         packet[1] = vive_cmd_seq_;
@@ -865,19 +935,19 @@ static void exec_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
         packet[4] = (hub_id >> 8) & 0xFF;
         packet[5] = hub_id & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x09; /* format: hold-start */
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_CTRL;  /* format 0x09: hold-start */
         packet[8] = 0x00;
         packet[9] = 0x00;
         packet[10] = 0x00;
         packet[11] = 0x00;
 
         packet[12] = zone_byte;
-        packet[13] = 0xEF;
-        packet[14] = 0x42; /* command class: dim */
-        packet[15] = 0x00; /* hold-start */
+        packet[13] = QS_ADDR_GROUP;
+        packet[14] = QS_CLASS_DIM;
+        packet[15] = QS_TYPE_HOLD;
         packet[16] = direction;
-        /* [17-21] = 0xCC from memset */
+        /* [17-21] = 0x00 from memset */
 
         transmit_one(packet, 22);
         if (rep < 5) vTaskDelay(pdMS_TO_TICKS(15));
@@ -890,7 +960,7 @@ static void exec_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
 
     /* Phase 2: 12 dim step packets (format 0x0B) */
     for (int rep = 0; rep < 12; rep++) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         packet[0] = 0x89 + (rep % 3);
         packet[1] = vive_cmd_seq_;
@@ -901,21 +971,21 @@ static void exec_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
         packet[4] = (hub_id >> 8) & 0xFF;
         packet[5] = hub_id & 0xFF;
 
-        packet[6] = 0x21;
-        packet[7] = 0x0B; /* format: dim step */
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_DIM_STEP;
         packet[8] = 0x00;
         packet[9] = 0x00;
         packet[10] = 0x00;
         packet[11] = 0x00;
 
         packet[12] = zone_byte;
-        packet[13] = 0xEF;
-        packet[14] = 0x42; /* command class: dim */
-        packet[15] = 0x02; /* step */
+        packet[13] = QS_ADDR_GROUP;
+        packet[14] = QS_CLASS_DIM;
+        packet[15] = QS_TYPE_EXECUTE;  /* 0x02 = step/execute */
         packet[16] = direction;
         packet[17] = 0x00;
         packet[18] = 0x00;
-        /* [19-21] = 0xCC from memset */
+        /* [19-21] = 0x00 from memset */
 
         transmit_one(packet, 22);
         if (rep < 11) vTaskDelay(pdMS_TO_TICKS(15));
@@ -946,7 +1016,7 @@ static void exec_save_fav(uint32_t device_id)
 
     /* --- Phase 1: SHORT format (6 packets) --- */
     for (int rep = 0; rep < 6; rep++) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         packet[0] = type_base;
         packet[1] = seq;
@@ -954,12 +1024,12 @@ static void exec_save_fav(uint32_t device_id)
         packet[3] = (device_id >> 16) & 0xFF;
         packet[4] = (device_id >> 8) & 0xFF;
         packet[5] = device_id & 0xFF;
-        packet[6] = 0x21;
-        packet[7] = 0x04; /* short format */
-        packet[8] = 0x03;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_TAP;
+        packet[8] = QS_PICO_FRAME;
         packet[9] = 0x00;
         packet[10] = BTN_FAVORITE;
-        packet[11] = 0x03; /* ACTION_SAVE */
+        packet[11] = ACTION_SAVE;
 
         transmit_one(packet, 22);
         seq += 6;
@@ -978,21 +1048,21 @@ static void exec_save_fav(uint32_t device_id)
         packet[3] = (device_id >> 16) & 0xFF;
         packet[4] = (device_id >> 8) & 0xFF;
         packet[5] = device_id & 0xFF;
-        packet[6] = 0x21;
-        packet[7] = 0x0E;
-        packet[8] = 0x03;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;
+        packet[8] = QS_PICO_FRAME;
         packet[9] = 0x00;
         packet[10] = BTN_FAVORITE;
-        packet[11] = 0x03; /* ACTION_SAVE */
+        packet[11] = ACTION_SAVE;
 
-        /* Second device ID instance */
+        /* Second device ID instance (pico embeds object_id twice) */
         packet[12] = (device_id >> 24) & 0xFF;
         packet[13] = (device_id >> 16) & 0xFF;
         packet[14] = (device_id >> 8) & 0xFF;
         packet[15] = device_id & 0xFF;
         packet[16] = 0x00;
-        packet[17] = 0x40;
-        packet[18] = 0x00;
+        packet[17] = QS_CLASS_LEVEL;
+        packet[18] = QS_TYPE_HOLD;
         packet[19] = 0x1E + BTN_FAVORITE;
         packet[20] = 0x00;
         packet[21] = 0x00;
@@ -1004,6 +1074,107 @@ static void exec_save_fav(uint32_t device_id)
 
     cc1101_start_rx();
     printf("[cca] CMD save_fav complete (%lu pkts)\r\n", (unsigned long)cmd_tx_count);
+}
+
+/* -----------------------------------------------------------------------
+ * Identify — send QS_CLASS_DEVICE + QS_TYPE_IDENTIFY to flash a device's LED.
+ * Hypothesis #6: This should work without pairing, since identify is a
+ * fundamental device function in QS Link (telnet cmd DEVICECOMPONENTIDENTIFY).
+ * Format 0x09 (9-byte payload): flags, object_id, addr_mode, cmd_class, cmd_type, param
+ * ----------------------------------------------------------------------- */
+static void exec_identify(uint32_t target_id)
+{
+    printf("[cca] CMD identify target=%08X\r\n", (unsigned)target_id);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
+
+    for (int rep = 0; rep < 12; rep++) {
+        memset(packet, QS_PADDING, sizeof(packet));
+
+        packet[0] = 0x81 + (rep % 3);
+        packet[1] = seq;
+
+        /* Source ID placeholder (use target as source — we're pretending to be a processor) */
+        packet[2] = (target_id >> 24) & 0xFF;
+        packet[3] = (target_id >> 16) & 0xFF;
+        packet[4] = (target_id >> 8) & 0xFF;
+        packet[5] = target_id & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_CTRL;       /* format 0x09 = 9-byte payload */
+        packet[8] = 0x00;              /* flags */
+
+        /* Target object_id big-endian */
+        packet[9] = (target_id >> 24) & 0xFF;
+        packet[10] = (target_id >> 16) & 0xFF;
+        packet[11] = (target_id >> 8) & 0xFF;
+        packet[12] = target_id & 0xFF;
+
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_DEVICE;   /* 0x01 = device control */
+        packet[15] = QS_TYPE_IDENTIFY;  /* 0x22 = identify / flash LED */
+        packet[16] = 0x01;             /* identify mode (from ESN firmware) */
+
+        transmit_one(packet, 22);
+        seq = (seq + 6) & 0xFF;
+        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD identify complete\r\n");
+}
+
+/* -----------------------------------------------------------------------
+ * Query — send QS_CLASS_SELECT + QS_TYPE_EXECUTE to query a device.
+ * Hypothesis #4: This should trigger the device to report its component
+ * info, similar to DEVICEREQUESTCOMPONENTPRESENT in the ESN telnet protocol.
+ * ----------------------------------------------------------------------- */
+static void exec_query(uint32_t target_id)
+{
+    printf("[cca] CMD query target=%08X\r\n", (unsigned)target_id);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
+
+    for (int rep = 0; rep < 12; rep++) {
+        memset(packet, QS_PADDING, sizeof(packet));
+
+        packet[0] = 0x81 + (rep % 3);
+        packet[1] = seq;
+
+        /* Source ID placeholder */
+        packet[2] = (target_id >> 24) & 0xFF;
+        packet[3] = (target_id >> 16) & 0xFF;
+        packet[4] = (target_id >> 8) & 0xFF;
+        packet[5] = target_id & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_CTRL;       /* format 0x09 */
+        packet[8] = 0x00;
+
+        /* Target object_id */
+        packet[9] = (target_id >> 24) & 0xFF;
+        packet[10] = (target_id >> 16) & 0xFF;
+        packet[11] = (target_id >> 8) & 0xFF;
+        packet[12] = target_id & 0xFF;
+
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_SELECT;   /* 0x03 = select/query */
+        packet[15] = QS_TYPE_EXECUTE;   /* 0x02 = execute */
+        packet[16] = 0x0D;             /* parameter from ESN firmware */
+
+        transmit_one(packet, 22);
+        seq = (seq + 6) & 0xFF;
+        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD query complete\r\n");
 }
 
 /* -----------------------------------------------------------------------
@@ -1050,6 +1221,15 @@ void cca_cmd_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_VIVE_DIM:
         exec_vive_dim(item->device_id, item->zone_byte, item->direction);
+        break;
+    case CCA_CMD_BROADCAST_LEVEL:
+        exec_broadcast_level(item->device_id, item->level_pct, item->fade_qs);
+        break;
+    case CCA_CMD_IDENTIFY:
+        exec_identify(item->target_id);
+        break;
+    case CCA_CMD_QUERY:
+        exec_query(item->target_id);
         break;
     case CCA_CMD_PICO_PAIR:
     case CCA_CMD_BRIDGE_PAIR:

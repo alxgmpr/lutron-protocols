@@ -1048,6 +1048,33 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca broadcast <zone_id> <0-100> [fade_qs] — broadcast level to all devices */
+    if (strncmp(arg, "broadcast ", 10) == 0) {
+        char*    p;
+        uint32_t zone_id = (uint32_t)strtoul(arg + 10, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca broadcast <zone_id_hex> <0-100> [fade_qs]\r\n");
+            return;
+        }
+        uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
+        uint8_t fade = 4; /* default 1 second */
+        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_BROADCAST_LEVEL;
+        item.device_id = zone_id;
+        item.level_pct = pct;
+        item.fade_qs = fade;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Broadcast level queued (zone=%08X %u%% fade=%u)\r\n",
+                   (unsigned)zone_id, pct, fade);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca pico-level <device_id> <0-100> */
     if (strncmp(arg, "pico-level ", 11) == 0) {
         char*    p;
@@ -1460,9 +1487,40 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca identify <target_id> — QS Link identify (flash LED) */
+    if (strncmp(arg, "identify ", 9) == 0) {
+        uint32_t target_id = (uint32_t)strtoul(arg + 9, NULL, 16);
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_IDENTIFY;
+        item.target_id = target_id;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Identify command queued (target=%08X)\r\n", (unsigned)target_id);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca query <target_id> — QS Link component query */
+    if (strncmp(arg, "query ", 6) == 0) {
+        uint32_t target_id = (uint32_t)strtoul(arg + 6, NULL, 16);
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_QUERY;
+        item.target_id = target_id;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Query command queued (target=%08X)\r\n", (unsigned)target_id);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     printf("Usage: cca <command> ...\r\n");
     printf("  cca button <dev_id> <name>            — button press\r\n");
     printf("  cca level <zone> <target> <%%> [fade]  — bridge level\r\n");
+    printf("  cca broadcast <zone> <%%> [fade]      — broadcast level (all devices)\r\n");
     printf("  cca pico-level <dev_id> <%%>           — pico level\r\n");
     printf("  cca state <dev_id> <%%>                — state report\r\n");
     printf("  cca beacon <dev_id> [dur]             — discovery beacon\r\n");
@@ -1478,6 +1536,8 @@ static void cmd_cca(const char* arg)
     printf("  cca vive-pair <hub> <zone> [dur]      — Vive pairing\r\n");
     printf("  cca pair pico <dev> [type] [dur]      — pico pairing\r\n");
     printf("  cca pair bridge <id> <target> [dur]   — bridge pairing\r\n");
+    printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
+    printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");
     printf("  cca log [on|off]                      — CCA RX UART log toggle\r\n");
 }

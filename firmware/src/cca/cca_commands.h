@@ -29,6 +29,9 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_VIVE_LEVEL = 0x0E,
     CCA_CMD_VIVE_DIM = 0x0F,
     CCA_CMD_VIVE_PAIR = 0x10,
+    CCA_CMD_BROADCAST_LEVEL = 0x11, /* Broadcast SET_LEVEL to all devices */
+    CCA_CMD_IDENTIFY  = 0x12,  /* QS Link device identify (flash LED) */
+    CCA_CMD_QUERY     = 0x13,  /* QS Link component query */
 };
 
 /* -----------------------------------------------------------------------

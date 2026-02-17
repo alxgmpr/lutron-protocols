@@ -11,6 +11,7 @@
 
 #include "cca_pairing.h"
 #include "cca_commands.h"
+#include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
 #include "cca_types.h"
@@ -89,7 +90,7 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
-        memset(packet, 0xCC, sizeof(packet));
+        memset(packet, 0x00, sizeof(packet));
 
         /* [0]: alternating type_a / type_b */
         packet[0] = use_type_a ? p.type_a : p.type_b;
@@ -105,8 +106,8 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
         packet[5] = device_id & 0xFF;
 
         /* [6-12]: header bytes */
-        packet[6] = 0x21;
-        packet[7] = 0x25;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = 0x25;  /* format: pico pairing */
         packet[8] = 0x04;
         packet[9] = 0x00;
         packet[10] = p.byte10;
@@ -155,7 +156,7 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
         packet[43] = 0xFF;
         packet[44] = 0xFF;
 
-        /* [45-50]: 0xCC padding (already set by memset) */
+        /* [45-50]: 0x00 padding (already set by memset) */
 
         /* CRC is over [0-50], appended by transmit_one */
         transmit_one(packet, 51);
@@ -248,16 +249,16 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t bea
             packet[4] = (bridge_id >> 8) & 0xFF;
             packet[5] = bridge_id & 0xFF;
 
-            packet[6] = 0x21;
-            packet[7] = 0x0C;
-            packet[8] = 0x00;
+            packet[6] = QS_PROTO_RADIO_TX;
+            packet[7] = QS_FMT_BEACON;
+            packet[8] = 0x00;  /* flags */
 
-            /* Broadcast */
-            packet[9] = 0xFF;
-            packet[10] = 0xFF;
-            packet[11] = 0xFF;
-            packet[12] = 0xFF;
-            packet[13] = 0xFF;
+            /* Broadcast: object_id=0xFFFFFFFF, addr_mode=BROADCAST */
+            packet[9] = QS_ADDR_BROADCAST;
+            packet[10] = QS_ADDR_BROADCAST;
+            packet[11] = QS_ADDR_BROADCAST;
+            packet[12] = QS_ADDR_BROADCAST;
+            packet[13] = QS_ADDR_BROADCAST;
 
             transmit_one(packet, 22);
             vTaskDelay(pdMS_TO_TICKS(65));
@@ -376,39 +377,39 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     cc1101_stop_rx();
 
     /* ---- Phase 1: BA Accept (1 packet, 53 bytes) ---- */
-    memset(pkt, 0xCC, sizeof(pkt));
+    memset(pkt, 0x00, sizeof(pkt));
     pkt[0] = 0xBA;
     pkt[1] = 0x01;
     put_be32(pkt + 2, hub_id);
-    pkt[6] = 0x21;
-    pkt[7] = 0x10; /* format: accept */
-    pkt[8] = 0x00;
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_ACCEPT;
+    pkt[8] = 0x00;  /* flags */
     put_be32(pkt + 9, device_id);
-    pkt[13] = 0xFE;
-    pkt[14] = 0x60;
-    pkt[15] = 0x0A;
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = 0x60;  /* accept-specific class */
+    pkt[15] = 0x0A;  /* accept-specific type */
     put_be32(pkt + 16, hub_id);
     put_be32(pkt + 20, hub_id);
-    /* [24-50] = 0xCC (already set) */
+    /* [24-50] = 0x00 (already set) */
     transmit_one(pkt, 51);
     vTaskDelay(pdMS_TO_TICKS(70));
 
     /* ---- Phase 2: Accept retransmissions (no seq byte, fields shift left) ---- */
     static const uint8_t accept_retx_types[] = {0x87, 0x8D, 0x93, 0x9F, 0xAB, 0xB1};
     for (int i = 0; i < 6; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = accept_retx_types[i];
         put_be32(pkt + 1, hub_id); /* byte 1, NOT 2 */
-        pkt[5] = 0x21;
-        pkt[6] = 0x10;
-        pkt[7] = 0x00;
+        pkt[5] = QS_PROTO_RADIO_TX;
+        pkt[6] = QS_FMT_ACCEPT;
+        pkt[7] = 0x00;  /* flags */
         put_be32(pkt + 8, device_id);
-        pkt[12] = 0xFE;
-        pkt[13] = 0x60;
-        pkt[14] = 0x0A;
+        pkt[12] = QS_ADDR_COMPONENT;
+        pkt[13] = 0x60;  /* accept-specific class */
+        pkt[14] = 0x0A;  /* accept-specific type */
         put_be32(pkt + 15, hub_id);
         put_be32(pkt + 19, hub_id);
-        /* [23-50] = 0xCC */
+        /* [23-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(70));
     }
@@ -416,17 +417,17 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 2b: Format 0x13 — Dimming Capability (5 packets) ---- */
     static const uint8_t fmt13_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = fmt13_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x21;
-        pkt[7] = 0x13;
-        pkt[8] = 0x00;
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_DIM_CAP;
+        pkt[8] = 0x00;  /* flags */
         put_be32(pkt + 9, device_id);
-        pkt[13] = 0xFE;
-        pkt[14] = 0x06;
-        pkt[15] = 0x50;
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;   /* 0x06 — original 2009 config class */
+        pkt[15] = QS_COMP_DIMMER;    /* 0x50 — component type: dimmer */
         pkt[16] = 0x00;
         pkt[17] = 0x0D;
         pkt[18] = 0x08;
@@ -435,7 +436,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[21] = 0x03;
         put_be32(pkt + 22, device_id); /* repeated device_id */
         pkt[26] = 0x00;
-        /* [27-50] = 0xCC */
+        /* [27-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(70));
     }
@@ -443,27 +444,27 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 3: Format 0x28 — Zone Assignment A (5 packets) ---- */
     static const uint8_t fmt28a_types[] = {0xA9, 0x9F, 0xAB, 0xB7, 0xBD};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = fmt28a_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x28;
+        pkt[6] = QS_FMT_ZONE;        /* 0x28 — format at byte 6 (no proto byte) */
         pkt[7] = 0x03;
         pkt[8] = 0x01;
-        pkt[9] = 0x50;              /* dimmer */
-        pkt[10] = zone_byte + 0x23; /* zone reference */
-        pkt[11] = 0x21;
+        pkt[9] = QS_COMP_DIMMER;     /* 0x50 — component type */
+        pkt[10] = zone_byte + 0x23;  /* zone reference (non-critical) */
+        pkt[11] = QS_PROTO_RADIO_TX; /* 0x21 — embedded in payload */
         pkt[12] = 0x1A;
         pkt[13] = 0x00;
         put_be32(pkt + 14, device_id);
-        pkt[18] = 0xFE;
-        pkt[19] = 0x06;
-        pkt[20] = 0x40;
+        pkt[18] = QS_ADDR_COMPONENT; /* 0xFE */
+        pkt[19] = QS_CLASS_LEGACY;   /* 0x06 — original config class */
+        pkt[20] = QS_CLASS_LEVEL;    /* 0x40 — level control */
         pkt[21] = 0x00;
         pkt[22] = 0x00;
         pkt[23] = 0x00;
         pkt[24] = 0x01;
-        pkt[25] = 0xEF;
+        pkt[25] = QS_ADDR_GROUP;     /* 0xEF — group addressing */
         pkt[26] = 0x20;
         pkt[27] = 0x00;
         pkt[28] = 0x03;
@@ -477,7 +478,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[36] = 0xB4;
         pkt[37] = 0x00;
         pkt[38] = 0x00;
-        /* [39-50] = 0xCC */
+        /* [39-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(70));
     }
@@ -485,26 +486,26 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 4: Format 0x14 — Function Mapping (5 packets) ---- */
     static const uint8_t fmt14_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = fmt14_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x21;
-        pkt[7] = 0x14;
-        pkt[8] = 0x00;
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_FUNC_MAP;
+        pkt[8] = 0x00;  /* flags */
         put_be32(pkt + 9, device_id);
-        pkt[13] = 0xFE;
-        pkt[14] = 0x06;
-        pkt[15] = 0x50;
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;    /* 0x06 — original config class */
+        pkt[15] = QS_COMP_DIMMER;     /* 0x50 — component type */
         pkt[16] = 0x00;
         pkt[17] = 0x0B;
         pkt[18] = 0x09;
         pkt[19] = 0xFE;
         pkt[20] = 0xFF;
         pkt[21] = 0x00;
-        pkt[22] = 0x02; /* dimmer capability */
+        pkt[22] = 0x02;  /* dimmer capability flag */
         pkt[23] = 0x00;
-        /* [24-50] = 0xCC */
+        /* [24-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(70));
     }
@@ -512,27 +513,27 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 4b: Format 0x28 — Zone Assignment B (5 packets) ---- */
     static const uint8_t fmt28b_types[] = {0xAB, 0xA9, 0xAA, 0x9F, 0xB7};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = fmt28b_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x28;
+        pkt[6] = QS_FMT_ZONE;        /* 0x28 — format at byte 6 (no proto byte) */
         pkt[7] = 0x03;
         pkt[8] = 0x01;
-        pkt[9] = 0x50;
-        pkt[10] = zone_byte + 0x23;
-        pkt[11] = 0x21;
+        pkt[9] = QS_COMP_DIMMER;
+        pkt[10] = zone_byte + 0x23;  /* zone reference */
+        pkt[11] = QS_PROTO_RADIO_TX;
         pkt[12] = 0x1A;
         pkt[13] = 0x00;
         put_be32(pkt + 14, device_id);
-        pkt[18] = 0xFE;
-        pkt[19] = 0x06;
-        pkt[20] = 0x40;
+        pkt[18] = QS_ADDR_COMPONENT;
+        pkt[19] = QS_CLASS_LEGACY;
+        pkt[20] = QS_CLASS_LEVEL;
         pkt[21] = 0x00;
         pkt[22] = 0x00;
         pkt[23] = 0x00;
         pkt[24] = 0x01;
-        pkt[25] = 0xEF;
+        pkt[25] = QS_ADDR_GROUP;
         pkt[26] = 0x20;
         pkt[27] = 0x00;
         pkt[28] = 0x03;
@@ -546,7 +547,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[36] = 0xB4;
         pkt[37] = 0x00;
         pkt[38] = 0x00;
-        /* [39-50] = 0xCC */
+        /* [39-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(70));
     }
@@ -554,17 +555,17 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 5: Format 0x12 — Final Config with Zone ID (8 packets, 50ms) ---- */
     static const uint8_t fmt12_types[] = {0xA9, 0x8D, 0x93, 0x9F, 0xAB, 0xB7, 0xBD, 0xC3};
     for (int i = 0; i < 8; i++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = fmt12_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x21;
-        pkt[7] = 0x12;
-        pkt[8] = 0x00;
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_FINAL;
+        pkt[8] = 0x00;  /* flags */
         put_be32(pkt + 9, device_id);
-        pkt[13] = 0xFE;
-        pkt[14] = 0x06;
-        pkt[15] = 0x6E;
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;    /* 0x06 — original config class */
+        pkt[15] = 0x6E;              /* entity_type: zone binding (?) */
         pkt[16] = 0x01;
         pkt[17] = 0x00;
         pkt[18] = 0x07;
@@ -575,7 +576,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[23] = 0x00;
         pkt[24] = zone_byte; /* THE CRITICAL ZONE ASSIGNMENT */
         pkt[25] = 0xEF;
-        /* [26-50] = 0xCC */
+        /* [26-50] = 0x00 */
         transmit_one(pkt, 51);
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -603,18 +604,18 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
         cc1101_stop_rx();
 
         for (int b = 0; b < 9; b++) {
-            memset(pkt, 0xCC, sizeof(pkt));
+            memset(pkt, 0x00, sizeof(pkt));
             pkt[0] = 0xB9;
             pkt[1] = seq;
             put_be32(pkt + 2, hub_id);
-            pkt[6] = 0x21;
-            pkt[7] = 0x11; /* format: pairing mode */
-            pkt[8] = 0x00;
-            pkt[9] = 0xFF; /* broadcast */
-            pkt[10] = 0xFF;
-            pkt[11] = 0xFF;
-            pkt[12] = 0xFF;
-            pkt[13] = 0xFF;
+            pkt[6] = QS_PROTO_RADIO_TX;
+            pkt[7] = QS_FMT_LED;    /* 0x11 — pairing beacon format */
+            pkt[8] = 0x00;          /* flags */
+            pkt[9] = QS_ADDR_BROADCAST;
+            pkt[10] = QS_ADDR_BROADCAST;
+            pkt[11] = QS_ADDR_BROADCAST;
+            pkt[12] = QS_ADDR_BROADCAST;
+            pkt[13] = QS_ADDR_BROADCAST;
             pkt[14] = 0x60;
             pkt[15] = 0x00;
             put_be32(pkt + 16, hub_id);
@@ -623,7 +624,7 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
             pkt[22] = 0xFF;
             pkt[23] = 0xFF;
             pkt[24] = 0x3C; /* timer: active */
-            /* [25-50] = 0xCC */
+            /* [25-50] = 0x00 */
             transmit_one(pkt, 51);
 
             seq += 8;
@@ -660,18 +661,18 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
     /* ---- Send stop beacon (timer=0x00) ---- */
     cc1101_stop_rx();
     for (int b = 0; b < 3; b++) {
-        memset(pkt, 0xCC, sizeof(pkt));
+        memset(pkt, 0x00, sizeof(pkt));
         pkt[0] = 0xB9;
         pkt[1] = seq;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = 0x21;
-        pkt[7] = 0x11;
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_LED;  /* 0x11 — stop beacon */
         pkt[8] = 0x00;
-        pkt[9] = 0xFF;
-        pkt[10] = 0xFF;
-        pkt[11] = 0xFF;
-        pkt[12] = 0xFF;
-        pkt[13] = 0xFF;
+        pkt[9] = QS_ADDR_BROADCAST;
+        pkt[10] = QS_ADDR_BROADCAST;
+        pkt[11] = QS_ADDR_BROADCAST;
+        pkt[12] = QS_ADDR_BROADCAST;
+        pkt[13] = QS_ADDR_BROADCAST;
         pkt[14] = 0x60;
         pkt[15] = 0x00;
         put_be32(pkt + 16, hub_id);

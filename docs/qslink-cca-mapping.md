@@ -175,17 +175,21 @@ Based on QS Link protocol knowledge applied to CCA:
 
 ### 1. Broadcast Addressing (ADDR_MODE_BROADCAST = 0xFF)
 
+**Status**: TESTED 2026-02-16 — no response. Devices ignored broadcast SET_LEVEL.
+
 **Hypothesis**: Setting byte 13 to `0xFF` (broadcast) in a SET_LEVEL packet should
 command ALL devices on the network, without knowing their device IDs.
 
 **Evidence**: QS Link explicitly defines 0xFF as broadcast mode. Our beacon packets
 already use 0xFF at bytes 9-13 (the target ID position) and devices respond.
 
-**Test**: Send a format 0x0E SET_LEVEL packet with `object_id = 0xFFFFFFFF` and
-`addr_mode = 0xFF` instead of our usual `0xFE`.
+**Test**: Sent format 0x0E SET_LEVEL with `object_id = 0xFFFFFFFF`,
+`addr_mode = 0xFF`, source = Caseta bridge zone ID. No device responded.
 
-**Risk**: Low — worst case it's ignored. Devices may require being paired to a specific
-source, in which case broadcast only works from a known hub/bridge ID.
+**Conclusion**: CCA devices do NOT honor broadcast addressing for level control.
+The Caseta "all lights off" feature confirms this — it sends individual unicast
+commands to each device rather than a single broadcast. Broadcast may only work
+for discovery/beacon purposes, not runtime control.
 
 ### 2. Group Addressing for Control (ADDR_MODE_GROUP = 0xEF)
 
@@ -216,6 +220,8 @@ a known device ID.
 
 ### 4. Device Discovery via Format 0x0A (Address Assign)
 
+**Status**: TESTED 2026-02-16 — no response from Vive dimmer. Back-pocketed.
+
 **Hypothesis**: Format 0x0A with `cmd_type = 0xA5` (address query) can discover
 devices on the network by requesting their address/component information.
 
@@ -223,8 +229,12 @@ devices on the network by requesting their address/component information.
 `DEVICECOMPONENTINITIALIZE` (cmd 0x0F, with type 0x00=NEW/UNADDRESSED) which scan
 for devices. The radio packet format for this is format 0x0A + format 0x09.
 
-**Test**: Send format 0x09 with `cmd_class = 0x03` (select/query), `cmd_type = 0x02`
-to a broadcast address and listen for responses.
+**Test**: Sent format 0x09 with `cmd_class = 0x03` (select), `cmd_type = 0x02`
+(execute) to known device ID. Packets transmitted but no response observed.
+
+**Likely issue**: Used target device ID as source ID — device may require command
+from a paired hub/bridge ID. Also, packet structure may need adjustment for
+modern CCA (e.g. different format, additional fields).
 
 ### 5. Factory Reset via Format 0x1C Broadcast
 
@@ -240,6 +250,8 @@ sacrificial device isolated from the production system.
 
 ### 6. Component Self-Identify (Format 0x09 + 0x0A)
 
+**Status**: TESTED 2026-02-16 — no response from Vive dimmer. Back-pocketed.
+
 **Hypothesis**: Sending format 0x09 with `cmd_class = 0x01` (device control) and
 `cmd_type = 0x22` (identify) to a device ID should make it flash its LED without
 requiring any pairing.
@@ -247,8 +259,13 @@ requiring any pairing.
 **Evidence**: QS Link handler 0x30 (`DEVICEIDENTIFY`) builds exactly this packet.
 Identify is a fundamental device function that should work regardless of pairing state.
 
-**Test**: Build a format 0x09 packet with the known field values and target a known
-device ID. Look for LED flash.
+**Test**: Sent format 0x09 with the known field values targeting Vive dimmer 09626657.
+Packets transmitted (confirmed via TX echo) but no LED flash or response observed.
+
+**Likely issue**: Used target device ID as source ID (bytes 2-5). Device may only
+accept identify from a recognized hub/bridge source. TX echo showed `src=57666209`
+(wrong endian in decoder display) and device ID correctly at bytes 9-12. May also
+need to be sent from a paired integration ID rather than the device's own ID.
 
 ### 7. The 0x06 → 0x42 Migration Pattern
 
@@ -270,7 +287,7 @@ These protocol elements are confirmed identical between QS Link (2009) and CCA (
 - **Level encoding**: `percent * 0xFEFF / 100`
 - **CRC-16 polynomial**: 0xCA0F
 - **Sequence increment**: +6 per packet, wraps at 0x48
-- **Padding**: 0xCC for extended packets
+- **Padding**: 0x00 for extended packets
 - **Protocol byte**: 0x21
 - **Command class 0x40** = level control
 - **Addressing modes**: 0xFE/0xEF/0xFF
