@@ -741,6 +741,7 @@ static bool thread_join(void)
 /* Retransmit count matching Lutron multicast pattern */
 #define CCX_TX_RETRANSMITS   7
 #define CCX_TX_RETRANSMIT_MS 15
+#define COAP_UDP_PORT        5683
 
 static void ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
 {
@@ -767,6 +768,28 @@ static void ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
     frame[5 + pkt_len] = 0x00;
     frame[6 + pkt_len] = 0x00;
     hdlc_send_frame(frame, frame_len);
+}
+
+static bool coap_parse_header(const uint8_t* buf, size_t len, uint8_t* out_type, uint8_t* out_code, uint16_t* out_mid)
+{
+    if (len < 4) return false;
+    uint8_t ver = buf[0] >> 6;
+    uint8_t tkl = buf[0] & 0x0F;
+    if (ver != 1 || tkl > 8 || len < (size_t)(4 + tkl)) return false;
+
+    *out_type = (buf[0] >> 4) & 0x03;
+    *out_code = buf[1];
+    *out_mid = ((uint16_t)buf[2] << 8) | buf[3];
+    return true;
+}
+
+static void coap_send_empty_ack(const uint8_t* dst_addr, uint16_t src_port, uint16_t dst_port, uint16_t mid)
+{
+    uint8_t ack[4] = {0x60, 0x00, (uint8_t)(mid >> 8), (uint8_t)(mid & 0xFF)};
+    uint8_t pkt[128];
+    size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), dst_addr, src_port, dst_port, ack, sizeof(ack));
+    if (pkt_len == 0) return;
+    ccx_transmit_ipv6(pkt, pkt_len);
 }
 
 static void ccx_process_tx(const ccx_tx_request_t* req)
@@ -833,6 +856,29 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
     const uint8_t* udp_data =
         ipv6_udp_parse(spinel_payload, payload_len, src_addr, &src_port, &dst_port, &udp_payload_len);
     if (!udp_data) return;
+
+    /* Forward CoAP traffic to host tools and auto-ACK CON responses so
+     * programming database write transactions can complete end-to-end. */
+    if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT) {
+        stream_send_ccx_packet(udp_data, udp_payload_len);
+
+        uint8_t  coap_type = 0;
+        uint8_t  coap_code = 0;
+        uint16_t coap_mid = 0;
+        if (coap_parse_header(udp_data, udp_payload_len, &coap_type, &coap_code, &coap_mid)) {
+            /* CoAP CON response (class 2..5): reply with empty ACK.
+             * Do not ACK requests (class 0), otherwise TX loopback frames
+             * would self-trigger synthetic ACKs. */
+            uint8_t coap_class = (uint8_t)(coap_code >> 5);
+            if (coap_type == 0 && coap_class >= 2) {
+                coap_send_empty_ack(src_addr, dst_port, src_port, coap_mid);
+                if (ccx_rx_uart_log_enabled) {
+                    printf("[ccx] CoAP ACK mid=0x%04X src_port=%u dst_port=%u\r\n", coap_mid, src_port, dst_port);
+                }
+            }
+        }
+        return;
+    }
 
     /* Filter for CCX port */
     if (dst_port != CCX_UDP_PORT) return;

@@ -8,7 +8,7 @@
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "ccx:send": "bun run tools/ccx-send.ts",
-    "cca:reliability": "bun run tools/cca-reliability.ts",
+    "ccx:coap": "bun run tools/ccx-coap-send.ts",
     "cca:tune-bench": "python3 tools/cca-tune-bench.py",
     "leap:dump": "bun run tools/leap-dump.ts",
     "lint": "biome check .",

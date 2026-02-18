@@ -133,10 +133,13 @@ wpan.src64 == e6:06:bf:9a:11:4f
 ### Protocol Stack
 
 ```
-802.15.4 MAC → 6LoWPAN → IPv6 → UDP:9190 → CBOR (Lutron application layer)
+802.15.4 MAC → 6LoWPAN → IPv6 → UDP:9190 (runtime CCX CBOR)
+                                ↳ UDP:5683 (CoAP /cg/db programming plane)
 ```
 
 tshark handles all lower layers (decryption, decompression, reassembly). The TypeScript decoder handles only the CBOR application payload.
+
+Programming-plane findings are tracked in [ccx-programming-plane.md](ccx-programming-plane.md).
 
 ### Multicast & Retransmission
 
@@ -161,9 +164,10 @@ The RA3 processor originates commands at `fd00::ff:fe00:2c0c`.
 
 Keys can be extracted from the LEAP API (`/link/{id}`) or from the project database. See [ra3-system.md](ra3-system.md) for database extraction instructions.
 
-## Application Layer Protocol (CBOR over UDP)
+## Application Layer Protocol (Runtime CBOR over UDP)
 
-CCX uses **CBOR-encoded messages** over **UDP port 9190** for lighting control.
+CCX runtime control uses **CBOR-encoded messages** over **UDP port 9190**.
+This section documents the runtime plane. The programming plane uses CoAP on UDP 5683 (see [ccx-programming-plane.md](ccx-programming-plane.md)).
 
 ### Message Structure
 
@@ -516,9 +520,9 @@ npm run leap:dump -- --host 10.0.0.1
 ```
 
 Output includes:
-- **28 zones** with area names and control types
-- **39 devices** with serial numbers, types, and control station locations
-- **93 preset mappings** linking LEAP preset IDs to button names and devices
+- **33 zones** with area names and control types
+- **44 devices** with serial numbers, types, and control station locations
+- **101 preset mappings** linking LEAP preset IDs to button names and devices
 - CCX device_id encoding for every button in the system
 
 ### Configuration
@@ -597,7 +601,7 @@ the same preset ID is sent over CCX.
 
 ## Known Zones (from LEAP database)
 
-See `ccx/config.ts` for the full mapping (28 zones, 84 presets, 27 device serials).
+See `ccx/config.ts` for the full mapping (currently 33 zones, 101 presets, 44 devices).
 Regenerate with `npm run leap:dump -- --config`.
 
 ## Remaining Unknowns
