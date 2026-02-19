@@ -889,9 +889,25 @@ async function runConversion(
       if (basePage.equals(convPage)) continue; // same in both passes → Docker artifact or unchanged
 
       // This page differs between baseline and converted → our conversion SQL changed it.
+      // Only patch DATA pages (type=1) and INDEX pages (type=2).
+      // Skip system pages (file header, PFS, GAM, SGAM, DCM, BCM, boot) to
+      // avoid contaminating system metadata that LocalDB validates on attach.
+      const origPage = resultMdf.subarray(off, off + SQL_PAGE_SIZE);
+      const pageType = origPage[1]; // byte 1 = page type
+      if (pageType !== 1 && pageType !== 2) {
+        // System page — skip patching. Log for debugging.
+        let headerBytes = 0, dataBytes = 0;
+        for (let b = 0; b < SQL_PAGE_SIZE; b++) {
+          if (basePage[b] !== convPage[b]) {
+            if (b < SQL_PAGE_HEADER_SIZE) headerBytes++; else dataBytes++;
+          }
+        }
+        console.log(`    Page ${p}: SKIP (type=${pageType}, ${headerBytes} header + ${dataBytes} data byte diffs)`);
+        continue;
+      }
+
       // Patch only the ROW DATA portion (bytes 96+) into the original page,
       // preserving the original page header (LSN, checksum, tornBits, etc.).
-      const origPage = resultMdf.subarray(off, off + SQL_PAGE_SIZE);
       let bytesPatched = 0;
       for (let b = SQL_PAGE_HEADER_SIZE; b < SQL_PAGE_SIZE; b++) {
         if (basePage[b] !== convPage[b]) {
@@ -900,13 +916,15 @@ async function runConversion(
         }
       }
 
+      if (bytesPatched === 0) continue; // only header diffs, no row data changes
+
       // Recalculate checksum to cover the modified row data + original header.
       const oldChecksum = origPage.readUInt32LE(60);
       const newChecksum = sqlPageChecksum(origPage);
       origPage.writeUInt32LE(newChecksum, 60);
 
       userPagesCopied++;
-      if (userPagesCopied <= 10) {
+      if (userPagesCopied <= 20) {
         console.log(`    Page ${p}: ${bytesPatched} data bytes patched, checksum 0x${oldChecksum.toString(16)} → 0x${newChecksum.toString(16)}`);
       }
     }
