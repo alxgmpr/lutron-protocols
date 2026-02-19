@@ -25,7 +25,7 @@
 
 import { decode as cborDecode } from "cbor-x";
 import { createSocket } from "dgram";
-import { CCX_CONFIG, getZoneName } from "../ccx/config";
+import { CCX_CONFIG, getAllZones, getZoneName } from "../ccx/config";
 import { decodeBytes, formatMessage, getMessageTypeName } from "../ccx/decoder";
 import {
   encodeLevelControl,
@@ -61,20 +61,17 @@ const PORT = CCX_CONFIG.udpPort;
 // --- Zone lookup ---
 
 function resolveZone(input: string): { id: number; name: string } | null {
-  // Try numeric ID first
+  const zones = getAllZones();
+
   const num = parseInt(input, 10);
-  if (!Number.isNaN(num) && CCX_CONFIG.knownZones[num]) {
-    return { id: num, name: CCX_CONFIG.knownZones[num].name };
+  if (!Number.isNaN(num)) {
+    const match = zones.find((z) => z.id === num);
+    if (match) return match;
   }
 
-  // Case-insensitive substring match
   const lower = input.toLowerCase();
-  for (const [idStr, zone] of Object.entries(CCX_CONFIG.knownZones)) {
-    if (zone.name.toLowerCase().includes(lower)) {
-      return { id: Number(idStr), name: zone.name };
-    }
-  }
-  return null;
+  const match = zones.find((z) => z.name.toLowerCase().includes(lower));
+  return match ?? null;
 }
 
 // --- Transport ---
@@ -271,9 +268,7 @@ async function cmdRaw(hexStr: string) {
 }
 
 function cmdZones() {
-  const entries = Object.entries(CCX_CONFIG.knownZones)
-    .map(([id, z]) => ({ id: Number(id), name: z.name }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const entries = getAllZones().sort((a, b) => a.name.localeCompare(b.name));
 
   console.log("Known CCX zones:\n");
   for (const { id, name } of entries) {

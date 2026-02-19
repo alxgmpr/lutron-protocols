@@ -327,7 +327,8 @@ async function fetchServerInfo(
 ): Promise<{ leapVersion: string; productType: string }> {
   const body = await leap.readBody("/server");
   const servers = body?.Servers ?? [];
-  const leapServer = servers.find((s: any) => s.Type === "LEAP") ?? servers[0] ?? {};
+  const leapServer =
+    servers.find((s: any) => s.Type === "LEAP") ?? servers[0] ?? {};
   const protocolVersion = leapServer.ProtocolVersion ?? "";
   // Product type isn't directly on /server; infer from version range
   // RA3: 03.xxx, Caseta: 01.xxx, HomeWorks: 02.xxx
@@ -342,7 +343,10 @@ async function fetchServerInfo(
 async function fetchViaAreaWalk(
   leap: LeapConnection,
   log: LogFn,
-): Promise<{ zones: ZoneInfo[]; deviceMeta: Map<number, { area: string; station: string }> }> {
+): Promise<{
+  zones: ZoneInfo[];
+  deviceMeta: Map<number, { area: string; station: string }>;
+}> {
   const areasBody = await leap.readBody("/area");
   const areas: { href: string; Name: string; IsLeaf: boolean }[] =
     areasBody?.Areas ?? [];
@@ -387,7 +391,10 @@ async function fetchViaAreaWalk(
 async function fetchViaDirect(
   leap: LeapConnection,
   log: LogFn,
-): Promise<{ zones: ZoneInfo[]; deviceMeta: Map<number, { area: string; station: string }> }> {
+): Promise<{
+  zones: ZoneInfo[];
+  deviceMeta: Map<number, { area: string; station: string }>;
+}> {
   const zonesBody = await leap.readBody("/zone");
   const rawZones = zonesBody?.Zones ?? [];
   log(`  ${rawZones.length} zones from /zone`);
@@ -624,9 +631,7 @@ export function buildDumpData(
     presetsMap[p.presetId] = {
       name: p.engraving ?? p.buttonName,
       role: p.presetRole,
-      device: p.stationName
-        ? `${p.areaName} ${p.stationName}`
-        : p.deviceName,
+      device: p.stationName ? `${p.areaName} ${p.stationName}` : p.deviceName,
     };
   }
 

@@ -8,6 +8,7 @@
  * Examples:
  *   bun run tools/ccx-coap-send.ts aha --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --k4 229 --k5 25 --stm32-host 10.0.0.3
  *   bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host 10.0.0.3
+ *   bun run tools/ccx-coap-send.ts trim --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --high16 58685 --low16 2638 --k8 5 --stm32-host 10.0.0.3
  *   bun run tools/ccx-coap-send.ts bucket decode AHA
  *   bun run tools/ccx-coap-send.ts bucket encode 0x0070
  */
@@ -60,6 +61,34 @@ function hexToBuf(hex: string, name = "hex"): Buffer {
     throw new Error(`Invalid ${name}: ${hex}`);
   }
   return Buffer.from(clean, "hex");
+}
+
+function parseCborInput(input: string): unknown {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    throw new Error("Invalid --cbor: empty input");
+  }
+
+  const parseJsonish = (text: string): unknown => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      const normalized = text
+        // Allow object keys like {1:3} by turning them into {"1":3}
+        .replace(/([{,]\s*)(-?\d+)\s*:/g, '$1"$2":')
+        // Allow single-quoted JSON-ish payloads
+        .replace(/'/g, '"');
+      return JSON.parse(normalized);
+    }
+  };
+
+  try {
+    return parseJsonish(trimmed);
+  } catch (err) {
+    throw new Error(
+      `Invalid --cbor payload. Example: --cbor '[107,{1:3}]' (${(err as Error).message})`,
+    );
+  }
 }
 
 function toB64Url(buf: Buffer): string {
@@ -299,6 +328,84 @@ function encodeCborUint(v: number): Buffer {
   throw new Error(`CBOR uint too large: ${v}`);
 }
 
+function encodeCborTypeAndLength(major: number, len: number): Buffer {
+  if (!Number.isInteger(len) || len < 0) {
+    throw new Error(`Invalid CBOR length: ${len}`);
+  }
+  if (len < 24) return Buffer.from([(major << 5) | len]);
+  if (len <= 0xff) return Buffer.from([(major << 5) | 24, len]);
+  if (len <= 0xffff) {
+    return Buffer.from([(major << 5) | 25, (len >> 8) & 0xff, len & 0xff]);
+  }
+  if (len <= 0xffffffff) {
+    return Buffer.from([
+      (major << 5) | 26,
+      (len >>> 24) & 0xff,
+      (len >>> 16) & 0xff,
+      (len >>> 8) & 0xff,
+      len & 0xff,
+    ]);
+  }
+  throw new Error(`CBOR length too large: ${len}`);
+}
+
+function encodeCborValue(value: unknown): Buffer {
+  if (value == null) return Buffer.from([0xf6]); // null
+  if (value === false) return Buffer.from([0xf4]);
+  if (value === true) return Buffer.from([0xf5]);
+
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(`Unsupported --cbor number: ${value}`);
+    }
+    if (Number.isInteger(value)) {
+      if (value >= 0) return encodeCborUint(value);
+      return encodeCborTypeAndLength(1, -1 - value);
+    }
+    const out = Buffer.alloc(9);
+    out[0] = 0xfb; // float64
+    out.writeDoubleBE(value, 1);
+    return out;
+  }
+
+  if (typeof value === "string") {
+    const text = Buffer.from(value, "utf8");
+    return Buffer.concat([encodeCborTypeAndLength(3, text.length), text]);
+  }
+
+  if (value instanceof Uint8Array || Buffer.isBuffer(value)) {
+    const bytes = Buffer.from(value);
+    return Buffer.concat([encodeCborTypeAndLength(2, bytes.length), bytes]);
+  }
+
+  if (Array.isArray(value)) {
+    const parts = value.map((v) => encodeCborValue(v));
+    return Buffer.concat([encodeCborTypeAndLength(4, parts.length), ...parts]);
+  }
+
+  if (value instanceof Map) {
+    const parts: Buffer[] = [encodeCborTypeAndLength(5, value.size)];
+    for (const [k, v] of value.entries()) {
+      parts.push(encodeCborValue(k), encodeCborValue(v));
+    }
+    return Buffer.concat(parts);
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    const parts: Buffer[] = [encodeCborTypeAndLength(5, entries.length)];
+    for (const [k, v] of entries) {
+      const key: string | number = /^-?\d+$/.test(k)
+        ? Number.parseInt(k, 10)
+        : k;
+      parts.push(encodeCborValue(key), encodeCborValue(v));
+    }
+    return Buffer.concat(parts);
+  }
+
+  throw new Error(`Unsupported --cbor value type: ${typeof value}`);
+}
+
 function encodeAhaPayload(op: number, k4: number, k5: number): Buffer {
   return Buffer.concat([
     Buffer.from([0x82]), // array(2)
@@ -308,6 +415,31 @@ function encodeAhaPayload(op: number, k4: number, k5: number): Buffer {
     Buffer.from([0x05]), // key=5
     encodeCborUint(k5),
   ]);
+}
+
+function encodeTrimPayload(
+  op: number,
+  kv: { k2?: number; k3?: number; k8?: number },
+): Buffer {
+  const entries: Array<[number, number]> = [];
+  if (kv.k2 != null) entries.push([2, kv.k2]);
+  if (kv.k3 != null) entries.push([3, kv.k3]);
+  if (kv.k8 != null) entries.push([8, kv.k8]);
+  if (entries.length === 0) {
+    throw new Error("trim payload requires at least one of k2/k3/k8");
+  }
+  if (entries.length > 15) {
+    throw new Error("trim payload map too large");
+  }
+  const parts: Buffer[] = [
+    Buffer.from([0x82]),
+    encodeCborUint(op),
+    Buffer.from([0xa0 | entries.length]),
+  ];
+  for (const [k, v] of entries) {
+    parts.push(encodeCborUint(k), encodeCborUint(v));
+  }
+  return Buffer.concat(parts);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -364,7 +496,7 @@ function isIpv6Unspecified(addr: Buffer): boolean {
 }
 
 function onesComplementFold(sum: number): number {
-  while ((sum >>> 16) !== 0) {
+  while (sum >>> 16 !== 0) {
     sum = (sum & 0xffff) + (sum >>> 16);
   }
   return sum & 0xffff;
@@ -397,7 +529,7 @@ function udpChecksumIpv6(
   sum += 17;
   sum += sum16(udpHeaderAndPayload);
   const folded = onesComplementFold(sum);
-  const checksum = (~folded) & 0xffff;
+  const checksum = ~folded & 0xffff;
   // Per RFC 768/2460, checksum value 0x0000 is transmitted as 0xFFFF.
   return checksum === 0 ? 0xffff : checksum;
 }
@@ -501,7 +633,12 @@ async function sendCoapViaStm32(params: {
     let textTimer: ReturnType<typeof setTimeout> | null = null;
     let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
     let coapAckSeen = false;
-    let coapResponseSeen = false;
+    let coapResponse: {
+      code: number;
+      mid: number;
+      tokenHex: string;
+      payload: Buffer;
+    } | null = null;
 
     const clearTextWait = () => {
       if (textTimer) clearTimeout(textTimer);
@@ -575,10 +712,16 @@ async function sendCoapViaStm32(params: {
 
       const cls = coap.code >> 5;
       if (
-        cls === 2 &&
+        cls >= 2 &&
+        cls <= 5 &&
         (coap.token.equals(requestToken) || coap.mid === requestMid)
       ) {
-        coapResponseSeen = true;
+        coapResponse = {
+          code: coap.code,
+          mid: coap.mid,
+          tokenHex: coap.token.toString("hex"),
+          payload: coap.payload,
+        };
       }
     });
 
@@ -617,8 +760,17 @@ async function sendCoapViaStm32(params: {
 
         const deadline = Date.now() + coapTimeoutMs;
         while (Date.now() < deadline) {
-          if (coapResponseSeen) {
-            finish();
+          if (coapResponse) {
+            const cls = coapResponse.code >> 5;
+            if (cls === 2) {
+              finish();
+            } else {
+              finish(
+                new Error(
+                  `CoAP error response ${coapCodeToString(coapResponse.code)} mid=${coapResponse.mid} token=${coapResponse.tokenHex}`,
+                ),
+              );
+            }
             return;
           }
           await sleep(25);
@@ -814,11 +966,14 @@ CCX CoAP Sender - dynamic Thread programming packet sender
 Commands:
   send     Generic CoAP send to /cg/db/* (or any path)
   aha      Convenience write for /cg/db/ct/c/AHA payload [108,{4:k4,5:k5}]
+  trim     Convenience write for /cg/db/ct/c/AAI payload [3,{2:high16,3:low16,8:k8}]
   bucket   Encode/decode ct bucket token
 
 Examples:
   bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host 10.0.0.3
+  bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AFE --cbor '[107,{1:3}]' --stm32-host 10.0.0.3
   bun run tools/ccx-coap-send.ts aha --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --k4 229 --k5 25 --stm32-host 10.0.0.3
+  bun run tools/ccx-coap-send.ts trim --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --high16 58685 --low16 2638 --k8 5 --stm32-host 10.0.0.3
   bun run tools/ccx-coap-send.ts bucket decode AHA
   bun run tools/ccx-coap-send.ts bucket encode 0x0070
 
@@ -827,6 +982,8 @@ send options:
   --src <ipv6>         Source IPv6 (required for STM32 raw injection)
   --path <uri-path>    CoAP uri path (default: /cg/db/ct/c/AHA)
   --hex <payload-hex>  Payload bytes in hex
+  --cbor <payload>     Payload as JSON/JSON-ish (e.g. '[107,{1:3}]')
+  --empty              Send explicit empty payload (useful for method probing)
   --code <put|post|delete|n>
   --port <n>           UDP port (default: 5683)
   --con / --non        CoAP type (default: CON)
@@ -850,6 +1007,14 @@ aha options:
   --k5 <n>             AHA key 5: deactivated status LED level (0..255)
   --op <n>             Opcode (default: 108)
   --bucket <id|token>  Bucket (default: AHA)
+
+trim options:
+  --dst <ipv6>         Destination IPv6
+  --high16 <n>         AAI key 2: high trim level (0..65279 typical)
+  --low16 <n>          AAI key 3: low trim level (optional)
+  --k8 <n>             AAI key 8 metadata (default: 5)
+  --op <n>             Opcode (default: 3)
+  --bucket <id|token>  Bucket (default: AAI)
 `);
 }
 
@@ -895,7 +1060,7 @@ async function main() {
       "WARNING: --dst uses :: prefix. Thread captures may hide mesh prefix; prefer full fdxx:: address.",
     );
   }
-  if (src && src.startsWith("::")) {
+  if (src?.startsWith("::")) {
     console.warn(
       "WARNING: --src uses :: prefix. Prefer full mesh-local fdxx:: address.",
     );
@@ -925,6 +1090,7 @@ async function main() {
 
   const type = hasFlag("--non") ? 1 : 0;
   const code = codeFromName(getArg("--code") ?? "put");
+  const emptyPayload = hasFlag("--empty");
   const midArg = getArg("--mid");
   const tokenArg = getArg("--token");
 
@@ -934,8 +1100,25 @@ async function main() {
   if (cmd === "send") {
     const path = getArg("--path") ?? "/cg/db/ct/c/AHA";
     const hex = getArg("--hex");
-    if (!hex) {
-      console.error("Missing --hex for send command");
+    const cbor = getArg("--cbor");
+    if (
+      (hex != null && cbor != null) ||
+      (hex != null && emptyPayload) ||
+      (cbor != null && emptyPayload)
+    ) {
+      console.error("Use exactly one of --hex, --cbor, or --empty");
+      process.exit(1);
+    }
+    const payload =
+      hex != null && hex.length > 0
+        ? hexToBuf(hex, "payload hex")
+        : cbor != null
+          ? encodeCborValue(parseCborInput(cbor))
+          : Buffer.alloc(0);
+    if (payload.length === 0 && !emptyPayload && !(code === 1 || code === 4)) {
+      console.error(
+        "Missing --hex or --cbor for send command (required for PUT/POST)",
+      );
       process.exit(1);
     }
     await sendCoap({
@@ -943,7 +1126,7 @@ async function main() {
       src,
       port,
       path,
-      payload: hexToBuf(hex, "payload hex"),
+      payload,
       code,
       type,
       mid,
@@ -981,6 +1164,58 @@ async function main() {
     const path = `/cg/db/ct/c/${bucket.token}`;
 
     const payload = encodeAhaPayload(op, k4, k5);
+
+    console.log(
+      `bucket=${bucket.token} (0x${bucket.id.toString(16).padStart(4, "0")})`,
+    );
+
+    await sendCoap({
+      dst,
+      src,
+      port,
+      path,
+      payload,
+      code,
+      type,
+      mid,
+      token,
+      timeoutMs,
+      repeat,
+      intervalMs,
+      dryRun,
+      transport,
+      stm32Host,
+      stm32Port,
+      shellTimeoutMs,
+      spinelStreamProp,
+    });
+    return;
+  }
+
+  if (cmd === "trim") {
+    const high16Arg = getArg("--high16");
+    const low16Arg = getArg("--low16");
+    const op = parseInt(getArg("--op") ?? "3", 10);
+    const k8Arg = getArg("--k8") ?? "5";
+    const k8 = parseInt(k8Arg, 10);
+
+    const high16 = high16Arg ? parseInt(high16Arg, 10) : undefined;
+    const low16 = low16Arg ? parseInt(low16Arg, 10) : undefined;
+    if (
+      !Number.isFinite(op) ||
+      !Number.isFinite(k8) ||
+      (high16Arg != null && !Number.isFinite(high16)) ||
+      (low16Arg != null && !Number.isFinite(low16))
+    ) {
+      throw new Error("Invalid trim op/high16/low16/k8");
+    }
+    if (high16 == null && low16 == null) {
+      throw new Error("trim requires at least one of --high16 or --low16");
+    }
+
+    const bucket = parseBucket(getArg("--bucket") ?? "AAI");
+    const path = `/cg/db/ct/c/${bucket.token}`;
+    const payload = encodeTrimPayload(op, { k2: high16, k3: low16, k8 });
 
     console.log(
       `bucket=${bucket.token} (0x${bucket.id.toString(16).padStart(4, "0")})`,

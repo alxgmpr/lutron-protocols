@@ -9,6 +9,8 @@
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "ccx:send": "bun run tools/ccx-send.ts",
     "ccx:coap": "bun run tools/ccx-coap-send.ts",
+    "ccx:watch": "bun run tools/ccx-program-watch.ts --live",
+    "ccx:diff": "bun run tools/ccx-program-diff.ts",
     "cca:tune-bench": "python3 tools/cca-tune-bench.py",
     "leap:dump": "bun run tools/leap-dump.ts",
     "lint": "biome check .",

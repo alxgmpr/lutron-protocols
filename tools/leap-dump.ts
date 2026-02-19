@@ -21,10 +21,10 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
-  LeapConnection,
   buildDumpData,
-  fetchLeapData,
   type DeviceInfo,
+  fetchLeapData,
+  LeapConnection,
   type PresetMapping,
   type ZoneInfo,
 } from "./leap-client";

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * LEAP Command Tool — send commands and config changes to zones via LEAP API
  *
@@ -17,8 +18,8 @@
  *   bun run tools/leap-cmd.ts raw ReadRequest /zone/5      # raw request
  */
 
-import { LeapConnection, hrefId } from "./leap-client";
 import { parseArgs } from "util";
+import { hrefId, LeapConnection } from "./leap-client";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
@@ -54,7 +55,7 @@ async function findZone(
   const zones = body?.Zones ?? [];
 
   const asNum = parseInt(search, 10);
-  const match = !isNaN(asNum)
+  const match = !Number.isNaN(asNum)
     ? zones.find((z: any) => hrefId(z.href) === asNum)
     : zones.find((z: any) =>
         (z.Name ?? "").toLowerCase().includes(search.toLowerCase()),
@@ -90,7 +91,10 @@ function presetSummary(pa: any): string {
 }
 
 async function main() {
-  const conn = new LeapConnection({ host: values.host!, certName: values.cert! });
+  const conn = new LeapConnection({
+    host: values.host!,
+    certName: values.cert!,
+  });
   await conn.connect();
 
   // --- raw command ---
@@ -142,7 +146,9 @@ async function main() {
       const zs = statusBody?.ZoneStatus;
       const level = zs?.Level ?? "?";
       const sw = zs?.SwitchedLevel ? ` [${zs.SwitchedLevel}]` : "";
-      console.log(`  ${id}: ${z.Name} — ${level}%${sw} (${z.ControlType ?? "?"})`);
+      console.log(
+        `  ${id}: ${z.Name} — ${level}%${sw} (${z.ControlType ?? "?"})`,
+      );
     }
     conn.close();
     return;
@@ -336,7 +342,9 @@ async function main() {
         updateBody.IdleLED = { EnabledState: s };
         updateBody.NightlightLED = { EnabledState: s };
       }
-      console.log(`  Updating ${ledSettings.href}: ${JSON.stringify(updateBody)}`);
+      console.log(
+        `  Updating ${ledSettings.href}: ${JSON.stringify(updateBody)}`,
+      );
       const ledResp = await conn.update(ledSettings.href, {
         LEDSettings: updateBody,
       });
@@ -366,7 +374,9 @@ async function main() {
         const enabled = timerArg !== "off" && timerArg !== "disable";
         const update: any = { EnabledState: enabled ? "Enabled" : "Disabled" };
         if (enabled) update.Timeout = timerArg;
-        console.log(`  Updating ${zone.CountdownTimer.href}: ${JSON.stringify(update)}`);
+        console.log(
+          `  Updating ${zone.CountdownTimer.href}: ${JSON.stringify(update)}`,
+        );
         const resp = await conn.update(zone.CountdownTimer.href, {
           CountdownTimer: update,
         });
@@ -396,7 +406,9 @@ async function main() {
         console.error("  No preset assignments for this zone");
         break;
       }
-      console.log(`  Setting fade=${fadeSec}s on ${presets.length} preset assignments`);
+      console.log(
+        `  Setting fade=${fadeSec}s on ${presets.length} preset assignments`,
+      );
       for (const pa of presets) {
         const paId = hrefId(pa.href);
         const resp = await conn.update(pa.href, {
@@ -415,7 +427,9 @@ async function main() {
         console.error("  No preset assignments for this zone");
         break;
       }
-      console.log(`  Setting delay=${delaySec}s on ${presets.length} preset assignments`);
+      console.log(
+        `  Setting delay=${delaySec}s on ${presets.length} preset assignments`,
+      );
       for (const pa of presets) {
         const paId = hrefId(pa.href);
         const resp = await conn.update(pa.href, {
@@ -431,7 +445,9 @@ async function main() {
       // Update a single preset assignment by ID
       const paId = parseInt(arg1 ?? "0", 10);
       if (!paId) {
-        console.error("  Usage: set-preset <preset-assignment-id> [-f fade] [-d delay] [-l level]");
+        console.error(
+          "  Usage: set-preset <preset-assignment-id> [-f fade] [-d delay] [-l level]",
+        );
         break;
       }
       const update: any = {};

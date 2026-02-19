@@ -199,6 +199,45 @@ bun run tools/ccx-coap-send.ts aha \
   --repeat 3 --interval 150 --timeout-ms 9000
 ```
 
+### Strong candidate: high/low trim uses `AAI` (`0x0002`) opcode `3`
+
+From programming capture decode (`coap.code=3`, path `/cg/db/ct/c/AAI`), trim-like writes are:
+
+- Payload shape: `[3, {2: <high_raw>, 3: <low_raw>, 8: <profile>}]`
+- Common values seen:
+  - `[3, {2:58685, 3:2638, 8:5}]` (`58685` ~= `89.9%`, `2638` ~= `4.0%`)
+  - `[3, {2:58685, 8:5}]` (devices without key `3` in this capture)
+  - Other high values: `64620` (`~99.0%`), `45498` (`~69.7%`), `35607` (`~54.5%`)
+
+Cross-check with Designer LocalDB (`Project`, `LOCALDB#A2D4DCDA`):
+
+- `tblSwitchLeg` contains high/low trim percentages with distribution:
+  - `90/5` (most common), plus `99/1`, `70/2`, `55/6`, etc.
+- These percentage cohorts match the observed `AAI` raw cohorts:
+  - `90%` -> `58685`
+  - `99%` -> `64620`
+  - `70%` -> `45498`
+  - `55%` -> `35607`
+
+Current evidence indicates `/cg/db/ct/c/AAI` opcode `3` is the programming record carrying dimmer trim targets.
+
+Use the trim sender:
+
+```bash
+# Example: write high/low trim raw values to AAI
+bun run tools/ccx-coap-send.ts trim \
+  --stm32-host 10.0.0.3 \
+  --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 \
+  --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 \
+  --high16 58685 --low16 2638 --k8 5 \
+  --repeat 3 --interval 150 --timeout-ms 9000
+```
+
+Notes:
+
+- `k8` appears profile/class metadata (`5` most common for dimmer-like records in this capture).
+- UI percent -> wire raw conversion is not yet fully modeled across all load profiles; use capture-derived raw values for exact replay.
+
 ### Strong correlation: `0x0051..0x0054` carry LED link indices
 
 For keypad sessions, `AFE/AFI/AFM/AFQ` (`0x0051..0x0054`) carry values matching Designer `tblLed.LedNumberOnLink`.
@@ -210,6 +249,24 @@ Office keypad session (`dst ::3c2e:f5ff:fef9:73f9`, `ControlStationDeviceID=926`
 - `AFM (0x0053)` payload `[107, {0: 5}]`
 
 Designer DB for `ParentDeviceID=926` has `LedNumberOnLink` = `3,4,5`.
+
+### Current boundary: no per-LED brightness payload identified (RA3 captures)
+
+Across observed RA3 programming sessions, keypad LED brightness changes appear as global device-level writes on:
+
+- `/cg/db/ct/c/AHA` with payload `[108, {4:<on-level>, 5:<off-level>}]`
+
+We do **not** currently see a distinct payload carrying independent brightness values per individual LED. The likely split is:
+
+- Brightness levels: device-wide (`AHA`)
+- Per-LED behavior/state mapping: programming model + LED link assignments (`AFE/AFI/AFM/AFQ`, `tblProgrammingModel`, `tblLed`)
+
+Relevant Designer DB columns already identified from enumeration:
+
+- `tblProgrammingModel.LedLogic`
+- `tblProgrammingModel.UseReverseLedLogic`
+- `tblProgrammingModel.ReferencePresetIDForLed`
+- `AllPresetsAndSceneDefinition.led_logic_type`
 
 ## How this maps to user-observed flow
 
@@ -242,3 +299,16 @@ tshark -r "$FILE" -d udp.port==5683,coap \
 tshark -r "$FILE" -Y 'udp.port==9190 && data' \
   -T fields -e frame.time_relative -e ipv6.src -e ipv6.dst -e data
 ```
+
+## Full-transfer diff workflow (when there are no discrete events)
+
+When Designer always re-transfers the full file, compare two captures (`before` vs `after`) and filter to the target device:
+
+```bash
+bun run tools/ccx-program-diff.ts \
+  --base /tmp/lutron-sniff/live/before.pcapng \
+  --new /tmp/lutron-sniff/live/after.pcapng \
+  --dst ::3c2e:f5ff:fef9:73f9
+```
+
+This highlights only changed request signatures (`dst + method + path + payload`) and decodes known records (`AHA`, `AAI`, `AF*`).

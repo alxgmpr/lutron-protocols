@@ -192,8 +192,7 @@ function generateTS(def: ProtocolDef) {
       out += "      offset: " + f.offset + ",\n";
       out += "      size: " + f.size + ",\n";
       out += "      format: '" + f.format + "',\n";
-      if (f.description)
-        out += "      description: '" + f.description + "',\n";
+      if (f.description) out += "      description: '" + f.description + "',\n";
       out += "    },\n";
     }
     out += "  ],\n";

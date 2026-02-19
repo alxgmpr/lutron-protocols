@@ -170,6 +170,8 @@ sqlcmd -S "np:\\.\pipe\LOCALDB#XXXXXXXX\tsql\query" -No -d Project -Q "SELECT TA
       └── Project.mdf + Project_log.ldf (SQL Server database)
 ```
 
+`.ra3` vs `.hw` extension alone is cosmetic; behavior is driven by metadata inside the DB (`tblProject.ProductType`, `tblVersion.ProductType`, `tblVersionHistory.ProductType`) and downstream transfer/runtime logic.
+
 Database version: **957** (SQL Server 2022 RTM). Most SQL Server installations will upgrade past 957, making the file unreadable by Designer.
 
 ### Method 1: Live Editing (Recommended)
@@ -218,6 +220,57 @@ Enable HW features in RA3:
 UPDATE tblProgrammingModel SET AllowDoubleTap = 1, DoubleTapPresetID = <preset_id> WHERE ProgrammingModelID = <id>;
 ```
 
+### Validated: RA3 Double-Tap on ATPM (2026-02-18)
+
+This behavior was validated on a live RA3 project:
+
+- Programming model: `ATPM` (`ObjectType=74`)
+- Test row: `ProgrammingModelID=1091`
+- Action: set `AllowDoubleTap=1`, `DoubleTapPresetID=947`
+- Result: double-tap behavior worked after transfer
+
+Apply:
+
+```sql
+UPDATE tblProgrammingModel
+SET
+  AllowDoubleTap = 1,
+  DoubleTapPresetID = 947,
+  HeldButtonAction = 0,
+  HoldTime = 0,
+  HoldPresetId = NULL,
+  NeedsTransfer = 1
+WHERE ProgrammingModelID = 1091;
+```
+
+Verify:
+
+```sql
+SELECT ProgrammingModelID, Name, ObjectType, AllowDoubleTap, DoubleTapPresetID, HoldPresetId
+FROM tblProgrammingModel
+WHERE ProgrammingModelID = 1091;
+```
+
+Rollback:
+
+```sql
+UPDATE tblProgrammingModel
+SET
+  AllowDoubleTap = 0,
+  DoubleTapPresetID = NULL,
+  HeldButtonAction = 0,
+  HoldTime = 0,
+  HoldPresetId = NULL,
+  NeedsTransfer = 1
+WHERE ProgrammingModelID = 1091;
+```
+
+Notes:
+
+- Designer UI may show stale values until project close/reopen.
+- Save in Designer after DB edits; otherwise edits may not persist across reopen.
+- Keep tests isolated (single feature edit at a time) to reduce transfer/linking failures.
+
 ## 9. Cloud & Firmware
 
 ### Cloud Endpoints
@@ -238,3 +291,264 @@ UPDATE tblProgrammingModel SET AllowDoubleTap = 1, DoubleTapPresetID = <preset_i
 ### mDNS Discovery
 
 Service `_lutron._tcp.local` with TXT record containing MAC, firmware version, device class, claim status, and serial number. `CLAIM_STATUS=Unclaimed` indicates factory-reset processor awaiting pairing.
+
+## 10. Cycle/Hold Dimming Reverse-Engineering (HomeWorks Baseline)
+
+Captured from HomeWorks project DB (`ProductType=4`) with Office Entryway keypad:
+
+- `PM 499` (`ATPM`, button 2) and `PM 626` (`ATPM`, button 1) behaved as cycle-dim candidates.
+- `PM 503` (`ATPM`, button 3) behaved as hold-preset style.
+
+### Fingerprint: Cycle-Dim Style (`ATPM`)
+
+```sql
+-- Known HW cycle-like rows
+SELECT ProgrammingModelID, Name, ObjectType, HeldButtonAction, HoldPresetId,
+       AllowDoubleTap, DoubleTapPresetID, OnPresetID, OffPresetID
+FROM dbo.tblProgrammingModel
+WHERE ProgrammingModelID IN (499,626);
+```
+
+Observed values:
+
+- `ObjectType = 74` (`ATPM`)
+- `HeldButtonAction = 1`
+- `HoldPresetId = NULL`
+- `AllowDoubleTap = 0`
+- `DoubleTapPresetID = NULL`
+- valid `OnPresetID` + `OffPresetID`
+
+### Fingerprint: Hold-Preset Style (`ATPM`)
+
+```sql
+-- Known HW hold-style rows
+SELECT ProgrammingModelID, Name, ObjectType, HeldButtonAction, HoldPresetId,
+       AllowDoubleTap, DoubleTapPresetID, OnPresetID, OffPresetID
+FROM dbo.tblProgrammingModel
+WHERE ProgrammingModelID IN (503,540,569);
+```
+
+Observed values:
+
+- `ObjectType = 74` (`ATPM`)
+- `HeldButtonAction = 0`
+- `HoldPresetId IS NOT NULL`
+- optional `DoubleTapPresetID` may coexist
+
+### New Finding: RA3 "Cycle Attempt" vs HW Working Rows (2026-02-19)
+
+Direct comparison of your RA3 test row (`PM 1221`) against known-working HW ATPM rows (`PM 540`, `PM 569`) shows three critical deltas:
+
+1. Preset linkage:
+   - RA3 test: `DoubleTapPresetID=NULL`, `HoldPresetId=NULL`
+   - HW working: `DoubleTapPresetID=<id>`, `HoldPresetId=<id>`
+
+2. Action mode flags:
+   - RA3 test: `AllowDoubleTap=0`, `HeldButtonAction=1`
+   - HW working: `AllowDoubleTap=1`, `HeldButtonAction=0`
+
+3. LED logic mode:
+   - RA3 test: `LedLogic=1`
+   - HW working: `LedLogic=13`
+
+This indicates the HomeWorks "cycle/hold dim" behavior on these ATPM rows is not represented by `HeldButtonAction=1` alone. In this sample, working rows are closer to a combined hold+doubletap preset model with a distinct LED logic mode.
+
+Reference rows:
+
+```sql
+-- RA3 test row
+SELECT ProgrammingModelID, ObjectType, Name, LedLogic, AllowDoubleTap, HeldButtonAction,
+       DoubleTapPresetID, HoldPresetId, OnPresetID, OffPresetID, ParentID, ParentType
+FROM dbo.tblProgrammingModel
+WHERE ProgrammingModelID = 1221;
+
+-- HW working rows
+SELECT ProgrammingModelID, ObjectType, Name, LedLogic, AllowDoubleTap, HeldButtonAction,
+       DoubleTapPresetID, HoldPresetId, OnPresetID, OffPresetID, ParentID, ParentType
+FROM dbo.tblProgrammingModel
+WHERE ProgrammingModelID IN (540,569);
+```
+
+### Validation Timeline Note (Office Doorway Button 2)
+
+`Office > Doorway > Position 1 > Button 2` (`PM 1221`) was validated as working during live testing before the HW-style scaffold automation script was added.
+
+- Initial confusion came from testing the wrong physical button.
+- The later script run standardized DB state (`LedLogic=13`, hold+double presets populated), but did not establish first proof of runtime behavior for that button.
+
+### Preset Parameter Decode (Confirmed in HW DB)
+
+For these ATPM presets, values in `tblAssignmentCommandParameter` decode through
+`AllPresetAssignmentsWithAssignmentCommandParameter` as:
+
+- `ParameterType=1` -> `fade`
+- `ParameterType=2` -> `delay`
+- `ParameterType=3` -> `primary_level`
+
+For `AssignmentCommandType=2` (zone level command), this is the active mapping used by the view.
+
+Example (HW PM 540 / 569):
+
+- `OnPreset` rows: `fade=3`, `delay=0`, `primary_level=75`
+- `OffPreset` rows: `fade=10`, `delay=0`, `primary_level=0`
+- `DoubleTapPreset` rows: `fade=0`, `delay=0`, `primary_level=100`
+- `HoldPreset` rows: `fade=40`, `delay=30`, `primary_level=0`
+
+### Strong Correlation: ATPM Presets <-> ZoneControlUI Local Button Fields
+
+On HW rows with `LedLogic=13` (`PM 540`, `PM 569`), the preset values align with
+`tblZoneControlUI` for the same device/zone:
+
+- `LocalButtonPresetLevel` (`190` ~= `75%`) -> `OnPreset primary_level=75`
+- `LocalButtonDoubleTapPresetLevel` (`255` = `100%`) -> `DoubleTap primary_level=100`
+- `PressFadeOnTimeOrRateValue=3` -> `OnPreset fade=3`
+- `PressFadeOffTimeOrRateValue=10` -> `OffPreset fade=10`
+- `LongFadeToOffPrefadeTime=30` -> `HoldPreset delay=30`
+- `LongFadeToOffTimeOrRateValue=40` -> `HoldPreset fade=40`
+
+This suggests these rows are generated from local zone-control UI behavior, not just
+generic keypad toggle rows.
+
+### Caution on Comparing PM 1221 vs PM 540/569
+
+`PM 1221` (RA3 test) is on model `5197` (`RRST-HN3RL-XX`, button numbers `4/6/7/17/18`).
+`PM 540/569` are on model `730` (`HQR-3LD`, includes button `0` local-control semantics).
+
+### HQR-3LD Visibility Gap: Missing Local Button Chain
+
+In the converted HomeWorks-mode project, Office lamp dimmers were present as `HQR-3LD` zones but did not appear in the expected per-device programming UI. Root cause was not model lookup ambiguity; it was missing local programming rows.
+
+Validated state:
+- Office devices `3272` and `3289` had:
+  - `tblControlStationDevice.ModelInfoID = 730 (HQR-3LD)`
+  - valid `tblZoneControlUI` + zone assignments (`3278`, `3295`)
+  - existing `tblButtonGroup` rows (`3723`, `3724`)
+- But both were missing:
+  - `tblKeypadButton` (`ButtonNumber=0`) and downstream rows in:
+    - `tblProgrammingModel`
+    - `tblPreset`
+    - `tblPresetAssignment`
+    - `tblAssignmentCommandParameter`
+
+Working comparison device:
+- `3767` (`TESTING`) included the full chain and was programmable in UI.
+
+Implication:
+- For HQR-3LD, model conversion alone is insufficient.
+- HomeWorks UI visibility for local device programming depends on the full local-button chain, not just `ModelInfoID` + zone records.
+
+Repair script:
+- `~/lutron-tools/tools/sql/hw-add-hqr3ld-local-programming.sql`
+- Dry-run currently reports:
+  - `3272`: `WILL_ADD_CHAIN`
+  - `3289`: `WILL_ADD_CHAIN`
+
+Applied result (HomeWorks-mode project):
+- `3272` and `3289` now each have:
+  - `tblKeypadButton` local row (`ButtonNumber=0`)
+  - `tblProgrammingModel` (`ATPM`, `ObjectType=74`)
+  - 4 presets (`On/Off/Hold/DoubleTap`)
+  - 4 preset assignments to their zones (`3278`, `3295`)
+- `sel_ProgrammingModelIssues` post-check: `0` corruption rows.
+- `tblProject.NeedsSave = 1`.
+
+Follow-up fix (Guest Room):
+- Found remaining non-programmable lamp dimmer:
+  - `3233` (`Guest Room > Desk > Position 1`) was still `RRD-3LD` (`ModelInfoID=461`) and missing local chain.
+- Updated repair workflow to auto-target all project 3LD dimmers:
+  - normalizes legacy `RRD-3LD (461)` -> `HQR-3LD (730)`
+  - adds missing local `Button 0` programming chain only where absent.
+- Post-fix verification:
+  - `3233`, `3272`, `3289` all now `HQR-3LD (730)`
+  - all have `HasLocalButton0=1` and `HasProgrammingModel=1`
+  - integrity check remains clean (`sel_ProgrammingModelIssues = 0`).
+
+Follow-up fix (all 3PD lamp dimmers, including Laundry):
+- Extended script to also target 3PD models:
+  - `HQR-3PD-1 (1300)` and legacy `RR-3PD-1 (1166)`
+- Added missing local chain for all converted 3PD devices:
+  - Dining Room `2804`
+  - Foyer `2770`
+  - Hallway `2855`
+  - Kitchen `266`, `2821`
+  - Laundry Room `3043`
+  - Living Room `2787`
+  - Master Bedroom `2838`
+- Post-apply verification:
+  - every project lamp dimmer (`HQR-3LD` + `HQR-3PD-1`) now has:
+    - `HasLocalButton0=1`
+    - `HasProgrammingModel=1`
+  - integrity check clean (`sel_ProgrammingModelIssues = 0`)
+  - project remains HomeWorks mode (`ProductType=4`) with `NeedsSave=1`.
+
+### L01 Pico behavior and root cause (updated)
+
+Validated behavior:
+- `PJ2-4B-XXX-L01` can expose/program all four buttons in HomeWorks UI.
+- This was confirmed with newly created `TESTTEST` (`ControlStationDeviceID=3913`) before the later alignment script changes.
+
+Root cause for Office/Guest mismatch:
+- Converted L01 devices carried stale conversion-era bindings:
+  - `tblControlStationDevice.AssociatedTemplateId = 1173` (expected `424`)
+  - `tblButtonGroup.ButtonGroupInfoID = 1463` (expected `1459` for `ModelInfoID=3608`)
+  - SSRLPM rows (`ObjectType=76`) had `LedLogic = 4` (native profile uses `0`)
+- In `SQLMODELINFO.MDF`, `TBLBUTTONGROUPINFOMODELINFOMAP` maps `ModelInfoID=3608` to `ButtonGroupInfoID=1459`, not `1463`.
+
+### L01 Pico normalization scripts
+
+1) Programming cleanup script:
+- `~/lutron-tools/tools/sql/hw-normalize-l01-pico-programming.sql`
+- Removes legacy `tblPresetAssignment` + `tblAssignmentCommandParameter` rows under L01 button presets.
+
+2) Template/binding repair script:
+- `~/lutron-tools/tools/sql/hw-fix-l01-pico-template-bindings.sql`
+- Aligns all `PJ2-4B-XXX-L01` devices to canonical bindings:
+  - `AssociatedTemplateId -> 424`
+  - `ButtonGroupInfoID -> 1459`
+  - SSRLPM (`ObjectType=76`) `LedLogic -> 0`
+  - marks PM rows `NeedsTransfer=1`
+  - sets `tblProject.NeedsSave=1`
+
+Applied repair result:
+- Updated rows:
+  - `UpdatedAssociatedTemplateId = 2`
+  - `UpdatedButtonGroupInfoID = 4`
+  - `UpdatedSSRLPMRows = 6`
+  - `UpdatedProjectNeedsSave = 1`
+- Post-check: all current L01 4B devices `365`, `1152`, `1176`, `2919`, `3913` report:
+  - `AssociatedTemplateId = 424`
+  - `ButtonGroupInfoID = 1459`
+  - SSRLPM `LedLogic = 0`
+  - zero pending deltas in dry-run output
+- Integrity check remains clean (`sel_ProgrammingModelIssues = 0` from prior validation).
+
+So `1221` vs `540/569` may be cross-model behavior, not a like-for-like programming model comparison.
+
+### Important: Model Capability Check (RA3 vs HW Hybrid Keypads)
+
+In `SQLMODELINFO.MDF` (v26.0.1.100), both HomeWorks and RA3 hybrid 3BRL keypads map to the same button action capability list:
+
+- HW: `HRST-HN3RL-XX` (`ModelInfoID=5194`)
+- RA3: `RRST-HN3RL-XX` (`ModelInfoID=5197`)
+- both -> `BUTTONACTIONLISTID=2` (`Press/Release/Multi-tap/Hold`)
+- action types: `Press`, `Release`, `Hold`, `MultiTap`
+
+This indicates cycle/hold gating is not explained by model action-list capabilities alone.
+
+```sql
+-- Run in SQLMODELINFO.MDF
+SELECT kci.MODELINFOID, mi.LUTRONMODELNUMBERBASE, kci.BUTTONACTIONLISTID, bal.DESCRIPTION
+FROM dbo.TBLKEYPADCONTROLLERINFO kci
+JOIN dbo.TBLMODELINFO mi ON mi.MODELINFOID = kci.MODELINFOID
+JOIN dbo.TBLBUTTONACTIONLIST bal ON bal.BUTTONACTIONLISTID = kci.BUTTONACTIONLISTID
+WHERE kci.MODELINFOID IN (5194,5197);
+```
+
+### Transfer/Integrity Sanity Checks
+
+```sql
+EXEC dbo.sel_ProgrammingModelIssues;
+EXEC dbo.sel_CheckCorruptBtnProgramming @ProgrammingParentID = <button_id>;
+```
+
+If these are clean but runtime behavior differs, the blocker is likely feature gating during transfer/runtime interpretation rather than row-level corruption.

@@ -12,7 +12,14 @@
  */
 
 import { createSocket, type Socket } from "dgram";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { stripVTControlCharacters } from "util";
 import {
@@ -501,7 +508,9 @@ function renderPacketRow(row: PacketRow) {
     cells.push(clipCell(row.raw, layout.raw, "right"));
   }
   cells.push(clipCell(row.delta, layout.delta, "right"));
-  cells.push(colorCell(clipCell(row.slot, layout.slot), row.slotColor ?? WHITE));
+  cells.push(
+    colorCell(clipCell(row.slot, layout.slot), row.slotColor ?? WHITE),
+  );
   cells.push(
     colorCell(clipCell(row.miss, layout.miss, "right"), row.missColor ?? RED),
   );
@@ -570,11 +579,15 @@ function updateCcaSlotTracker(
   let status = slotStatus(confidencePct);
   const stride = dominantStride(state.strideCounts);
   const dominantCount =
-    stride !== null ? (state.strideCounts.get(stride) || 0) : 0;
-  const stridePurity =
-    state.samples > 0 ? dominantCount / state.samples : 0;
+    stride !== null ? state.strideCounts.get(stride) || 0 : 0;
+  const stridePurity = state.samples > 0 ? dominantCount / state.samples : 0;
   // If confidence is still warming but stride is stable, show TRACK for usability.
-  if (status === "LEARN" && stride !== null && state.samples >= 4 && confidencePct >= 40) {
+  if (
+    status === "LEARN" &&
+    stride !== null &&
+    state.samples >= 4 &&
+    confidencePct >= 40
+  ) {
     status = "TRACK";
   }
 
@@ -1006,9 +1019,7 @@ function displayCcxPacket(
     } else if ("deviceSerial" in msg) {
       const serial = (msg as { deviceSerial: number }).deviceSerial;
       const name = getSerialName(serial);
-      deviceText = name
-        ? `serial:${serial} "${name}"`
-        : `serial:${serial}`;
+      deviceText = name ? `serial:${serial} "${name}"` : `serial:${serial}`;
     }
     const actionText = msg.type.replaceAll("_", " ");
 
@@ -1409,11 +1420,17 @@ function cleanup() {
 // ============================================================================
 
 if (!host) {
-  console.error(`Usage: bun cli/nucleo.ts <host> [--update-leap] [--leap-host <ip>] [--leap-certs <name>]`);
+  console.error(
+    `Usage: bun cli/nucleo.ts <host> [--update-leap] [--leap-host <ip>] [--leap-certs <name>]`,
+  );
   console.error(`  or set NUCLEO_HOST environment variable`);
   console.error(`\nFlags:`);
-  console.error(`  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`);
-  console.error(`  --leap-host <ip>      LEAP processor IP (default: 10.0.0.1)`);
+  console.error(
+    `  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`,
+  );
+  console.error(
+    `  --leap-host <ip>      LEAP processor IP (default: 10.0.0.1)`,
+  );
   console.error(`  --leap-certs <name>   Cert name prefix (default: ra3)`);
   process.exit(1);
 }
@@ -1473,10 +1490,17 @@ function loadSavedLeapData(): boolean {
 async function startup() {
   if (UPDATE_LEAP) {
     try {
-      const { LeapConnection, fetchLeapData, buildDumpData } = await import("../tools/leap-client");
+      const { LeapConnection, fetchLeapData, buildDumpData } = await import(
+        "../tools/leap-client"
+      );
 
-      console.log(`${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`);
-      const leap = new LeapConnection({ host: LEAP_HOST, certName: LEAP_CERTS });
+      console.log(
+        `${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`,
+      );
+      const leap = new LeapConnection({
+        host: LEAP_HOST,
+        certName: LEAP_CERTS,
+      });
       await leap.connect();
       const result = await fetchLeapData(leap);
       leap.close();
@@ -1491,9 +1515,13 @@ async function startup() {
       const nZones = Object.keys(dumpData.zones).length;
       const nDevices = Object.keys(dumpData.devices).length;
       const nPresets = Object.keys(dumpData.presets).length;
-      console.log(`${GREEN}LEAP: ${nZones} zones, ${nDevices} devices, ${nPresets} presets → saved to ${filePath}${RESET}\n`);
+      console.log(
+        `${GREEN}LEAP: ${nZones} zones, ${nDevices} devices, ${nPresets} presets → saved to ${filePath}${RESET}\n`,
+      );
     } catch (err: any) {
-      console.error(`${YELLOW}LEAP fetch failed: ${err.message} — using hardcoded config${RESET}\n`);
+      console.error(
+        `${YELLOW}LEAP fetch failed: ${err.message} — using saved LEAP data${RESET}\n`,
+      );
       // Fall back to saved data
       loadSavedLeapData();
     }
