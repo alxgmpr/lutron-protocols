@@ -3,10 +3,13 @@
 /**
  * Offline RA3/HW project file converter.
  *
- * Extracts .ra3/.hw (ZIP → MTF .lut → MDF), runs model-ID + ProductType
- * conversion inside a Docker SQL Server 2022 container, and repacks.
+ * The .lut file inside an .ra3/.hw ZIP is a SQL Server BACKUP (.bak) file.
+ * Designer uses BACKUP DATABASE / RESTORE DATABASE (via SMO) for all file I/O.
  *
- * No Windows VM, no Designer, no SQLMODELINFO dependency.
+ * This converter: RESTORE .bak → run conversion SQL → BACKUP to new .bak.
+ * The resulting .bak is placed as the .lut inside the output ZIP.
+ *
+ * No Windows VM, no Designer, no MDF page-level manipulation needed.
  */
 
 import { parseArgs } from "util";
@@ -23,7 +26,6 @@ const { values, positionals } = parseArgs({
     direction: { type: "string" },
     "extract-only": { type: "string" },
     "pack-only": { type: "string" },
-    template: { type: "string" },
     "docker-image": {
       type: "string",
       default: "mcr.microsoft.com/mssql/server:2022-RTM-ubuntu-20.04",
@@ -40,14 +42,16 @@ if (values.help || (positionals.length === 0 && !values.diff)) {
   console.log(`
 project-convert — Offline RA3/HW project file converter
 
+Uses RESTORE/BACKUP (same as Designer) to produce fully compatible project files.
+
 Usage:
   bun run tools/project-convert.ts <input.ra3|.hw> <output.ra3|.hw> [options]
   bun run tools/project-convert.ts --diff <fileA> <fileB>
 
 Options:
   --direction <RA3_TO_HW|HW_TO_RA3>  Conversion direction (auto-detected from extensions)
-  --extract-only <dir>                Extract MDF to directory, don't convert
-  --pack-only <mdf> --template <lut>  Pack MDF back using template LUT
+  --extract-only <dir>                Extract .bak from project ZIP
+  --pack-only <bak>                   Pack .bak into project ZIP
   --docker-image <image>              SQL Server image (default: 2022-RTM-ubuntu-20.04)
   --keep-container                    Don't remove Docker container after conversion
   --diff                              Show schema diff between two project files
@@ -58,8 +62,6 @@ Options:
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const MTF_HEADER_SIZE = 0x4000; // 16 KB MTF header
-const ESET_ALIGNMENT = 0x1000; // 4 KB alignment for MTF structural blocks
 const CONTAINER_NAME = `lutron-convert-${Date.now()}`;
 const SA_PASSWORD = "LutronPass1!";
 
@@ -130,87 +132,16 @@ async function execOrDie(
   return r.stdout;
 }
 
-const SQL_PAGE_SIZE = 8192; // SQL Server page size
-const SQL_PAGE_HEADER_SIZE = 96; // SQL Server page header (LSN, checksum, etc.)
-
-/** Known MTF structural block signatures (4-byte ASCII at block start) */
-const MTF_SIGNATURES = new Set(["SFMB", "ESET", "TSMP"]);
-
-function isMtfBlock(buf: Buffer, offset: number): boolean {
-  if (offset + 4 > buf.length) return false;
-  const magic = buf.subarray(offset, offset + 4).toString("ascii");
-  return MTF_SIGNATURES.has(magic);
-}
-
-/**
- * Find where the MTF structural footer starts in the LUT.
- *
- * The LUT ends with a sequence of 4K-aligned MTF blocks (SFMB, ESET, TSMP).
- * Scan backward from the end at 4K intervals; the lowest contiguous MTF block
- * is where the footer begins. Everything before that is MDF data.
- */
-function findMtfFooterStart(buf: Buffer): number {
-  let footerStart = buf.length;
-
-  for (
-    let off = buf.length - ESET_ALIGNMENT;
-    off >= MTF_HEADER_SIZE;
-    off -= ESET_ALIGNMENT
-  ) {
-    if (isMtfBlock(buf, off)) {
-      footerStart = off;
-    } else {
-      // Not an MTF block — this is the last MDF region byte (possibly zero page).
-      // The footer starts at the first MTF block above.
-      break;
-    }
-  }
-
-  if (footerStart >= buf.length) {
-    throw new Error("No MTF footer blocks found in LUT");
-  }
-  return footerStart;
-}
-
-/** Align offset up to next 4K boundary */
-function align4K(offset: number): number {
-  return (offset + ESET_ALIGNMENT - 1) & ~(ESET_ALIGNMENT - 1);
-}
-
-/**
- * Compute SQL Server page checksum (PAGE_VERIFY = CHECKSUM).
- *
- * Algorithm: XOR all 32-bit words on the page (with the checksum field at
- * bytes 60-63 zeroed), rotating the accumulator left by 1 bit after each
- * 512-byte sector. Verified against 3718 real pages from Designer MDF.
- */
-function sqlPageChecksum(page: Buffer): number {
-  const saved = page.readUInt32LE(60);
-  page.writeUInt32LE(0, 60);
-  let c = 0;
-  for (let sector = 0; sector < 16; sector++) {
-    for (let i = 0; i < 512; i += 4) {
-      c = (c ^ page.readUInt32LE(sector * 512 + i)) >>> 0;
-    }
-    if (sector < 15) c = ((c << 1) | (c >>> 31)) >>> 0;
-  }
-  page.writeUInt32LE(saved, 60);
-  return c;
-}
-
-// ── Core: Extract MDF ────────────────────────────────────────────────
+// ── Core: Extract .bak from project ZIP ─────────────────────────────
 
 interface ExtractResult {
-  mdfPath: string;
-  templateLutPath: string;
+  bakPath: string;
   lutFilename: string;
   tempDir: string;
-  /** Original MDF size stored in the LUT (before zero-padding for SQL Server) */
-  originalStoredSize: number;
 }
 
-async function extractMdf(projectFile: string): Promise<ExtractResult> {
-  console.log(`Extracting MDF from ${basename(projectFile)}...`);
+async function extractBak(projectFile: string): Promise<ExtractResult> {
+  console.log(`Extracting backup from ${basename(projectFile)}...`);
 
   const tempDir = makeTempDir("lutron-extract");
   const unzipDir = join(tempDir, "unzipped");
@@ -219,7 +150,7 @@ async function extractMdf(projectFile: string): Promise<ExtractResult> {
   // Unzip
   await execOrDie(["unzip", "-o", projectFile, "-d", unzipDir], "unzip");
 
-  // Find .lut file
+  // Find .lut file (which IS a SQL Server .bak file)
   const files = readdirSync(unzipDir);
   const lutFile = files.find((f) => f.endsWith(".lut"));
   if (!lutFile) {
@@ -229,109 +160,29 @@ async function extractMdf(projectFile: string): Promise<ExtractResult> {
   }
 
   const lutPath = join(unzipDir, lutFile);
-  const lutBuf = Buffer.from(await Bun.file(lutPath).arrayBuffer());
-  console.log(`  LUT: ${lutFile} (${(lutBuf.length / 1024 / 1024).toFixed(1)} MB)`);
+  const lutSize = statSync(lutPath).size;
+  console.log(`  LUT/BAK: ${lutFile} (${(lutSize / 1024 / 1024).toFixed(1)} MB)`);
 
-  if (lutBuf.length < MTF_HEADER_SIZE + 8192) {
-    throw new Error(`LUT file too small: ${lutBuf.length} bytes`);
-  }
+  // Copy .lut → .bak for clarity (it's the same file)
+  const bakPath = join(tempDir, "Project.bak");
+  await Bun.write(bakPath, Bun.file(lutPath));
 
-  // Find where the MTF footer blocks (SFMB, ESET, TSMP) start.
-  // Everything between the 16KB header and the footer is MDF data.
-  const footerStart = findMtfFooterStart(lutBuf);
-  const storedSize = footerStart - MTF_HEADER_SIZE;
-  const footerSize = lutBuf.length - footerStart;
-
-  // Read expected file size from page 0 file header.
-  // SQL Server records the total file size (in 8KB pages) at MDF offset 254 (uint32 LE).
-  // The LUT only stores used pages; we must zero-pad to the expected size.
-  const MDF_SIZE_FIELD_OFFSET = 254; // page 0 body offset 158
-  const expectedPages = lutBuf.readUInt32LE(MTF_HEADER_SIZE + MDF_SIZE_FIELD_OFFSET);
-  const expectedSize = expectedPages * SQL_PAGE_SIZE;
-
-  console.log(`  Stored: ${storedSize} bytes (${storedSize / SQL_PAGE_SIZE} pages), expected: ${expectedSize} bytes (${expectedPages} pages), footer: ${footerSize} bytes`);
-
-  // Write MDF: stored SQL pages + zero padding to expected size
-  const mdfPath = join(tempDir, "Project.mdf");
-  if (expectedSize > storedSize) {
-    const mdfBuf = Buffer.concat([
-      lutBuf.subarray(MTF_HEADER_SIZE, footerStart),
-      Buffer.alloc(expectedSize - storedSize, 0),
-    ]);
-    await Bun.write(mdfPath, mdfBuf);
-    console.log(`  Padded MDF: ${storedSize} → ${expectedSize} bytes (+${expectedSize - storedSize} zero bytes)`);
-  } else {
-    await Bun.write(mdfPath, lutBuf.subarray(MTF_HEADER_SIZE, footerStart));
-  }
-
-  // Keep full LUT as template
-  const templateLutPath = join(tempDir, "template.lut");
-  await Bun.write(templateLutPath, lutBuf);
-
-  return { mdfPath, templateLutPath, lutFilename: lutFile, tempDir, originalStoredSize: storedSize };
+  return { bakPath, lutFilename: lutFile, tempDir };
 }
 
-// ── Core: Pack Project ───────────────────────────────────────────────
+// ── Core: Pack project ZIP from .bak ────────────────────────────────
 
 async function packProject(
-  mdfPath: string,
-  templateLutPath: string,
+  bakPath: string,
   lutFilename: string,
   outputFile: string
 ): Promise<void> {
   console.log(`Packing project to ${basename(outputFile)}...`);
 
-  const templateBuf = Buffer.from(
-    await Bun.file(templateLutPath).arrayBuffer()
-  );
-  const newMdf = Buffer.from(await Bun.file(mdfPath).arrayBuffer());
-
-  // Extract template header (first 16KB)
-  const header = Buffer.from(templateBuf.subarray(0, MTF_HEADER_SIZE));
-
-  // Find the actual MTF footer blocks in the template (SFMB, ESET, TSMP).
-  const templateFooterStart = findMtfFooterStart(templateBuf);
-  const mtfFooter = Buffer.from(templateBuf.subarray(templateFooterStart));
-
-  // MDF must be 4K-aligned so the MTF footer starts at a 4K boundary.
-  const newFooterOffset = align4K(MTF_HEADER_SIZE + newMdf.length);
-  const paddingNeeded = newFooterOffset - MTF_HEADER_SIZE - newMdf.length;
-
-  // Build new LUT: header + MDF + padding-to-4K + MTF footer
-  const newLut = Buffer.concat([
-    header,
-    newMdf,
-    Buffer.alloc(paddingNeeded, 0),
-    mtfFooter,
-  ]);
-
-  // The last SFMB block contains a uint64 LE pointer at offset 0x48 to the
-  // first SFMB (footer start). Update it to reflect the new footer position.
-  // Scan backward to find the last SFMB.
-  for (let off = newLut.length - ESET_ALIGNMENT; off >= newFooterOffset; off -= ESET_ALIGNMENT) {
-    if (newLut.subarray(off, off + 4).toString("ascii") === "SFMB") {
-      const currentPtr = newLut.readUInt32LE(off + 0x48);
-      // Only patch if the pointer looks like a footer offset (> MTF_HEADER_SIZE)
-      if (currentPtr >= MTF_HEADER_SIZE && currentPtr !== newFooterOffset) {
-        console.log(`  Patching SFMB footer pointer: 0x${currentPtr.toString(16)} → 0x${newFooterOffset.toString(16)}`);
-        newLut.writeUInt32LE(newFooterOffset, off + 0x48);
-        // Upper 32 bits of uint64 — zero since offsets fit in 32 bits
-        newLut.writeUInt32LE(0, off + 0x4c);
-      }
-      break; // Only patch the last SFMB
-    }
-  }
-
-  console.log(`  New LUT: ${(newLut.length / 1024 / 1024).toFixed(1)} MB (MDF: ${(newMdf.length / 1024 / 1024).toFixed(1)} MB, footer: ${mtfFooter.length} bytes)`);
-
-  // Write LUT to temp file, then zip with matching ZIP metadata.
+  // The .bak file goes directly into the ZIP as the .lut file.
   // Designer (.NET) expects create_system=0 (MS-DOS), version=20,
   // external_attr=0. macOS `zip` produces Unix attributes that
   // cause Designer to reject the file.
-  const packDir = makeTempDir("lutron-pack");
-  const lutPath = join(packDir, lutFilename);
-  await Bun.write(lutPath, newLut);
-
   await execOrDie(
     [
       "python3", "-c", `
@@ -349,7 +200,7 @@ with open(lut_path, 'rb') as f:
 compressed = zlib.compress(data, 6)[2:-4]  # raw deflate (strip zlib header/trailer)
 crc = zlib.crc32(data) & 0xFFFFFFFF
 
-# DOS date/time (2026-02-19 12:00:00)
+# DOS date/time
 now = time.localtime()
 dos_time = (now.tm_hour << 11) | (now.tm_min << 5) | (now.tm_sec // 2)
 dos_date = ((now.tm_year - 1980) << 9) | (now.tm_mon << 5) | now.tm_mday
@@ -410,14 +261,11 @@ print(f'ZIP created: {os.path.getsize(out_path)} bytes, CRC={crc:08x}')
 `,
       outputFile,
       lutFilename,
-      lutPath,
+      bakPath,
     ],
     "zip (python)",
     { timeout: 120_000 }
   );
-
-  // Clean up pack temp dir
-  rmSync(packDir, { recursive: true, force: true });
 
   const outSize = statSync(outputFile).size;
   console.log(`  Output: ${basename(outputFile)} (${(outSize / 1024 / 1024).toFixed(1)} MB)`);
@@ -513,6 +361,236 @@ async function sqlcmdDb(
   );
 }
 
+/**
+ * SQL to add local dimmer programming chain for HQR-3LD/HQR-3PD-1 devices.
+ *
+ * In RA3, lamp dimmers (RRD-3LD, RR-3PD-1) are simple zones with no local
+ * button programming. In HomeWorks, the equivalent devices (HQR-3LD, HQR-3PD-1)
+ * need a full programming chain: ButtonGroup → KeypadButton → ProgrammingModel
+ * → Preset → PresetAssignment → AssignmentCommandParameter.
+ *
+ * Adapted from tools/sql/hw-add-hqr3ld-local-programming.sql.
+ */
+function buildLocalDimmerProgrammingSql(): string {
+  return `
+-- === Add local dimmer programming chain for 3LD/3PD ===
+
+PRINT '=== Adding local dimmer programming for HQR-3LD/3PD ===';
+
+-- Find 3LD/3PD devices that have a zone but no local button
+CREATE TABLE #DimmerTargets
+(
+  RN INT IDENTITY(1,1) PRIMARY KEY,
+  DeviceID BIGINT NOT NULL,
+  AssignedZoneID BIGINT NOT NULL,
+  ExistingButtonGroupID BIGINT NULL,
+  NeedInsertButtonGroup BIT NOT NULL
+);
+
+INSERT INTO #DimmerTargets (DeviceID, AssignedZoneID, ExistingButtonGroupID, NeedInsertButtonGroup)
+SELECT
+  csd.ControlStationDeviceID,
+  zc.AssignedZoneID,
+  bg.ButtonGroupID,
+  CASE WHEN bg.ButtonGroupID IS NULL THEN 1 ELSE 0 END
+FROM dbo.tblControlStationDevice csd
+CROSS APPLY (
+  SELECT TOP (1) AssignedZoneID
+  FROM dbo.tblZoneControlUI
+  WHERE ParentDeviceID = csd.ControlStationDeviceID AND ParentDeviceType = 5
+  ORDER BY ZoneControlUIID
+) zc
+OUTER APPLY (
+  SELECT TOP (1) ButtonGroupID
+  FROM dbo.tblButtonGroup
+  WHERE ParentDeviceID = csd.ControlStationDeviceID AND ParentDeviceType = 5
+  ORDER BY ButtonGroupID
+) bg
+WHERE csd.ModelInfoID IN (730, 1300)  -- HQR-3LD, HQR-3PD-1
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.tblKeypadButton
+    WHERE ParentDeviceID = csd.ControlStationDeviceID
+      AND ParentDeviceType = 5 AND ButtonNumber = 0
+  );
+
+DECLARE @dimmerCount INT = (SELECT COUNT(*) FROM #DimmerTargets);
+IF @dimmerCount = 0
+BEGIN
+  PRINT '  No 3LD/3PD devices need programming chain.';
+END
+ELSE
+BEGIN
+  PRINT '  Found ' + CAST(@dimmerCount AS VARCHAR) + ' device(s) needing programming chain.';
+
+  BEGIN TRANSACTION;
+
+  -- Use Designer's NextObjectID allocator (NOT MAX of existing IDs, which can
+  -- pick up sentinel values near INT_MAX from orphaned rows).
+  DECLARE @NextID BIGINT;
+  SELECT @NextID = NextObjectID FROM dbo.tblNextObjectID;
+  IF @NextID IS NULL SET @NextID = ISNULL((SELECT MAX(ButtonGroupID) FROM dbo.tblButtonGroup), 0) + 1;
+
+  -- Pre-calculate total IDs needed: per device = 1 BG + 1 Btn + 1 PM + 4 Presets + 4 PAs = 11
+  -- Plus BG might be skipped if it already exists, but we reserve the slot anyway.
+  DECLARE @NeedBG INT = (SELECT SUM(CAST(NeedInsertButtonGroup AS INT)) FROM #DimmerTargets);
+  DECLARE @TotalNeeded INT = @NeedBG + (@dimmerCount * 10); -- BGs + Btn+PM+4Preset+4PA per device
+
+  DECLARE @BaseBGID BIGINT = @NextID;
+  DECLARE @BaseBtnID BIGINT = @NextID + @NeedBG;
+  DECLARE @BasePMID BIGINT = @BaseBtnID + @dimmerCount;
+  DECLARE @BasePresetID BIGINT = @BasePMID + @dimmerCount;
+  DECLARE @BasePAID BIGINT = @BasePresetID + (@dimmerCount * 4);
+
+  -- Update NextObjectID to account for all allocated IDs
+  UPDATE dbo.tblNextObjectID SET NextObjectID = @BasePAID + (@dimmerCount * 4);
+  PRINT '  NextObjectID: ' + CAST(@NextID AS VARCHAR) + ' -> ' + CAST(@BasePAID + (@dimmerCount * 4) AS VARCHAR);
+
+  -- Build ID assignments
+  CREATE TABLE #DimmerMap
+  (
+    RN INT PRIMARY KEY,
+    DeviceID BIGINT NOT NULL,
+    AssignedZoneID BIGINT NOT NULL,
+    NeedInsertBG BIT NOT NULL,
+    BGID BIGINT NOT NULL,
+    BtnID BIGINT NOT NULL,
+    PMID BIGINT NOT NULL,
+    OnPID BIGINT NOT NULL,
+    OffPID BIGINT NOT NULL,
+    HoldPID BIGINT NOT NULL,
+    DblPID BIGINT NOT NULL,
+    OnPAID BIGINT NOT NULL,
+    OffPAID BIGINT NOT NULL,
+    HoldPAID BIGINT NOT NULL,
+    DblPAID BIGINT NOT NULL
+  );
+
+  INSERT INTO #DimmerMap
+  SELECT
+    t.RN, t.DeviceID, t.AssignedZoneID, t.NeedInsertButtonGroup,
+    CASE WHEN t.ExistingButtonGroupID IS NULL
+      THEN @BaseBGID + SUM(CASE WHEN t.ExistingButtonGroupID IS NULL THEN 1 ELSE 0 END) OVER (ORDER BY t.RN) - 1
+      ELSE t.ExistingButtonGroupID END,
+    @BaseBtnID + (t.RN - 1),
+    @BasePMID + (t.RN - 1),
+    @BasePresetID + ((t.RN - 1) * 4),
+    @BasePresetID + ((t.RN - 1) * 4) + 1,
+    @BasePresetID + ((t.RN - 1) * 4) + 2,
+    @BasePresetID + ((t.RN - 1) * 4) + 3,
+    @BasePAID + ((t.RN - 1) * 4),
+    @BasePAID + ((t.RN - 1) * 4) + 1,
+    @BasePAID + ((t.RN - 1) * 4) + 2,
+    @BasePAID + ((t.RN - 1) * 4) + 3
+  FROM #DimmerTargets t;
+
+  -- ButtonGroup (ButtonGroupInfoID=439, ButtonGroupType=8 = local dimmer)
+  INSERT INTO dbo.tblButtonGroup
+    (ButtonGroupID, Name, DatabaseRevision, SortOrder, ButtonGroupInfoID,
+     ButtonGroupProgrammingType, Notes, ParentDeviceID, ParentDeviceType,
+     ButtonGroupObjectType, StndAlnQSTmplBtnGrpInfoID, IsValid, ButtonGroupType,
+     LastButtonPressRaiseLowerEvent, WhereUsedId, TemplateID, TemplateUsedID,
+     TemplateReferenceID, TemplateInstanceNumber, Xid)
+  SELECT
+    m.BGID, N'Button Group 001', 0, 0, 439, 1, NULL,
+    m.DeviceID, 5, 1, NULL, 1, 8,
+    0, 2147483647, NULL, NULL, NULL, NULL, NULL
+  FROM #DimmerMap m WHERE m.NeedInsertBG = 1;
+
+  -- KeypadButton (button 0 = local button)
+  INSERT INTO dbo.tblKeypadButton
+    (ButtonID, Name, DatabaseRevision, SortOrder, BacklightLevel, ButtonNumber,
+     ButtonInfoId, CorrespondingLedId, ButtonType, ContactClosureInputNormalState,
+     ProgrammingModelID, ComponentNumber, ParentDeviceID, ParentDeviceType,
+     WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+     TemplateInstanceNumber, Xid)
+  SELECT
+    m.BtnID, N'Button 0', 0, 0, 255, 0, NULL, NULL,
+    1, 0, m.PMID, NULL, m.DeviceID, 5,
+    2147483647, NULL, NULL, NULL, NULL, NULL
+  FROM #DimmerMap m;
+
+  -- ProgrammingModel (ObjectType=74, LedLogic=13)
+  INSERT INTO dbo.tblProgrammingModel
+    (ProgrammingModelID, ObjectType, Name, DatabaseRevision, SortOrder,
+     LedLogic, UseReverseLedLogic, Notes, ReferencePresetIDForLed,
+     AllowDoubleTap, HeldButtonAction, HoldTime, StopQedShadesIfMoving,
+     PresetID, DoubleTapPresetID, HoldPresetId, PressPresetID,
+     ReleasePresetID, OnPresetID, OffPresetID, Direction, ControlType,
+     VariableId, ThreeWayToggle, ParentID, ParentType, NeedsTransfer,
+     WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+     TemplateInstanceNumber, Xid)
+  SELECT
+    m.PMID, 74, N'ATPM', 0, 0,
+    13, 0, N'', NULL,
+    1, 0, 0, 0,
+    NULL, m.DblPID, m.HoldPID, NULL,
+    NULL, m.OnPID, m.OffPID, NULL, 0,
+    NULL, NULL, m.BtnID, 57, 1,
+    2147483647, NULL, NULL, NULL, NULL, NULL
+  FROM #DimmerMap m;
+
+  -- Presets (On, Off, Hold, DoubleTap)
+  INSERT INTO dbo.tblPreset
+    (PresetID, Name, DatabaseRevision, SortOrder, ParentID, ParentType,
+     NeedsTransfer, PresetType, WhereUsedId, TemplateID, TemplateUsedID,
+     TemplateReferenceID, TemplateInstanceNumber, IsGPDPreset,
+     SmartProgrammingDefaultGUID, Xid)
+  SELECT m.OnPID, N'Press On', 0, 0, m.PMID, 74, 1, 1, 2147483647,
+         NULL, NULL, NULL, NULL, 0, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.OffPID, N'Off Level', 0, 0, m.PMID, 74, 1, 1, 2147483647,
+         NULL, NULL, NULL, NULL, 0, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.HoldPID, N'Hold', 0, 0, m.PMID, 74, 1, 1, 2147483647,
+         NULL, NULL, NULL, NULL, 0, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.DblPID, N'Double Tap', 0, 0, m.PMID, 74, 1, 1, 2147483647,
+         NULL, NULL, NULL, NULL, 0, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m;
+
+  -- PresetAssignment (link each preset to its assigned zone)
+  INSERT INTO dbo.tblPresetAssignment
+    (PresetAssignmentID, Name, DatabaseRevision, SortOrder, ParentID,
+     ParentType, AssignableObjectID, AssignableObjectType,
+     AssignmentCommandType, NeedsTransfer, AssignmentCommandGroup,
+     WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+     TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+  SELECT m.OnPAID, N'', 0, 0, m.OnPID, 43, m.AssignedZoneID, 15,
+         2, 1, 1, 2147483647, NULL, NULL, NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.OffPAID, N'', 0, 0, m.OffPID, 43, m.AssignedZoneID, 15,
+         2, 1, 1, 2147483647, NULL, NULL, NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.HoldPAID, N'', 0, 0, m.HoldPID, 43, m.AssignedZoneID, 15,
+         2, 1, 1, 2147483647, NULL, NULL, NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m
+  UNION ALL
+  SELECT m.DblPAID, N'', 0, 0, m.DblPID, 43, m.AssignedZoneID, 15,
+         2, 1, 1, 2147483647, NULL, NULL, NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', NULL FROM #DimmerMap m;
+
+  -- Command parameters (fade, delay, level for each preset)
+  -- Values from verified HQR-3LD template: On=75% 3s, Off=0% 10s, Hold=0% 40s, DoubleTap=100% 0s
+  INSERT INTO dbo.tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+  SELECT 0, m.OnPAID, 2, 0 FROM #DimmerMap m      -- On delay=0
+  UNION ALL SELECT 1, m.OnPAID, 1, 3 FROM #DimmerMap m   -- On fade=3
+  UNION ALL SELECT 2, m.OnPAID, 3, 75 FROM #DimmerMap m  -- On level=75%
+  UNION ALL SELECT 0, m.OffPAID, 2, 0 FROM #DimmerMap m  -- Off delay=0
+  UNION ALL SELECT 1, m.OffPAID, 1, 10 FROM #DimmerMap m -- Off fade=10
+  UNION ALL SELECT 2, m.OffPAID, 3, 0 FROM #DimmerMap m  -- Off level=0%
+  UNION ALL SELECT 0, m.HoldPAID, 2, 30 FROM #DimmerMap m -- Hold delay=30
+  UNION ALL SELECT 1, m.HoldPAID, 1, 40 FROM #DimmerMap m -- Hold fade=40
+  UNION ALL SELECT 2, m.HoldPAID, 3, 0 FROM #DimmerMap m  -- Hold level=0%
+  UNION ALL SELECT 0, m.DblPAID, 2, 0 FROM #DimmerMap m   -- Dbl delay=0
+  UNION ALL SELECT 1, m.DblPAID, 1, 0 FROM #DimmerMap m   -- Dbl fade=0
+  UNION ALL SELECT 2, m.DblPAID, 3, 100 FROM #DimmerMap m; -- Dbl level=100%
+
+  COMMIT TRANSACTION;
+
+  SELECT
+    N'ADDED' AS Status, m.DeviceID, m.AssignedZoneID, m.BGID, m.BtnID, m.PMID
+  FROM #DimmerMap m ORDER BY m.DeviceID;
+END;
+`;
+}
+
 function buildConversionSql(direction: string): string {
   const sourceProductType = direction === "RA3_TO_HW" ? 3 : 4;
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
@@ -525,6 +603,41 @@ function buildConversionSql(direction: string): string {
   return `
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
+
+-- === Clean up orphaned high-ID rows from previous manual SQL runs ===
+-- These rows (IDs near INT_MAX / 2147483647) were left by earlier live-VM
+-- conversion scripts and pollute MAX()-based ID allocation. Remove them
+-- before conversion to prevent cascade corruption.
+DECLARE @nextObjID BIGINT;
+SELECT @nextObjID = NextObjectID FROM dbo.tblNextObjectID;
+IF @nextObjID IS NOT NULL AND @nextObjID < 1000000
+BEGIN
+  DECLARE @cleanTotal INT = 0;
+
+  -- Disable ALL foreign key constraints so we can delete without chasing FK chains
+  EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';
+
+  DELETE FROM dbo.tblAssignmentCommandParameter WHERE ParentId IN (SELECT PresetAssignmentID FROM dbo.tblPresetAssignment WHERE PresetAssignmentID > 1000000);
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblPresetAssignment WHERE PresetAssignmentID > 1000000 OR ParentID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblPreset WHERE PresetID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblTimeClockEvent WHERE ProgrammingModelID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblProgrammingModel WHERE ProgrammingModelID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblKeypadButton WHERE ButtonID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+  DELETE FROM dbo.tblButtonGroup WHERE ButtonGroupID > 1000000;
+  SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
+
+  -- Note: FK constraints left disabled in Docker session. This is fine —
+  -- the page patching uses the original MDF's system pages (which have FKs
+  -- enabled), and we only transplant user data pages from Docker.
+  IF @cleanTotal > 0
+    PRINT 'Cleaned up ' + CAST(@cleanTotal AS VARCHAR) + ' orphaned high-ID rows';
+END;
 
 -- Guards
 DECLARE @CurrentProductType INT;
@@ -625,7 +738,7 @@ COMMIT TRANSACTION;
 PRINT '';
 PRINT 'Conversion complete. Total ModelInfoID rows updated: ' + CAST(@totalRows AS VARCHAR(10));
 PRINT '';
-
+${direction === "RA3_TO_HW" ? buildLocalDimmerProgrammingSql() : ""}
 -- Post-conversion verification
 PRINT '=== Verification ===';
 
@@ -750,17 +863,16 @@ PRINT '';
 }
 
 async function runConversion(
-  mdfPath: string,
+  bakPath: string,
   direction: string,
   dockerImage: string,
-  keepContainer: boolean,
-  originalStoredSize?: number
+  keepContainer: boolean
 ): Promise<string> {
   console.log(`Running ${direction} conversion in Docker...`);
 
-  const mdfDir = join(mdfPath, "..");
-  const absMdfDir =
-    mdfDir.startsWith("/") ? mdfDir : join(process.cwd(), mdfDir);
+  const dataDir = join(bakPath, "..");
+  const absDataDir =
+    dataDir.startsWith("/") ? dataDir : join(process.cwd(), dataDir);
 
   // Check Docker is available
   const dockerCheck = await exec(["docker", "info"]);
@@ -770,9 +882,8 @@ async function runConversion(
     );
   }
 
-  // Snapshot the ENTIRE original MDF before Docker touches it.
-  const originalMdf = Buffer.from(await Bun.file(mdfPath).arrayBuffer());
-  console.log(`  Snapshot original MDF: ${originalMdf.length} bytes (${originalMdf.length / SQL_PAGE_SIZE} pages)`);
+  const bakSize = statSync(bakPath).size;
+  console.log(`  Input backup: ${(bakSize / 1024 / 1024).toFixed(1)} MB`);
 
   // Start container
   console.log(`  Starting container ${CONTAINER_NAME}...`);
@@ -790,7 +901,7 @@ async function runConversion(
       "-e",
       `MSSQL_SA_PASSWORD=${SA_PASSWORD}`,
       "-v",
-      `${absMdfDir}:/data`,
+      `${absDataDir}:/data`,
       dockerImage,
     ],
     "docker run"
@@ -799,58 +910,50 @@ async function runConversion(
   try {
     await waitForSqlServer(CONTAINER_NAME);
 
-    // Fix MDF permissions inside container
+    // Fix permissions inside container
     await execOrDie(
-      ["docker", "exec", CONTAINER_NAME, "chmod", "777", "/data/Project.mdf"],
-      "chmod mdf"
+      ["docker", "exec", CONTAINER_NAME, "chmod", "777", "/data/Project.bak"],
+      "chmod bak"
     );
 
-    // === Two-pass approach ===
-    //
-    // Docker SQL Server's attach/detach modifies system pages AND internal
-    // system catalog data pages (sysschobjs, etc.). These modifications make
-    // the MDF incompatible with Designer. To isolate ONLY our conversion
-    // changes, we do two attach/detach cycles:
-    //
-    // Pass 1: Attach + detach with NO conversion → "baseline" MDF
-    //   (captures Docker's inherent modifications)
-    // Pass 2: Attach + convert + detach → "converted" MDF
-    //   (captures Docker's modifications + our changes)
-    //
-    // Pages that differ between baseline and converted = ONLY our changes.
-    // We transplant those into the original MDF, bypassing all Docker artifacts.
+    // Discover logical file names from the backup using tab-separated output
+    console.log("  Reading backup file list...");
+    const fileListResult = await execOrDie(
+      [
+        "docker", "exec", CONTAINER_NAME,
+        "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", SA_PASSWORD,
+        "-d", "master", "-Q", "RESTORE FILELISTONLY FROM DISK = '/data/Project.bak';",
+        "-b", "-W", "-s", "\t",
+      ],
+      "FILELISTONLY",
+      { timeout: 60_000 }
+    );
+    // Parse tab-separated output: LogicalName\tPhysicalName\tType\t...
+    const fileLines = fileListResult
+      .split("\n")
+      .filter((l) => l.includes("\t"));
+    let mdfLogical = "Project";
+    let ldfLogical = "Project_log";
+    for (const line of fileLines) {
+      const cols = line.split("\t");
+      if (cols.length >= 3 && cols[0] && !cols[0].startsWith("-")) {
+        const name = cols[0].trim();
+        const type = cols[2].trim();
+        if (type === "D" && name !== "LogicalName") mdfLogical = name;
+        if (type === "L" && name !== "LogicalName") ldfLogical = name;
+      }
+    }
+    console.log(`  Logical names: data='${mdfLogical}', log='${ldfLogical}'`);
 
-    // -- Pass 1: baseline (no conversion) --
-    console.log("  Pass 1: baseline attach/detach (no conversion)...");
+    // RESTORE DATABASE from backup (same as Designer does via SMO)
+    console.log("  Restoring database from backup...");
     await sqlcmd(
       CONTAINER_NAME,
-      `CREATE DATABASE [Project] ON (FILENAME = '/data/Project.mdf') FOR ATTACH_FORCE_REBUILD_LOG;`
-    );
-    await sqlcmd(
-      CONTAINER_NAME,
-      `ALTER DATABASE [Project] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; EXEC sp_detach_db 'Project', 'true';`
-    );
-    const baselineMdf = Buffer.from(await Bun.file(mdfPath).arrayBuffer());
-    console.log("  Baseline captured.");
-
-    // Restore original MDF for pass 2.
-    // Delete the LDF from pass 1 first — otherwise pass 2 attach fails with
-    // "Cannot create file '/data/Project_log.ldf' because it already exists."
-    await Bun.write(mdfPath, originalMdf);
-    await execOrDie(
-      ["docker", "exec", CONTAINER_NAME, "rm", "-f", "/data/Project_log.ldf"],
-      "delete ldf"
-    );
-    await execOrDie(
-      ["docker", "exec", CONTAINER_NAME, "chmod", "777", "/data/Project.mdf"],
-      "chmod mdf"
-    );
-
-    // -- Pass 2: conversion --
-    console.log("  Pass 2: attach + conversion...");
-    await sqlcmd(
-      CONTAINER_NAME,
-      `CREATE DATABASE [Project] ON (FILENAME = '/data/Project.mdf') FOR ATTACH_FORCE_REBUILD_LOG;`
+      `RESTORE DATABASE [Project]
+       FROM DISK = '/data/Project.bak'
+       WITH MOVE '${mdfLogical}' TO '/data/Project.mdf',
+            MOVE '${ldfLogical}' TO '/data/Project_log.ldf',
+            REPLACE;`
     );
 
     console.log(`  Running ${direction} conversion SQL...`);
@@ -858,91 +961,18 @@ async function runConversion(
     const result = await sqlcmdDb(CONTAINER_NAME, "Project", conversionSql);
     console.log(result);
 
-    console.log("  Detaching database...");
+    // BACKUP DATABASE to produce a clean .bak (same as Designer does via SMO)
+    console.log("  Backing up converted database...");
+    const outputBak = join(dataDir, "Converted.bak");
     await sqlcmd(
       CONTAINER_NAME,
-      `ALTER DATABASE [Project] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; EXEC sp_detach_db 'Project', 'true';`
+      `BACKUP DATABASE [Project] TO DISK = '/data/Converted.bak' WITH INIT;`
     );
-    const convertedMdf = Buffer.from(await Bun.file(mdfPath).arrayBuffer());
 
-    // -- Page-level diff: baseline vs converted --
-    //
-    // Both Docker passes modify the same system/catalog pages (boot page,
-    // file header, GAM, PFS, system catalog data pages) with Docker-specific
-    // artifacts. Pages that differ between baseline and converted are ONLY
-    // the user data pages our conversion SQL touched.
-    //
-    // For those pages, we patch ONLY the row data area (bytes 96+), keeping
-    // the original page header (LSN, checksum, flags) intact. Then we
-    // recalculate the page checksum to cover the modified row data.
-    const resultMdf = Buffer.from(originalMdf); // start from pristine original
-    const totalPages = Math.min(
-      baselineMdf.length, convertedMdf.length, originalMdf.length
-    ) / SQL_PAGE_SIZE;
-    let userPagesCopied = 0;
+    const outSize = statSync(outputBak).size;
+    console.log(`  Output backup: ${(outSize / 1024 / 1024).toFixed(1)} MB`);
 
-    for (let p = 0; p < totalPages; p++) {
-      const off = p * SQL_PAGE_SIZE;
-      const basePage = baselineMdf.subarray(off, off + SQL_PAGE_SIZE);
-      const convPage = convertedMdf.subarray(off, off + SQL_PAGE_SIZE);
-
-      if (basePage.equals(convPage)) continue; // same in both passes → Docker artifact or unchanged
-
-      // This page differs between baseline and converted → our conversion SQL changed it.
-      // Only patch DATA pages (type=1) and INDEX pages (type=2).
-      // Skip system pages (file header, PFS, GAM, SGAM, DCM, BCM, boot) to
-      // avoid contaminating system metadata that LocalDB validates on attach.
-      const origPage = resultMdf.subarray(off, off + SQL_PAGE_SIZE);
-      const pageType = origPage[1]; // byte 1 = page type
-      if (pageType !== 1 && pageType !== 2) {
-        // System page — skip patching. Log for debugging.
-        let headerBytes = 0, dataBytes = 0;
-        for (let b = 0; b < SQL_PAGE_SIZE; b++) {
-          if (basePage[b] !== convPage[b]) {
-            if (b < SQL_PAGE_HEADER_SIZE) headerBytes++; else dataBytes++;
-          }
-        }
-        console.log(`    Page ${p}: SKIP (type=${pageType}, ${headerBytes} header + ${dataBytes} data byte diffs)`);
-        continue;
-      }
-
-      // Patch only the ROW DATA portion (bytes 96+) into the original page,
-      // preserving the original page header (LSN, checksum, tornBits, etc.).
-      let bytesPatched = 0;
-      for (let b = SQL_PAGE_HEADER_SIZE; b < SQL_PAGE_SIZE; b++) {
-        if (basePage[b] !== convPage[b]) {
-          origPage[b] = convPage[b];
-          bytesPatched++;
-        }
-      }
-
-      if (bytesPatched === 0) continue; // only header diffs, no row data changes
-
-      // Recalculate checksum to cover the modified row data + original header.
-      const oldChecksum = origPage.readUInt32LE(60);
-      const newChecksum = sqlPageChecksum(origPage);
-      origPage.writeUInt32LE(newChecksum, 60);
-
-      userPagesCopied++;
-      if (userPagesCopied <= 20) {
-        console.log(`    Page ${p}: ${bytesPatched} data bytes patched, checksum 0x${oldChecksum.toString(16)} → 0x${newChecksum.toString(16)}`);
-      }
-    }
-
-    console.log(`  Page diff: ${userPagesCopied} pages with conversion changes patched into original`);
-
-    // Truncate back to original stored size (strip zero padding).
-    const finalSize = originalStoredSize ?? resultMdf.length;
-    const finalMdf = finalSize < resultMdf.length
-      ? resultMdf.subarray(0, finalSize)
-      : resultMdf;
-
-    if (finalSize < resultMdf.length) {
-      console.log(`  Truncated MDF: ${resultMdf.length} → ${finalSize} bytes (back to original stored size)`);
-    }
-
-    await Bun.write(mdfPath, finalMdf);
-    return mdfPath;
+    return outputBak;
   } finally {
     if (!keepContainer) {
       console.log("  Cleaning up container...");
@@ -965,17 +995,17 @@ async function runDiff(
     `Diffing ${basename(fileA)} vs ${basename(fileB)}...\n`
   );
 
-  const extractA = await extractMdf(fileA);
-  const extractB = await extractMdf(fileB);
+  const extractA = await extractBak(fileA);
+  const extractB = await extractBak(fileB);
 
-  // Set up shared data directory with both MDFs
+  // Set up shared data directory with both backups
   const diffDir = makeTempDir("lutron-diff");
-  const mdfAPath = join(diffDir, "ProjectA.mdf");
-  const mdfBPath = join(diffDir, "ProjectB.mdf");
+  const bakAPath = join(diffDir, "ProjectA.bak");
+  const bakBPath = join(diffDir, "ProjectB.bak");
 
-  // Copy MDFs to shared dir
-  await Bun.write(mdfAPath, Bun.file(extractA.mdfPath));
-  await Bun.write(mdfBPath, Bun.file(extractB.mdfPath));
+  // Copy backups to shared dir
+  await Bun.write(bakAPath, Bun.file(extractA.bakPath));
+  await Bun.write(bakBPath, Bun.file(extractB.bakPath));
 
   const containerName = `lutron-diff-${Date.now()}`;
   const absDiffDir =
@@ -1018,18 +1048,51 @@ async function runDiff(
         containerName,
         "bash",
         "-c",
-        "chmod 777 /data/*.mdf",
+        "chmod 777 /data/*.bak",
       ],
       "chmod"
     );
 
-    // Attach both
-    console.log("Attaching databases...");
-    const attachSql = `
-      CREATE DATABASE [ProjectA] ON (FILENAME = '/data/ProjectA.mdf') FOR ATTACH_FORCE_REBUILD_LOG;
-      CREATE DATABASE [ProjectB] ON (FILENAME = '/data/ProjectB.mdf') FOR ATTACH_FORCE_REBUILD_LOG;
-    `;
-    await sqlcmd(containerName, attachSql);
+    // Discover logical file names from backup A (should be same for B)
+    const fileListResult = await execOrDie(
+      [
+        "docker", "exec", containerName,
+        "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", SA_PASSWORD,
+        "-d", "master", "-Q", "RESTORE FILELISTONLY FROM DISK = '/data/ProjectA.bak';",
+        "-b", "-W", "-s", "\t",
+      ],
+      "FILELISTONLY",
+      { timeout: 60_000 }
+    );
+    const fileLines = fileListResult
+      .split("\n")
+      .filter((l) => l.includes("\t"));
+    let mdfLogical = "Project";
+    let ldfLogical = "Project_log";
+    for (const line of fileLines) {
+      const cols = line.split("\t");
+      if (cols.length >= 3 && cols[0] && !cols[0].startsWith("-")) {
+        const name = cols[0].trim();
+        const type = cols[2].trim();
+        if (type === "D" && name !== "LogicalName") mdfLogical = name;
+        if (type === "L" && name !== "LogicalName") ldfLogical = name;
+      }
+    }
+
+    // Restore both databases from backups
+    console.log("Restoring databases from backups...");
+    await sqlcmd(
+      containerName,
+      `RESTORE DATABASE [ProjectA] FROM DISK = '/data/ProjectA.bak'
+       WITH MOVE '${mdfLogical}' TO '/data/ProjectA.mdf',
+            MOVE '${ldfLogical}' TO '/data/ProjectA_log.ldf', REPLACE;`
+    );
+    await sqlcmd(
+      containerName,
+      `RESTORE DATABASE [ProjectB] FROM DISK = '/data/ProjectB.bak'
+       WITH MOVE '${mdfLogical}' TO '/data/ProjectB.mdf',
+            MOVE '${ldfLogical}' TO '/data/ProjectB_log.ldf', REPLACE;`
+    );
 
     // Run diff queries
     const diffSql = `
@@ -1152,11 +1215,11 @@ PRINT 'Done.';
     );
     console.log(result);
 
-    // Detach both
+    // Drop both (no need to preserve since we're done)
     await sqlcmd(
       containerName,
-      `ALTER DATABASE [ProjectA] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; EXEC sp_detach_db 'ProjectA', 'true';
-       ALTER DATABASE [ProjectB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; EXEC sp_detach_db 'ProjectB', 'true';`
+      `ALTER DATABASE [ProjectA] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [ProjectA];
+       ALTER DATABASE [ProjectB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [ProjectB];`
     );
   } finally {
     await exec(["docker", "stop", containerName]);
@@ -1198,13 +1261,11 @@ async function main(): Promise<void> {
     const outDir = values["extract-only"] as string;
     mkdirSync(outDir, { recursive: true });
 
-    const result = await extractMdf(input);
-    const outMdf = join(outDir, "Project.mdf");
-    const outTemplate = join(outDir, "template.lut");
+    const result = await extractBak(input);
+    const outBak = join(outDir, "Project.bak");
     const outMeta = join(outDir, "metadata.json");
 
-    await Bun.write(outMdf, Bun.file(result.mdfPath));
-    await Bun.write(outTemplate, Bun.file(result.templateLutPath));
+    await Bun.write(outBak, Bun.file(result.bakPath));
     await Bun.write(
       outMeta,
       JSON.stringify(
@@ -1216,37 +1277,27 @@ async function main(): Promise<void> {
 
     rmSync(result.tempDir, { recursive: true, force: true });
     console.log(`\nExtracted to ${outDir}:`);
-    console.log(`  ${outMdf}`);
-    console.log(`  ${outTemplate}`);
+    console.log(`  ${outBak}`);
     console.log(`  ${outMeta}`);
     return;
   }
 
   // -- Pack-only mode --
   if (values["pack-only"]) {
-    const mdfPath = values["pack-only"] as string;
-    const templatePath = values.template as string;
-    if (!templatePath) {
-      console.error("--pack-only requires --template <lut>");
-      process.exit(1);
-    }
+    const bakPath = values["pack-only"] as string;
     const output = positionals[0];
     if (!output) {
       console.error("Provide an output filename.");
       process.exit(1);
     }
 
-    if (!existsSync(mdfPath)) {
-      console.error(`MDF not found: ${mdfPath}`);
-      process.exit(1);
-    }
-    if (!existsSync(templatePath)) {
-      console.error(`Template not found: ${templatePath}`);
+    if (!existsSync(bakPath)) {
+      console.error(`Backup file not found: ${bakPath}`);
       process.exit(1);
     }
 
-    // Need a lutFilename — try to extract from template dir metadata
-    const metaPath = join(templatePath, "..", "metadata.json");
+    // Need a lutFilename — try to extract from nearby metadata
+    const metaPath = join(bakPath, "..", "metadata.json");
     let lutFilename: string;
     if (existsSync(metaPath)) {
       const meta = JSON.parse(await Bun.file(metaPath).text());
@@ -1260,7 +1311,7 @@ async function main(): Promise<void> {
     const absOutput = output.startsWith("/")
       ? output
       : join(process.cwd(), output);
-    await packProject(mdfPath, templatePath, lutFilename, absOutput);
+    await packProject(bakPath, lutFilename, absOutput);
     return;
   }
 
@@ -1318,23 +1369,21 @@ async function main(): Promise<void> {
     ? output
     : join(process.cwd(), output);
 
-  // Step 1: Extract
-  const extracted = await extractMdf(input);
+  // Step 1: Extract .bak from ZIP
+  const extracted = await extractBak(input);
 
   try {
-    // Step 2: Convert
-    await runConversion(
-      extracted.mdfPath,
+    // Step 2: RESTORE → convert → BACKUP
+    const convertedBak = await runConversion(
+      extracted.bakPath,
       direction,
       dockerImage,
-      keepContainer,
-      extracted.originalStoredSize
+      keepContainer
     );
 
-    // Step 3: Repack
+    // Step 3: Pack .bak as .lut into ZIP
     await packProject(
-      extracted.mdfPath,
-      extracted.templateLutPath,
+      convertedBak,
       extracted.lutFilename,
       absOutput
     );
