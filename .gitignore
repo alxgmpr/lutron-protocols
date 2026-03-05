@@ -1,3 +1,6 @@
+# Reverse engineering binaries (extracted frameworks, DLLs)
+re/
+
 # Python
 __pycache__/
 *.py[cod]
