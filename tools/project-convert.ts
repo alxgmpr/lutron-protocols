@@ -6,10 +6,9 @@
  * The .lut file inside an .ra3/.hw ZIP is a SQL Server BACKUP (.bak) file.
  * Designer uses BACKUP DATABASE / RESTORE DATABASE (via SMO) for all file I/O.
  *
- * This converter: RESTORE .bak → run conversion SQL → BACKUP to new .bak.
- * The resulting .bak is placed as the .lut inside the output ZIP.
- *
- * No Windows VM, no Designer, no MDF page-level manipulation needed.
+ * This converter: SCP .bak to VM → RESTORE into LocalDB → run conversion SQL
+ * → BACKUP → SCP back. Uses the same LocalDB instance as Designer to ensure
+ * backup format compatibility (Docker MSSQL produces incompatible backups).
  */
 
 import { parseArgs } from "util";
@@ -26,11 +25,9 @@ const { values, positionals } = parseArgs({
     direction: { type: "string" },
     "extract-only": { type: "string" },
     "pack-only": { type: "string" },
-    "docker-image": {
-      type: "string",
-      default: "mcr.microsoft.com/mssql/server:2022-RTM-ubuntu-20.04",
-    },
-    "keep-container": { type: "boolean", default: false },
+    "vm-host": { type: "string", default: "10.0.0.4" },
+    "vm-user": { type: "string", default: "alex" },
+    "vm-pass": { type: "string", default: "alex" },
     diff: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -42,7 +39,7 @@ if (values.help || (positionals.length === 0 && !values.diff)) {
   console.log(`
 project-convert — Offline RA3/HW project file converter
 
-Uses RESTORE/BACKUP (same as Designer) to produce fully compatible project files.
+Uses the Designer VM's LocalDB (via SSH) for RESTORE/BACKUP to ensure format compatibility.
 
 Usage:
   bun run tools/project-convert.ts <input.ra3|.hw> <output.ra3|.hw> [options]
@@ -52,38 +49,191 @@ Options:
   --direction <RA3_TO_HW|HW_TO_RA3>  Conversion direction (auto-detected from extensions)
   --extract-only <dir>                Extract .bak from project ZIP
   --pack-only <bak>                   Pack .bak into project ZIP
-  --docker-image <image>              SQL Server image (default: 2022-RTM-ubuntu-20.04)
-  --keep-container                    Don't remove Docker container after conversion
+  --vm-host <host>                    Designer VM IP (default: 10.0.0.4)
+  --vm-user <user>                    VM SSH user (default: alex)
+  --vm-pass <pass>                    VM SSH password (default: alex)
   --diff                              Show schema diff between two project files
   --help                              Show this help
 `);
   process.exit(0);
 }
 
-// ── Constants ────────────────────────────────────────────────────────
+// ── VM Config ────────────────────────────────────────────────────────
 
-const CONTAINER_NAME = `lutron-convert-${Date.now()}`;
-const SA_PASSWORD = "LutronPass1!";
+const VM_HOST = values["vm-host"] as string;
+const VM_USER = values["vm-user"] as string;
+const VM_PASS = values["vm-pass"] as string;
+const VM_WORK_DIR = "C:\\Temp\\lutron-convert"; // Working directory on VM
 
-// Hardcoded verified model mapping (Designer 26.0.1.100)
-// Source: docs/ra3-hw-roundtrip-workflow.md
-const RA3_TO_HW_MAP: Record<number, number> = {
-  5093: 5046, // RR-PROC3-KIT → HQP7-RF-2
-  5197: 5194, // RRST-HN3RL-XX → HRST-HN3RL-XX
-  5198: 5195, // RRST-HN4B-XX → HRST-HN4B-XX
-  5115: 5056, // RRST-PRO-N-XX → HRST-PRO-N-XX
-  5121: 5062, // RRST-W4B-XX → HRST-W4B-XX
-  5122: 5063, // RRST-W3RL-XX → HRST-W3RL-XX
-  5249: 5248, // RRST-ANF-XX → HRST-ANF-XX
-  5117: 5058, // RRST-8ANS-XX → HRST-8ANS-XX
-  1166: 1300, // RR-3PD-1 → HQR-3PD-1
-  461: 730, // RRD-3LD → HQR-3LD
+// ── Device-agnostic model mapping engine ────────────────────────────
+//
+// Builds RA3→HW model ID map at runtime from prefix rules + SQLMODELINFO extract.
+// No hardcoded per-device model IDs — works for any RA3 project.
+//
+// Prefix rules (RA3→HW):
+//   RRST-* → HRST-*        (seeTouch keypads)
+//   RRD-*  → HQRD-*        (dimmers, with fallback to HQR-* if HQRD doesn't exist)
+//   RR-*   → HQR-*         (plug-in dimmers, accessories)
+//   PJ*, LMJ* → identity   (picos, powpaks — shared across systems)
+//
+// Manual overrides (for models that don't follow prefix rules):
+const MANUAL_OVERRIDES: Record<string, string> = {
+  "RR-PROC3-KIT": "HQP7-RF-2",
+  "RR-PROC3-CW": "HQP7-RF-2",
 };
 
-// Auto-generate reverse map
-const HW_TO_RA3_MAP: Record<number, number> = {};
-for (const [ra3, hw] of Object.entries(RA3_TO_HW_MAP)) {
-  HW_TO_RA3_MAP[hw] = Number(ra3);
+interface ModelEntry {
+  id: number;
+  name: string;
+}
+
+function loadModelInfo(): ModelEntry[] {
+  const path = join(import.meta.dir, "data/model-info.json");
+  if (!existsSync(path)) {
+    throw new Error(`Model info not found: ${path}\nRun: bun run tools/build-model-info.ts`);
+  }
+  const data = JSON.parse(require("fs").readFileSync(path, "utf-8"));
+  return data.models;
+}
+
+function buildModelMap(
+  direction: "RA3_TO_HW" | "HW_TO_RA3"
+): { map: Record<number, number>; log: string[] } {
+  const models = loadModelInfo();
+  const log: string[] = [];
+
+  // Build name→id lookup (prefer highest ID for duplicates = newest revision)
+  const nameToId = new Map<string, number>();
+  for (const m of models) {
+    const existing = nameToId.get(m.name);
+    if (!existing || m.id > existing) {
+      nameToId.set(m.name, m.id);
+    }
+  }
+
+  // Build id→name lookup
+  const idToName = new Map<number, string>();
+  for (const m of models) {
+    idToName.set(m.id, m.name);
+  }
+
+  // Prefix rules: [sourcePrefix, targetPrefixes (try in order)]
+  const prefixRules: [string, string[]][] =
+    direction === "RA3_TO_HW"
+      ? [
+          ["RRST-", ["HRST-"]],
+          ["RRD-", ["HQRD-", "HQR-"]],
+          ["RR-", ["HQR-"]],
+        ]
+      : [
+          ["HRST-", ["RRST-"]],
+          ["HQRD-", ["RRD-"]],
+          ["HQR-", ["RR-", "RRD-"]],
+        ];
+
+  const overrides =
+    direction === "RA3_TO_HW"
+      ? MANUAL_OVERRIDES
+      : Object.fromEntries(
+          Object.entries(MANUAL_OVERRIDES).map(([k, v]) => [v, k])
+        );
+
+  const map: Record<number, number> = {};
+
+  // Collect all source-side model IDs
+  for (const m of models) {
+    const name = m.name;
+
+    // Skip identity-mapped models (picos, powpaks, etc.)
+    if (
+      name.startsWith("PJ") ||
+      name.startsWith("LMJ") ||
+      name.startsWith("HQ-") ||
+      name.startsWith("HQW") ||
+      name.startsWith("HQWI") ||
+      name.startsWith("HQT-")
+    ) {
+      continue;
+    }
+
+    // Check manual overrides first
+    if (overrides[name]) {
+      const targetId = nameToId.get(overrides[name]);
+      if (targetId !== undefined) {
+        map[m.id] = targetId;
+        log.push(`  ${name} (${m.id}) → ${overrides[name]} (${targetId}) [override]`);
+        continue;
+      }
+    }
+
+    // Apply prefix rules
+    for (const [srcPrefix, tgtPrefixes] of prefixRules) {
+      if (!name.startsWith(srcPrefix)) continue;
+      const suffix = name.slice(srcPrefix.length);
+
+      let matched = false;
+      for (const tgtPrefix of tgtPrefixes) {
+        const targetName = tgtPrefix + suffix;
+        const targetId = nameToId.get(targetName);
+        if (targetId !== undefined) {
+          map[m.id] = targetId;
+          log.push(`  ${name} (${m.id}) → ${targetName} (${targetId})`);
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        log.push(`  ${name} (${m.id}) → NO MATCH (tried: ${tgtPrefixes.map((p) => p + suffix).join(", ")})`);
+      }
+      break; // Only apply first matching prefix rule
+    }
+  }
+
+  return { map, log };
+}
+
+// Build maps lazily on first use
+let _ra3ToHw: Record<number, number> | null = null;
+let _hwToRa3: Record<number, number> | null = null;
+let _mapLog: string[] = [];
+
+function getModelMap(direction: "RA3_TO_HW" | "HW_TO_RA3"): Record<number, number> {
+  if (direction === "RA3_TO_HW") {
+    if (!_ra3ToHw) {
+      const result = buildModelMap("RA3_TO_HW");
+      _ra3ToHw = result.map;
+      _mapLog = result.log;
+    }
+    return _ra3ToHw;
+  } else {
+    if (!_hwToRa3) {
+      const result = buildModelMap("HW_TO_RA3");
+      _hwToRa3 = result.map;
+      _mapLog = result.log;
+    }
+    return _hwToRa3;
+  }
+}
+
+function getMapLog(): string[] {
+  return _mapLog;
+}
+
+/** Get HW-side dimmer model IDs that need local button programming chains. */
+function getDimmerModelIds(): number[] {
+  const models = loadModelInfo();
+  const ids: number[] = [];
+  for (const m of models) {
+    // HQR-3LD, HQR-3PD, HQRD-* dimmers — any HW model that's a dimmer target
+    if (
+      m.name.startsWith("HQRD-") ||
+      (m.name.startsWith("HQR-") && /-(3LD|3PD|[0-9]*D)/.test(m.name))
+    ) {
+      ids.push(m.id);
+    }
+  }
+  return ids;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -271,94 +421,192 @@ print(f'ZIP created: {os.path.getsize(out_path)} bytes, CRC={crc:08x}')
   console.log(`  Output: ${basename(outputFile)} (${(outSize / 1024 / 1024).toFixed(1)} MB)`);
 }
 
-// ── Core: Docker SQL Server ──────────────────────────────────────────
+// ── SSH + PowerShell execution ───────────────────────────────────────
+// Same pattern as mcp-designer-db.ts: UTF-16LE base64 EncodedCommand
 
-async function waitForSqlServer(containerName: string): Promise<void> {
-  console.log("  Waiting for SQL Server to be ready...");
-  const maxWait = 60_000;
-  const start = Date.now();
+function encodePowerShell(script: string): string {
+  const buf = Buffer.from(script, "utf16le");
+  return buf.toString("base64");
+}
 
-  while (Date.now() - start < maxWait) {
-    const r = await exec([
-      "docker",
-      "exec",
-      containerName,
-      "/opt/mssql-tools/bin/sqlcmd",
-      "-S",
-      "localhost",
-      "-U",
-      "sa",
-      "-P",
-      SA_PASSWORD,
-      "-Q",
-      "SELECT 1",
-      "-b",
-    ]);
-    if (r.exitCode === 0) {
-      console.log("  SQL Server ready.");
-      return;
+// SSH ControlMaster for connection multiplexing (avoids rate-limit failures)
+const SSH_CONTROL_PATH = `/tmp/lut-ssh-${process.pid}`;
+const SSH_OPTS = [
+  "-o", "StrictHostKeyChecking=no",
+  "-o", "ConnectTimeout=10",
+  "-o", "PreferredAuthentications=password",
+  "-o", "LogLevel=ERROR",
+  "-o", `ControlPath=${SSH_CONTROL_PATH}`,
+  "-o", "ControlMaster=auto",
+  "-o", "ControlPersist=60",
+];
+
+async function execPowerShell(
+  script: string,
+  timeout = 120_000
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const encoded = encodePowerShell(script);
+  const proc = Bun.spawn(
+    [
+      "/opt/homebrew/bin/sshpass", "-p", VM_PASS,
+      "ssh", ...SSH_OPTS,
+      `${VM_USER}@${VM_HOST}`,
+      "powershell", "-EncodedCommand", encoded,
+    ],
+    { stdout: "pipe", stderr: "pipe" }
+  );
+
+  const timer = setTimeout(() => proc.kill(), timeout);
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const exitCode = await proc.exited;
+  clearTimeout(timer);
+
+  return {
+    stdout: stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+    stderr: stderr.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+    exitCode,
+  };
+}
+
+async function scp(
+  localPath: string,
+  remotePath: string,
+  direction: "upload" | "download",
+  timeout = 120_000
+): Promise<void> {
+  // Windows OpenSSH SCP requires forward slashes in remote paths
+  const remotePathFixed = remotePath.replace(/\\/g, "/");
+  const args =
+    direction === "upload"
+      ? [localPath, `${VM_USER}@${VM_HOST}:${remotePathFixed}`]
+      : [`${VM_USER}@${VM_HOST}:${remotePathFixed}`, localPath];
+
+  await execOrDie(
+    ["/opt/homebrew/bin/sshpass", "-p", VM_PASS, "scp", ...SSH_OPTS, ...args],
+    `scp ${direction}`,
+    { timeout }
+  );
+}
+
+/** Discover the LocalDB named pipe (same approach as MCP server). */
+async function discoverPipe(): Promise<string> {
+  const script = `
+$ErrorActionPreference = "Continue"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+  $PSNativeCommandUseErrorActionPreference = $false
+}
+
+$pipes = Get-ChildItem "\\\\.\\pipe\\" |
+  Select-Object -ExpandProperty Name |
+  Where-Object { $_ -like "*LOCALDB*" }
+
+if (-not $pipes) {
+  Write-Error "No LOCALDB pipe found. Is Designer running?"
+  exit 1
+}
+
+$foundServer = $null
+foreach ($pipe in $pipes) {
+  if ($pipe -match "\\\\tsql\\\\query$") {
+    $server = "np:\\\\.\\pipe\\$pipe"
+  } else {
+    $server = "np:\\\\.\\pipe\\$pipe\\tsql\\query"
+  }
+  & sqlcmd -S $server -E -No -d master -Q "SET NOCOUNT ON; SELECT 1;" -h -1 -W 1>$null 2>$null
+  if ($LASTEXITCODE -eq 0) {
+    $foundServer = $server
+    break
+  }
+}
+
+if (-not $foundServer) {
+  Write-Error "Could not connect to any LOCALDB pipe."
+  exit 1
+}
+
+Write-Output $foundServer
+`;
+
+  const result = await execPowerShell(script, 20_000);
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Pipe discovery failed: ${result.stderr.trim() || result.stdout.trim()}`
+    );
+  }
+  return result.stdout.trim().split("\n")[0].trim();
+}
+
+/** Run sqlcmd against a specific database on the VM's LocalDB.
+ *  For large SQL, SCP the file to the VM first to avoid SSH command line limits. */
+async function vmSqlcmd(
+  pipe: string,
+  dbName: string,
+  sql: string,
+  timeout = 120_000
+): Promise<string> {
+  // Estimate encoded command size: UTF-16LE doubles, base64 adds 33%
+  const estimatedCmdLen = sql.length * 2 * 1.34 + 500;
+  const USE_FILE = estimatedCmdLen > 20_000;
+
+  if (USE_FILE) {
+    // SCP the SQL file to the VM, then execute with sqlcmd -i
+    const localTmp = join(tmpdir(), `convert-${Date.now()}.sql`);
+    const remoteTmp = `${VM_WORK_DIR}\\convert-${Date.now()}.sql`;
+    await Bun.write(localTmp, sql);
+
+    try {
+      await scp(localTmp, remoteTmp, "upload", 30_000);
+
+      const script = `
+$ErrorActionPreference = "Continue"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+  $PSNativeCommandUseErrorActionPreference = $false
+}
+& sqlcmd -S '${pipe.replace(/'/g, "''")}' -E -No -d '${dbName.replace(/'/g, "''")}' -b -W -i '${remoteTmp.replace(/'/g, "''")}'
+exit $LASTEXITCODE
+`;
+      const result = await execPowerShell(script, timeout);
+      if (result.exitCode !== 0) {
+        const combined = result.stderr + result.stdout;
+        throw new Error(`SQL error (exit ${result.exitCode}): ${combined.trim()}`);
+      }
+      return result.stdout;
+    } finally {
+      rmSync(localTmp, { force: true });
+      await execPowerShell(
+        `Remove-Item -Path '${remoteTmp}' -Force -ErrorAction SilentlyContinue`,
+        5_000
+      ).catch(() => {});
     }
-    await Bun.sleep(1000);
   }
 
-  throw new Error("SQL Server did not become ready within 60 seconds");
+  // Small SQL: embed directly in PowerShell here-string
+  const script = `
+$ErrorActionPreference = "Continue"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+  $PSNativeCommandUseErrorActionPreference = $false
 }
-
-async function sqlcmd(
-  containerName: string,
-  query: string
-): Promise<string> {
-  return execOrDie(
-    [
-      "docker",
-      "exec",
-      containerName,
-      "/opt/mssql-tools/bin/sqlcmd",
-      "-S",
-      "localhost",
-      "-U",
-      "sa",
-      "-P",
-      SA_PASSWORD,
-      "-d",
-      "master",
-      "-Q",
-      query,
-      "-b",
-      "-W", // trim trailing spaces
-    ],
-    "sqlcmd",
-    { timeout: 120_000 }
-  );
+$tempFile = [System.IO.Path]::GetTempFileName() + ".sql"
+@'
+${sql}
+'@ | Set-Content -Path $tempFile -Encoding UTF8
+try {
+  & sqlcmd -S '${pipe.replace(/'/g, "''")}' -E -No -d '${dbName.replace(/'/g, "''")}' -b -W -i $tempFile
+  exit $LASTEXITCODE
+} finally {
+  Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
 }
+`;
 
-async function sqlcmdDb(
-  containerName: string,
-  dbName: string,
-  query: string
-): Promise<string> {
-  return execOrDie(
-    [
-      "docker",
-      "exec",
-      containerName,
-      "/opt/mssql-tools/bin/sqlcmd",
-      "-S",
-      "localhost",
-      "-U",
-      "sa",
-      "-P",
-      SA_PASSWORD,
-      "-d",
-      dbName,
-      "-Q",
-      query,
-      "-b",
-      "-W",
-    ],
-    "sqlcmd",
-    { timeout: 120_000 }
-  );
+  const result = await execPowerShell(script, timeout);
+  if (result.exitCode !== 0) {
+    const combined = result.stderr + result.stdout;
+    throw new Error(`SQL error (exit ${result.exitCode}): ${combined.trim()}`);
+  }
+  return result.stdout;
 }
 
 /**
@@ -406,7 +654,7 @@ OUTER APPLY (
   WHERE ParentDeviceID = csd.ControlStationDeviceID AND ParentDeviceType = 5
   ORDER BY ButtonGroupID
 ) bg
-WHERE csd.ModelInfoID IN (730, 1300)  -- HQR-3LD, HQR-3PD-1
+WHERE csd.ModelInfoID IN (${getDimmerModelIds().join(", ")})  -- All HW dimmer models (device-agnostic)
   AND NOT EXISTS (
     SELECT 1 FROM dbo.tblKeypadButton
     WHERE ParentDeviceID = csd.ControlStationDeviceID
@@ -594,7 +842,18 @@ END;
 function buildConversionSql(direction: string): string {
   const sourceProductType = direction === "RA3_TO_HW" ? 3 : 4;
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
-  const map = direction === "RA3_TO_HW" ? RA3_TO_HW_MAP : HW_TO_RA3_MAP;
+  const map = getModelMap(direction as "RA3_TO_HW" | "HW_TO_RA3");
+  const log = getMapLog();
+
+  if (log.length > 0) {
+    console.log(`\nModel mapping (${Object.keys(map).length} entries):`);
+    for (const line of log) console.log(line);
+    console.log();
+  }
+
+  if (Object.keys(map).length === 0) {
+    throw new Error("No model mappings found. Check tools/data/model-info.json");
+  }
 
   const mapValues = Object.entries(map)
     .map(([s, t]) => `(${s},${t})`)
@@ -614,7 +873,7 @@ IF @nextObjID IS NOT NULL AND @nextObjID < 1000000
 BEGIN
   DECLARE @cleanTotal INT = 0;
 
-  -- Disable ALL foreign key constraints so we can delete without chasing FK chains
+  -- Temporarily disable FK constraints for cleanup, then re-enable
   EXEC sp_MSforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';
 
   DELETE FROM dbo.tblAssignmentCommandParameter WHERE ParentId IN (SELECT PresetAssignmentID FROM dbo.tblPresetAssignment WHERE PresetAssignmentID > 1000000);
@@ -632,9 +891,9 @@ BEGIN
   DELETE FROM dbo.tblButtonGroup WHERE ButtonGroupID > 1000000;
   SET @cleanTotal = @cleanTotal + @@ROWCOUNT;
 
-  -- Note: FK constraints left disabled in Docker session. This is fine —
-  -- the page patching uses the original MDF's system pages (which have FKs
-  -- enabled), and we only transplant user data pages from Docker.
+  -- Re-enable FK constraints (CHECK = enabled for new operations, not re-validated)
+  EXEC sp_MSforeachtable 'ALTER TABLE ? CHECK CONSTRAINT ALL';
+
   IF @cleanTotal > 0
     PRINT 'Cleaned up ' + CAST(@cleanTotal AS VARCHAR) + ' orphaned high-ID rows';
 END;
@@ -802,7 +1061,7 @@ PRINT 'Done.';
 
 function buildVerifySql(direction: string): string {
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
-  const map = direction === "RA3_TO_HW" ? RA3_TO_HW_MAP : HW_TO_RA3_MAP;
+  const map = getModelMap(direction as "RA3_TO_HW" | "HW_TO_RA3");
 
   const mapValues = Object.entries(map)
     .map(([s, t]) => `(${s},${t})`)
@@ -864,122 +1123,119 @@ PRINT '';
 
 async function runConversion(
   bakPath: string,
-  direction: string,
-  dockerImage: string,
-  keepContainer: boolean
+  direction: string
 ): Promise<string> {
-  console.log(`Running ${direction} conversion in Docker...`);
-
-  const dataDir = join(bakPath, "..");
-  const absDataDir =
-    dataDir.startsWith("/") ? dataDir : join(process.cwd(), dataDir);
-
-  // Check Docker is available
-  const dockerCheck = await exec(["docker", "info"]);
-  if (dockerCheck.exitCode !== 0) {
-    throw new Error(
-      "Docker is not running. Install Docker Desktop: https://www.docker.com/products/docker-desktop/"
-    );
-  }
+  console.log(`Running ${direction} conversion via VM LocalDB (${VM_HOST})...`);
 
   const bakSize = statSync(bakPath).size;
   console.log(`  Input backup: ${(bakSize / 1024 / 1024).toFixed(1)} MB`);
 
-  // Start container
-  console.log(`  Starting container ${CONTAINER_NAME}...`);
-  await execOrDie(
-    [
-      "docker",
-      "run",
-      "-d",
-      "--name",
-      CONTAINER_NAME,
-      "--platform",
-      "linux/amd64",
-      "-e",
-      "ACCEPT_EULA=Y",
-      "-e",
-      `MSSQL_SA_PASSWORD=${SA_PASSWORD}`,
-      "-v",
-      `${absDataDir}:/data`,
-      dockerImage,
-    ],
-    "docker run"
+  // Discover LocalDB pipe
+  console.log("  Discovering LocalDB pipe...");
+  const pipe = await discoverPipe();
+  console.log(`  Pipe: ${pipe}`);
+
+  // Create working directory on VM
+  const dbName = `Convert_${Date.now()}`;
+  const remoteBak = `${VM_WORK_DIR}\\Project.bak`;
+  const remoteConvertedBak = `${VM_WORK_DIR}\\Converted.bak`;
+  const remoteMdf = `${VM_WORK_DIR}\\${dbName}.mdf`;
+  const remoteLdf = `${VM_WORK_DIR}\\${dbName}_log.ldf`;
+
+  await execPowerShell(
+    `New-Item -ItemType Directory -Force -Path '${VM_WORK_DIR}' | Out-Null`,
+    10_000
   );
 
+  // Upload .bak to VM
+  console.log("  Uploading backup to VM...");
+  await scp(bakPath, remoteBak, "upload", 120_000);
+
   try {
-    await waitForSqlServer(CONTAINER_NAME);
-
-    // Fix permissions inside container
-    await execOrDie(
-      ["docker", "exec", CONTAINER_NAME, "chmod", "777", "/data/Project.bak"],
-      "chmod bak"
-    );
-
-    // Discover logical file names from the backup using tab-separated output
+    // Discover logical file names from backup
     console.log("  Reading backup file list...");
-    const fileListResult = await execOrDie(
-      [
-        "docker", "exec", CONTAINER_NAME,
-        "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", SA_PASSWORD,
-        "-d", "master", "-Q", "RESTORE FILELISTONLY FROM DISK = '/data/Project.bak';",
-        "-b", "-W", "-s", "\t",
-      ],
-      "FILELISTONLY",
-      { timeout: 60_000 }
+    const fileListResult = await vmSqlcmd(
+      pipe, "master",
+      `RESTORE FILELISTONLY FROM DISK = '${remoteBak.replace(/'/g, "''")}';`,
+      30_000
     );
-    // Parse tab-separated output: LogicalName\tPhysicalName\tType\t...
-    const fileLines = fileListResult
-      .split("\n")
-      .filter((l) => l.includes("\t"));
+
+    // Parse output for logical names
     let mdfLogical = "Project";
     let ldfLogical = "Project_log";
-    for (const line of fileLines) {
-      const cols = line.split("\t");
-      if (cols.length >= 3 && cols[0] && !cols[0].startsWith("-")) {
-        const name = cols[0].trim();
-        const type = cols[2].trim();
-        if (type === "D" && name !== "LogicalName") mdfLogical = name;
-        if (type === "L" && name !== "LogicalName") ldfLogical = name;
+    for (const line of fileListResult.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("-") || trimmed.startsWith("Logical")) continue;
+      // sqlcmd default output: columns separated by spaces, Type is 3rd column
+      // Look for lines containing .mdf or .ldf paths
+      if (trimmed.includes(".mdf") && !trimmed.includes(".ldf")) {
+        const name = trimmed.split(/\s+/)[0];
+        if (name && name !== "LogicalName") mdfLogical = name;
+      } else if (trimmed.includes(".ldf") || trimmed.includes(".LDF")) {
+        const name = trimmed.split(/\s+/)[0];
+        if (name && name !== "LogicalName") ldfLogical = name;
       }
     }
     console.log(`  Logical names: data='${mdfLogical}', log='${ldfLogical}'`);
 
-    // RESTORE DATABASE from backup (same as Designer does via SMO)
+    // RESTORE DATABASE
     console.log("  Restoring database from backup...");
-    await sqlcmd(
-      CONTAINER_NAME,
-      `RESTORE DATABASE [Project]
-       FROM DISK = '/data/Project.bak'
-       WITH MOVE '${mdfLogical}' TO '/data/Project.mdf',
-            MOVE '${ldfLogical}' TO '/data/Project_log.ldf',
-            REPLACE;`
+    await vmSqlcmd(
+      pipe, "master",
+      `RESTORE DATABASE [${dbName}]
+       FROM DISK = '${remoteBak.replace(/'/g, "''")}'
+       WITH MOVE '${mdfLogical}' TO '${remoteMdf.replace(/'/g, "''")}',
+            MOVE '${ldfLogical}' TO '${remoteLdf.replace(/'/g, "''")}',
+            REPLACE;`,
+      120_000
     );
 
+    // Run conversion SQL
     console.log(`  Running ${direction} conversion SQL...`);
     const conversionSql = buildConversionSql(direction);
-    const result = await sqlcmdDb(CONTAINER_NAME, "Project", conversionSql);
+    const result = await vmSqlcmd(pipe, dbName, conversionSql, 120_000);
     console.log(result);
 
-    // BACKUP DATABASE to produce a clean .bak (same as Designer does via SMO)
+    // BACKUP converted database
     console.log("  Backing up converted database...");
-    const outputBak = join(dataDir, "Converted.bak");
-    await sqlcmd(
-      CONTAINER_NAME,
-      `BACKUP DATABASE [Project] TO DISK = '/data/Converted.bak' WITH INIT;`
+    await vmSqlcmd(
+      pipe, "master",
+      `BACKUP DATABASE [${dbName}] TO DISK = '${remoteConvertedBak.replace(/'/g, "''")}' WITH INIT;`,
+      120_000
     );
 
-    const outSize = statSync(outputBak).size;
+    // Download converted .bak
+    console.log("  Downloading converted backup...");
+    const localOutput = join(bakPath, "..", "Converted.bak");
+    await scp(localOutput, remoteConvertedBak, "download", 120_000);
+
+    const outSize = statSync(localOutput).size;
     console.log(`  Output backup: ${(outSize / 1024 / 1024).toFixed(1)} MB`);
 
-    return outputBak;
+    return localOutput;
   } finally {
-    if (!keepContainer) {
-      console.log("  Cleaning up container...");
-      await exec(["docker", "stop", CONTAINER_NAME]);
-      await exec(["docker", "rm", CONTAINER_NAME]);
-    } else {
-      console.log(`  Container kept: ${CONTAINER_NAME}`);
+    // Clean up: drop database and remove temp files on VM
+    console.log("  Cleaning up VM...");
+    try {
+      await vmSqlcmd(
+        pipe, "master",
+        `IF DB_ID('${dbName}') IS NOT NULL
+         BEGIN
+           ALTER DATABASE [${dbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+           DROP DATABASE [${dbName}];
+         END`,
+        30_000
+      );
+    } catch {
+      // Best-effort cleanup
+    }
+    try {
+      await execPowerShell(
+        `Remove-Item -Path '${VM_WORK_DIR}\\*' -Force -ErrorAction SilentlyContinue`,
+        10_000
+      );
+    } catch {
+      // Best-effort cleanup
     }
   }
 }
@@ -988,8 +1244,7 @@ async function runConversion(
 
 async function runDiff(
   fileA: string,
-  fileB: string,
-  dockerImage: string
+  fileB: string
 ): Promise<void> {
   console.log(
     `Diffing ${basename(fileA)} vs ${basename(fileB)}...\n`
@@ -998,100 +1253,37 @@ async function runDiff(
   const extractA = await extractBak(fileA);
   const extractB = await extractBak(fileB);
 
-  // Set up shared data directory with both backups
-  const diffDir = makeTempDir("lutron-diff");
-  const bakAPath = join(diffDir, "ProjectA.bak");
-  const bakBPath = join(diffDir, "ProjectB.bak");
-
-  // Copy backups to shared dir
-  await Bun.write(bakAPath, Bun.file(extractA.bakPath));
-  await Bun.write(bakBPath, Bun.file(extractB.bakPath));
-
-  const containerName = `lutron-diff-${Date.now()}`;
-  const absDiffDir =
-    diffDir.startsWith("/") ? diffDir : join(process.cwd(), diffDir);
-
-  const dockerCheck = await exec(["docker", "info"]);
-  if (dockerCheck.exitCode !== 0) {
-    throw new Error("Docker is not running.");
-  }
-
-  console.log("Starting diff container...");
-  await execOrDie(
-    [
-      "docker",
-      "run",
-      "-d",
-      "--name",
-      containerName,
-      "--platform",
-      "linux/amd64",
-      "-e",
-      "ACCEPT_EULA=Y",
-      "-e",
-      `MSSQL_SA_PASSWORD=${SA_PASSWORD}`,
-      "-v",
-      `${absDiffDir}:/data`,
-      dockerImage,
-    ],
-    "docker run"
-  );
+  const dbNameA = `DiffA_${Date.now()}`;
+  const dbNameB = `DiffB_${Date.now()}`;
 
   try {
-    await waitForSqlServer(containerName);
+    console.log("Discovering LocalDB pipe...");
+    const pipe = await discoverPipe();
 
-    // Fix permissions
-    await execOrDie(
-      [
-        "docker",
-        "exec",
-        containerName,
-        "bash",
-        "-c",
-        "chmod 777 /data/*.bak",
-      ],
-      "chmod"
+    // Create working directory on VM
+    await execPowerShell(
+      `New-Item -ItemType Directory -Force -Path '${VM_WORK_DIR}' | Out-Null`,
+      10_000
     );
 
-    // Discover logical file names from backup A (should be same for B)
-    const fileListResult = await execOrDie(
-      [
-        "docker", "exec", containerName,
-        "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", SA_PASSWORD,
-        "-d", "master", "-Q", "RESTORE FILELISTONLY FROM DISK = '/data/ProjectA.bak';",
-        "-b", "-W", "-s", "\t",
-      ],
-      "FILELISTONLY",
-      { timeout: 60_000 }
-    );
-    const fileLines = fileListResult
-      .split("\n")
-      .filter((l) => l.includes("\t"));
-    let mdfLogical = "Project";
-    let ldfLogical = "Project_log";
-    for (const line of fileLines) {
-      const cols = line.split("\t");
-      if (cols.length >= 3 && cols[0] && !cols[0].startsWith("-")) {
-        const name = cols[0].trim();
-        const type = cols[2].trim();
-        if (type === "D" && name !== "LogicalName") mdfLogical = name;
-        if (type === "L" && name !== "LogicalName") ldfLogical = name;
-      }
-    }
+    // Upload both backups
+    console.log("Uploading backups to VM...");
+    await scp(extractA.bakPath, `${VM_WORK_DIR}\\ProjectA.bak`, "upload");
+    await scp(extractB.bakPath, `${VM_WORK_DIR}\\ProjectB.bak`, "upload");
 
-    // Restore both databases from backups
-    console.log("Restoring databases from backups...");
-    await sqlcmd(
-      containerName,
-      `RESTORE DATABASE [ProjectA] FROM DISK = '/data/ProjectA.bak'
-       WITH MOVE '${mdfLogical}' TO '/data/ProjectA.mdf',
-            MOVE '${ldfLogical}' TO '/data/ProjectA_log.ldf', REPLACE;`
+    // Restore both
+    console.log("Restoring databases...");
+    await vmSqlcmd(pipe, "master",
+      `RESTORE DATABASE [${dbNameA}]
+       FROM DISK = '${VM_WORK_DIR}\\ProjectA.bak'
+       WITH MOVE 'Project' TO '${VM_WORK_DIR}\\${dbNameA}.mdf',
+            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameA}_log.ldf', REPLACE;`
     );
-    await sqlcmd(
-      containerName,
-      `RESTORE DATABASE [ProjectB] FROM DISK = '/data/ProjectB.bak'
-       WITH MOVE '${mdfLogical}' TO '/data/ProjectB.mdf',
-            MOVE '${ldfLogical}' TO '/data/ProjectB_log.ldf', REPLACE;`
+    await vmSqlcmd(pipe, "master",
+      `RESTORE DATABASE [${dbNameB}]
+       FROM DISK = '${VM_WORK_DIR}\\ProjectB.bak'
+       WITH MOVE 'Project' TO '${VM_WORK_DIR}\\${dbNameB}.mdf',
+            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameB}_log.ldf', REPLACE;`
     );
 
     // Run diff queries
@@ -1101,33 +1293,25 @@ SET NOCOUNT ON;
 PRINT '## Schema Diff: ${basename(fileA)} vs ${basename(fileB)}';
 PRINT '';
 
--- ProductType comparison
 PRINT '### ProductType';
 DECLARE @ptA INT, @ptB INT;
-SELECT TOP(1) @ptA = ProductType FROM [ProjectA].dbo.tblProject;
-SELECT TOP(1) @ptB = ProductType FROM [ProjectB].dbo.tblProject;
+SELECT TOP(1) @ptA = ProductType FROM [${dbNameA}].dbo.tblProject;
+SELECT TOP(1) @ptB = ProductType FROM [${dbNameB}].dbo.tblProject;
 PRINT '  A (${basename(fileA)}): ' + ISNULL(CAST(@ptA AS VARCHAR), 'NULL') + CASE @ptA WHEN 3 THEN ' (RA3)' WHEN 4 THEN ' (HW)' ELSE '' END;
 PRINT '  B (${basename(fileB)}): ' + ISNULL(CAST(@ptB AS VARCHAR), 'NULL') + CASE @ptB WHEN 3 THEN ' (RA3)' WHEN 4 THEN ' (HW)' ELSE '' END;
 PRINT '';
 
--- Table comparison
 PRINT '### Table Counts';
 PRINT '';
 
-DECLARE @nameA SYSNAME, @nameB SYSNAME;
-DECLARE @countA BIGINT, @countB BIGINT;
-DECLARE @sql NVARCHAR(MAX);
+DECLARE @nameA SYSNAME, @sql NVARCHAR(MAX);
 
--- Tables in A
 CREATE TABLE #TablesA (name SYSNAME);
-INSERT INTO #TablesA
-SELECT name FROM [ProjectA].sys.tables WHERE SCHEMA_NAME(schema_id) = 'dbo' ORDER BY name;
+INSERT INTO #TablesA SELECT name FROM [${dbNameA}].sys.tables WHERE SCHEMA_NAME(schema_id) = 'dbo' ORDER BY name;
 
 CREATE TABLE #TablesB (name SYSNAME);
-INSERT INTO #TablesB
-SELECT name FROM [ProjectB].sys.tables WHERE SCHEMA_NAME(schema_id) = 'dbo' ORDER BY name;
+INSERT INTO #TablesB SELECT name FROM [${dbNameB}].sys.tables WHERE SCHEMA_NAME(schema_id) = 'dbo' ORDER BY name;
 
--- Tables only in A
 DECLARE @onlyA INT = (SELECT COUNT(*) FROM #TablesA WHERE name NOT IN (SELECT name FROM #TablesB));
 IF @onlyA > 0
 BEGIN
@@ -1135,7 +1319,6 @@ BEGIN
   SELECT a.name AS [Only in A] FROM #TablesA a WHERE a.name NOT IN (SELECT name FROM #TablesB) ORDER BY a.name;
 END;
 
--- Tables only in B
 DECLARE @onlyB INT = (SELECT COUNT(*) FROM #TablesB WHERE name NOT IN (SELECT name FROM #TablesA));
 IF @onlyB > 0
 BEGIN
@@ -1147,8 +1330,6 @@ IF @onlyA = 0 AND @onlyB = 0
   PRINT 'Same table set in both databases.';
 
 PRINT '';
-
--- Row count diff for shared tables with ModelInfoID
 PRINT '### ModelInfoID Table Row Counts';
 
 CREATE TABLE #RowDiff (TableName SYSNAME, RowsA BIGINT, RowsB BIGINT);
@@ -1156,7 +1337,7 @@ CREATE TABLE #RowDiff (TableName SYSNAME, RowsA BIGINT, RowsB BIGINT);
 DECLARE rowCur CURSOR LOCAL FAST_FORWARD FOR
   SELECT a.name FROM #TablesA a
   JOIN #TablesB b ON a.name = b.name
-  JOIN [ProjectA].sys.columns c ON c.object_id = OBJECT_ID('[ProjectA].dbo.' + QUOTENAME(a.name))
+  JOIN [${dbNameA}].sys.columns c ON c.object_id = OBJECT_ID('[${dbNameA}].dbo.' + QUOTENAME(a.name))
   WHERE c.name = 'ModelInfoID'
   ORDER BY a.name;
 
@@ -1166,8 +1347,8 @@ WHILE @@FETCH_STATUS = 0
 BEGIN
   SET @sql = N'
     DECLARE @cA BIGINT, @cB BIGINT;
-    SELECT @cA = COUNT(*) FROM [ProjectA].dbo.' + QUOTENAME(@nameA) + N';
-    SELECT @cB = COUNT(*) FROM [ProjectB].dbo.' + QUOTENAME(@nameA) + N';
+    SELECT @cA = COUNT(*) FROM [${dbNameA}].dbo.' + QUOTENAME(@nameA) + N';
+    SELECT @cB = COUNT(*) FROM [${dbNameB}].dbo.' + QUOTENAME(@nameA) + N';
     INSERT INTO #RowDiff VALUES (N''' + REPLACE(@nameA, '''', '''''') + N''', @cA, @cB);';
   BEGIN TRY
     EXEC sp_executesql @sql;
@@ -1180,8 +1361,7 @@ CLOSE rowCur;
 DEALLOCATE rowCur;
 
 SELECT TableName, RowsA, RowsB, RowsA - RowsB AS Delta
-FROM #RowDiff
-WHERE RowsA <> RowsB
+FROM #RowDiff WHERE RowsA <> RowsB
 ORDER BY ABS(RowsA - RowsB) DESC;
 
 IF NOT EXISTS (SELECT 1 FROM #RowDiff WHERE RowsA <> RowsB)
@@ -1191,58 +1371,41 @@ PRINT '';
 PRINT 'Done.';
 `;
 
-    const result = await execOrDie(
-      [
-        "docker",
-        "exec",
-        containerName,
-        "/opt/mssql-tools/bin/sqlcmd",
-        "-S",
-        "localhost",
-        "-U",
-        "sa",
-        "-P",
-        SA_PASSWORD,
-        "-d",
-        "master",
-        "-Q",
-        diffSql,
-        "-b",
-        "-W",
-      ],
-      "diff sqlcmd",
-      { timeout: 120_000 }
-    );
+    const result = await vmSqlcmd(pipe, "master", diffSql, 120_000);
     console.log(result);
-
-    // Drop both (no need to preserve since we're done)
-    await sqlcmd(
-      containerName,
-      `ALTER DATABASE [ProjectA] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [ProjectA];
-       ALTER DATABASE [ProjectB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [ProjectB];`
-    );
   } finally {
-    await exec(["docker", "stop", containerName]);
-    await exec(["docker", "rm", containerName]);
+    // Clean up databases and files on VM
+    console.log("Cleaning up...");
+    const pipe = await discoverPipe().catch(() => null);
+    if (pipe) {
+      try {
+        await vmSqlcmd(pipe, "master",
+          `IF DB_ID('${dbNameA}') IS NOT NULL BEGIN ALTER DATABASE [${dbNameA}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbNameA}]; END;
+           IF DB_ID('${dbNameB}') IS NOT NULL BEGIN ALTER DATABASE [${dbNameB}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbNameB}]; END;`
+        );
+      } catch { /* best-effort */ }
+    }
+    try {
+      await execPowerShell(
+        `Remove-Item -Path '${VM_WORK_DIR}\\*' -Force -ErrorAction SilentlyContinue`,
+        10_000
+      );
+    } catch { /* best-effort */ }
     rmSync(extractA.tempDir, { recursive: true, force: true });
     rmSync(extractB.tempDir, { recursive: true, force: true });
-    rmSync(diffDir, { recursive: true, force: true });
   }
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const dockerImage = values["docker-image"] as string;
-  const keepContainer = values["keep-container"] as boolean;
-
   // -- Diff mode --
   if (values.diff) {
     if (positionals.length < 2) {
       console.error("--diff requires two project files.");
       process.exit(1);
     }
-    await runDiff(positionals[0], positionals[1], dockerImage);
+    await runDiff(positionals[0], positionals[1]);
     return;
   }
 
@@ -1373,12 +1536,10 @@ async function main(): Promise<void> {
   const extracted = await extractBak(input);
 
   try {
-    // Step 2: RESTORE → convert → BACKUP
+    // Step 2: RESTORE → convert → BACKUP (on VM's LocalDB)
     const convertedBak = await runConversion(
       extracted.bakPath,
-      direction,
-      dockerImage,
-      keepContainer
+      direction
     );
 
     // Step 3: Pack .bak as .lut into ZIP
@@ -1397,9 +1558,5 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(`\nFatal: ${err.message}`);
-  // Try to clean up container on error
-  exec(["docker", "stop", CONTAINER_NAME]).then(() =>
-    exec(["docker", "rm", CONTAINER_NAME])
-  );
   process.exit(1);
 });

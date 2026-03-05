@@ -3,11 +3,10 @@
 /**
  * MCP Server: Lutron Designer LocalDB
  *
- * Wraps SSH → PowerShell → sqlcmd into clean MCP tools with automatic
- * named-pipe discovery, retry on pipe change, and CRLF normalization.
+ * Queries Designer's LocalDB via HTTP API running on the VM (sql-http-api.ps1).
+ * Endpoints: /query (project DB), /query-modelinfo (SQLMODELINFO), /databases
  *
- * All PowerShell is sent via -EncodedCommand (UTF-16LE base64) to
- * completely eliminate quotation mark escaping through SSH+PowerShell+SQL.
+ * Falls back to SSH → PowerShell → sqlcmd if HTTP API is unreachable.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,13 +20,60 @@ import { existsSync } from "fs";
 const VM_HOST = process.env.DESIGNER_VM_HOST ?? "10.0.0.4";
 const VM_USER = process.env.DESIGNER_VM_USER ?? "alex";
 const VM_PASS = process.env.DESIGNER_VM_PASS ?? "alex";
+const HTTP_BASE = `http://${VM_HOST}:9999`;
 const DEFAULT_TIMEOUT = 30_000;
 const SQL_DIR = resolve(import.meta.dir, "sql");
 
-// ── PowerShell execution via SSH ────────────────────────────────────
+// ── HTTP API (primary) ──────────────────────────────────────────────
+
+async function httpQuery(
+  endpoint: string,
+  sql: string,
+  timeout = DEFAULT_TIMEOUT
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const res = await fetch(`${HTTP_BASE}${endpoint}`, {
+      method: "POST",
+      body: sql,
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${text.trim()}`);
+    }
+    return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function httpGet(
+  endpoint: string,
+  timeout = DEFAULT_TIMEOUT
+): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const res = await fetch(`${HTTP_BASE}${endpoint}`, {
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${text.trim()}`);
+    }
+    return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── SSH fallback ────────────────────────────────────────────────────
 
 function encodePowerShell(script: string): string {
-  // PowerShell -EncodedCommand expects UTF-16LE base64
   const buf = Buffer.from(script, "utf16le");
   return buf.toString("base64");
 }
@@ -39,7 +85,7 @@ async function execPowerShell(
   const encoded = encodePowerShell(script);
   const proc = Bun.spawn(
     [
-      "sshpass",
+      "/opt/homebrew/bin/sshpass",
       "-p",
       VM_PASS,
       "ssh",
@@ -49,6 +95,8 @@ async function execPowerShell(
       "ConnectTimeout=10",
       "-o",
       "PreferredAuthentications=password",
+      "-o",
+      "LogLevel=ERROR",
       `${VM_USER}@${VM_HOST}`,
       "powershell",
       "-EncodedCommand",
@@ -73,7 +121,7 @@ async function execPowerShell(
   };
 }
 
-// ── Pipe discovery & caching ────────────────────────────────────────
+// ── Pipe discovery & caching (SSH fallback) ─────────────────────────
 
 let cachedPipe: string | null = null;
 let cachedDatabase: string | null = null;
@@ -83,7 +131,6 @@ async function discover(): Promise<{ pipe: string; database: string }> {
     return { pipe: cachedPipe, database: cachedDatabase };
   }
 
-  // Mirror run-localdb.ps1: scan \\.\pipe\ for LOCALDB, test connectivity
   const discoverScript = `
 $ErrorActionPreference = "Continue"
 if ($PSVersionTable.PSVersion.Major -ge 7) {
@@ -118,7 +165,6 @@ if (-not $foundServer) {
   exit 1
 }
 
-# Resolve project database
 $sql = "SET NOCOUNT ON; SELECT TOP 1 name FROM sys.databases WHERE name = 'Project' OR name LIKE 'Project[_]%' ORDER BY CASE WHEN name = 'Project' THEN 0 ELSE 1 END, create_date DESC;"
 $db = (& sqlcmd -S $foundServer -E -No -d master -Q $sql -h -1 -W 2>$null | Select-Object -First 1)
 if ($db) { $db = $db.Trim() }
@@ -155,7 +201,7 @@ function invalidateCache() {
   cachedDatabase = null;
 }
 
-// ── SQL execution with retry ────────────────────────────────────────
+// ── SQL execution: HTTP first, SSH fallback ─────────────────────────
 
 const PIPE_ERROR_PATTERNS = [
   "pipe",
@@ -166,6 +212,9 @@ const PIPE_ERROR_PATTERNS = [
   "network",
   "login timeout",
   "communication link",
+  "login failed",
+  "cannot open database",
+  "not found or not accessible",
 ];
 
 function isPipeError(output: string): boolean {
@@ -178,6 +227,13 @@ async function runSQL(
   timeout = DEFAULT_TIMEOUT,
   retried = false
 ): Promise<string> {
+  // Try HTTP API first
+  try {
+    return await httpQuery("/query", sql, timeout);
+  } catch {
+    // Fall through to SSH
+  }
+
   const { pipe, database } = await discover();
 
   const script = `
@@ -210,12 +266,17 @@ async function runSQLFile(
   timeout = DEFAULT_TIMEOUT,
   retried = false
 ): Promise<string> {
-  const { pipe, database } = await discover();
+  // Try HTTP API first
+  try {
+    const fileContent = await Bun.file(filePath).text();
+    return await httpQuery("/query", fileContent, timeout);
+  } catch {
+    // Fall through to SSH
+  }
 
-  // Read the file locally and embed its contents in the PowerShell script
+  const { pipe, database } = await discover();
   const fileContent = await Bun.file(filePath).text();
 
-  // Write SQL to a temp file on Windows, execute it, then clean up
   const script = `
 $ErrorActionPreference = "Continue"
 if ($PSVersionTable.PSVersion.Major -ge 7) {
@@ -253,13 +314,13 @@ try {
 
 const server = new McpServer({
   name: "designer-db",
-  version: "1.0.0",
+  version: "2.0.0",
 });
 
 // Tool: query
 server.tool(
   "query",
-  "Run arbitrary SQL against the Designer LocalDB project database. Returns pipe-delimited results.",
+  "Run arbitrary SQL against the Designer LocalDB project database. Returns pipe-delimited results. Uses HTTP API (fast) with SSH fallback.",
   {
     sql: z.string().describe("SQL query to execute"),
     timeout: z
@@ -360,6 +421,14 @@ server.tool(
   {},
   async () => {
     try {
+      // Try HTTP first
+      try {
+        const output = await httpGet("/databases");
+        return { content: [{ type: "text", text: output }] };
+      } catch {
+        // Fall through to SSH
+      }
+
       const { pipe } = await discover();
       const script = `
 $ErrorActionPreference = "Continue"
@@ -394,7 +463,6 @@ server.tool(
       .describe("Timeout in milliseconds (default 30000)"),
   },
   async ({ filename, timeout }) => {
-    // Path traversal guard
     const clean = basename(filename);
     if (clean !== filename) {
       return {
@@ -417,7 +485,6 @@ server.tool(
     }
 
     if (!existsSync(filePath)) {
-      // List available files
       const { readdirSync } = await import("fs");
       const available = readdirSync(SQL_DIR)
         .filter((f) => f.endsWith(".sql"))
