@@ -82,7 +82,13 @@ certs/
 
 .obsidian/
 .mcp.json
+.env
+
+# RF captures (large binary files)
+captures/
 
 tmp/
 /src/
-captures/lutron-runtime/
+
+# Firmware secrets (Thread network config)
+firmware/src/ccx/thread_config.h

@@ -82,15 +82,10 @@
 #define SPINEL_NET_ROLE_LEADER   3
 
 /* -----------------------------------------------------------------------
- * Lutron Thread network parameters
+ * Lutron Thread network parameters (from thread_config.h)
+ * Copy thread_config.example.h -> thread_config.h and fill in your values.
  * ----------------------------------------------------------------------- */
-#define LUTRON_THREAD_CHANNEL 25
-#define LUTRON_THREAD_PANID   0x0000
-
-static const uint8_t LUTRON_THREAD_XPANID[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-static const uint8_t LUTRON_THREAD_MASTER_KEY[16] = {0x20, 0x09, 0xF0, 0xF1, 0x02, 0xB4, 0xEE, 0xA8,
-                                                     0x6F, 0x31, 0xDC, 0x70, 0x1D, 0x8E, 0x3D, 0x62};
+#include "thread_config.h"
 
 /* ff03::1 — Thread mesh-local multicast (all FTDs + MTDs) */
 static const uint8_t CCX_MULTICAST_ADDR[16] = {0xFF, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

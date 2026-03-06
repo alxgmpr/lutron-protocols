@@ -12,7 +12,7 @@
  *
  * Usage:
  *   bun run tools/ipl-client.ts                    # Connect and dump traffic
- *   bun run tools/ipl-client.ts --host 10.0.0.1  # Specify host
+ *   bun run tools/ipl-client.ts --host $RA3_HOST  # Specify host
  *   bun run tools/ipl-client.ts --save             # Save raw capture to file
  *   bun run tools/ipl-client.ts --quiet            # Only show non-heartbeat messages
  */
@@ -31,7 +31,8 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-const HOST = getArg("--host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const HOST = getArg("--host") ?? RA3_HOST;
 const PORT = parseInt(getArg("--port") ?? "8902");
 const SAVE = hasFlag("--save");
 const QUIET = hasFlag("--quiet");

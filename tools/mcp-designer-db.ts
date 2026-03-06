@@ -17,9 +17,10 @@ import { existsSync } from "fs";
 
 // ── Config ──────────────────────────────────────────────────────────
 
-const VM_HOST = process.env.DESIGNER_VM_HOST ?? "10.0.0.4";
-const VM_USER = process.env.DESIGNER_VM_USER ?? "alex";
-const VM_PASS = process.env.DESIGNER_VM_PASS ?? "alex";
+import { DESIGNER_VM_HOST, DESIGNER_VM_USER, DESIGNER_VM_PASS } from "../lib/env";
+const VM_HOST = process.env.DESIGNER_VM_HOST ?? DESIGNER_VM_HOST;
+const VM_USER = process.env.DESIGNER_VM_USER ?? DESIGNER_VM_USER;
+const VM_PASS = process.env.DESIGNER_VM_PASS ?? DESIGNER_VM_PASS;
 const HTTP_BASE = `http://${VM_HOST}:9999`;
 const DEFAULT_TIMEOUT = 30_000;
 const SQL_DIR = resolve(import.meta.dir, "sql");

@@ -11,7 +11,7 @@
  *   bun run tools/leap-dump.ts                          # Full human-readable dump (RA3)
  *   bun run tools/leap-dump.ts --json                   # JSON output
  *   bun run tools/leap-dump.ts --config                 # Generate ccx/config.ts updates
- *   bun run tools/leap-dump.ts --host 10.0.0.2 --certs caseta   # Caseta dump
+ *   bun run tools/leap-dump.ts --host $CASETA_HOST --certs caseta   # Caseta dump
  *   bun run tools/leap-dump.ts --save                   # Save to data/leap-<host>.json
  *
  * Requires TLS certificates in the project root:
@@ -40,7 +40,8 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-const HOST = getArg("--host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const HOST = getArg("--host") ?? RA3_HOST;
 const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");

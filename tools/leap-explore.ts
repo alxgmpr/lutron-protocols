@@ -8,7 +8,7 @@
  *
  * Usage:
  *   bun run tools/leap-explore.ts                           # RA3 processor
- *   bun run tools/leap-explore.ts --host 10.0.0.2 --cert caseta  # Caseta
+ *   bun run tools/leap-explore.ts --host $CASETA_HOST --cert caseta  # Caseta
  *   bun run tools/leap-explore.ts --save                    # Save full dump to file
  *   bun run tools/leap-explore.ts --section devices         # Only probe devices section
  */
@@ -26,7 +26,8 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-const HOST = getArg("--host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const HOST = getArg("--host") ?? RA3_HOST;
 const CERT_NAME = getArg("--cert") ?? "ra3";
 const SAVE = hasFlag("--save");
 const SECTION = getArg("--section");

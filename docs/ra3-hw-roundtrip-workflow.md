@@ -13,10 +13,10 @@ Switch `ModelInfoID` references only, without changing project/system metadata, 
   - `tblVersion.ProductType`
   - `tblVersionHistory.ProductType`
 
-Use `~/lutron-tools/tools/sql/project-modelid-convert-ra3-hw.sql` for this path.
+Use `<project-root>/tools/sql/project-modelid-convert-ra3-hw.sql` for this path.
 
 ## Mapping rules
-Implemented in `~/lutron-tools/tools/sql/project-modelid-convert-ra3-hw.sql`:
+Implemented in `<project-root>/tools/sql/project-modelid-convert-ra3-hw.sql`:
 
 - `RRST-` <-> `HRST-`
 - `RRD-` <-> `HQRD-`
@@ -33,7 +33,7 @@ Implemented in `~/lutron-tools/tools/sql/project-modelid-convert-ra3-hw.sql`:
 - Keep the target RA3 project open.
 
 ### 2) Dry-run conversion
-Run `~/lutron-tools/tools/sql/project-modelid-convert-ra3-hw.sql` with:
+Run `<project-root>/tools/sql/project-modelid-convert-ra3-hw.sql` with:
 - `@Direction = 'RA3_TO_HW'`
 - `@DryRun = 1`
 - `@FailOnUnmapped = 1`
@@ -61,8 +61,8 @@ Expected result:
 - dry-run first, then apply.
 
 ## What not to run in this workflow
-- Do not use `~/lutron-tools/tools/sql/project-mode-convert-ra3-hw.sql` if the goal is IDs-only testing.
-- Do not use `~/lutron-tools/tools/sql/project-mode-flip-metadata-only.sql` for this path.
+- Do not use `<project-root>/tools/sql/project-mode-convert-ra3-hw.sql` if the goal is IDs-only testing.
+- Do not use `<project-root>/tools/sql/project-mode-flip-metadata-only.sql` for this path.
 
 ## Incident Log (2026-02-19)
 

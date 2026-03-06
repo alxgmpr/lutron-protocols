@@ -6,7 +6,7 @@ covers the protocol framing, message types, and connection setup discovered thro
 reverse engineering.
 
 **Date**: 2026-03-06
-**Processor**: RA3 (HWQS), firmware v03.247, IP 10.0.0.1
+**Processor**: RA3 (HWQS), firmware v03.247, IP <ra3-ip>
 
 ---
 
@@ -59,7 +59,7 @@ C:\Program Files\WindowsApps\LutronElectronics.LutronDesignerGamma_26.0.2.100_x8
 **Key finding**: The `residential_local_access.pfx` cert is signed by `CN=Lutron Designer Certificate Authority`,
 but the processor expects `CN=Lutron Project SubSystem Certificate Authority`. These are different CAs.
 
-The project-specific SubSystem CA was found separately at `C:\Users\alex\cert_v2.pfx` — this PFX
+The project-specific SubSystem CA was found separately at `C:\Users\<user>\cert_v2.pfx` — this PFX
 contains the CA's own certificate and private key (empty password, ECDSA P-384). Using this CA,
 we generated a client cert that the processor accepts.
 
@@ -77,7 +77,7 @@ openssl x509 -req -in ipl_client.csr -CA cert_v2_client.pem -CAkey cert_v2_key.p
   -CAcreateserial -out ipl_client_cert.pem -days 3650 -sha384
 
 # Connect
-openssl s_client -connect 10.0.0.1:8902 \
+openssl s_client -connect <ra3-ip>:8902 \
   -cert ipl_client_cert.pem -key ipl_client_key.pem -quiet
 ```
 
@@ -313,7 +313,7 @@ the correct init response, command messages are silently ignored.
 bun run tools/ipl-client.ts                    # Connect and show all messages
 bun run tools/ipl-client.ts --quiet            # Only state changes + commands
 bun run tools/ipl-client.ts --save             # Save raw + parsed data to data/
-bun run tools/ipl-client.ts --host 10.0.0.1  # Specify processor IP
+bun run tools/ipl-client.ts --host <ra3-ip>  # Specify processor IP
 ```
 
 ---

@@ -7,7 +7,7 @@
  *
  * Usage:
  *   import { LeapConnection, fetchLeapData } from "./leap-client";
- *   const conn = new LeapConnection({ host: "10.0.0.1", certName: "ra3" });
+ *   const conn = new LeapConnection({ host: process.env.RA3_HOST, certName: "ra3" });
  *   await conn.connect();
  *   const data = await fetchLeapData(conn);
  *   conn.close();

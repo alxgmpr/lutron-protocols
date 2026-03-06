@@ -8,7 +8,7 @@
  * display using the protocol decoders from protocol/.
  *
  * Usage: bun cli/nucleo.ts <host>
- *        NUCLEO_HOST=192.168.1.50 bun cli/nucleo.ts
+ *        NUCLEO_HOST=10.0.0.3 bun cli/nucleo.ts
  */
 
 import { createSocket, type Socket } from "dgram";
@@ -96,7 +96,8 @@ function getCliArg(name: string): string | undefined {
 const hasCliFlag = (name: string) => process.argv.includes(name);
 
 const UPDATE_LEAP = hasCliFlag("--update-leap");
-const LEAP_HOST = getCliArg("--leap-host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const LEAP_HOST = getCliArg("--leap-host") ?? RA3_HOST;
 const LEAP_CERTS = getCliArg("--leap-certs") ?? "ra3";
 
 // ============================================================================
@@ -1429,7 +1430,7 @@ if (!host) {
     `  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`,
   );
   console.error(
-    `  --leap-host <ip>      LEAP processor IP (default: 10.0.0.1)`,
+    `  --leap-host <ip>      LEAP processor IP (default: $RA3_HOST)`,
   );
   console.error(`  --leap-certs <name>   Cert name prefix (default: ra3)`);
   process.exit(1);

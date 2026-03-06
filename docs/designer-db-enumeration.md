@@ -4,7 +4,7 @@
 
 Enumerated the active Lutron Designer LocalDB instance on:
 
-- Host: `10.0.0.4`
+- Host: `<vm-ip>`
 - Login: `Alex`
 - SQL endpoint: `np:\\.\pipe\LOCALDB#D8AB4BE4\tsql\query`
 - Database: `Project`

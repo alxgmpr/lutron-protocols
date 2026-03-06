@@ -15,7 +15,7 @@
  *
  * Usage:
  *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin
- *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host 10.0.0.3
+ *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host $NUCLEO_HOST
  */
 
 import { readFileSync } from "fs";
@@ -35,7 +35,8 @@ const DEFAULT_PORT = 9433;
 const CHUNK_SIZE = 200; // Stay under 255 limit with margin
 
 const firmwarePath = args.find((a) => !a.startsWith("--"));
-const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? "10.0.0.3";
+import { NUCLEO_HOST as DEFAULT_NUCLEO_HOST } from "../lib/env";
+const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? DEFAULT_NUCLEO_HOST;
 const port = parseInt(getArg("--port") ?? String(DEFAULT_PORT), 10);
 const chunkDelay = parseInt(getArg("--delay") ?? "250", 10);
 
@@ -47,12 +48,12 @@ Usage:
   bun run tools/nrf-dfu-flash.ts <firmware.bin> [options]
 
 Options:
-  --host <ip>      STM32 IP address (default: NUCLEO_HOST env or 10.0.0.3)
+  --host <ip>      STM32 IP address (default: NUCLEO_HOST from .env)
   --port <n>       Stream UDP port (default: 9433)
   --delay <ms>     Delay between chunks in ms (default: 250)
 
 Example:
-  bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host 10.0.0.3
+  bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host $NUCLEO_HOST
 `);
   process.exit(1);
 }

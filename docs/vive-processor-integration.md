@@ -1,7 +1,7 @@
 # Vive Processor Integration (Binary Ninja RE Notes)
 
 Date: 2026-02-16
-Target: `~/lutron-tools/Lutron Vive.app/Wrapper/Vive.app`
+Target: `<project-root>/Lutron Vive.app/Wrapper/Vive.app`
 
 Note: This document is for the standalone legacy `Vive.app` bundle only. See `docs/vive-athena-leap-followup-2026-02-16.md` for follow-up findings showing Athena/LEAP route families in the unified `Lutron` app lineage.
 

@@ -4,7 +4,7 @@ Extracted from Lutron iOS app v26.0.0 (com.lutron.lsb, build 8).
 Sources: `RequestLayerFramework`, `ResponseHandlerFramework`, `SyncServiceFramework`,
 `CommandsFramework`, `LeapModel`, `KMMUnifiedBackend`, `BridgeSetupFramework`, main binary.
 
-**VALIDATED** 2026-02-15 against RA3 (10.0.0.1, v03.247) and Caseta (10.0.0.2).
+**VALIDATED** 2026-02-15 against RA3 (<ra3-ip>, v03.247) and Caseta (<caseta-ip>).
 See `memory/leap-probing.md` for full probe results.
 
 ## Protocol Basics

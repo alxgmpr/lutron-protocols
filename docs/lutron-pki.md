@@ -29,7 +29,7 @@ LEAP is **not HTTP**. It's newline-delimited JSON over raw TLS (mutual auth, por
 
 ### TLS Fingerprints
 
-**RA3 Processor** (10.0.0.1:8081):
+**RA3 Processor** (<ra3-ip>:8081):
 - Protocol: **TLSv1.2** (not 1.3)
 - Cipher: `ECDHE-ECDSA-CHACHA20-POLY1305`
 - Server key: EC prime256v1 (P-256), 256-bit
@@ -39,7 +39,7 @@ LEAP is **not HTTP**. It's newline-delimited JSON over raw TLS (mutual auth, por
 - Compression: none
 - Certificate chain depth: 5 (leaf → processor-intermediate → devices → products → lutron-root)
 
-**Caseta Bridge** (10.0.0.2:8081):
+**Caseta Bridge** (<caseta-ip>:8081):
 - Protocol: **TLSv1.2**
 - Cipher: `ECDHE-ECDSA-CHACHA20-POLY1305`
 - Server key: EC prime256v1 (P-256), 256-bit

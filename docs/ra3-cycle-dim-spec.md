@@ -47,8 +47,8 @@ For a target RA3 ATPM PM row:
 7. Run integrity check (`sel_ProgrammingModelIssues`) and fail transaction if corruption is detected.
 
 ## Artifacts
-- Apply script: `~/lutron-tools/tools/sql/ra3-enable-atpm-cycle-dim.sql`
-- Verify script: `~/lutron-tools/tools/sql/ra3-verify-atpm-cycle-dim.sql`
+- Apply script: `<project-root>/tools/sql/ra3-enable-atpm-cycle-dim.sql`
+- Verify script: `<project-root>/tools/sql/ra3-verify-atpm-cycle-dim.sql`
 
 ## Execution Runbook
 1. Close HomeWorks project in Designer.

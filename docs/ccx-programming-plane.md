@@ -117,7 +117,7 @@ In this capture:
 - keys matching Designer `tblPreset.PresetID`: 76
 - remaining keys not in `tblPreset`: 50
 
-Current LEAP dump (`~/lutron-tools/data/leap-10.0.0.1.json`) contains:
+Current LEAP dump (`<project-root>/data/leap-<ra3-ip>.json`) contains:
 
 - 33 zones
 - 44 devices
@@ -176,25 +176,25 @@ To reproduce writes from STM32+nRF injection:
 
 - Use mesh-local RLOC addresses, not the `::...` display addresses shown in Wireshark decode.
 - Format used successfully:
-  - Source (injector): `fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00`
-  - Office keypad target: `fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00`
+  - Source (injector): `<src-ipv6>`
+  - Office keypad target: `<dst-ipv6>`
 
 Example commands:
 
 ```bash
 # HIGH
 bun run tools/ccx-coap-send.ts aha \
-  --stm32-host 10.0.0.3 \
-  --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 \
-  --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 \
+  --stm32-host <nucleo-ip> \
+  --dst <dst-ipv6> \
+  --src <src-ipv6> \
   --k4 229 --k5 25 \
   --repeat 3 --interval 150 --timeout-ms 9000
 
 # LOW
 bun run tools/ccx-coap-send.ts aha \
-  --stm32-host 10.0.0.3 \
-  --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 \
-  --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 \
+  --stm32-host <nucleo-ip> \
+  --dst <dst-ipv6> \
+  --src <src-ipv6> \
   --k4 51 --k5 12 \
   --repeat 3 --interval 150 --timeout-ms 9000
 ```
@@ -226,9 +226,9 @@ Use the trim sender:
 ```bash
 # Example: write high/low trim raw values to AAI
 bun run tools/ccx-coap-send.ts trim \
-  --stm32-host 10.0.0.3 \
-  --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 \
-  --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 \
+  --stm32-host <nucleo-ip> \
+  --dst <dst-ipv6> \
+  --src <src-ipv6> \
   --high16 58685 --low16 2638 --k8 5 \
   --repeat 3 --interval 150 --timeout-ms 9000
 ```

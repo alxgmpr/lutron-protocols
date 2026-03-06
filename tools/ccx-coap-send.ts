@@ -6,9 +6,9 @@
  * Focused for rapid /cg/db/* experimentation (e.g. status LED intensity).
  *
  * Examples:
- *   bun run tools/ccx-coap-send.ts aha --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --k4 229 --k5 25 --stm32-host 10.0.0.3
- *   bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host 10.0.0.3
- *   bun run tools/ccx-coap-send.ts trim --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --high16 58685 --low16 2638 --k8 5 --stm32-host 10.0.0.3
+ *   bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host $NUCLEO_HOST
+ *   bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host $NUCLEO_HOST
+ *   bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host $NUCLEO_HOST
  *   bun run tools/ccx-coap-send.ts bucket decode AHA
  *   bun run tools/ccx-coap-send.ts bucket encode 0x0070
  */
@@ -556,10 +556,10 @@ Commands:
   bucket   Encode/decode ct bucket token
 
 Examples:
-  bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host 10.0.0.3
-  bun run tools/ccx-coap-send.ts send --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --path /cg/db/ct/c/AFE --cbor '[107,{1:3}]' --stm32-host 10.0.0.3
-  bun run tools/ccx-coap-send.ts aha --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --k4 229 --k5 25 --stm32-host 10.0.0.3
-  bun run tools/ccx-coap-send.ts trim --dst fd0d:02ef:a82c:0000:0000:00ff:fe00:2c00 --src fd0d:02ef:a82c:0000:0000:00ff:fe00:4c00 --high16 58685 --low16 2638 --k8 5 --stm32-host 10.0.0.3
+  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host $NUCLEO_HOST
+  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AFE --cbor '[107,{1:3}]' --stm32-host $NUCLEO_HOST
+  bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host $NUCLEO_HOST
+  bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host $NUCLEO_HOST
   bun run tools/ccx-coap-send.ts bucket decode AHA
   bun run tools/ccx-coap-send.ts bucket encode 0x0070
 

@@ -19,7 +19,8 @@ import { createHmac, createDecipheriv } from "crypto";
 import { execSync } from "child_process";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
 
-const MASTER_KEY = Buffer.from("00000000000000000000000000000000", "hex");
+import { THREAD_MASTER_KEY as THREAD_KEY_HEX, THREAD_PANID } from "../lib/env";
+const MASTER_KEY = Buffer.from(THREAD_KEY_HEX, "hex");
 
 function deriveThreadKeys(masterKey: Buffer, keySequence: number): { mleKey: Buffer; macKey: Buffer } {
   // Thread spec: HMAC-SHA256(master_key, seq_counter_BE || "Thread")
@@ -114,16 +115,15 @@ const eui64sRaw = execSync(
 const uniqueEui64s = [...new Set(eui64sRaw)];
 const eui64Bufs = uniqueEui64s.map(s => Buffer.from(s.replace(/:/g, ""), "hex"));
 
-// Add candidate EUI-64s for the slider dimmer
-// Serial 72460192 = 0x00000000
-// Try common EUI-64 derivations from serial
-const serial = 0x00000000;
+// Add candidate EUI-64s from serial number (pass via --serial flag)
+const serialArg = process.argv.find(a => a.startsWith("--serial="))?.split("=")[1];
+const serial = serialArg ? parseInt(serialArg, 16) : 0;
 const serialBytes = Buffer.alloc(4);
 serialBytes.writeUInt32BE(serial);
 
 // Pattern: 00:00:00:ff:fe:00:XX:XX (short addr padded with ff:fe)
-// Short addr 0x6c06 → 00:00:00:ff:fe:00:6c:06
-const shortAddrEui = Buffer.from("000000fffe006c06", "hex");
+// Short addr (from --short flag) → 00:00:00:ff:fe:00:6c:06
+const shortAddrEui = Buffer.from("000000fffe00XXXX", "hex");
 eui64Bufs.push(shortAddrEui);
 
 // Pattern: short addr padded different ways
@@ -131,7 +131,7 @@ eui64Bufs.push(Buffer.from("0000006c06000000", "hex"));
 eui64Bufs.push(Buffer.from("00006c0600000000", "hex"));
 
 // Pattern: serial-based EUI-64
-eui64Bufs.push(Buffer.from("000000fffe" + serialBytes.toString("hex"), "hex")); // 00:00:00:ff:fe:04:51:a7
+eui64Bufs.push(Buffer.from("000000fffe" + serialBytes.toString("hex"), "hex")); // 00:00:00:ff:fe:XX:XX:XX
 eui64Bufs.push(Buffer.from("0000" + serialBytes.toString("hex") + "0000", "hex"));
 eui64Bufs.push(Buffer.from(serialBytes.toString("hex") + "00000000", "hex"));
 eui64Bufs.push(Buffer.from("00000000" + serialBytes.toString("hex"), "hex"));
@@ -148,8 +148,9 @@ eui64Bufs.push(Buffer.from("ffffffffffffffff", "hex"));
 // Per 802.15.4 spec, when extended address is not available,
 // the nonce may use the short address padded to 8 bytes
 // Format: 0x0000 || 0xFFFF || PAN_ID(2) || SHORT_ADDR(2) (per some implementations)
-const panId = 0xXXXX;
-const srcShort = 0x6c06;
+const panId = THREAD_PANID;
+const shortArg = process.argv.find(a => a.startsWith("--short="))?.split("=")[1];
+const srcShort = shortArg ? parseInt(shortArg, 16) : 0;
 const noncePad1 = Buffer.alloc(8);
 noncePad1.writeUInt16BE(panId, 0);
 noncePad1.writeUInt16LE(srcShort, 2); // or BE
@@ -177,7 +178,7 @@ for (let seq = 0; seq <= 10; seq++) {
 
 // Get undecrypted frames via tshark hex dump
 const hexDump = execSync(
-  `tshark -r "${pcapFile}" -Y "wpan.dst_pan == 0xXXXX && !(ipv6 || mle || zbee_nwk)" -x 2>/dev/null`,
+  `tshark -r "${pcapFile}" -Y "wpan.dst_pan == 0x${THREAD_PANID.toString(16)} && !(ipv6 || mle || zbee_nwk)" -x 2>/dev/null`,
 ).toString();
 
 // Parse hex dump blocks

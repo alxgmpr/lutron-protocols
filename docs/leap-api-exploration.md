@@ -1,9 +1,9 @@
-# LEAP API Exploration Results: RA3 Processor (10.0.0.1)
+# LEAP API Exploration Results: RA3 Processor (<ra3-ip>)
 
 Comprehensive documentation of the LEAP API surface on the HWQS (Homeworks QSX) processor,
 firmware v03.247, explored 2026-03-06 via `ReadRequest` on TLS port 8081.
 
-**Source data**: `data/leap-explore-10.0.0.1-2026-03-06.json` (main), `data/leap-explore-followup.json` (href followup)
+**Source data**: `data/leap-explore-<ra3-ip>-2026-03-06.json` (main), `data/leap-explore-followup.json` (href followup)
 
 ---
 
@@ -153,18 +153,18 @@ AddressedState, and associated databases.
 {
   "NetworkInterface": {
     "href": "/networkinterface/1",
-    "MACAddress": "00:00:00:00:00:00",
+    "MACAddress": "<ra3-mac>",
     "IPv4Properties": {
       "Type": "DHCP",
-      "IP": "10.0.0.1",
+      "IP": "<ra3-ip>",
       "SubnetMask": "255.255.255.0",
-      "Gateway": "10.1.1.1",
-      "DNS1": "10.1.3.3"
+      "Gateway": "<gateway-ip>",
+      "DNS1": "<dns-ip>"
     },
     "IPv6Properties": {
       "UniqueLocalUnicastAddresses": [
-        "fd3c:bce6:ffac:68f9:4a84:9dff:fe18:b338",
-        "fdb6:211:a74c:1:4a84:9dff:fe18:b338"
+        "<ra3-ipv6-ula1>",
+        "<ra3-ipv6-ula2>"
       ]
     },
     "AdapterType": "Ethernet",
@@ -281,10 +281,10 @@ Two links on this dual-radio processor:
     "LinkNumber": 1,
     "ClearConnectTypeXLinkProperties": {
       "PANID": 12345,
-      "ExtendedPANID": "AAAAAAAAAAA=",
+      "ExtendedPANID": "<thread-xpanid-b64>",
       "Channel": 25,
       "NetworkName": "",
-      "NetworkMasterKey": "AAAAAAAAAAAAAAAAAAAAAA=="
+      "NetworkMasterKey": "<thread-master-key-b64>"
     }
   }
 }
@@ -537,7 +537,7 @@ Use `/link/{id}/associatedlinknode/expanded` instead for full device enumeration
     "href": "/device/435",
     "SerialNumber": 100000001,
     "ModelNumber": "DualRadioProcResidential",
-    "NetworkInterfaces": [{ "MACAddress": "00:00:00:00:00:00" }],
+    "NetworkInterfaces": [{ "MACAddress": "<ra3-mac>" }],
     "OwnedLinks": [
       { "href": "/link/439", "LinkType": "RF" },
       { "href": "/link/437", "LinkType": "ClearConnectTypeX" }
@@ -952,11 +952,11 @@ Since RA3 lacks flat list endpoints, use these traversal patterns:
 
 ---
 
-# LEAP API Exploration Results: Caseta Processor (10.0.0.2)
+# LEAP API Exploration Results: Caseta Processor (<caseta-ip>)
 
 Caseta Smart Bridge 2, firmware v01.123, explored 2026-03-06.
 
-**Source data**: `data/leap-explore-10.0.0.2-2026-03-06.json`, `data/leap-explore-caseta-followup.json`
+**Source data**: `data/leap-explore-<caseta-ip>-2026-03-06.json`, `data/leap-explore-caseta-followup.json`
 
 ---
 
@@ -1021,8 +1021,8 @@ list endpoints (`/zone`, `/device`, `/controlstation`) unlike RA3's area-walk mo
 // /networkinterface/1 — no IPv6, no SOCKS5 proxy (simpler than RA3)
 {
   "NetworkInterface": {
-    "MACAddress": "00:00:00:00:00:00",
-    "IPv4Properties": { "Type": "DHCP", "IP": "10.0.0.2" },
+    "MACAddress": "<caseta-mac>",
+    "IPv4Properties": { "Type": "DHCP", "IP": "<caseta-ip>" },
     "AdapterType": "Ethernet"
   }
 }

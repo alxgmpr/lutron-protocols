@@ -115,7 +115,7 @@ The transfer log showed 4 separate curve table types:
 
 ```bash
 # SSH into VM
-ssh alex@10.0.0.4  # password: <redacted>
+ssh $DESIGNER_VM_USER@$DESIGNER_VM_HOST
 
 # Connect to Lutron Designer LocalDB (must disable encryption with -No)
 sqlcmd -S "np:\\.\pipe\LOCALDB#CEA130DB\tsql\query" -No

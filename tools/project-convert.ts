@@ -11,6 +11,7 @@
  * backup format compatibility (Docker MSSQL produces incompatible backups).
  */
 
+import "../lib/env"; // load .env
 import { parseArgs } from "util";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
 import { join, basename, extname } from "path";
@@ -25,9 +26,9 @@ const { values, positionals } = parseArgs({
     direction: { type: "string" },
     "extract-only": { type: "string" },
     "pack-only": { type: "string" },
-    "vm-host": { type: "string", default: "10.0.0.4" },
-    "vm-user": { type: "string", default: "alex" },
-    "vm-pass": { type: "string", default: "alex" },
+    "vm-host": { type: "string", default: process.env.DESIGNER_VM_HOST },
+    "vm-user": { type: "string", default: process.env.DESIGNER_VM_USER },
+    "vm-pass": { type: "string", default: process.env.DESIGNER_VM_PASS },
     diff: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -49,9 +50,9 @@ Options:
   --direction <RA3_TO_HW|HW_TO_RA3>  Conversion direction (auto-detected from extensions)
   --extract-only <dir>                Extract .bak from project ZIP
   --pack-only <bak>                   Pack .bak into project ZIP
-  --vm-host <host>                    Designer VM IP (default: 10.0.0.4)
-  --vm-user <user>                    VM SSH user (default: alex)
-  --vm-pass <pass>                    VM SSH password (default: alex)
+  --vm-host <host>                    Designer VM IP (default: $DESIGNER_VM_HOST)
+  --vm-user <user>                    VM SSH user (default: $DESIGNER_VM_USER)
+  --vm-pass <pass>                    VM SSH password (default: $DESIGNER_VM_PASS)
   --diff                              Show schema diff between two project files
   --help                              Show this help
 `);

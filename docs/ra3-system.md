@@ -11,7 +11,7 @@ RadioRA 3 processor internals, LEAP API, certificates, and database editing.
 | OS | Linux 5.10 |
 | Database schema | v168, **268 tables** per project transfer |
 | Firmware | APT-style repo (kernel, rootfs, spl, uboot .deb packages) |
-| MAC | 00:00:00:00:00:00 (example) |
+| MAC | <ra3-mac> (example) |
 
 Internal codenames: Janus (RA3 processor), Pegasus (link/network), Hyperion (daylighting/facade), Kaleido (Ketra color display), McCasey (dimming curve algorithm).
 
@@ -60,7 +60,7 @@ Read-only JSON API on port 8081 via mutual TLS.
 ```bash
 # Using pylutron-caseta
 leap --cacert lutron-ra3-ca.pem --cert lutron-ra3-cert.pem --key lutron-ra3-key.pem \
-  "10.0.0.1/area"
+  "<ra3-ip>/area"
 
 # Using leap-dump (walks full hierarchy)
 bun run tools/leap-dump.ts
@@ -108,7 +108,7 @@ Available via LEAP `/link/{id}`:
 
 **CCX (Thread):**
 - Channel (e.g., 25)
-- PAN ID (e.g., 25327 = 0x0000)
+- PAN ID (e.g., 25327 = <pan-id>)
 - Extended PAN ID
 - **NetworkMasterKey** (128-bit AES, decrypts all Thread traffic)
 
@@ -438,7 +438,7 @@ Implication:
 - HomeWorks UI visibility for local device programming depends on the full local-button chain, not just `ModelInfoID` + zone records.
 
 Repair script:
-- `~/lutron-tools/tools/sql/hw-add-hqr3ld-local-programming.sql`
+- `<project-root>/tools/sql/hw-add-hqr3ld-local-programming.sql`
 - Dry-run currently reports:
   - `3272`: `WILL_ADD_CHAIN`
   - `3289`: `WILL_ADD_CHAIN`
@@ -497,11 +497,11 @@ Root cause for Office/Guest mismatch:
 ### L01 Pico normalization scripts
 
 1) Programming cleanup script:
-- `~/lutron-tools/tools/sql/hw-normalize-l01-pico-programming.sql`
+- `<project-root>/tools/sql/hw-normalize-l01-pico-programming.sql`
 - Removes legacy `tblPresetAssignment` + `tblAssignmentCommandParameter` rows under L01 button presets.
 
 2) Template/binding repair script:
-- `~/lutron-tools/tools/sql/hw-fix-l01-pico-template-bindings.sql`
+- `<project-root>/tools/sql/hw-fix-l01-pico-template-bindings.sql`
 - Aligns all `PJ2-4B-XXX-L01` devices to canonical bindings:
   - `AssociatedTemplateId -> 424`
   - `ButtonGroupInfoID -> 1459`

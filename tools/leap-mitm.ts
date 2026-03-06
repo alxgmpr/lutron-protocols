@@ -6,7 +6,7 @@
  *      bun run tools/leap-mitm.ts
  *
  *   2. Redirect traffic (in another terminal):
- *      echo "rdr pass on lo0 proto tcp from any to 10.0.0.1 port 8081 -> 127.0.0.1 port 8081" | sudo pfctl -ef -
+ *      echo "rdr pass on lo0 proto tcp from any to $RA3_HOST port 8081 -> 127.0.0.1 port 8081" | sudo pfctl -ef -
  *
  *   3. Use the Lutron app — all LEAP JSON will be logged.
  *
@@ -20,7 +20,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { resolveCerts } from "./leap-client";
 
-const PROCESSOR_HOST = process.argv[2] ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const PROCESSOR_HOST = process.argv[2] ?? RA3_HOST;
 const PROCESSOR_PORT = 8081;
 const LISTEN_PORT = 8081;
 const LISTEN_HOST = "127.0.0.1";

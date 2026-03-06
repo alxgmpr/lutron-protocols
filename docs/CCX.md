@@ -34,7 +34,7 @@ Extracted from `LinkNetwork` table in Lutron project database:
 | Parameter | Example Value |
 |-----------|---------------|
 | Channel | 25 (2480 MHz) |
-| PAN ID | 25327 (0x0000) |
+| PAN ID | <pan-id> |
 | Extended PAN ID | XX:XX:XX:XX:XX:XX:XX:XX |
 | Network Master Key | XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX |
 
@@ -45,8 +45,8 @@ NULL addresses indicate sleepy end devices (Picos, sensors).
 
 | LinkNodeID | IPv6 Address | Role |
 |------------|--------------|------|
-| 640 | fd00::e406:bfff:fe9a:114f | Router |
-| 835 | fd00::f074:bfff:fe91:99f5 | Router |
+| 640 | fd00::<device-iid-1> | Router |
+| 835 | fd00::<device-iid-2> | Router |
 | 233 | NULL | Sleepy end device |
 | 1288 | NULL | Sleepy end device |
 
@@ -58,8 +58,8 @@ Thread/6LoWPAN uses EUI-64 format. To derive MAC from IPv6:
 2. Remove the `ff:fe` in the middle
 3. Flip bit 7 of the first byte
 
-Example: `fd00::e406:bfff:fe9a:114f`
-- Interface ID: `e406:bfff:fe9a:114f`
+Example: `fd00::<device-iid-1>`
+- Interface ID: `<device-iid-1>`
 - Remove ff:fe: `e406:bf` + `9a:114f`
 - Flip bit 7: `e4` -> `e6`
 - Result: `E6:06:BF:9A:11:4F`
@@ -122,7 +122,7 @@ wpan
 6lowpan
 
 # Specific PAN ID
-wpan.dst_pan == 0xXXXX
+wpan.dst_pan == <pan-id>
 
 # Specific device by MAC
 wpan.src64 == e6:06:bf:9a:11:4f
@@ -516,7 +516,7 @@ npm run leap:dump -- --json
 npm run leap:dump -- --config
 
 # Custom host
-npm run leap:dump -- --host 10.0.0.1
+npm run leap:dump -- --host <ra3-ip>
 ```
 
 Output includes:

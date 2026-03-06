@@ -20,11 +20,12 @@
 
 import { parseArgs } from "util";
 import { hrefId, LeapConnection } from "./leap-client";
+import { CASETA_HOST } from "../lib/env";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
-    host: { type: "string", short: "h", default: "10.0.0.2" },
+    host: { type: "string", short: "h", default: CASETA_HOST },
     cert: { type: "string", short: "c", default: "caseta" },
     zone: { type: "string", short: "z", default: "73" },
     fade: { type: "string", short: "f" },
@@ -498,7 +499,7 @@ Other:
   raw <Type> <url> [body]         Send arbitrary LEAP request
 
 Options:
-  -h, --host <ip>      Processor IP (default: 10.0.0.2)
+  -h, --host <ip>      Processor IP (default: $CASETA_HOST)
   -c, --cert <name>    Cert name (default: caseta)
   -z, --zone <id|name> Zone ID or name search (default: 73)
   -f, --fade <sec>     Fade time in seconds

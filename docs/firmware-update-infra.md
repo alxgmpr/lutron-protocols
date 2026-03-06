@@ -12,7 +12,7 @@ The legacy firmware check/download server used by Lutron Designer:
 POST https://firmwareupdates.lutron.com:443/sources
 Content-Type: application/x-www-form-urlencoded
 
-username=lutron-bridge&password=<redacted>&macid=00:00:00:00:00:00&deviceclass=081B0101&coderev=26.00.11f000&datestamp=5C8FA501
+username=lutron-bridge&password=<redacted>&macid=<ra3-mac>&deviceclass=081B0101&coderev=26.00.11f000&datestamp=5C8FA501
 ```
 
 **Must be form-encoded** — JSON returns `400 Missing request parameters`.
@@ -22,8 +22,8 @@ username=lutron-bridge&password=<redacted>&macid=00:00:00:00:00:00&deviceclass=0
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `username` | Fixed credential | `lutron-bridge` |
-| `password` | Fixed credential | `Lutr0n@1` |
-| `macid` | Processor MAC (colon-separated) | `00:00:00:00:00:00` |
+| `password` | Fixed credential | `<redacted>` |
+| `macid` | Processor MAC (colon-separated) | `<ra3-mac>` |
 | `deviceclass` | Processor device class (hex) | `081B0101` |
 | `coderev` | Current firmware version | `26.00.11f000` |
 | `datestamp` | Build timestamp (hex LE unix) | `5C8FA501` |

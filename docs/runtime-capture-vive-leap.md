@@ -9,7 +9,7 @@ tools/capture-lutron-leap.sh 180 en0 <processor_ip>
 Example:
 
 ```bash
-tools/capture-lutron-leap.sh 180 en0 10.0.0.2
+tools/capture-lutron-leap.sh 180 en0 <caseta-ip>
 ```
 
 ## 2. During capture, perform one action type at a time

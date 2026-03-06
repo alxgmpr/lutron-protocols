@@ -10,7 +10,7 @@
  * Usage:
  *   bun run tools/leap-level-watch.ts                    # Watch all zones
  *   bun run tools/leap-level-watch.ts --zone 3663        # Watch specific zone
- *   bun run tools/leap-level-watch.ts --host 10.0.0.1  # Specify processor
+ *   bun run tools/leap-level-watch.ts --host $RA3_HOST  # Specify processor
  *   bun run tools/leap-level-watch.ts --poll 100         # Poll interval in ms
  */
 
@@ -29,7 +29,8 @@ function getAllArgs(name: string): string[] {
   return results;
 }
 
-const host = getArg("--host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const host = getArg("--host") ?? RA3_HOST;
 const certName = getArg("--cert") ?? "ra3";
 const zoneArgs = getAllArgs("--zone");
 const pollMs = parseInt(getArg("--poll") ?? "200", 10);

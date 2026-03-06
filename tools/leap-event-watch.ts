@@ -9,7 +9,7 @@
  *
  * Usage:
  *   bun run tools/leap-commission-watch.ts
- *   bun run tools/leap-commission-watch.ts --host 10.0.0.1 --device 3681
+ *   bun run tools/leap-commission-watch.ts --host $RA3_HOST --device 1234
  *   bun run tools/leap-commission-watch.ts --log capture.jsonl
  */
 
@@ -21,7 +21,8 @@ function getArg(name: string): string | undefined {
   return idx !== -1 ? args[idx + 1] : undefined;
 }
 
-const host = getArg("--host") ?? "10.0.0.1";
+import { RA3_HOST } from "../lib/env";
+const host = getArg("--host") ?? RA3_HOST;
 const certName = getArg("--cert") ?? "ra3";
 const deviceId = getArg("--device") ?? "3681";
 const logFile = getArg("--log");
