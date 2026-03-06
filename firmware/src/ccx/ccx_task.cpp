@@ -142,6 +142,8 @@ static volatile uint8_t  thread_role = SPINEL_NET_ROLE_DETACHED;
 static volatile uint32_t rx_count = 0;
 static volatile uint32_t tx_count = 0;
 static volatile uint32_t raw_rx_count = 0;
+static uint8_t           our_ipv6_addr[16]; /* mesh-local address for TX source */
+static bool              have_ipv6_addr = false;
 static uint8_t           ccx_sequence = 0; /* auto-increment if caller passes 0 */
 
 /* -----------------------------------------------------------------------
@@ -664,7 +666,19 @@ static bool thread_join(void)
     }
     printf("[ccx] Master key set\r\n");
 
-    /* 5. Bring up network interface */
+    /* 5. Set CCA threshold BEFORE bringing up interface.
+     *    Default is ~-75 dBm which is too sensitive — 2.4 GHz WiFi noise
+     *    at -67 dBm triggers CCA on every TX attempt, causing 100% TX failure.
+     *    Must be set before ifconfig up / thread start. */
+    uint8_t cca_thresh = (uint8_t)(int8_t)-45; /* 0xD3 = -45 dBm */
+    if (!spinel_prop_set(SPINEL_PROP_PHY_CCA_THRESHOLD, &cca_thresh, 1, 2000)) {
+        printf("[ccx] WARNING: failed to set CCA threshold\r\n");
+    }
+    else {
+        printf("[ccx] CCA threshold: -45 dBm\r\n");
+    }
+
+    /* 6. Bring up network interface */
     uint8_t flag_true = 1;
     if (!spinel_prop_set(SPINEL_PROP_NET_IF_UP, &flag_true, 1, 2000)) {
         printf("[ccx] Failed to bring interface up\r\n");
@@ -672,14 +686,14 @@ static bool thread_join(void)
     }
     printf("[ccx] Interface UP\r\n");
 
-    /* 6. Start Thread stack */
+    /* 7. Start Thread stack */
     if (!spinel_prop_set(SPINEL_PROP_NET_STACK_UP, &flag_true, 1, 2000)) {
         printf("[ccx] Failed to start Thread stack\r\n");
         return false;
     }
     printf("[ccx] Thread stack started\r\n");
 
-    /* 7. Poll NET_ROLE until != DETACHED (up to 30 seconds) */
+    /* 8. Poll NET_ROLE until != DETACHED (up to 30 seconds) */
     printf("[ccx] Waiting for Thread attachment...\r\n");
     for (int attempt = 0; attempt < 60; attempt++) {
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -704,7 +718,7 @@ static bool thread_join(void)
         return false;
     }
 
-    /* 8. Promote to ROUTER for direct multicast participation.
+    /* 9. Promote to ROUTER for direct multicast participation.
      *    A CHILD depends on its parent to forward multicast; a ROUTER
      *    receives ff03::1 directly and participates in mesh routing. */
     if (thread_role == SPINEL_NET_ROLE_CHILD) {
@@ -718,7 +732,7 @@ static bool thread_join(void)
         }
     }
 
-    /* 9. Subscribe to ff03::1 multicast (CCX traffic is all multicast).
+    /* 10. Subscribe to ff03::1 multicast (CCX traffic is all multicast).
      *    Without this, the NCP silently drops inbound multicast packets
      *    instead of forwarding them to the host via STREAM_NET. */
     if (!spinel_prop_insert(SPINEL_PROP_IPV6_MULTICAST_ADDRESS_TABLE, CCX_MULTICAST_ADDR, 16, 2000)) {
@@ -729,13 +743,32 @@ static bool thread_join(void)
         printf("[ccx] Subscribed to ff03::1 multicast\r\n");
     }
 
-    /* 10. Log IPv6 addresses */
+    /* 11. Parse IPv6 address table to get our mesh-local address for TX.
+     *    Format: A(t(6CLLC)) — array of structs, each prefixed with 2-byte LE length.
+     *    Each struct: [IPv6 addr (16)] [prefix_len (1)] [valid_lt (4)] [pref_lt (4)] ...
+     *    We want the first fd00::/8 address (mesh-local). */
     uint8_t addr_buf[256];
     size_t  addr_len = spinel_prop_get(SPINEL_PROP_IPV6_ADDRESS_TABLE, addr_buf, sizeof(addr_buf), 2000);
     if (addr_len > 0) {
-        printf("[ccx] IPv6 address table: %u bytes\r\n", (unsigned)addr_len);
-        /* Each entry is a Spinel struct with IPv6 addr (16 bytes) + prefix_len + flags.
-         * For now just log the raw length — full parsing can be added later. */
+        size_t pos = 0;
+        while (pos + 2 < addr_len) {
+            uint16_t entry_len = (uint16_t)addr_buf[pos] | ((uint16_t)addr_buf[pos + 1] << 8);
+            pos += 2;
+            if (entry_len < 16 || pos + entry_len > addr_len) break;
+            const uint8_t* addr = addr_buf + pos;
+            if (addr[0] == 0xFD && !have_ipv6_addr) {
+                memcpy(our_ipv6_addr, addr, 16);
+                have_ipv6_addr = true;
+                printf("[ccx] Our mesh-local addr: %02x%02x:%02x%02x:%02x%02x:%02x%02x:"
+                       "%02x%02x:%02x%02x:%02x%02x:%02x%02x\r\n",
+                       addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7],
+                       addr[8], addr[9], addr[10], addr[11], addr[12], addr[13], addr[14], addr[15]);
+            }
+            pos += entry_len;
+        }
+        if (!have_ipv6_addr) {
+            printf("[ccx] WARNING: no mesh-local address found, TX checksum will be 0\r\n");
+        }
     }
 
     return true;
@@ -747,24 +780,21 @@ static bool thread_join(void)
 
 /* Retransmit count matching Lutron multicast pattern */
 #define CCX_TX_RETRANSMITS   7
-#define CCX_TX_RETRANSMIT_MS 15
+#define CCX_TX_RETRANSMIT_MS 80
 #define COAP_UDP_PORT        5683
 
-static void ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
+static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
 {
-    /* Fire-and-forget: send HDLC frame directly without waiting for ACK.
-     * Thread retransmits handle reliability; waiting for ACK on each
-     * retransmit wastes ~50ms per TX that starves CCA.
-     *
-     * STREAM_NET uses Spinel 'dD' format:
+    /* STREAM_NET uses Spinel 'dD' format:
      *   d = [len_lo][len_hi][IPv6 packet]
      *   D = [len_lo][len_hi][metadata]   (we send empty metadata)
      */
     uint8_t frame[HDLC_RX_BUF_SIZE];
     size_t  frame_len = 3 + 2 + pkt_len + 2; /* hdr+cmd+prop + d_prefix + pkt + empty_D */
-    if (frame_len > sizeof(frame)) return;
+    if (frame_len > sizeof(frame)) return false;
 
-    frame[0] = spinel_header();
+    uint8_t hdr = spinel_header();
+    frame[0] = hdr;
     frame[1] = SPINEL_CMD_PROP_SET;
     frame[2] = SPINEL_PROP_STREAM_NET;
     /* 'd' field: 2-byte LE length + IPv6 packet */
@@ -775,6 +805,35 @@ static void ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
     frame[5 + pkt_len] = 0x00;
     frame[6 + pkt_len] = 0x00;
     hdlc_send_frame(frame, frame_len);
+
+    /* Wait for NCP response to verify it accepted the packet */
+    uint8_t resp[HDLC_RX_BUF_SIZE];
+    size_t  resp_len = hdlc_recv_frame(resp, sizeof(resp), 500);
+    if (resp_len < 3) {
+        printf("[ccx] TX: no NCP response (len=%u)\r\n", (unsigned)resp_len);
+        return false;
+    }
+
+    uint8_t resp_cmd = resp[1];
+    uint8_t resp_prop = resp[2];
+
+    /* NCP returns PROP_IS(LAST_STATUS) with status=0 on STREAM_NET success,
+     * or PROP_IS(STREAM_NET) echoing the property back. Both are OK. */
+    if (resp_cmd == SPINEL_CMD_PROP_IS) {
+        if (resp_prop == SPINEL_PROP_STREAM_NET) {
+            return true;
+        }
+        if (resp_prop == 0x00 /* LAST_STATUS */) {
+            uint8_t status = (resp_len > 3) ? resp[3] : 0xFF;
+            if (status == 0) return true; /* STATUS_OK */
+            printf("[ccx] TX: NCP LAST_STATUS error=%u\r\n", status);
+            return false;
+        }
+    }
+
+    printf("[ccx] TX: NCP unexpected response (cmd=0x%02X prop=0x%02X len=%u)\r\n",
+           resp_cmd, resp_prop, (unsigned)resp_len);
+    return false;
 }
 
 static bool coap_parse_header(const uint8_t* buf, size_t len, uint8_t* out_type, uint8_t* out_code, uint16_t* out_mid)
@@ -794,7 +853,8 @@ static void coap_send_empty_ack(const uint8_t* dst_addr, uint16_t src_port, uint
 {
     uint8_t ack[4] = {0x60, 0x00, (uint8_t)(mid >> 8), (uint8_t)(mid & 0xFF)};
     uint8_t pkt[128];
-    size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), dst_addr, src_port, dst_port, ack, sizeof(ack));
+    size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL,
+                                     dst_addr, src_port, dst_port, ack, sizeof(ack));
     if (pkt_len == 0) return;
     ccx_transmit_ipv6(pkt, pkt_len);
 }
@@ -819,7 +879,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
     /* Wrap in IPv6+UDP */
     uint8_t pkt[256];
     size_t  pkt_len =
-        ipv6_udp_build(pkt, sizeof(pkt), CCX_MULTICAST_ADDR, CCX_UDP_PORT, CCX_UDP_PORT, cbor_buf, cbor_len);
+        ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL,
+                       CCX_MULTICAST_ADDR, CCX_UDP_PORT, CCX_UDP_PORT, cbor_buf, cbor_len);
     if (pkt_len == 0) {
         printf("[ccx] TX: IPv6+UDP build failed\r\n");
         return;
@@ -835,13 +896,17 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
     tx_count++;
 
-    /* Log */
+    /* Log with CBOR hex dump for diagnostics */
     if (req->type == 0) {
-        printf("[ccx] TX LEVEL_CONTROL zone=%u level=0x%04X seq=%u\r\n", req->id, req->level, req->sequence);
+        printf("[ccx] TX LEVEL_CONTROL zone=%u level=0x%04X fade=%u seq=%u\r\n",
+               req->id, req->level, req->fade, req->sequence);
     }
     else {
         printf("[ccx] TX SCENE_RECALL scene=%u seq=%u\r\n", req->id, req->sequence);
     }
+    printf("[ccx] TX CBOR (%u):", (unsigned)cbor_len);
+    for (size_t i = 0; i < cbor_len; i++) printf(" %02X", cbor_buf[i]);
+    printf("\r\n");
 
     /* Stream CBOR to TCP client */
     stream_send_ccx_packet(cbor_buf, cbor_len);

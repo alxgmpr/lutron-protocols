@@ -3,8 +3,43 @@
 
 #define IPV6_NEXT_HEADER_UDP 17
 
-size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, uint16_t src_port, uint16_t dst_port,
-                      const uint8_t* payload, size_t payload_len)
+/* Compute UDP checksum over IPv6 pseudo-header + UDP header + payload */
+static uint16_t udp_checksum(const uint8_t* src_addr, const uint8_t* dst_addr,
+                             uint16_t udp_len, const uint8_t* udp_hdr, const uint8_t* payload, size_t payload_len)
+{
+    uint32_t sum = 0;
+
+    /* Pseudo-header: src addr (16) + dst addr (16) + UDP length (4) + next header (4) */
+    for (int i = 0; i < 16; i += 2)
+        sum += ((uint32_t)src_addr[i] << 8) | src_addr[i + 1];
+    for (int i = 0; i < 16; i += 2)
+        sum += ((uint32_t)dst_addr[i] << 8) | dst_addr[i + 1];
+    sum += udp_len;
+    sum += IPV6_NEXT_HEADER_UDP;
+
+    /* UDP header (8 bytes, checksum field treated as 0) */
+    sum += ((uint32_t)udp_hdr[0] << 8) | udp_hdr[1]; /* src port */
+    sum += ((uint32_t)udp_hdr[2] << 8) | udp_hdr[3]; /* dst port */
+    sum += ((uint32_t)udp_hdr[4] << 8) | udp_hdr[5]; /* length */
+    /* checksum field = 0 (skip) */
+
+    /* Payload */
+    size_t i;
+    for (i = 0; i + 1 < payload_len; i += 2)
+        sum += ((uint32_t)payload[i] << 8) | payload[i + 1];
+    if (i < payload_len)
+        sum += (uint32_t)payload[i] << 8; /* odd byte */
+
+    /* Fold carries */
+    while (sum >> 16)
+        sum = (sum & 0xFFFF) + (sum >> 16);
+
+    uint16_t result = (uint16_t)~sum;
+    return (result == 0) ? 0xFFFF : result; /* 0 means "no checksum" in UDP, use 0xFFFF */
+}
+
+size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* src_addr, const uint8_t* dst_addr,
+                      uint16_t src_port, uint16_t dst_port, const uint8_t* payload, size_t payload_len)
 {
     size_t udp_len = UDP_HEADER_SIZE + payload_len;
     size_t total = IPV6_HEADER_SIZE + udp_len;
@@ -14,9 +49,7 @@ size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, ui
     memset(pkt, 0, IPV6_HEADER_SIZE + UDP_HEADER_SIZE);
 
     /* --- IPv6 header (40 bytes) --- */
-    /* Version (4) + Traffic Class (8) + Flow Label (20) = 0x60000000 */
     pkt[0] = 0x60;
-    /* pkt[1..3] = 0 (traffic class + flow label) */
 
     /* Payload length (16-bit big-endian) = UDP header + UDP payload */
     pkt[4] = (uint8_t)(udp_len >> 8);
@@ -28,8 +61,10 @@ size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, ui
     /* Hop Limit = 64 */
     pkt[7] = 64;
 
-    /* Source address: :: (all zeros — NCP fills in) */
-    /* Already zeroed by memset */
+    /* Source address (bytes 8-23) */
+    if (src_addr)
+        memcpy(pkt + 8, src_addr, 16);
+    /* else: already zeroed (::) */
 
     /* Destination address (bytes 24-39) */
     memcpy(pkt + 24, dst_addr, 16);
@@ -37,23 +72,23 @@ size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, ui
     /* --- UDP header (8 bytes at offset 40) --- */
     uint8_t* udp = pkt + IPV6_HEADER_SIZE;
 
-    /* Source port (big-endian) */
     udp[0] = (uint8_t)(src_port >> 8);
     udp[1] = (uint8_t)(src_port & 0xFF);
-
-    /* Destination port (big-endian) */
     udp[2] = (uint8_t)(dst_port >> 8);
     udp[3] = (uint8_t)(dst_port & 0xFF);
-
-    /* UDP length (big-endian) */
     udp[4] = (uint8_t)(udp_len >> 8);
     udp[5] = (uint8_t)(udp_len & 0xFF);
 
-    /* Checksum = 0 (NCP computes) */
-    /* Already zeroed by memset */
-
     /* --- Payload --- */
     memcpy(pkt + IPV6_HEADER_SIZE + UDP_HEADER_SIZE, payload, payload_len);
+
+    /* --- UDP checksum --- */
+    if (src_addr) {
+        uint16_t cksum = udp_checksum(pkt + 8, pkt + 24, (uint16_t)udp_len, udp, payload, payload_len);
+        udp[6] = (uint8_t)(cksum >> 8);
+        udp[7] = (uint8_t)(cksum & 0xFF);
+    }
+    /* else: checksum stays 0 (hope NCP computes it) */
 
     return total;
 }

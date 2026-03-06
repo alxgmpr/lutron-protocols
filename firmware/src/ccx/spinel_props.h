@@ -35,7 +35,8 @@
 /* -----------------------------------------------------------------------
  * Spinel property IDs — PHY layer (SPINEL_PROP_PHY__BEGIN = 0x20)
  * ----------------------------------------------------------------------- */
-#define SPINEL_PROP_PHY_CHAN 0x21 /* [C] uint8_t channel */
+#define SPINEL_PROP_PHY_CHAN           0x21 /* [C] uint8_t channel */
+#define SPINEL_PROP_PHY_CCA_THRESHOLD 0x24 /* [c] int8_t CCA threshold (dBm) */
 
 /* -----------------------------------------------------------------------
  * Spinel property IDs — MAC layer (SPINEL_PROP_MAC__BEGIN = 0x30)

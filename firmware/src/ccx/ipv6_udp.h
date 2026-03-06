@@ -7,8 +7,8 @@
  * The NCP expects raw IPv6 packets. We construct a minimal IPv6 header
  * (40 bytes) + UDP header (8 bytes) + payload.
  *
- * Source address is :: (unspecified) — the NCP fills in its own address.
- * UDP checksum is 0 — the NCP computes it.
+ * If src_addr is provided, it is used and UDP checksum is computed.
+ * If src_addr is NULL, source is :: and checksum is 0 (NCP may fill in).
  */
 
 #include <stdint.h>
@@ -26,6 +26,7 @@ extern "C" {
  *
  * @param pkt         Output buffer
  * @param pkt_size    Output buffer size
+ * @param src_addr    16-byte IPv6 source address (NULL for ::)
  * @param dst_addr    16-byte IPv6 destination address
  * @param src_port    UDP source port
  * @param dst_port    UDP destination port
@@ -33,8 +34,8 @@ extern "C" {
  * @param payload_len Payload length
  * @return Total packet length, or 0 on error
  */
-size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* dst_addr, uint16_t src_port, uint16_t dst_port,
-                      const uint8_t* payload, size_t payload_len);
+size_t ipv6_udp_build(uint8_t* pkt, size_t pkt_size, const uint8_t* src_addr, const uint8_t* dst_addr,
+                      uint16_t src_port, uint16_t dst_port, const uint8_t* payload, size_t payload_len);
 
 /**
  * Parse an incoming IPv6+UDP packet.
