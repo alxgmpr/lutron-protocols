@@ -1,4 +1,4 @@
-# LEAP API Routes & Commands
+# LEAP API Reference
 
 Extracted from Lutron iOS app v26.0.0 (com.lutron.lsb, build 8).
 Sources: `RequestLayerFramework`, `ResponseHandlerFramework`, `SyncServiceFramework`,
@@ -454,3 +454,100 @@ TuningSettingsRequestCreator
 UnaddressDeviceRequestCreator
 UnsubscribeRequestCreator
 ```
+
+---
+
+## Command Processor Endpoints
+
+Commands are sent as `CreateRequest` to `commandprocessor` URLs.
+
+| Class | URL Pattern | Used By |
+|-------|-------------|---------|
+| `ZoneHrefCommandprocessor` | `/zone/{id}/commandprocessor` | ZoneCommand |
+| `AreaHrefCommandprocessor` | `/area/{id}/commandprocessor` | AreaCommand |
+| `DeviceHrefCommandprocessor` | `/device/{id}/commandprocessor` | IdentifyCommand |
+| `LoadControllerHrefCommandprocessor` | `/loadcontroller/{id}/commandprocessor` | LoadCommand |
+| `LinkHrefCommandprocessor` | `/link/{id}/commandprocessor` | LinkCommand |
+| `NaturalShowHrefCommandprocessor` | `/naturalshow/{id}/commandprocessor` | NaturalShowCommand |
+| `SystemCommandprocessorUrl` | `/system/commandprocessor` | system-level commands |
+| `DatabaseHrefCommandprocessor` | `/database/commandprocessor` | ApplyDatabaseCommand |
+| `DayNightModeHrefCommandprocessor` | `/daynightmode/commandprocessor` | DayNightModeCommand |
+
+### Preset Assignment Command Processors (13 zone types)
+
+Each maps to `/preset/{id}/{type}assignment/commandprocessor`:
+Dimmers, Switches, Shades (position/tilt/tilt-when-closed), Tilt, CCO, ColorTuning, SpectrumTuning, WhiteTuning, WarmDim, Receptacle, FanSpeed.
+
+---
+
+## Non-Zone Command Classes
+
+| # | Command | Endpoint | Sub-commands |
+|---|---------|----------|-------------|
+| 2 | AreaCommand | `/area/{id}/commandprocessor` | `GoToGroupLightingLevel` |
+| 3 | LoadCommand | `/loadcontroller/{id}/commandprocessor` | `GoToDimmedLevel` (direct load controller) |
+| 4 | MultiZoneCommand | (system) | `GoToMixedLevel` (atomic multi-zone) |
+| 5 | IdentifyCommand | `/device/{id}/commandprocessor` | `Start`, `Stop` (flash LED) |
+| 6 | LinkCommand | `/link/{id}/commandprocessor` | `CacheDeviceHeard` (pairing) |
+| 7 | TuningSettingsCommand | | `TestHighEndTrim`, `TestLowEndTrim` |
+| 8 | ApplyDatabaseCommand | `/database/commandprocessor` | `ApplyNow` |
+| 9 | BeginTransferSessionCommand | | `BeginTransferSession` (firmware) |
+| 10 | CloudProvisionCommand | | `CloudProvision` |
+| 11 | DayNightModeCommand | `/daynightmode/commandprocessor` | `EditDayNightMode` |
+| 12 | GenerateLogPackageCommand | | `GenerateLogPackage` |
+| 13 | NaturalShowCommand | `/naturalshow/{id}/commandprocessor` | `EditNaturalShowRamp` |
+| 14 | PresetAssignmentCommand | | `Filter` |
+| 15 | DeviceDiscoveryCommand | | `DeviceDiscovery` (scan for unpaired) |
+| 16 | UnassignmentCommand | | (remove device assignments) |
+
+---
+
+## CRUD Operations (SyncServiceFramework)
+
+Higher-level service operations the app uses, built on LEAP request primitives.
+
+### Read Operations
+
+| Service | Description |
+|---------|-------------|
+| `ZoneSceneRead` | Read scenes for a zone |
+| `ZoneDetailsRead` | Read zone details by hrefs |
+| `PaginatedZoneExpandedStatusWhereOnRead` | All zone statuses (paginated) |
+| `DeviceStatusRead` / `DeviceDefinitionRead` | Device status and definitions |
+| `AreaSummaryDefinitionRead` | Area summaries |
+| `ControlStationDetailsRead` | Keypad details |
+| `CurveDimmingRead` | Dimming curve definitions |
+| `LEDStatusRead` | LED bar status on device |
+| `LinksRead` | All radio links |
+| `OperationStatusRead` | Firmware/operation status |
+| `PaginatedAssociatedLinkNodesExpandedRead` | All devices on a link (expanded) |
+
+### Create/Update Operations
+
+| Service | Description |
+|---------|-------------|
+| `ZoneUpdateName` / `AreaSceneUpdateName` | Rename zone or scene |
+| `CountdownTimerCreate` / `CountdownTimerUpdate` | Countdown timers |
+| `KeypadButtonPress` | Simulate button press |
+| `WidgetZoneUpdateCommand` | iOS widget zone control |
+| `VoiceControlCreateAlias` / `AddHomeKitResource` | Voice/HomeKit integration |
+
+---
+
+## Data Models
+
+### Zone Control Types (`LeapZoneControlType`)
+
+Dimmed, Switched, Shade, ShadeWithTilt, ShadeWithTiltWhenClosed, Tilt, SpectrumTuning (Ketra RGB), WhiteTuning, WarmDim, CCO, Receptacle, FanSpeed.
+
+### Zone Status Types
+
+ZoneStatus, ZoneStatusFanSpeed, ITiltStatus, OccupancyStatus, CountdownTimer, ZoneLockState, Temperature, NaturalLightOptimizationStatus, DeviceStatus.
+
+### Notable Findings
+
+1. `/loadcontroller/{id}/commandprocessor` targets the physical load controller (separate from zone).
+2. `MultiZoneCommand.GoToMixedLevel` enables atomic multi-zone scene activation.
+3. `LinkCommand.CacheDeviceHeard` is the LEAP-side pairing mechanism.
+4. `ApplyDatabaseCommand.ApplyNow` triggers immediate programming changes.
+5. `WidgetZoneUpdateCommand` is the iOS home screen widget's simplified command path.
