@@ -1,11 +1,14 @@
 #!/usr/bin/env bun
 
 /**
- * CCX Bridge — Listen for Lutron LEVEL_CONTROL on Thread, forward to external outputs.
+ * CCX Bridge — Listen for Lutron level changes on Thread, forward to external outputs.
  *
- * Uses tshark + nRF sniffer dongle to capture Thread traffic (same proven pipeline
- * as ccx-sniffer.ts), decodes CBOR, deduplicates, and forwards level changes
- * to WiZ lights, HTTP webhooks, or stdout.
+ * Captures both:
+ *   - LEVEL_CONTROL (processor → devices, multicast) — app/scene commands
+ *   - DEVICE_REPORT (device → processor, unicast) — physical dimmer touches
+ *
+ * Uses tshark + nRF sniffer dongle to capture all Thread traffic, decodes CBOR,
+ * deduplicates, and forwards level changes to WiZ lights, HTTP webhooks, or stdout.
  *
  * Usage:
  *   bun run tools/ccx-bridge.ts                          # Use default config
@@ -19,9 +22,9 @@ import { spawn } from "child_process";
 import { createSocket } from "dgram";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { CCX_CONFIG, getZoneName } from "../ccx/config";
+import { CCX_CONFIG, getZoneName, getSerialName } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import type { CCXLevelControl, CCXPacket } from "../ccx/types";
+import type { CCXDeviceReport, CCXLevelControl, CCXPacket } from "../ccx/types";
 
 // ── CLI args ──────────────────────────────────────────────
 
@@ -65,9 +68,14 @@ interface WebhookOutput {
   zoneId?: number;
 }
 
+interface SerialZoneMap {
+  [serial: string]: number; // device serial → zone ID
+}
+
 interface BridgeConfig {
   outputs: (WizOutput | WebhookOutput)[];
   devices?: { name: string; zoneIds: number[] }[];
+  serialToZone?: SerialZoneMap;
 }
 
 function loadConfig(): BridgeConfig {
@@ -100,14 +108,21 @@ for (const out of config.outputs) {
   if ("zoneId" in out && out.zoneId) watchedZones.add(out.zoneId);
 }
 
+// Build serial → zone mapping from config + LEAP data
+const serialToZone = new Map<number, number>();
+if (config.serialToZone) {
+  for (const [serial, zoneId] of Object.entries(config.serialToZone)) {
+    serialToZone.set(Number(serial), zoneId);
+  }
+}
+
 // ── Deduplication ─────────────────────────────────────────
-// Processor sends 6-7 copies of each command. Dedup by zone+seq.
+// Processor sends 6-7 copies of each command. Dedup by type+key+seq/level.
 
 const recentCommands = new Map<string, number>();
 const DEDUP_WINDOW_MS = 2000;
 
-function isDuplicate(zoneId: number, seq: number): boolean {
-  const key = `${zoneId}:${seq}`;
+function isDuplicate(key: string): boolean {
   const now = Date.now();
   const prev = recentCommands.get(key);
   if (prev && now - prev < DEDUP_WINDOW_MS) return true;
@@ -173,17 +188,52 @@ async function sendWebhook(output: WebhookOutput, zoneId: number, levelPercent: 
   }
 }
 
+// ── DEVICE_REPORT level extraction ────────────────────────
+// Two known formats:
+//   Format A: {0: cmdType, 1: {0: level_byte, 1: level_byte+1}, 2: 3}
+//     level_byte is 0-254 scale (0xFE = 100%), seen from standalone dimmers
+//   Format B: {3: [[4, Uint8Array([hi, lo]), 2]]}
+//     level as uint16 BE in byte array (0xFEFF = 100%), seen from hybrid keypads
+
+function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
+  const inner = msg.innerData;
+  if (!inner || typeof inner !== "object") return null;
+
+  // Format A: key 1 is a map with level byte at key 0
+  const levelMap = inner[1];
+  if (levelMap && typeof levelMap === "object") {
+    const rawLevel = (levelMap as Record<number, unknown>)[0];
+    if (typeof rawLevel === "number") {
+      return (rawLevel / 254) * 100;
+    }
+  }
+
+  // Format B: key 3 is array of [4, bytes, 2] tuples
+  const key3 = inner[3];
+  if (Array.isArray(key3)) {
+    for (const entry of key3) {
+      if (!Array.isArray(entry)) continue;
+      const levelBytes = entry[1];
+      if (levelBytes instanceof Uint8Array && levelBytes.length === 2) {
+        const level16 = (levelBytes[0] << 8) | levelBytes[1];
+        return (level16 / 0xFEFF) * 100;
+      }
+    }
+  }
+
+  return null;
+}
+
 // ── Dispatch ──────────────────────────────────────────────
 
-async function dispatch(msg: CCXLevelControl) {
-  const { zoneId, levelPercent, fade } = msg;
+async function dispatch(zoneId: number, levelPercent: number, source: string, fade = 1) {
   const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
   const time = new Date().toISOString().slice(11, 23);
   const fadeSec = fade / 4;
   const fadeStr = fadeSec !== 0.25 ? ` fade=${fadeSec}s` : "";
 
   console.log(
-    `\n${time} ** LEVEL → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}`,
+    `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}`,
   );
 
   const promises: Promise<void>[] = [];
@@ -268,7 +318,7 @@ function main() {
   const tsharkArgs = [
     "-i", iface,
     "-l", // line-buffered
-    "-Y", `udp.port == ${CCX_CONFIG.udpPort}`,
+    "-Y", `udp.port == 9190`,
     "-T", "fields",
     "-e", "frame.time_epoch",
     "-e", "ipv6.src",
@@ -297,23 +347,43 @@ function main() {
       if (!pkt) continue;
       packetCount++;
 
-      // Verbose: log all packets
-      if (verbose) {
-        const time = pkt.timestamp.slice(11, 23);
-        const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
-        console.log(`${time} ${typeName} ${formatMessage(pkt.parsed)}`);
+      // Log every packet
+      const time = pkt.timestamp.slice(11, 23);
+      const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
+      console.log(`${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`);
+
+      // Handle LEVEL_CONTROL (processor → devices, multicast)
+      if (pkt.parsed.type === "LEVEL_CONTROL") {
+        const { zoneId, sequence, levelPercent, fade } = pkt.parsed;
+        if (watchedZones.size > 0 && !watchedZones.has(zoneId)) continue;
+        if (isDuplicate(`lc:${zoneId}:${sequence}`)) continue;
+        matchCount++;
+        dispatch(zoneId, levelPercent, "LEVEL", fade);
+        continue;
       }
 
-      if (pkt.parsed.type !== "LEVEL_CONTROL") continue;
-
-      // Filter by zone
-      if (watchedZones.size > 0 && !watchedZones.has(pkt.parsed.zoneId)) continue;
-
-      // Dedup
-      if (isDuplicate(pkt.parsed.zoneId, pkt.parsed.sequence)) continue;
-
-      matchCount++;
-      dispatch(pkt.parsed);
+      // Handle DEVICE_REPORT (physical dimmer → processor, unicast)
+      if (pkt.parsed.type === "DEVICE_REPORT") {
+        const level = extractDeviceReportLevel(pkt.parsed);
+        if (level === null) continue;
+        const serial = pkt.parsed.deviceSerial;
+        const zoneId = serialToZone.get(serial);
+        const serialName = getSerialName(serial);
+        if (zoneId) {
+          if (isDuplicate(`dr:${serial}:${Math.round(level)}`)) continue;
+          matchCount++;
+          dispatch(zoneId, level, `DIMMER(${serialName ?? serial})`);
+        } else {
+          // Log unmapped device reports so user can add serial→zone mapping
+          if (!isDuplicate(`dr:${serial}:${Math.round(level)}`)) {
+            const time = new Date().toISOString().slice(11, 23);
+            console.log(
+              `\n${time}    DIMMER ${serialName ?? `serial=${serial}`} → ${level.toFixed(1)}% (unmapped — add to serialToZone config)`,
+            );
+          }
+        }
+        continue;
+      }
     }
   });
 
@@ -341,9 +411,10 @@ function main() {
     if (buffer.trim()) {
       const pkt = processLine(buffer);
       if (pkt && pkt.parsed.type === "LEVEL_CONTROL") {
-        if (watchedZones.size === 0 || watchedZones.has(pkt.parsed.zoneId)) {
-          if (!isDuplicate(pkt.parsed.zoneId, pkt.parsed.sequence)) {
-            dispatch(pkt.parsed);
+        const { zoneId, sequence, levelPercent, fade } = pkt.parsed;
+        if (watchedZones.size === 0 || watchedZones.has(zoneId)) {
+          if (!isDuplicate(`lc:${zoneId}:${sequence}`)) {
+            dispatch(zoneId, levelPercent, "LEVEL", fade);
           }
         }
       }

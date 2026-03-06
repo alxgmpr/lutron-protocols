@@ -20,8 +20,10 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1",
+    "@serialport/parser-readline": "^13.0.0",
     "cbor-x": "^1",
     "js-yaml": "^4.1.0",
+    "serialport": "^13.0.0",
     "zod": "^3"
   },
   "devDependencies": {

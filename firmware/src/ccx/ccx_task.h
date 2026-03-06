@@ -39,10 +39,16 @@ bool ccx_send_scene(uint16_t scene_id, uint8_t sequence);
 /** Get RX/TX packet counters */
 uint32_t ccx_rx_count(void);
 uint32_t ccx_tx_count(void);
+uint32_t ccx_raw_rx_count(void);
 
 /** Control high-volume CCX RX UART logging (shell/VCP). */
 void ccx_set_rx_log_enabled(bool enabled);
 bool ccx_rx_log_enabled(void);
+
+/** Enable/disable promiscuous mode (sniff all 802.15.4 frames on PAN).
+ *  Raw frames are streamed to host via STREAM_FLAG_RAW. */
+bool ccx_set_promiscuous(bool enabled);
+bool ccx_promiscuous_enabled(void);
 
 /**
  * Request nRF52840 DFU: sends Spinel RESET with GPREGRET magic,

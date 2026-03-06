@@ -55,6 +55,14 @@ node_modules/
 *.ldf
 *.pem
 
+# Certificates and keys (private keys, PFX bundles)
+certs/
+*.pfx
+*.p12
+*.csr
+*.srl
+*.crt
+
 # Metadata
 .lutron-metadata.json
 
@@ -76,5 +84,5 @@ node_modules/
 .mcp.json
 
 tmp/
-src/
+/src/
 captures/lutron-runtime/

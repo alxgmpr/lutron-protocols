@@ -23,7 +23,8 @@ extern "C" {
  */
 #define STREAM_FLAG_TX        0x80
 #define STREAM_FLAG_CCX       0x40
-#define STREAM_FLAG_RSSI_MASK 0x3F
+#define STREAM_FLAG_RAW       0x20 /* Raw 802.15.4 frame (promiscuous sniff) */
+#define STREAM_FLAG_RSSI_MASK 0x1F
 
 /**
  * Stream command opcodes (host → STM32):
@@ -70,6 +71,9 @@ void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool i
 
 /** Send a CCX packet to all registered UDP clients */
 void stream_send_ccx_packet(const uint8_t* data, size_t len);
+
+/** Send a raw 802.15.4 frame to all registered UDP clients (promiscuous mode) */
+void stream_send_raw_frame(const uint8_t* data, size_t len);
 
 /** Check if any UDP client is registered */
 bool stream_client_connected(void);

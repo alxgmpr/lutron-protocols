@@ -59,6 +59,7 @@ static QueueHandle_t tx_queue = NULL;
 /* High-rate CCX RX UART logging can interfere with shell usability.
  * Keep it disabled by default; raw packets still stream over TCP. */
 static volatile bool ccx_rx_uart_log_enabled = false;
+static volatile bool promiscuous_enabled = false;
 
 /* -----------------------------------------------------------------------
  * MCUboot SMP serial DFU helpers
@@ -140,6 +141,7 @@ static volatile bool     ncp_detected = false;
 static volatile uint8_t  thread_role = SPINEL_NET_ROLE_DETACHED;
 static volatile uint32_t rx_count = 0;
 static volatile uint32_t tx_count = 0;
+static volatile uint32_t raw_rx_count = 0;
 static uint8_t           ccx_sequence = 0; /* auto-increment if caller passes 0 */
 
 /* -----------------------------------------------------------------------
@@ -344,7 +346,12 @@ static size_t spinel_wait_response(uint8_t expect_cmd, uint8_t expect_prop, uint
             return 0;
         }
 
-        /* Unsolicited or mismatched frame — skip it */
+        /* Silently skip STREAM_RAW/STREAM_NET unsolicited frames */
+        if (prop == SPINEL_PROP_STREAM_RAW || prop == SPINEL_PROP_STREAM_NET) {
+            continue;
+        }
+
+        /* Other unsolicited or mismatched frame — log it */
         printf("[ccx] Skipping frame: tid=%u cmd=0x%02X prop=0x%02X "
                "(waiting for cmd=0x%02X prop=0x%02X)\r\n",
                tid, cmd, prop, expect_cmd, expect_prop);
@@ -953,6 +960,41 @@ bool ccx_rx_log_enabled(void)
     return ccx_rx_uart_log_enabled;
 }
 
+bool ccx_set_promiscuous(bool enabled)
+{
+    /* Route through ccx_spinel_command so the CCX task handles UART
+     * access — calling spinel_prop_set directly from the shell task
+     * races with the CCX task's main loop UART reads. */
+    ccx_spinel_request_t req;
+    ccx_spinel_response_t resp;
+
+    req.cmd_type = CCX_SPINEL_PROP_SET;
+    req.prop_id = SPINEL_PROP_MAC_PROMISCUOUS_MODE;
+    req.value[0] = enabled ? SPINEL_MAC_PROMISCUOUS_MODE_NETWORK : SPINEL_MAC_PROMISCUOUS_MODE_OFF;
+    req.value_len = 1;
+    if (!ccx_spinel_command(&req, &resp, 3000) || !resp.success) {
+        printf("[ccx] Failed to set promiscuous mode\r\n");
+        return false;
+    }
+
+    req.prop_id = SPINEL_PROP_MAC_RAW_STREAM_ENABLED;
+    req.value[0] = enabled ? 1 : 0;
+    req.value_len = 1;
+    if (!ccx_spinel_command(&req, &resp, 3000) || !resp.success) {
+        printf("[ccx] Failed to set raw stream\r\n");
+        return false;
+    }
+
+    promiscuous_enabled = enabled;
+    printf("[ccx] Promiscuous mode: %s\r\n", enabled ? "ON" : "OFF");
+    return true;
+}
+
+bool ccx_promiscuous_enabled(void)
+{
+    return promiscuous_enabled;
+}
+
 /* -----------------------------------------------------------------------
  * Shell command passthrough — process a pending request from the shell task
  * ----------------------------------------------------------------------- */
@@ -1082,6 +1124,32 @@ static void ccx_task_func(void* param)
                         }
                     }
                 }
+                else if ((cmd == SPINEL_CMD_PROP_INSERTED || cmd == SPINEL_CMD_PROP_IS) && prop == SPINEL_PROP_STREAM_RAW) {
+                    /* STREAM_RAW: raw 802.15.4 frame from promiscuous mode.
+                     * Format: [len_lo][len_hi][raw_frame...][rssi][...metadata]
+                     * Filter: only forward encrypted data frames (short/short addressing
+                     * with security enabled). Skips beacons, ACKs, MLE, etc. */
+                    if (promiscuous_enabled) {
+                        const uint8_t* payload = rx_buf + 3;
+                        size_t         payload_len = rx_len - 3;
+                        if (payload_len >= 2) {
+                            uint16_t frame_len = (uint16_t)payload[0] | ((uint16_t)payload[1] << 8);
+                            const uint8_t* frame = payload + 2;
+                            if (frame_len >= 15 && frame_len <= payload_len - 2) {
+                                uint16_t fc = (uint16_t)frame[0] | ((uint16_t)frame[1] << 8);
+                                bool has_security = (fc & 0x08) != 0;
+                                uint8_t dst_mode = (fc >> 10) & 0x03;
+                                uint8_t src_mode = (fc >> 14) & 0x03;
+
+                                /* Short/short with security = encrypted Thread data */
+                                if (has_security && dst_mode == 2 && src_mode == 2) {
+                                    raw_rx_count++;
+                                    stream_send_raw_frame(frame, frame_len);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         else {
@@ -1196,6 +1264,10 @@ bool ccx_send_scene(uint16_t scene_id, uint8_t sequence)
 uint32_t ccx_rx_count(void)
 {
     return rx_count;
+}
+uint32_t ccx_raw_rx_count(void)
+{
+    return raw_rx_count;
 }
 uint32_t ccx_tx_count(void)
 {

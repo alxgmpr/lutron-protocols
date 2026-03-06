@@ -43,7 +43,7 @@
 #define STREAM_TASK_STACK_SIZE 2048
 #define STREAM_TASK_PRIORITY   2
 #define TX_RING_SIZE           64
-#define TX_ITEM_MAX_DATA       64
+#define TX_ITEM_MAX_DATA       140 /* 127 max 802.15.4 frame + margin for raw mode */
 #define CLIENT_TIMEOUT_MS      30000
 
 /* Status blob v2:
@@ -106,6 +106,19 @@ void stream_send_ccx_packet(const uint8_t* data, size_t len)
 
     StreamTxItem item;
     item.flags = STREAM_FLAG_CCX;
+    memcpy(item.data, data, len);
+    item.len = static_cast<uint8_t>(len);
+    item.timestamp_ms = HAL_GetTick();
+
+    if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
+}
+
+void stream_send_raw_frame(const uint8_t* data, size_t len)
+{
+    if (tx_queue == NULL || len > TX_ITEM_MAX_DATA) return;
+
+    StreamTxItem item;
+    item.flags = STREAM_FLAG_CCX | STREAM_FLAG_RAW;
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = HAL_GetTick();

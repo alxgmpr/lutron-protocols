@@ -1625,8 +1625,27 @@ static void cmd_ccx(const char* arg)
             return;
         }
         printf("Thread role: %s\r\n", ccx_thread_role_str());
-        printf("RX: %lu  TX: %lu\r\n", (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count());
+        printf("RX: %lu  TX: %lu  RAW: %lu\r\n", (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count(), (unsigned long)ccx_raw_rx_count());
         printf("RX log: %s\r\n", ccx_rx_log_enabled() ? "ON" : "OFF");
+        printf("Promiscuous: %s\r\n", ccx_promiscuous_enabled() ? "ON" : "OFF");
+        return;
+    }
+
+    if (strcmp(arg, "promisc on") == 0 || strcmp(arg, "promisc") == 0) {
+        if (ccx_set_promiscuous(true)) {
+            printf("Promiscuous mode enabled (raw frames → stream)\r\n");
+        } else {
+            printf("Failed to enable promiscuous mode\r\n");
+        }
+        return;
+    }
+
+    if (strcmp(arg, "promisc off") == 0) {
+        if (ccx_set_promiscuous(false)) {
+            printf("Promiscuous mode disabled\r\n");
+        } else {
+            printf("Failed to disable promiscuous mode\r\n");
+        }
         return;
     }
 

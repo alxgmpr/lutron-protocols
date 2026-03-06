@@ -40,8 +40,16 @@
 /* -----------------------------------------------------------------------
  * Spinel property IDs — MAC layer (SPINEL_PROP_MAC__BEGIN = 0x30)
  * ----------------------------------------------------------------------- */
+#define SPINEL_PROP_MAC_15_4_LADDR 0x34 /* [E] EUI-64 (read-only on NCP) */
+#define SPINEL_PROP_MAC_15_4_SADDR 0x35 /* [S] uint16_t short address */
 #define SPINEL_PROP_MAC_15_4_PANID 0x36 /* [S] uint16_t PAN ID (LE) */
-#define SPINEL_PROP_MAC_15_4_LADDR 0x38 /* [E] EUI-64 */
+#define SPINEL_PROP_MAC_RAW_STREAM_ENABLED 0x37 /* [b] bool: enable raw frame delivery */
+#define SPINEL_PROP_MAC_PROMISCUOUS_MODE   0x38 /* [C] uint8_t: promiscuous mode */
+
+/* Promiscuous mode values */
+#define SPINEL_MAC_PROMISCUOUS_MODE_OFF     0
+#define SPINEL_MAC_PROMISCUOUS_MODE_NETWORK 1 /* All frames on this PAN */
+#define SPINEL_MAC_PROMISCUOUS_MODE_FULL    2 /* All frames on channel */
 
 /* -----------------------------------------------------------------------
  * Spinel property IDs — NET layer (SPINEL_PROP_NET__BEGIN = 0x40)
@@ -62,6 +70,7 @@
 /* -----------------------------------------------------------------------
  * Spinel property IDs — Stream (SPINEL_PROP_STREAM__BEGIN = 0x70)
  * ----------------------------------------------------------------------- */
+#define SPINEL_PROP_STREAM_RAW 0x71 /* [dD] Raw 802.15.4 frame RX (promiscuous) */
 #define SPINEL_PROP_STREAM_NET 0x72 /* [dD] IPv6 packet TX/RX */
 
 /* -----------------------------------------------------------------------
