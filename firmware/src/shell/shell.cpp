@@ -28,6 +28,7 @@
 #include "cca_types.h"
 #include "ccx_task.h"
 #include "ccx_msg.h"
+#include "coap.h"
 #include "stream.h"
 #include "eth.h"
 #include "flash_store.h"
@@ -1616,6 +1617,459 @@ static void cmd_stream(const char* arg)
            (unsigned long)stream_udp_fail_count(), (unsigned long)stream_tx_drop_count());
 }
 
+/**
+ * Parse a hex string into bytes. Returns number of bytes parsed.
+ * Supports both "AABB" and "AA:BB" formats.
+ */
+static size_t parse_hex_bytes(const char* hex, uint8_t* out, size_t max_len)
+{
+    size_t pos = 0;
+    while (*hex && pos < max_len) {
+        if (*hex == ':') { hex++; continue; }
+        char hi = *hex++;
+        if (!*hex) break;
+        char lo = *hex++;
+
+        uint8_t val = 0;
+        if (hi >= '0' && hi <= '9') val = (uint8_t)((hi - '0') << 4);
+        else if (hi >= 'a' && hi <= 'f') val = (uint8_t)((hi - 'a' + 10) << 4);
+        else if (hi >= 'A' && hi <= 'F') val = (uint8_t)((hi - 'A' + 10) << 4);
+        else return pos;
+
+        if (lo >= '0' && lo <= '9') val |= (uint8_t)(lo - '0');
+        else if (lo >= 'a' && lo <= 'f') val |= (uint8_t)(lo - 'a' + 10);
+        else if (lo >= 'A' && lo <= 'F') val |= (uint8_t)(lo - 'A' + 10);
+        else return pos;
+
+        out[pos++] = val;
+    }
+    return pos;
+}
+
+/**
+ * Parse an IPv6 address from colon-hex notation (no :: shorthand).
+ * Returns true on success.
+ */
+static bool parse_ipv6_addr(const char* str, uint8_t out[16])
+{
+    /* Try compact hex first (32 hex chars, no colons) */
+    size_t len = strlen(str);
+    if (len == 32) {
+        return parse_hex_bytes(str, out, 16) == 16;
+    }
+
+    /* Colon-separated 16-bit groups: fe80:0000:0000:0000:220e:fb79:b4ce:f76f */
+    memset(out, 0, 16);
+    int group = 0;
+    const char* p = str;
+    while (*p && group < 8) {
+        char* end;
+        unsigned long val = strtoul(p, &end, 16);
+        if (end == p || val > 0xFFFF) return false;
+        out[group * 2] = (uint8_t)(val >> 8);
+        out[group * 2 + 1] = (uint8_t)(val & 0xFF);
+        group++;
+        if (*end == ':') end++;
+        else if (*end != '\0') return false;
+        p = end;
+    }
+    return group == 8;
+}
+
+/**
+ * Build CBOR preset payload for CoAP POST to /cg/db/pr/c/<key>.
+ * Format: {bstr(4, device_id<<16|0xEF20): [preset_id, {0: level16, 3: fade_qs}]}
+ */
+static size_t build_preset_cbor(uint8_t* buf, size_t buf_size,
+                                uint16_t device_id, uint8_t preset_id,
+                                uint16_t level, uint8_t fade_qs)
+{
+    if (buf_size < 32) return 0;
+    uint8_t* p = buf;
+    uint8_t* end = buf + buf_size;
+
+    /* Map(1) */
+    if (p >= end) return 0;
+    *p++ = 0xA1;
+
+    /* Key: bstr(4) = device_id BE16 | 0xEF20 */
+    if (p + 5 > end) return 0;
+    *p++ = 0x44; /* bstr length 4 */
+    *p++ = (uint8_t)(device_id >> 8);
+    *p++ = (uint8_t)(device_id & 0xFF);
+    *p++ = 0xEF;
+    *p++ = 0x20;
+
+    /* Value: array(2) [preset_id, map(2){0:level, 3:fade}] */
+    if (p >= end) return 0;
+    *p++ = 0x82; /* array(2) */
+
+    /* preset_id (uint) */
+    if (preset_id < 24) {
+        if (p >= end) return 0;
+        *p++ = preset_id;
+    } else {
+        if (p + 2 > end) return 0;
+        *p++ = 0x18;
+        *p++ = preset_id;
+    }
+
+    /* map(2) {0: level, 3: fade} */
+    if (p >= end) return 0;
+    *p++ = 0xA2;
+
+    /* key 0, value level (uint16) */
+    if (p >= end) return 0;
+    *p++ = 0x00;
+    if (level < 24) {
+        if (p >= end) return 0;
+        *p++ = (uint8_t)level;
+    } else if (level < 256) {
+        if (p + 2 > end) return 0;
+        *p++ = 0x18;
+        *p++ = (uint8_t)level;
+    } else {
+        if (p + 3 > end) return 0;
+        *p++ = 0x19;
+        *p++ = (uint8_t)(level >> 8);
+        *p++ = (uint8_t)(level & 0xFF);
+    }
+
+    /* key 3, value fade */
+    if (p >= end) return 0;
+    *p++ = 0x03;
+    if (fade_qs < 24) {
+        if (p >= end) return 0;
+        *p++ = fade_qs;
+    } else {
+        if (p + 2 > end) return 0;
+        *p++ = 0x18;
+        *p++ = fade_qs;
+    }
+
+    return (size_t)(p - buf);
+}
+
+/**
+ * Try to resolve an address argument to a 16-byte IPv6 address.
+ * Supports:
+ *   - "rloc:XXXX"  — build RLOC IPv6 from hex RLOC16
+ *   - "serial:NNN" — look up RLOC from peer table by serial number
+ *   - Full IPv6 colon notation or 32-char hex
+ * Returns true on success.
+ */
+static bool resolve_ccx_addr(const char* str, uint8_t out[16])
+{
+    if (strncmp(str, "rloc:", 5) == 0) {
+        uint16_t rloc16 = (uint16_t)strtoul(str + 5, NULL, 16);
+        if (rloc16 == 0) {
+            printf("Invalid RLOC16\r\n");
+            return false;
+        }
+        if (!ccx_build_rloc_addr(rloc16, out)) {
+            printf("Mesh-local prefix not yet known\r\n");
+            return false;
+        }
+        return true;
+    }
+
+    if (strncmp(str, "serial:", 7) == 0) {
+        uint32_t serial = strtoul(str + 7, NULL, 10);
+        uint16_t rloc16;
+        if (!ccx_peer_find_by_serial(serial, &rloc16)) {
+            printf("Serial %lu not in peer table (press buttons or wait for traffic)\r\n",
+                   (unsigned long)serial);
+            return false;
+        }
+        if (!ccx_build_rloc_addr(rloc16, out)) {
+            printf("Mesh-local prefix not yet known\r\n");
+            return false;
+        }
+        printf("Resolved serial %lu → rloc:0x%04X\r\n", (unsigned long)serial, rloc16);
+        return true;
+    }
+
+    return parse_ipv6_addr(str, out);
+}
+
+static void cmd_ccx_coap(const char* arg)
+{
+    if (strncmp(arg, "preset ", 7) == 0) {
+        /* ccx coap preset <ipv6_addr> <device_id> <preset_id> <level%> [fade_s] */
+        const char* p = arg + 7;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        char* endptr;
+        p = space + 1;
+        uint16_t dev_id = (uint16_t)strtoul(p, &endptr, 0);
+        if (*endptr != ' ') goto coap_usage;
+
+        p = endptr + 1;
+        uint8_t preset_id = (uint8_t)strtoul(p, &endptr, 0);
+        if (*endptr != ' ') goto coap_usage;
+
+        p = endptr + 1;
+        uint8_t pct = (uint8_t)strtoul(p, &endptr, 10);
+        uint16_t level = ccx_percent_to_level(pct);
+
+        uint8_t fade_qs = 1; /* default instant */
+        if (*endptr == ' ') {
+            float fade_s = strtof(endptr + 1, NULL);
+            fade_qs = (uint8_t)(fade_s * 4);
+            if (fade_qs == 0) fade_qs = 1;
+        }
+
+        /* Build the CBOR preset payload */
+        uint8_t cbor[64];
+        size_t cbor_len = build_preset_cbor(cbor, sizeof(cbor), dev_id, preset_id, level, fade_qs);
+        if (cbor_len == 0) {
+            printf("CBOR encode failed\r\n");
+            return;
+        }
+
+        /* Build URI path: /cg/db/pr/c/<key_hex> */
+        char uri[64];
+        snprintf(uri, sizeof(uri), "/cg/db/pr/c/%04X", dev_id);
+
+        if (ccx_send_coap(dst, COAP_CODE_POST, uri, cbor, cbor_len)) {
+            printf("CoAP POST preset dev=0x%04X id=%u level=%u%% (0x%04X) fade=%u queued\r\n",
+                   dev_id, preset_id, pct, level, fade_qs);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(arg, "led ", 4) == 0) {
+        /* ccx coap led <ipv6_addr> <active_0-255> <inactive_0-255>
+         * Programs keypad status LED brightness via AHA bucket (0x0070).
+         * CBOR: [108, {4: active, 5: inactive}] */
+        const char* p = arg + 4;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        char* endptr;
+        p = space + 1;
+        uint8_t active = (uint8_t)strtoul(p, &endptr, 10);
+        if (*endptr != ' ') goto coap_usage;
+        uint8_t inactive = (uint8_t)strtoul(endptr + 1, NULL, 10);
+
+        /* Build CBOR: [108, {4: active, 5: inactive}] */
+        uint8_t cbor[16];
+        size_t ci = 0;
+        cbor[ci++] = 0x82;       /* array(2) */
+        cbor[ci++] = 0x18;       /* uint8 follows */
+        cbor[ci++] = 108;        /* opcode 108 */
+        cbor[ci++] = 0xA2;       /* map(2) */
+        cbor[ci++] = 0x04;       /* key 4 (activated) */
+        if (active < 24) { cbor[ci++] = active; }
+        else { cbor[ci++] = 0x18; cbor[ci++] = active; }
+        cbor[ci++] = 0x05;       /* key 5 (deactivated) */
+        if (inactive < 24) { cbor[ci++] = inactive; }
+        else { cbor[ci++] = 0x18; cbor[ci++] = inactive; }
+
+        if (ccx_send_coap(dst, COAP_CODE_PUT, "/cg/db/ct/c/AHA", cbor, ci)) {
+            printf("CoAP PUT LED active=%u inactive=%u queued\r\n", active, inactive);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(arg, "trim ", 5) == 0) {
+        /* ccx coap trim <ipv6_addr> <high%> <low%>
+         * Programs dimmer trim via AAI bucket (0x0002).
+         * CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}]
+         * Encoding: raw = percent * 0x0100 - 0x0100 (approx percent * 655.35) */
+        const char* p = arg + 5;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        char* endptr;
+        p = space + 1;
+        float high_pct = strtof(p, &endptr);
+        if (*endptr != ' ') goto coap_usage;
+        float low_pct = strtof(endptr + 1, NULL);
+
+        /* Convert percent to raw: raw = percent * 256 - 256 */
+        uint16_t high_raw = (uint16_t)(high_pct * 256.0f - 256.0f);
+        uint16_t low_raw = (uint16_t)(low_pct * 256.0f - 256.0f);
+
+        /* Build CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}] */
+        uint8_t cbor[32];
+        size_t ci = 0;
+        cbor[ci++] = 0x82;       /* array(2) */
+        cbor[ci++] = 0x03;       /* opcode 3 */
+        cbor[ci++] = 0xA3;       /* map(3) */
+        cbor[ci++] = 0x02;       /* key 2 (high trim) */
+        cbor[ci++] = 0x19;       /* uint16 */
+        cbor[ci++] = (uint8_t)(high_raw >> 8);
+        cbor[ci++] = (uint8_t)(high_raw & 0xFF);
+        cbor[ci++] = 0x03;       /* key 3 (low trim) */
+        cbor[ci++] = 0x19;       /* uint16 */
+        cbor[ci++] = (uint8_t)(low_raw >> 8);
+        cbor[ci++] = (uint8_t)(low_raw & 0xFF);
+        cbor[ci++] = 0x08;       /* key 8 (profile) */
+        cbor[ci++] = 0x05;       /* profile = 5 (dimmer) */
+
+        if (ccx_send_coap(dst, COAP_CODE_PUT, "/cg/db/ct/c/AAI", cbor, ci)) {
+            printf("CoAP PUT trim high=%.1f%% (%u) low=%.1f%% (%u) queued\r\n",
+                   (double)high_pct, high_raw, (double)low_pct, low_raw);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(arg, "get ", 4) == 0) {
+        /* ccx coap get <ipv6_addr> <uri_path> */
+        const char* p = arg + 4;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        if (ccx_send_coap(dst, COAP_CODE_GET, space + 1, NULL, 0)) {
+            printf("CoAP GET %s queued\r\n", space + 1);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(arg, "delete ", 7) == 0) {
+        /* ccx coap delete <ipv6_addr> <uri_path> */
+        const char* p = arg + 7;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        if (ccx_send_coap(dst, COAP_CODE_DELETE, space + 1, NULL, 0)) {
+            printf("CoAP DELETE %s queued\r\n", space + 1);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(arg, "post ", 5) == 0) {
+        /* ccx coap post <ipv6_addr> <uri_path> <payload_hex> */
+        const char* p = arg + 5;
+
+        /* Parse addr */
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address (use IPv6, rloc:XXXX, or serial:NNN)\r\n");
+            return;
+        }
+
+        /* Parse URI path */
+        p = space + 1;
+        space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        char uri[64];
+        size_t ulen = (size_t)(space - p);
+        if (ulen >= sizeof(uri)) goto coap_usage;
+        memcpy(uri, p, ulen);
+        uri[ulen] = '\0';
+
+        /* Parse hex payload */
+        uint8_t payload[128];
+        size_t plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
+        if (plen == 0) {
+            printf("Invalid hex payload\r\n");
+            return;
+        }
+
+        if (ccx_send_coap(dst, COAP_CODE_POST, uri, payload, plen)) {
+            printf("CoAP POST %s (%u bytes) queued\r\n", uri, (unsigned)plen);
+        } else {
+            printf("CoAP TX failed (not joined?)\r\n");
+        }
+        return;
+    }
+
+coap_usage:
+    printf("Usage: ccx coap <command> ...\r\n");
+    printf("  ccx coap led <addr> <active_0-255> <inactive_0-255>\r\n");
+    printf("    Set keypad LED brightness (AHA bucket)\r\n");
+    printf("    Example: ccx coap led fe80:... 229 25\r\n");
+    printf("  ccx coap trim <addr> <high%%> <low%%>\r\n");
+    printf("    Set dimmer trim (AAI bucket)\r\n");
+    printf("    Example: ccx coap trim fe80:... 90.0 1.0\r\n");
+    printf("  ccx coap preset <addr> <dev_id> <preset_id> <level%%> [fade_s]\r\n");
+    printf("    Program a preset level on a device\r\n");
+    printf("    Example: ccx coap preset fe80:... 0x07FE 72 75 1.0\r\n");
+    printf("  ccx coap get <addr> <uri_path>\r\n");
+    printf("    Read a CoAP resource\r\n");
+    printf("  ccx coap delete <addr> <uri_path>\r\n");
+    printf("    Delete a CoAP resource\r\n");
+    printf("  ccx coap post <addr> <uri_path> <payload_hex>\r\n");
+    printf("    Write raw CBOR to a CoAP resource\r\n");
+    printf("  addr: IPv6, rloc:XXXX (hex), or serial:NNN (decimal)\r\n");
+}
+
 static void cmd_ccx(const char* arg)
 {
     if (strlen(arg) == 0) {
@@ -1722,8 +2176,49 @@ static void cmd_ccx(const char* arg)
             printf("CCX TX failed (not joined?)\r\n");
         }
     }
+    else if (strcmp(arg, "peers") == 0) {
+        size_t count = ccx_peer_count();
+        if (count == 0) {
+            printf("No peers seen yet (enable RX log and wait for traffic)\r\n");
+            return;
+        }
+        printf("%-8s %-12s %-12s %-16s %s\r\n", "RLOC16", "Serial", "DeviceID", "LastMsg", "Age");
+        for (size_t i = 0; i < count; i++) {
+            uint16_t rloc16;
+            uint32_t serial;
+            uint8_t  dev_id[4];
+            uint16_t last_msg;
+            uint32_t age_ms;
+            if (!ccx_peer_get(i, &rloc16, &serial, dev_id, &last_msg, &age_ms)) continue;
+
+            char serial_str[16] = "-";
+            if (serial != 0) snprintf(serial_str, sizeof(serial_str), "%lu", (unsigned long)serial);
+
+            char devid_str[16] = "-";
+            if (dev_id[0] || dev_id[1] || dev_id[2] || dev_id[3]) {
+                snprintf(devid_str, sizeof(devid_str), "%02X%02X%02X%02X",
+                         dev_id[0], dev_id[1], dev_id[2], dev_id[3]);
+            }
+
+            const char* msg_name = ccx_msg_type_name(last_msg);
+
+            uint32_t age_s = age_ms / 1000;
+            char age_str[16];
+            if (age_s < 60) snprintf(age_str, sizeof(age_str), "%lus", (unsigned long)age_s);
+            else if (age_s < 3600) snprintf(age_str, sizeof(age_str), "%lum", (unsigned long)(age_s / 60));
+            else snprintf(age_str, sizeof(age_str), "%luh", (unsigned long)(age_s / 3600));
+
+            printf("0x%04X   %-12s %-12s %-16s %s\r\n", rloc16, serial_str, devid_str, msg_name, age_str);
+        }
+    }
+    else if (strcmp(arg, "coap") == 0) {
+        cmd_ccx_coap("");
+    }
+    else if (strncmp(arg, "coap ", 5) == 0) {
+        cmd_ccx_coap(arg + 5);
+    }
     else {
-        printf("Usage: ccx [log|on|off|level|scene] ...\r\n");
+        printf("Usage: ccx [log|on|off|level|scene|coap|peers] ...\r\n");
         printf("  ccx             — Thread status\r\n");
         printf("  ccx log         — show CCX RX log state\r\n");
         printf("  ccx log on|off  — enable/disable CCX RX UART logs\r\n");
@@ -1731,6 +2226,8 @@ static void cmd_ccx(const char* arg)
         printf("  ccx off <zone>  — send OFF to zone\r\n");
         printf("  ccx level <zone> <0-100> — set level %%\r\n");
         printf("  ccx scene <id>  — recall scene\r\n");
+        printf("  ccx peers       — list known Thread peers (RLOC → serial)\r\n");
+        printf("  ccx coap ...    — CoAP device programming\r\n");
     }
 }
 

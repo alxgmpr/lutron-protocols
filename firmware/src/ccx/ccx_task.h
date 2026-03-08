@@ -36,6 +36,19 @@ bool ccx_send_off(uint16_t zone_id, uint8_t sequence);
 /** Send a SCENE_RECALL command */
 bool ccx_send_scene(uint16_t scene_id, uint8_t sequence);
 
+/**
+ * Send a unicast CoAP request to a device.
+ * @param dst_addr  16-byte IPv6 destination address
+ * @param code      CoAP method code (2=POST, 3=PUT)
+ * @param uri_path  URI path, e.g. "/cg/db/pr/c/00FE"
+ * @param payload   CBOR payload (NULL for GET)
+ * @param payload_len Payload length
+ * @return true if queued
+ */
+bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code,
+                   const char* uri_path,
+                   const uint8_t* payload, size_t payload_len);
+
 /** Get RX/TX packet counters */
 uint32_t ccx_rx_count(void);
 uint32_t ccx_tx_count(void);
@@ -95,6 +108,24 @@ typedef struct {
  * @return true if response received within timeout
  */
 bool ccx_spinel_command(const ccx_spinel_request_t* req, ccx_spinel_response_t* resp, uint32_t timeout_ms);
+
+/* -----------------------------------------------------------------------
+ * Peer table — track device RLOCs from CCX multicast traffic
+ * ----------------------------------------------------------------------- */
+
+/** Number of known peers */
+size_t ccx_peer_count(void);
+
+/** Get peer info by index. Returns false if index out of range. */
+bool ccx_peer_get(size_t index, uint16_t* rloc16, uint32_t* serial,
+                  uint8_t device_id[4], uint16_t* last_msg_type, uint32_t* age_ms);
+
+/** Find a peer's RLOC16 by serial number. Returns false if not found. */
+bool ccx_peer_find_by_serial(uint32_t serial, uint16_t* rloc16);
+
+/** Build a full IPv6 RLOC address from RLOC16 using our mesh-local prefix.
+ *  Returns false if mesh-local prefix not yet known. */
+bool ccx_build_rloc_addr(uint16_t rloc16, uint8_t out[16]);
 
 /** Check DFU state */
 typedef enum {

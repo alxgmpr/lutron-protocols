@@ -150,6 +150,7 @@ set(APP_SOURCES
     src/ccx/ccx_task.cpp
     src/ccx/ccx_cbor.c
     src/ccx/ccx_msg.c
+    src/ccx/coap.c
     src/ccx/smp_serial.c
     src/ccx/ipv6_udp.c
     src/shell/shell.cpp
