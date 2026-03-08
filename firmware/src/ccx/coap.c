@@ -131,6 +131,21 @@ size_t coap_build_ack(uint8_t* buf, size_t buf_size, uint16_t msg_id)
     return 4;
 }
 
+size_t coap_build_non_request(uint8_t* buf, size_t buf_size,
+                               uint16_t msg_id, uint8_t token, uint8_t code,
+                               const char* uri_path,
+                               const uint8_t* payload, size_t payload_len)
+{
+    /* Build using same logic as coap_build_request, then patch Type to NON */
+    size_t len = coap_build_request(buf, buf_size, msg_id, token, code,
+                                     uri_path, payload, payload_len);
+    if (len > 0) {
+        /* Change Type from CON (00) to NON (01) in byte 0 */
+        buf[0] = (buf[0] & 0xCF) | (COAP_TYPE_NON << 4);
+    }
+    return len;
+}
+
 bool coap_parse_response(const uint8_t* buf, size_t len,
                          uint8_t* type, uint8_t* code, uint16_t* msg_id)
 {

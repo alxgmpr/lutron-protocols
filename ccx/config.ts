@@ -61,6 +61,52 @@ function loadLeapFromDisk(): LeapDumpData | null {
   return merged as LeapDumpData;
 }
 
+// ---------------------------------------------------------------------------
+// Device map (ccx-device-map.json) — merged Designer DB + LEAP + manual map
+// ---------------------------------------------------------------------------
+
+interface CCXDeviceEntry {
+  serial: number;
+  eui64: string;
+  secondaryMleid: string;
+  primaryMleid?: string;
+  name: string;
+  area: string;
+  station: string;
+  deviceType: string;
+  zones: { id: number; name: string }[];
+  leapDeviceId?: number;
+}
+
+interface DeviceMapData {
+  meshLocalPrefix: string;
+  devices: CCXDeviceEntry[];
+}
+
+function loadDeviceMap(): DeviceMapData | null {
+  const mapFile = join((import.meta as any).dir, "../data/ccx-device-map.json");
+  if (!existsSync(mapFile)) return null;
+  try {
+    return JSON.parse(readFileSync(mapFile, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+const _deviceMap = loadDeviceMap();
+
+// Build lookup indices
+const _addrToDevice = new Map<string, CCXDeviceEntry>();
+const _serialToDevice = new Map<number, CCXDeviceEntry>();
+if (_deviceMap) {
+  for (const dev of _deviceMap.devices) {
+    if (dev.primaryMleid) {
+      _addrToDevice.set(dev.primaryMleid, dev);
+    }
+    _serialToDevice.set(dev.serial, dev);
+  }
+}
+
 const _diskData = loadLeapFromDisk();
 let _leapOverride: LeapDumpData | null = null;
 
@@ -92,9 +138,25 @@ function formatZoneName(zone: { name: string; area?: string }): string {
   return zone.area ? `${zone.area} ${zone.name}` : zone.name;
 }
 
-/** Look up a device name by IPv6 address */
-export function getDeviceName(_ipv6: string): string | undefined {
-  return undefined;
+/** Look up a device name by IPv6 address (primary ML-EID) */
+export function getDeviceName(ipv6: string): string | undefined {
+  const dev = _addrToDevice.get(ipv6);
+  return dev?.name;
+}
+
+/** Look up a device's primary ML-EID by serial number */
+export function getDeviceAddress(serial: number): string | undefined {
+  return _serialToDevice.get(serial)?.primaryMleid;
+}
+
+/** Get full device info by serial number */
+export function getDeviceBySerial(serial: number): CCXDeviceEntry | undefined {
+  return _serialToDevice.get(serial);
+}
+
+/** Get all CCX devices from the device map */
+export function getAllDevices(): CCXDeviceEntry[] {
+  return _deviceMap?.devices ?? [];
 }
 
 /** Look up a zone name by zone ID */

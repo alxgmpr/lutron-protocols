@@ -16,7 +16,8 @@
 extern "C" {
 #endif
 
-#define COAP_PORT 5683
+#define COAP_PORT     5683
+#define COAP_TMF_PORT 61631  /* Thread Management Framework port */
 
 /* CoAP message types */
 #define COAP_TYPE_CON 0
@@ -83,6 +84,15 @@ size_t coap_build_ack(uint8_t* buf, size_t buf_size, uint16_t msg_id);
  */
 bool coap_parse_response(const uint8_t* buf, size_t len,
                          uint8_t* type, uint8_t* code, uint16_t* msg_id);
+
+/**
+ * Build a CoAP NON-confirmable request (for TMF Address Query etc.).
+ * Same as coap_build_request but with Type=NON instead of CON.
+ */
+size_t coap_build_non_request(uint8_t* buf, size_t buf_size,
+                               uint16_t msg_id, uint8_t token, uint8_t code,
+                               const char* uri_path,
+                               const uint8_t* payload, size_t payload_len);
 
 #ifdef __cplusplus
 }

@@ -2217,8 +2217,37 @@ static void cmd_ccx(const char* arg)
     else if (strncmp(arg, "coap ", 5) == 0) {
         cmd_ccx_coap(arg + 5);
     }
+    else if (strncmp(arg, "discover ", 9) == 0) {
+        /* ccx discover <secondary-ml-eid> — TMF Address Query */
+        uint8_t addr[16];
+        if (!parse_ipv6_addr(arg + 9, addr)) {
+            printf("Usage: ccx discover <secondary-ml-eid-ipv6>\r\n");
+            printf("  e.g. ccx discover fd00:0000:0000:0000:3c2e:f5ff:fef9:73f9\r\n");
+            return;
+        }
+        if (!ccx_send_address_query(addr)) {
+            printf("Failed to enqueue address query (not joined?)\r\n");
+            return;
+        }
+        /* Wait up to 3 seconds for response */
+        printf("Waiting for Address Notification...\r\n");
+        for (int i = 0; i < 30; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ccx_address_result_t result;
+            if (ccx_get_address_result(&result)) {
+                printf("Primary ML-EID IID: ");
+                for (int j = 0; j < 8; j += 2) {
+                    if (j > 0) printf(":");
+                    printf("%02x%02x", result.ml_eid[j], result.ml_eid[j + 1]);
+                }
+                printf("\r\nRLOC16: 0x%04X\r\n", result.rloc16);
+                return;
+            }
+        }
+        printf("No response (device may be offline or address not in mesh)\r\n");
+    }
     else {
-        printf("Usage: ccx [log|on|off|level|scene|coap|peers] ...\r\n");
+        printf("Usage: ccx [log|on|off|level|scene|coap|peers|discover] ...\r\n");
         printf("  ccx             — Thread status\r\n");
         printf("  ccx log         — show CCX RX log state\r\n");
         printf("  ccx log on|off  — enable/disable CCX RX UART logs\r\n");
@@ -2228,6 +2257,7 @@ static void cmd_ccx(const char* arg)
         printf("  ccx scene <id>  — recall scene\r\n");
         printf("  ccx peers       — list known Thread peers (RLOC → serial)\r\n");
         printf("  ccx coap ...    — CoAP device programming\r\n");
+        printf("  ccx discover <addr> — TMF Address Query (secondary → primary ML-EID)\r\n");
     }
 }
 

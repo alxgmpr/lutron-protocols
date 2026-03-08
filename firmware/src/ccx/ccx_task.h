@@ -127,6 +127,32 @@ bool ccx_peer_find_by_serial(uint32_t serial, uint16_t* rloc16);
  *  Returns false if mesh-local prefix not yet known. */
 bool ccx_build_rloc_addr(uint16_t rloc16, uint8_t out[16]);
 
+/* -----------------------------------------------------------------------
+ * Address discovery — TMF Address Query to map secondary → primary ML-EID
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Send a TMF Address Query for a secondary ML-EID (EUI-64 derived).
+ * The response (Address Notification) arrives asynchronously and is
+ * printed/stored by the CCX task's RX handler.
+ *
+ * @param secondary_mleid  16-byte secondary ML-EID to query (fd00::xxxx:xxff:fexx:xxxx)
+ * @return true if query was enqueued
+ */
+bool ccx_send_address_query(const uint8_t secondary_mleid[16]);
+
+/** Result of an address query (set by RX handler on /a/an reception) */
+typedef struct {
+    bool     valid;
+    uint8_t  target_eid[16]; /* secondary ML-EID queried */
+    uint8_t  ml_eid[8];     /* primary ML-EID IID (8 bytes) */
+    uint16_t rloc16;
+} ccx_address_result_t;
+
+/** Get last address query result (polled by shell after sending query).
+ *  Returns false if no result available. Clears the result after reading. */
+bool ccx_get_address_result(ccx_address_result_t* result);
+
 /** Check DFU state */
 typedef enum {
     CCX_DFU_IDLE = 0,

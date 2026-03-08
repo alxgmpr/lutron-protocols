@@ -48,9 +48,10 @@
  * ----------------------------------------------------------------------- */
 #define TX_QUEUE_SIZE 8
 
-#define CCX_TX_TYPE_LEVEL 0
-#define CCX_TX_TYPE_SCENE 1
-#define CCX_TX_TYPE_COAP  2
+#define CCX_TX_TYPE_LEVEL    0
+#define CCX_TX_TYPE_SCENE    1
+#define CCX_TX_TYPE_COAP     2
+#define CCX_TX_TYPE_ADDR_QRY 3
 
 #define CCX_COAP_MAX_PAYLOAD 128
 
@@ -72,6 +73,16 @@ static QueueHandle_t tx_queue = NULL;
 /* High-rate CCX RX UART logging can interfere with shell usability.
  * Keep it disabled by default; raw packets still stream over TCP. */
 static volatile bool ccx_rx_uart_log_enabled = false;
+
+/* TMF Address Query result (written by RX handler, read by shell) */
+static ccx_address_result_t addr_query_result = {};
+static volatile bool addr_query_result_ready = false;
+
+/* ff03::2 = realm-local all-routers multicast (TMF Address Query target) */
+static const uint8_t TMF_REALM_ALL_ROUTERS[16] = {
+    0xFF, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02
+};
 static volatile bool promiscuous_enabled = false;
 
 /* -----------------------------------------------------------------------
@@ -1004,6 +1015,51 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
         return;
     }
 
+    if (req->type == CCX_TX_TYPE_ADDR_QRY) {
+        /* --- TMF Address Query: NON POST to ff03::2 port 61631, path /a/aq --- */
+        uint8_t coap_buf[64];
+        uint16_t mid = coap_msg_id_counter++;
+        uint8_t  tok = coap_token_counter++;
+
+        /* Build payload: Target EID TLV (type=0, len=16, value=secondary ML-EID) */
+        uint8_t tlv[18];
+        tlv[0] = 0x00; /* type = Target EID */
+        tlv[1] = 0x10; /* len = 16 */
+        memcpy(&tlv[2], req->dst_addr, 16);
+
+        size_t coap_len = coap_build_non_request(coap_buf, sizeof(coap_buf),
+                                                  mid, tok, COAP_CODE_POST,
+                                                  "/a/aq", tlv, sizeof(tlv));
+        if (coap_len == 0) {
+            printf("[ccx] Address Query: CoAP build failed\r\n");
+            return;
+        }
+
+        /* Wrap in IPv6+UDP → multicast to ff03::2 on TMF port 61631 */
+        uint8_t pkt[256];
+        size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt),
+                                         have_ipv6_addr ? our_ipv6_addr : NULL,
+                                         TMF_REALM_ALL_ROUTERS,
+                                         COAP_TMF_PORT, COAP_TMF_PORT,
+                                         coap_buf, coap_len);
+        if (pkt_len == 0) {
+            printf("[ccx] Address Query: IPv6+UDP build failed\r\n");
+            return;
+        }
+
+        addr_query_result_ready = false;
+        ccx_transmit_ipv6(pkt, pkt_len);
+        tx_count++;
+
+        printf("[ccx] Address Query for ");
+        for (int i = 0; i < 16; i += 2) {
+            if (i > 0) printf(":");
+            printf("%02x%02x", req->dst_addr[i], req->dst_addr[i + 1]);
+        }
+        printf(" mid=0x%04X\r\n", mid);
+        return;
+    }
+
     /* --- Multicast CCX command TX --- */
     uint8_t cbor_buf[64];
     size_t  cbor_len = 0;
@@ -1097,6 +1153,79 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 printf("[ccx] CoAP RX type=%u code=%u.%02u mid=0x%04X\r\n",
                        coap_type, coap_code >> 5, coap_code & 0x1F, coap_mid);
             }
+        }
+        return;
+    }
+
+    /* TMF port — handle Address Notification (/a/an) responses */
+    if (src_port == COAP_TMF_PORT || dst_port == COAP_TMF_PORT) {
+        /* Parse Address Notification TLVs from CoAP payload */
+        /* CoAP header: ver(2)|type(2)|tkl(4) | code(8) | mid(16) | token(tkl) | options... | 0xFF | payload */
+        if (udp_payload_len < 4) return;
+        uint8_t tkl = udp_data[0] & 0x0F;
+        size_t hdr_len = 4 + tkl;
+        if (hdr_len >= udp_payload_len) return;
+
+        /* Skip CoAP options to find payload marker 0xFF */
+        size_t pos = hdr_len;
+        while (pos < udp_payload_len) {
+            if (udp_data[pos] == 0xFF) { pos++; break; }
+            /* Skip option: delta|length nibbles + extended + value */
+            uint8_t d_nibble = (udp_data[pos] >> 4) & 0x0F;
+            uint8_t l_nibble = udp_data[pos] & 0x0F;
+            pos++;
+            uint16_t delta = d_nibble;
+            if (d_nibble == 13) { if (pos >= udp_payload_len) return; delta = 13 + udp_data[pos++]; }
+            else if (d_nibble == 14) { if (pos + 1 >= udp_payload_len) return; delta = 269 + ((uint16_t)udp_data[pos] << 8 | udp_data[pos+1]); pos += 2; }
+            (void)delta;
+            uint16_t opt_len = l_nibble;
+            if (l_nibble == 13) { if (pos >= udp_payload_len) return; opt_len = 13 + udp_data[pos++]; }
+            else if (l_nibble == 14) { if (pos + 1 >= udp_payload_len) return; opt_len = 269 + ((uint16_t)udp_data[pos] << 8 | udp_data[pos+1]); pos += 2; }
+            pos += opt_len;
+        }
+
+        /* Parse TLVs: type(1) + len(1) + value(len) */
+        ccx_address_result_t result = {};
+        bool have_target = false, have_mleid = false, have_rloc = false;
+
+        while (pos + 2 <= udp_payload_len) {
+            uint8_t tlv_type = udp_data[pos++];
+            uint8_t tlv_len  = udp_data[pos++];
+            if (pos + tlv_len > udp_payload_len) break;
+
+            if (tlv_type == 0 && tlv_len == 16) {
+                /* Target EID */
+                memcpy(result.target_eid, &udp_data[pos], 16);
+                have_target = true;
+            } else if (tlv_type == 3 && tlv_len == 8) {
+                /* ML-EID (primary ML-EID IID, 8 bytes) */
+                memcpy(result.ml_eid, &udp_data[pos], 8);
+                have_mleid = true;
+            } else if (tlv_type == 2 && tlv_len == 2) {
+                /* RLOC16 */
+                result.rloc16 = ((uint16_t)udp_data[pos] << 8) | udp_data[pos + 1];
+                have_rloc = true;
+            }
+            pos += tlv_len;
+        }
+
+        if (have_target && have_mleid) {
+            result.valid = true;
+            addr_query_result = result;
+            addr_query_result_ready = true;
+
+            printf("[ccx] Address Notification: ");
+            for (int i = 0; i < 16; i += 2) {
+                if (i > 0) printf(":");
+                printf("%02x%02x", result.target_eid[i], result.target_eid[i + 1]);
+            }
+            printf(" → ML-EID ");
+            for (int i = 0; i < 8; i += 2) {
+                if (i > 0) printf(":");
+                printf("%02x%02x", result.ml_eid[i], result.ml_eid[i + 1]);
+            }
+            if (have_rloc) printf(" RLOC=0x%04X", result.rloc16);
+            printf("\r\n");
         }
         return;
     }
@@ -1513,6 +1642,26 @@ bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code,
     }
 
     return xQueueSend(tx_queue, &req, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool ccx_send_address_query(const uint8_t secondary_mleid[16])
+{
+    if (!ccx_thread_joined() || tx_queue == NULL) return false;
+
+    ccx_tx_request_t req;
+    memset(&req, 0, sizeof(req));
+    req.type = CCX_TX_TYPE_ADDR_QRY;
+    memcpy(req.dst_addr, secondary_mleid, 16);
+
+    return xQueueSend(tx_queue, &req, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool ccx_get_address_result(ccx_address_result_t* result)
+{
+    if (!addr_query_result_ready) return false;
+    *result = addr_query_result;
+    addr_query_result_ready = false;
+    return true;
 }
 
 uint32_t ccx_rx_count(void)
