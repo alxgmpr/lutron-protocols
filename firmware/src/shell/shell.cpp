@@ -2538,20 +2538,8 @@ static void cmd_ot(const char* arg)
         return;
     }
 
-    /* ot reset */
-    if (strcmp(arg, "reset") == 0) {
-        req.cmd_type = CCX_SPINEL_RESET;
-        if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
-            printf("NCP reset sent\r\n");
-        }
-        else {
-            printf("Error sending reset\r\n");
-        }
-        return;
-    }
-
     printf("Usage: ot [channel|panid|role|networkname|extpanid|networkkey|\r\n"
-           "          eui64|ipaddr|ifconfig|thread|reset]\r\n");
+           "          eui64|ipaddr|ifconfig|thread]\r\n");
 }
 
 /* -----------------------------------------------------------------------
@@ -2643,18 +2631,6 @@ static void cmd_spinel(const char* arg)
         }
         else {
             printf("Timeout\r\n");
-        }
-        return;
-    }
-
-    /* spinel reset */
-    if (strcmp(arg, "reset") == 0) {
-        req.cmd_type = CCX_SPINEL_RESET;
-        if (ccx_spinel_command(&req, &resp, 5000) && resp.success) {
-            printf("RESET sent\r\n");
-        }
-        else {
-            printf("Error sending reset\r\n");
         }
         return;
     }

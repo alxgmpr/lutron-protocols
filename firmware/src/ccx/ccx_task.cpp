@@ -670,20 +670,24 @@ static bool ncp_probe(void)
 {
     printf("[ccx] Probing nRF52840 NCP at 460800 baud...\r\n");
 
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    /* Wait for NCP to boot (it may have just powered on with us) */
+    vTaskDelay(pdMS_TO_TICKS(2000));
 
     /* Flush any boot garbage from ring buffer */
     uint8_t junk;
     while (bsp_uart2_rx_read(&junk)) {}
 
-    /* Read unsolicited boot frame */
+    /* Drain any unsolicited boot frame the NCP may have sent */
     uint8_t boot_buf[HDLC_RX_BUF_SIZE];
     size_t  boot_len = hdlc_recv_frame(boot_buf, sizeof(boot_buf), 1000);
     if (boot_len > 0) {
         printf("[ccx] NCP boot frame: %u bytes, cmd=0x%02X\r\n", (unsigned)boot_len, boot_len >= 2 ? boot_buf[1] : 0);
     }
 
-    /* Send reset and wait */
+    /* Send Spinel RESET to initialize the NCP.
+     * The NCP firmware we built (from ot-nrf528xx) does a clean
+     * NVIC_SystemReset without setting GPREGRET, so the bootloader
+     * will boot the application normally — no DFU risk. */
     spinel_send_reset();
     vTaskDelay(pdMS_TO_TICKS(500));
 
@@ -693,7 +697,7 @@ static bool ncp_probe(void)
                reset_len >= 2 ? boot_buf[1] : 0);
     }
     else {
-        printf("[ccx] No HDLC frame received. Raw bytes: ");
+        printf("[ccx] No reset response, dumping raw bytes: ");
         uint32_t n = 0;
         uint32_t tstart = HAL_GetTick();
         while ((HAL_GetTick() - tstart) < 1000 && n < 32) {
@@ -713,11 +717,13 @@ static bool ncp_probe(void)
     /* Query protocol version */
     uint8_t ver_buf[16];
     size_t  ver_len = spinel_prop_get(SPINEL_PROP_PROTOCOL_VERSION, ver_buf, sizeof(ver_buf), 2000);
+
     if (ver_len >= 2) {
         printf("[ccx] NCP protocol version: %u.%u\r\n", ver_buf[0], ver_buf[1]);
     }
     else {
-        printf("[ccx] NCP did not respond to protocol version query\r\n");
+        printf("[ccx] NCP did not respond — may be in bootloader (red LED = DFU mode)\r\n");
+        printf("[ccx] To recover: plug dongle USB into Mac, reflash NCP firmware\r\n");
         return false;
     }
 
@@ -1384,8 +1390,11 @@ static void shell_cmd_process(void)
         break;
     }
     case CCX_SPINEL_RESET:
-        spinel_send_reset();
-        shell_cmd_resp.success = true;
+        /* Disabled — Spinel RESET puts NCP into DFU bootloader with no
+         * way to recover without physically plugging in the dongle's USB.
+         * DFU path calls spinel_send_reset() directly. */
+        printf("[ccx] RESET disabled — use DFU command instead\r\n");
+        shell_cmd_resp.success = false;
         break;
     case CCX_SPINEL_RAW: {
         /* Send raw frame and try to read back a response */
