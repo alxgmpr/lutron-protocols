@@ -149,12 +149,57 @@ app.all('/api/IdentityService/GetUserFullProfile', async (request, response) => 
   await proxyRequest(request, response, 'https://umsssoservice.lutron.com', mutationFunction);
 });
 
+// All channel strings from ChannelTypes enum [Display(Name)] attributes
+// in Lutron.Gulliver.Infrastructure.myLutronService.ChannelTypes
+const ALL_CHANNELS = [
+  // Product channels
+  "LDB",                // 0x1   - Lutron Designer Base (StandaloneQS)
+  "DesVive",            // 0x2   - Vive design (StandaloneQS)
+  "DesmyRoom",          // 0x4   - myRoom design (StandaloneQS)
+  "DesQuantum",         // 0x8   - Quantum design (StandaloneQS)
+  "DesAll",             // 0xF   - LDALL combo (LDB+DesVive+DesmyRoom+DesQuantum)
+  "CommmyRoomLegacy",   // 0x10  - Legacy myRoom (Quantum) — note: also display name for LDLegacymyRoom
+  "LDBlockUsageTrac",   // 0x20  - Block usage tracking (StandaloneQS)
+  "LDAlpha",            // 0x40  - Alpha access (StandaloneQS)
+  "LDBeta",             // 0x80  - Beta access (StandaloneQS)
+  "OQT",                // 0x100 - Online Quote Tool (StandaloneQS)
+  // Currency channels
+  "DCurrUSD",           // 0x200
+  "DCurrCAD",           // 0x400
+  "DCurrGBP",           // 0x800
+  "DCurrEUR",           // 0x1000
+  "DCurrINR",           // 0x2000
+  "DCurrJPY",           // 0x4000
+  "DCurrBRL",           // 0x8000
+  "DCurrMXN",           // 0x10000
+  "DCurrCNY",           // 0x20000
+  // Commissioning channels
+  "CommQuantum",        // 0x40000  - Quantum commissioning
+  "CommmyRoom",         // 0x80000  - myRoom commissioning
+  "CommAll",            // 0xC0000  - CommQuantum+CommmyRoom combo
+  // Specialty channels
+  "QTT",                // 0x200000   - Quote TakeOff Tool
+  "DLSI",               // 0x400000   - LSI access (StandaloneQS)
+  "PIDHW013",           // 0x800000   - Homeworks QSX (QuantumResi)
+  "RadioRA 3 All",      // 0x1000000  - RadioRA 3 (RadioRA2)
+  "Design Ketra Legacy", // 0x4000000 - Ketra legacy (StandaloneQS)
+  "Beta_LutronDesignerPlus_DTDTPhaseOne",      // 0x8000000
+  "Beta_LutronDesignerPlus_DTDT_OQT_Hybrid",   // 0x10000000
+];
+
 function getModifiedChannels(originalChannels) {
   if (!Array.isArray(originalChannels)) {
-    console.log('Warning: originalChannels is not an array, returning new array');
-    return ["PIDHW013", "DesAll", "DesQuantum"];
+    console.log('Warning: originalChannels is not an array, returning full channel set');
+    return [...ALL_CHANNELS];
   }
-  return [...originalChannels, "PIDHW013", "DesAll", "DesQuantum", "CommAll", "CommQuantum", "DesVive", "DesmyRoom", "Design Ketra Legaacy", "DCurrUSD", "DLSI", "CommmyRoomLegacy", "LDBlockUsageTrac", "LDB", "LDAlpha", "LDBeta"];
+  const existing = new Set(originalChannels);
+  const merged = [...originalChannels];
+  for (const ch of ALL_CHANNELS) {
+    if (!existing.has(ch)) {
+      merged.push(ch);
+    }
+  }
+  return merged;
 }
 
 app.listen(PORT, () => {
