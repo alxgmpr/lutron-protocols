@@ -4,11 +4,14 @@
 
 | Device | IP | Notes |
 |--------|-----|-------|
-| Designer VM | `alex@10.0.0.5` (SSH, pw: alex) | Windows VM on Mac host |
+| Designer VM | `ssh alex@192.168.64.4` | UTM Shared Network (NAT), key auth |
+| Mac (from VM) | `192.168.64.1` | Stable gateway, ldproxy target |
 | RA3 Processor | 10.0.0.1 | LEAP v3.247, Ethernet on managed switch |
 | Caseta Bridge | 10.0.0.2 | LEAP v1.123 |
 | Nucleo STM32 | 10.0.0.3 | TCP:9433 stream |
 
+VM uses UTM Shared Network mode (NAT through Mac) — stable IPs regardless of wifi network.
+Charles on VM maps Lutron auth endpoints to `192.168.64.1:3000` (ldproxy).
 Managed switch supports port mirroring for LAN capture.
 
 ## LEAP Infrastructure

@@ -1,7 +1,7 @@
 # RA3 to HomeWorks QSX Migration
 
 RadioRA 3 and HomeWorks QSX use identical hardware (same processors, same CCA/CCX
-radios) and identical database schemas. An RA3 processor can run a HomeWorks project,
+radios) and identical database schemas. A RA3 processor can run a HomeWorks project,
 unlocking HW-exclusive features like DoubleTap, HoldPreset, richer LED logic, and
 full scene/shade programming.
 
@@ -105,27 +105,32 @@ ModelInfoIDs are valid for HW projects. This feeds:
 HW ProductMasterList category 18. Run against SQLREFERENCEINFO (requires SQLMODELINFO
 accessible for cross-DB join).
 
-### Gate 3: TOOLBOXPLATFORMTYPES (SQLMODELINFO)
+### Gate 3a: Family-Level TOOLBOXPLATFORMTYPES (SQLMODELINFO)
 
 **Table**: `TBLFAMILYCATEGORYINFO`
 
 Each model family has a `TOOLBOXPLATFORMTYPES` bitmask controlling which platforms can
 use it. RA3 models have bits for RadioRA (64) but not HW (4128).
 
-**Patch**:
-```sql
--- Run against SQLMODELINFO
--- Add HW platform bits to all RA3 family categories
-UPDATE f SET TOOLBOXPLATFORMTYPES = f.TOOLBOXPLATFORMTYPES | 4128
-FROM TBLFAMILYCATEGORYINFO f
-JOIN TBLFAMILYCATINFOMODELINFOMAP fm ON fm.FAMILYCATEGORYINFOID = f.FAMILYCATEGORYINFOID
-JOIN TBLMODELINFO m ON m.MODELINFOID = fm.MODELINFOID
-WHERE m.LUTRONMODELNUMBERBASE LIKE 'RR%'
-AND f.TOOLBOXPLATFORMTYPES & 4128 = 0;
-```
+**Patch**: `| 4128` on all RR% families. ~34 rows on fresh MDF.
 
 Without this: "your account is not able to open this project" when the project contains
 an RA3 model whose family lacks HW platform bits.
+
+### Gate 3b: Model-Level TOOLBOXPLATFORMTYPES Override (SQLMODELINFO)
+
+**Table**: `TBLMODELINFOTOOLBOXPLATFORMTYPEMAP`
+
+Per-model overrides that take precedence over family-level values. `ProductInfoHelper.
+GetLocationBasedToolboxPlatformTypesForModel()` checks this table FIRST, then falls back
+to the family value. 10 RR% models (RR-T*RL timeclocks, RRT-G* seeTouch keypads) have
+override value 96 which lacks the myRoomLegacy (0x1000) bit, blocking them even when the
+family-level value is correct.
+
+**Patch**: `| 4128` on all RR% model overrides. ~10 rows on fresh MDF.
+
+**This gate was the missing piece** — previous attempts only patched the family table
+(Gate 3a) which had no effect on models with overrides in this table.
 
 ### Gate 4: DeviceClass Comparison (code-level, bypass by workflow)
 
@@ -212,10 +217,12 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 
 ## Persistence
 
-- All SQLMODELINFO/SQLREFERENCEINFO patches modify running LocalDB — survive Designer restarts
-- **Lost on Designer reinstall/update** — MDF files get replaced
-- Re-run all SQL patches after updates (they are idempotent)
+- **Both SQLMODELINFO.MDF and SQLREFERENCEINFO.MDF are reset on every Designer restart**
+  — MDF files are re-extracted from the MSIX package at startup
+- All gates (1, 2, 3a, 3b) must be re-applied AFTER Designer starts, BEFORE opening project
+- Run patches when the user is at the "remote services" prompt
 - Project DB changes (serial injection) persist in the `.hw` file after save
+- The `/designer-unlock` skill applies all gates in one operation
 
 ## Files
 
