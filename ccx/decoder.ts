@@ -154,24 +154,28 @@ function extractDeviceId(inner: Record<number, unknown>): Uint8Array {
   return raw instanceof Uint8Array ? raw : new Uint8Array(0);
 }
 
-/** Parse Dim Hold (Type 2) — first of a raise/lower pair */
+/** Parse Dim Hold (Type 2) — start of raise/lower */
 function parseDimHold(body: CCXBody): CCXDimHold {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const deviceId = extractDeviceId(inner);
+  const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
   return {
     type: "DIM_HOLD",
     deviceId,
     buttonZone: deviceId.length >= 2 ? deviceId[1] : 0,
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
     action: inner[1] as number | undefined,
+    zoneType: zone[0] ?? 0,
+    zoneId: zone[1] ?? 0,
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
   };
 }
 
-/** Parse Dim Step (Type 3) — second of a raise/lower pair */
+/** Parse Dim Step (Type 3) — release/end of raise/lower */
 function parseDimStep(body: CCXBody): CCXDimStep {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const deviceId = extractDeviceId(inner);
+  const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
   return {
     type: "DIM_STEP",
     deviceId,
@@ -179,6 +183,8 @@ function parseDimStep(body: CCXBody): CCXDimStep {
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
     action: inner[1] as number | undefined,
     stepValue: (inner[2] ?? 0) as number,
+    zoneType: zone[0] ?? 0,
+    zoneId: zone[1] ?? 0,
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
   };
 }
@@ -366,7 +372,9 @@ export function formatMessage(msg: CCXMessage): string {
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      return `DIM_HOLD(${label}, id=${idHex}, action=${msg.action}, seq=${msg.sequence})`;
+      const dir = msg.action === 3 ? "RAISE" : msg.action === 2 ? "LOWER" : `action=${msg.action}`;
+      const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
+      return `DIM_HOLD(${dir}, ${label}, id=${idHex}${zoneStr}, seq=${msg.sequence})`;
     }
     case "DIM_STEP": {
       const idHex = Array.from(msg.deviceId)
@@ -377,7 +385,9 @@ export function formatMessage(msg: CCXMessage): string {
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      return `DIM_STEP(${label}, id=${idHex}, step=${msg.stepValue}, seq=${msg.sequence})`;
+      const dir = msg.action === 3 ? "RAISE" : msg.action === 2 ? "LOWER" : `action=${msg.action}`;
+      const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
+      return `DIM_STEP(${dir}, ${label}, step=${msg.stepValue}${zoneStr}, seq=${msg.sequence})`;
     }
     case "DEVICE_REPORT": {
       const serialName = getSerialName(msg.deviceSerial);

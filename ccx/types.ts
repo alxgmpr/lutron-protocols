@@ -55,24 +55,28 @@ export interface CCXPresence {
   sequence: number;
 }
 
-/** Dim hold — first of a raise/lower pair (even seq) */
+/** Dim hold — start of a raise/lower (action=3 raise, action=2 lower) */
 export interface CCXDimHold {
   type: "DIM_HOLD";
   deviceId: Uint8Array; // 4-byte device identifier (same format as button press)
   buttonZone: number; // deviceId[1]
   cmdType: number; // deviceId[0]
-  action: number | undefined; // inner key 1 (3 = raise/lower?)
+  action: number | undefined; // 2 = lower, 3 = raise
+  zoneType: number; // body key 1[0] (0 if absent)
+  zoneId: number; // body key 1[1] (0 if absent — app-triggered has zone, pico doesn't)
   sequence: number;
 }
 
-/** Dim step — second of a raise/lower pair (odd seq), contains step value */
+/** Dim step — release/end of a raise/lower, contains elapsed time */
 export interface CCXDimStep {
   type: "DIM_STEP";
   deviceId: Uint8Array;
   buttonZone: number;
   cmdType: number;
-  action: number | undefined; // inner key 1
-  stepValue: number; // inner key 2 — step size or timing (180-250 observed)
+  action: number | undefined; // 2 = lower, 3 = raise
+  stepValue: number; // elapsed ms (~1000/sec observed from pico, 0 from app)
+  zoneType: number; // body key 1[0]
+  zoneId: number; // body key 1[1]
   sequence: number;
 }
 

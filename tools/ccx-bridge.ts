@@ -224,9 +224,66 @@ function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
   return null;
 }
 
+// ── Dim Ramp (software raise/lower) ──────────────────────
+// Lutron DIM_HOLD = start ramping, DIM_STEP = stop ramping.
+// The device is supposed to ramp itself; we simulate for Wiz.
+
+const RAMP_INTERVAL_MS = 100; // step every 100ms
+const RAMP_RATE_PCT_PER_SEC = 20; // 0→100% in 5 seconds
+const RAMP_STEP = (RAMP_RATE_PCT_PER_SEC * RAMP_INTERVAL_MS) / 1000;
+
+// Track current level per zone (updated by LEVEL_CONTROL and ramp)
+const zoneLevel = new Map<number, number>();
+
+// Active ramp timers per zone
+const activeRamps = new Map<number, ReturnType<typeof setInterval>>();
+
+function startRamp(zoneId: number, direction: "raise" | "lower") {
+  stopRamp(zoneId);
+  let current = zoneLevel.get(zoneId) ?? 50; // assume 50% if unknown
+  const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+  const time = new Date().toISOString().slice(11, 23);
+  console.log(`\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${current.toFixed(0)}%`);
+
+  const timer = setInterval(() => {
+    if (direction === "raise") {
+      current = Math.min(100, current + RAMP_STEP);
+    } else {
+      current = Math.max(0, current - RAMP_STEP);
+    }
+    zoneLevel.set(zoneId, current);
+
+    for (const output of config.outputs) {
+      if (output.type === "wiz" && output.zoneId === zoneId) {
+        sendWiz(output, current);
+      }
+    }
+
+    // Stop at limits
+    if (current >= 100 || current <= 0) {
+      stopRamp(zoneId);
+    }
+  }, RAMP_INTERVAL_MS);
+
+  activeRamps.set(zoneId, timer);
+}
+
+function stopRamp(zoneId: number) {
+  const timer = activeRamps.get(zoneId);
+  if (timer) {
+    clearInterval(timer);
+    activeRamps.delete(zoneId);
+    const level = zoneLevel.get(zoneId) ?? 0;
+    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+    const time = new Date().toISOString().slice(11, 23);
+    console.log(`${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${level.toFixed(0)}%`);
+  }
+}
+
 // ── Dispatch ──────────────────────────────────────────────
 
 async function dispatch(zoneId: number, levelPercent: number, source: string, fade = 1) {
+  zoneLevel.set(zoneId, levelPercent); // track current level
   const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
   const time = new Date().toISOString().slice(11, 23);
   const fadeSec = fade / 4;
@@ -382,6 +439,29 @@ function main() {
             );
           }
         }
+        continue;
+      }
+
+      // Handle DIM_HOLD (raise/lower start)
+      if (pkt.parsed.type === "DIM_HOLD") {
+        const { zoneId, action, sequence } = pkt.parsed;
+        if (!zoneId) continue; // pico-originated, no zone — skip for now
+        if (watchedZones.size > 0 && !watchedZones.has(zoneId)) continue;
+        if (isDuplicate(`dh:${zoneId}:${sequence}`)) continue;
+        matchCount++;
+        const direction = action === 3 ? "raise" : "lower";
+        startRamp(zoneId, direction);
+        continue;
+      }
+
+      // Handle DIM_STEP (raise/lower release)
+      if (pkt.parsed.type === "DIM_STEP") {
+        const { zoneId, sequence } = pkt.parsed;
+        if (!zoneId) continue;
+        if (watchedZones.size > 0 && !watchedZones.has(zoneId)) continue;
+        if (isDuplicate(`ds:${zoneId}:${sequence}`)) continue;
+        matchCount++;
+        stopRamp(zoneId);
         continue;
       }
     }
