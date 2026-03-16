@@ -41,6 +41,7 @@ function hasFlag(name: string): boolean {
 }
 
 import { RA3_HOST } from "../lib/env";
+
 const HOST = getArg("--host") ?? RA3_HOST;
 const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");

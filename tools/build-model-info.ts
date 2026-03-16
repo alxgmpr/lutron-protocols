@@ -10,7 +10,10 @@
 import { resolve } from "path";
 
 const input = await Bun.stdin.text();
-const lines = input.split("\n").map((l) => l.trim()).filter(Boolean);
+const lines = input
+  .split("\n")
+  .map((l) => l.trim())
+  .filter(Boolean);
 
 const models: { id: number; name: string }[] = [];
 for (const line of lines) {
@@ -35,8 +38,7 @@ for (const m of models) {
 }
 
 const output = {
-  _comment:
-    "SQLMODELINFO model table extract. Prefixes: RR/HQ/HR/PJ only.",
+  _comment: "SQLMODELINFO model table extract. Prefixes: RR/HQ/HR/PJ only.",
   _extracted: new Date().toISOString(),
   _version: "26.0.1.100",
   models: models.sort((a, b) => a.name.localeCompare(b.name)),
@@ -48,5 +50,7 @@ const output = {
 const outPath = resolve(import.meta.dir, "data/model-info.json");
 await Bun.write(outPath, JSON.stringify(output, null, 2) + "\n");
 
-console.log(`Written ${models.length} models (${byName.size} unique names) to ${outPath}`);
+console.log(
+  `Written ${models.length} models (${byName.size} unique names) to ${outPath}`,
+);
 console.log(`Duplicate names: ${output.duplicateNames.length}`);

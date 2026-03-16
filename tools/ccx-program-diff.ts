@@ -121,9 +121,8 @@ async function loadRows(file: string): Promise<Row[]> {
       const rows: Row[] = [];
       for (const line of out.split(/\r?\n/)) {
         if (!line.trim()) continue;
-        const [frameStr, relStr, src, dst, codeStr, path, data] = line.split(
-          "\t",
-        );
+        const [frameStr, relStr, src, dst, codeStr, path, data] =
+          line.split("\t");
         if (!path) continue;
         const code = Number.parseInt(codeStr || "", 10);
         if (!Number.isFinite(code)) continue;

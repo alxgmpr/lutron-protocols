@@ -44,7 +44,9 @@ async function main() {
       console.log(`No response from ${ip}`);
     } else {
       const s = r.result;
-      console.log(`${ip} (mac ${s.mac}): ${s.state ? "ON" : "OFF"} ${s.dimming ?? "?"}% ${s.temp ?? "?"}K rssi=${s.rssi}`);
+      console.log(
+        `${ip} (mac ${s.mac}): ${s.state ? "ON" : "OFF"} ${s.dimming ?? "?"}% ${s.temp ?? "?"}K rssi=${s.rssi}`,
+      );
     }
     sock.close();
     return;
@@ -64,7 +66,9 @@ async function main() {
   }
 
   const r = await send({ method: "setPilot", params });
-  console.log(r?.result?.success ? `${ip} → ${cmd}` : `Failed: ${JSON.stringify(r)}`);
+  console.log(
+    r?.result?.success ? `${ip} → ${cmd}` : `Failed: ${JSON.stringify(r)}`,
+  );
   sock.close();
 }
 

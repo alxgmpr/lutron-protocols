@@ -16,12 +16,12 @@
 import { randomBytes } from "crypto";
 import { createSocket } from "dgram";
 import {
-  buildCoapPacket,
-  buildIpv6UdpPacket,
   bucketIdToToken,
   bucketTokenToId,
-  coapCodeToString,
+  buildCoapPacket,
+  buildIpv6UdpPacket,
   coapCodeFromName,
+  coapCodeToString,
   coapTypeToString,
   decodeMaybeCbor,
   encodeCborUint,

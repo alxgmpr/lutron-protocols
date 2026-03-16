@@ -22,9 +22,20 @@ import { spawn } from "child_process";
 import { createSocket } from "dgram";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { CCX_CONFIG, getZoneName, getSerialName, getPresetInfo, presetIdFromDeviceId } from "../ccx/config";
+import {
+  CCX_CONFIG,
+  getPresetInfo,
+  getSerialName,
+  getZoneName,
+  presetIdFromDeviceId,
+} from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import type { CCXDeviceReport, CCXDimHold, CCXLevelControl, CCXPacket } from "../ccx/types";
+import type {
+  CCXDeviceReport,
+  CCXDimHold,
+  CCXLevelControl,
+  CCXPacket,
+} from "../ccx/types";
 
 // ── CLI args ──────────────────────────────────────────────
 
@@ -87,7 +98,9 @@ function loadConfig(): BridgeConfig {
   if (zoneArgs.length > 0) {
     return {
       outputs: [],
-      devices: [{ name: "CLI zones", zoneIds: zoneArgs.map((z) => parseInt(z, 10)) }],
+      devices: [
+        { name: "CLI zones", zoneIds: zoneArgs.map((z) => parseInt(z, 10)) },
+      ],
     };
   }
 
@@ -137,7 +150,9 @@ function resolveZoneFromPreset(deviceId: Uint8Array): number {
 }
 
 /** Get raise/lower direction from preset name (for BUTTON_PRESS On/Off handling) */
-function getPresetAction(deviceId: Uint8Array): "on" | "off" | "raise" | "lower" | null {
+function getPresetAction(
+  deviceId: Uint8Array,
+): "on" | "off" | "raise" | "lower" | null {
   const presetId = presetIdFromDeviceId(deviceId);
   const info = getPresetInfo(presetId);
   if (!info) return null;
@@ -199,7 +214,9 @@ async function sendWiz(output: WizOutput, levelPercent: number) {
       if (err) {
         console.error(`  [wiz] Error → ${output.wizIp}: ${err.message}`);
       } else {
-        console.log(`  [wiz] → ${output.wizIp} ${isOff ? "OFF" : `${Math.round(levelPercent)}%→wiz${wizDim}%`}`);
+        console.log(
+          `  [wiz] → ${output.wizIp} ${isOff ? "OFF" : `${Math.round(levelPercent)}%→wiz${wizDim}%`}`,
+        );
       }
       resolve();
     });
@@ -208,7 +225,12 @@ async function sendWiz(output: WizOutput, levelPercent: number) {
 
 // ── Output: Webhook ───────────────────────────────────────
 
-async function sendWebhook(output: WebhookOutput, zoneId: number, levelPercent: number, fade: number) {
+async function sendWebhook(
+  output: WebhookOutput,
+  zoneId: number,
+  levelPercent: number,
+  fade: number,
+) {
   try {
     const resp = await fetch(output.url, {
       method: "POST",
@@ -255,7 +277,7 @@ function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
       const levelBytes = entry[1];
       if (levelBytes instanceof Uint8Array && levelBytes.length === 2) {
         const level16 = (levelBytes[0] << 8) | levelBytes[1];
-        return (level16 / 0xFEFF) * 100;
+        return (level16 / 0xfeff) * 100;
       }
     }
   }
@@ -282,7 +304,9 @@ function startRamp(zoneId: number, direction: "raise" | "lower") {
   let current = zoneLevel.get(zoneId) ?? 50; // assume 50% if unknown
   const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
   const time = new Date().toISOString().slice(11, 23);
-  console.log(`\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${current.toFixed(0)}%`);
+  console.log(
+    `\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${current.toFixed(0)}%`,
+  );
 
   const timer = setInterval(() => {
     if (direction === "raise") {
@@ -315,13 +339,20 @@ function stopRamp(zoneId: number) {
     const level = zoneLevel.get(zoneId) ?? 0;
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
     const time = new Date().toISOString().slice(11, 23);
-    console.log(`${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${level.toFixed(0)}%`);
+    console.log(
+      `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${level.toFixed(0)}%`,
+    );
   }
 }
 
 // ── Dispatch ──────────────────────────────────────────────
 
-async function dispatch(zoneId: number, levelPercent: number, source: string, fade = 1) {
+async function dispatch(
+  zoneId: number,
+  levelPercent: number,
+  source: string,
+  fade = 1,
+) {
   zoneLevel.set(zoneId, levelPercent); // track current level
   const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
   const time = new Date().toISOString().slice(11, 23);
@@ -415,17 +446,27 @@ function main() {
   console.log("");
 
   const tsharkArgs = [
-    "-i", iface,
+    "-i",
+    iface,
     "-l", // line-buffered
-    "-Y", `udp.port == 9190`,
-    "-T", "fields",
-    "-e", "frame.time_epoch",
-    "-e", "ipv6.src",
-    "-e", "ipv6.dst",
-    "-e", "wpan.src64",
-    "-e", "wpan.dst64",
-    "-e", "udp.payload",
-    "-E", "separator=\t",
+    "-Y",
+    `udp.port == 9190`,
+    "-T",
+    "fields",
+    "-e",
+    "frame.time_epoch",
+    "-e",
+    "ipv6.src",
+    "-e",
+    "ipv6.dst",
+    "-e",
+    "wpan.src64",
+    "-e",
+    "wpan.dst64",
+    "-e",
+    "udp.payload",
+    "-E",
+    "separator=\t",
   ];
 
   const tshark = spawn("tshark", tsharkArgs, {
@@ -449,7 +490,9 @@ function main() {
       // Log every packet
       const time = pkt.timestamp.slice(11, 23);
       const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
-      console.log(`${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`);
+      console.log(
+        `${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`,
+      );
 
       // Handle LEVEL_CONTROL (processor → devices, multicast)
       if (pkt.parsed.type === "LEVEL_CONTROL") {
@@ -525,7 +568,6 @@ function main() {
         if (isDuplicate(`ds:${zoneId}:${sequence}`)) continue;
         matchCount++;
         stopRamp(zoneId);
-        continue;
       }
     }
   });
@@ -562,7 +604,9 @@ function main() {
         }
       }
     }
-    console.log(`\n${packetCount} packets seen, ${matchCount} level commands forwarded.`);
+    console.log(
+      `\n${packetCount} packets seen, ${matchCount} level commands forwarded.`,
+    );
     wizSocket?.close();
     process.exit(code ?? 0);
   });

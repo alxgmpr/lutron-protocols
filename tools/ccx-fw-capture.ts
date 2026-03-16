@@ -21,7 +21,7 @@
  *   bun run tools/ccx-fw-capture.ts --file <capture.pcapng> --extract
  */
 
-import { spawn, execSync } from "child_process";
+import { execSync, spawn } from "child_process";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { CCX_CONFIG } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
@@ -125,7 +125,9 @@ function detectSnifferInterface(): string {
   for (const path of candidates) {
     try {
       if (existsSync(path)) return path;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return "/dev/cu.usbmodem201401";
 }
@@ -142,19 +144,29 @@ function printStats() {
   if (deviceStats.size === 0) return;
 
   console.log("\n--- Device Traffic Summary ---");
-  const sorted = [...deviceStats.values()].sort((a, b) => b.totalBytes - a.totalBytes);
+  const sorted = [...deviceStats.values()].sort(
+    (a, b) => b.totalBytes - a.totalBytes,
+  );
   for (const s of sorted) {
     const dur = ((s.lastSeen - s.firstSeen) / 1000).toFixed(0);
-    const eui = targetEui64 && s.eui64.includes(targetEui64) ? `${s.eui64} [TARGET]` : s.eui64;
+    const eui =
+      targetEui64 && s.eui64.includes(targetEui64)
+        ? `${s.eui64} [TARGET]`
+        : s.eui64;
     console.log(`  ${eui}`);
-    console.log(`    Total: ${formatBytes(s.totalBytes)} in ${s.packetCount} pkts (${dur}s)`);
+    console.log(
+      `    Total: ${formatBytes(s.totalBytes)} in ${s.packetCount} pkts (${dur}s)`,
+    );
     if (s.coapPackets > 0) {
-      console.log(`    CoAP:  ${formatBytes(s.coapBytes)} in ${s.coapPackets} pkts (largest: ${formatBytes(s.largestPayload)})`);
+      console.log(
+        `    CoAP:  ${formatBytes(s.coapBytes)} in ${s.coapPackets} pkts (largest: ${formatBytes(s.largestPayload)})`,
+      );
       for (const [path, count] of s.coapPaths) {
         console.log(`      ${path}: ${count} pkts`);
       }
     }
-    if (s.runtimePackets > 0) console.log(`    Runtime (9190): ${s.runtimePackets} pkts`);
+    if (s.runtimePackets > 0)
+      console.log(`    Runtime (9190): ${s.runtimePackets} pkts`);
     if (s.mlePackets > 0) console.log(`    MLE (19788): ${s.mlePackets} pkts`);
   }
   console.log("---\n");
@@ -179,11 +191,11 @@ async function runLiveCapture() {
   console.log("Trigger the firmware update now. Press Ctrl+C to stop.\n");
 
   // Spawn tshark for raw pcapng capture (no filtering — get everything)
-  const dumpcap = spawn("tshark", [
-    "-i", iface,
-    "-w", pcapFile,
-    "-a", `duration:${duration}`,
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  const dumpcap = spawn(
+    "tshark",
+    ["-i", iface, "-w", pcapFile, "-a", `duration:${duration}`],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
 
   dumpcap.stderr.on("data", (chunk: Buffer) => {
     const msg = chunk.toString().trim();
@@ -193,29 +205,50 @@ async function runLiveCapture() {
   });
 
   // Second tshark for live decode (all UDP traffic, not just 9190)
-  const decoder = spawn("tshark", [
-    "-i", iface,
-    "-l",
-    // Decode CoAP on port 5683
-    "-d", "udp.port==5683,coap",
-    // Show all fields we care about
-    "-T", "fields",
-    "-e", "frame.time_epoch",
-    "-e", "frame.len",
-    "-e", "wpan.src64",
-    "-e", "wpan.dst64",
-    "-e", "ipv6.src",
-    "-e", "ipv6.dst",
-    "-e", "udp.srcport",
-    "-e", "udp.dstport",
-    "-e", "udp.payload",
-    "-e", "coap.code",
-    "-e", "coap.opt.uri_path_recon",
-    "-e", "data.data",
-    "-E", "separator=\t",
-    // No display filter — capture everything with UDP
-    "-Y", "udp",
-  ], { stdio: ["ignore", "pipe", "pipe"] });
+  const decoder = spawn(
+    "tshark",
+    [
+      "-i",
+      iface,
+      "-l",
+      // Decode CoAP on port 5683
+      "-d",
+      "udp.port==5683,coap",
+      // Show all fields we care about
+      "-T",
+      "fields",
+      "-e",
+      "frame.time_epoch",
+      "-e",
+      "frame.len",
+      "-e",
+      "wpan.src64",
+      "-e",
+      "wpan.dst64",
+      "-e",
+      "ipv6.src",
+      "-e",
+      "ipv6.dst",
+      "-e",
+      "udp.srcport",
+      "-e",
+      "udp.dstport",
+      "-e",
+      "udp.payload",
+      "-e",
+      "coap.code",
+      "-e",
+      "coap.opt.uri_path_recon",
+      "-e",
+      "data.data",
+      "-E",
+      "separator=\t",
+      // No display filter — capture everything with UDP
+      "-Y",
+      "udp",
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
 
   let packetCount = 0;
   let buffer = "";
@@ -233,7 +266,11 @@ async function runLiveCapture() {
 
   decoder.stderr.on("data", (chunk: Buffer) => {
     const msg = chunk.toString().trim();
-    if (!msg.includes("Capturing on") && !msg.includes("packets captured") && msg) {
+    if (
+      !msg.includes("Capturing on") &&
+      !msg.includes("packets captured") &&
+      msg
+    ) {
       console.error(`  [decode] ${msg}`);
     }
   });
@@ -261,7 +298,9 @@ async function runLiveCapture() {
     printStats();
     console.log(`\nPost-process with:`);
     console.log(`  bun run tools/ccx-fw-capture.ts --file ${pcapFile}`);
-    console.log(`  bun run tools/ccx-fw-capture.ts --file ${pcapFile} --extract`);
+    console.log(
+      `  bun run tools/ccx-fw-capture.ts --file ${pcapFile} --extract`,
+    );
   });
 }
 
@@ -273,8 +312,20 @@ function processLiveLine(line: string) {
   const fields = trimmed.split("\t");
   if (fields.length < 8) return;
 
-  const [epochStr, frameLenStr, srcEui64, dstEui64, srcIpv6, dstIpv6,
-    srcPortStr, dstPortStr, udpPayload, coapCode, coapPath, dataPayload] = fields;
+  const [
+    epochStr,
+    frameLenStr,
+    srcEui64,
+    dstEui64,
+    srcIpv6,
+    dstIpv6,
+    srcPortStr,
+    dstPortStr,
+    udpPayload,
+    coapCode,
+    coapPath,
+    dataPayload,
+  ] = fields;
 
   const epoch = parseFloat(epochStr);
   const frameLen = parseInt(frameLenStr, 10);
@@ -295,7 +346,8 @@ function processLiveLine(line: string) {
     if (dstPort === 5683 || srcPort === 5683) {
       stats.coapPackets++;
       stats.coapBytes += payloadBytes;
-      if (payloadBytes > stats.largestPayload) stats.largestPayload = payloadBytes;
+      if (payloadBytes > stats.largestPayload)
+        stats.largestPayload = payloadBytes;
       if (coapPath) {
         stats.coapPaths.set(coapPath, (stats.coapPaths.get(coapPath) ?? 0) + 1);
       }
@@ -307,8 +359,8 @@ function processLiveLine(line: string) {
   }
 
   // Display logic: show interesting packets
-  const srcLabel = srcEui64 ? srcEui64.slice(-5) : srcIpv6?.slice(-8) ?? "?";
-  const dstLabel = dstEui64 ? dstEui64.slice(-5) : dstIpv6?.slice(-8) ?? "?";
+  const srcLabel = srcEui64 ? srcEui64.slice(-5) : (srcIpv6?.slice(-8) ?? "?");
+  const dstLabel = dstEui64 ? dstEui64.slice(-5) : (dstIpv6?.slice(-8) ?? "?");
 
   if (dstPort === 5683 || srcPort === 5683) {
     // CoAP traffic — likely firmware-related
@@ -316,7 +368,9 @@ function processLiveLine(line: string) {
     const path = coapPath ?? "";
     const sizeStr = payloadBytes > 0 ? ` (${formatBytes(payloadBytes)})` : "";
     const marker = payloadBytes > 200 ? " **FW?**" : "";
-    console.log(`${time} CoAP  ${srcLabel}→${dstLabel}  ${method} ${path}${sizeStr}${marker}`);
+    console.log(
+      `${time} CoAP  ${srcLabel}→${dstLabel}  ${method} ${path}${sizeStr}${marker}`,
+    );
   } else if (dstPort === 9190 || srcPort === 9190) {
     // Runtime CCX — try to decode CBOR
     if (payloadHex) {
@@ -330,15 +384,21 @@ function processLiveLine(line: string) {
           payloadHex,
         });
         const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
-        console.log(`${time} 9190  ${srcLabel}→${dstLabel}  ${typeName} ${formatMessage(pkt.parsed)}`);
+        console.log(
+          `${time} 9190  ${srcLabel}→${dstLabel}  ${typeName} ${formatMessage(pkt.parsed)}`,
+        );
       } catch {
-        console.log(`${time} 9190  ${srcLabel}→${dstLabel}  raw=${payloadHex.slice(0, 40)}...`);
+        console.log(
+          `${time} 9190  ${srcLabel}→${dstLabel}  raw=${payloadHex.slice(0, 40)}...`,
+        );
       }
     }
   } else {
     // Other UDP (MLE, etc.) — show briefly
     if (dstPort === 19788 || srcPort === 19788) return; // skip MLE noise
-    console.log(`${time} UDP:${dstPort} ${srcLabel}→${dstLabel} ${formatBytes(payloadBytes)}`);
+    console.log(
+      `${time} UDP:${dstPort} ${srcLabel}→${dstLabel} ${formatBytes(payloadBytes)}`,
+    );
   }
 }
 
@@ -358,7 +418,9 @@ async function analyzeFile(pcapFile: string) {
   console.log("UDP port distribution:");
   const ports = execSync(
     `tshark -r "${pcapFile}" -Y udp -T fields -e udp.dstport 2>/dev/null | sort | uniq -c | sort -nr | head -20`,
-  ).toString().trim();
+  )
+    .toString()
+    .trim();
   console.log(ports);
   console.log();
 
@@ -367,7 +429,9 @@ async function analyzeFile(pcapFile: string) {
   try {
     const coap = execSync(
       `tshark -r "${pcapFile}" -d udp.port==5683,coap -Y "udp.port==5683 && coap.code" -T fields -e coap.code -e coap.opt.uri_path_recon 2>/dev/null | sort | uniq -c | sort -nr | head -30`,
-    ).toString().trim();
+    )
+      .toString()
+      .trim();
     console.log(coap || "  (no CoAP traffic found)");
   } catch {
     console.log("  (CoAP decode failed — may need manual port decode)");
@@ -378,7 +442,9 @@ async function analyzeFile(pcapFile: string) {
   console.log("Traffic by destination EUI-64:");
   const dstEuis = execSync(
     `tshark -r "${pcapFile}" -Y udp -T fields -e wpan.dst64 -e frame.len 2>/dev/null`,
-  ).toString().trim();
+  )
+    .toString()
+    .trim();
 
   const euiBytes = new Map<string, { bytes: number; pkts: number }>();
   for (const line of dstEuis.split("\n")) {
@@ -390,7 +456,9 @@ async function analyzeFile(pcapFile: string) {
     euiBytes.set(eui, entry);
   }
 
-  const sortedEuis = [...euiBytes.entries()].sort((a, b) => b[1].bytes - a[1].bytes);
+  const sortedEuis = [...euiBytes.entries()].sort(
+    (a, b) => b[1].bytes - a[1].bytes,
+  );
   for (const [eui, { bytes, pkts }] of sortedEuis.slice(0, 15)) {
     console.log(`  ${eui}: ${formatBytes(bytes)} in ${pkts} pkts`);
   }
@@ -401,10 +469,12 @@ async function analyzeFile(pcapFile: string) {
   try {
     const largeCoap = execSync(
       `tshark -r "${pcapFile}" -d udp.port==5683,coap ` +
-      `-Y "udp.port==5683 && data" ` +
-      `-T fields -e frame.time_relative -e wpan.src64 -e wpan.dst64 -e coap.code -e coap.opt.uri_path_recon -e data.len 2>/dev/null ` +
-      `| sort -t'\t' -k6 -nr | head -20`,
-    ).toString().trim();
+        `-Y "udp.port==5683 && data" ` +
+        `-T fields -e frame.time_relative -e wpan.src64 -e wpan.dst64 -e coap.code -e coap.opt.uri_path_recon -e data.len 2>/dev/null ` +
+        `| sort -t'\t' -k6 -nr | head -20`,
+    )
+      .toString()
+      .trim();
     console.log(largeCoap || "  (no large CoAP payloads found)");
   } catch {
     console.log("  (analysis failed)");
@@ -416,10 +486,12 @@ async function analyzeFile(pcapFile: string) {
   try {
     const largeUdp = execSync(
       `tshark -r "${pcapFile}" ` +
-      `-Y "udp && !udp.port==5683 && !udp.port==9190 && !udp.port==19788 && data" ` +
-      `-T fields -e frame.time_relative -e udp.dstport -e wpan.src64 -e wpan.dst64 -e data.len 2>/dev/null ` +
-      `| sort -t'\t' -k5 -nr | head -20`,
-    ).toString().trim();
+        `-Y "udp && !udp.port==5683 && !udp.port==9190 && !udp.port==19788 && data" ` +
+        `-T fields -e frame.time_relative -e udp.dstport -e wpan.src64 -e wpan.dst64 -e data.len 2>/dev/null ` +
+        `| sort -t'\t' -k5 -nr | head -20`,
+    )
+      .toString()
+      .trim();
     console.log(largeUdp || "  (none found — firmware likely on CoAP 5683)");
   } catch {
     console.log("  (analysis failed)");
@@ -429,10 +501,14 @@ async function analyzeFile(pcapFile: string) {
     await extractFirmware(pcapFile);
   } else {
     console.log(`\nTo extract firmware data, run:`);
-    console.log(`  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract`);
+    console.log(
+      `  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract`,
+    );
     if (sortedEuis.length > 0) {
       const topEui = sortedEuis[0][0];
-      console.log(`  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract --target ${topEui}`);
+      console.log(
+        `  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract --target ${topEui}`,
+      );
     }
   }
 }
@@ -444,13 +520,17 @@ async function extractFirmware(pcapFile: string) {
   // Determine target device — either specified or the one with most CoAP data
   let target = targetEui64;
   if (!target) {
-    console.log("No --target specified, finding device with most CoAP traffic...");
+    console.log(
+      "No --target specified, finding device with most CoAP traffic...",
+    );
     try {
       const coapDsts = execSync(
         `tshark -r "${pcapFile}" -d udp.port==5683,coap ` +
-        `-Y "udp.port==5683 && coap.code==2" ` +
-        `-T fields -e wpan.dst64 2>/dev/null`,
-      ).toString().trim();
+          `-Y "udp.port==5683 && coap.code==2" ` +
+          `-T fields -e wpan.dst64 2>/dev/null`,
+      )
+        .toString()
+        .trim();
       const counts = new Map<string, number>();
       for (const eui of coapDsts.split("\n")) {
         if (eui) counts.set(eui, (counts.get(eui) ?? 0) + 1);
@@ -458,28 +538,38 @@ async function extractFirmware(pcapFile: string) {
       const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
       if (top) {
         target = top[0];
-        console.log(`  Auto-selected target: ${target} (${top[1]} CoAP POST packets)\n`);
+        console.log(
+          `  Auto-selected target: ${target} (${top[1]} CoAP POST packets)\n`,
+        );
       }
-    } catch { /* fallthrough */ }
+    } catch {
+      /* fallthrough */
+    }
   }
 
   if (!target) {
-    console.error("Could not determine target device. Specify with --target <eui64>");
+    console.error(
+      "Could not determine target device. Specify with --target <eui64>",
+    );
     return;
   }
 
   // Extract all CoAP payloads to the target device, ordered by time
   console.log(`Extracting CoAP payloads to ${target}...`);
 
-  const filterTarget = target.includes(":") ? target : target.replace(/(.{2})(?!$)/g, "$1:");
+  const filterTarget = target.includes(":")
+    ? target
+    : target.replace(/(.{2})(?!$)/g, "$1:");
 
   let rawLines: string;
   try {
     rawLines = execSync(
       `tshark -r "${pcapFile}" -d udp.port==5683,coap ` +
-      `-Y "udp.port==5683 && wpan.dst64==${filterTarget}" ` +
-      `-T fields -e frame.time_relative -e coap.code -e coap.opt.uri_path_recon -e data.data 2>/dev/null`,
-    ).toString().trim();
+        `-Y "udp.port==5683 && wpan.dst64==${filterTarget}" ` +
+        `-T fields -e frame.time_relative -e coap.code -e coap.opt.uri_path_recon -e data.data 2>/dev/null`,
+    )
+      .toString()
+      .trim();
   } catch {
     console.error("Failed to extract CoAP payloads");
     return;
@@ -493,15 +583,20 @@ async function extractFirmware(pcapFile: string) {
     try {
       rawLines = execSync(
         `tshark -r "${pcapFile}" ` +
-        `-Y "udp && wpan.dst64==${filterTarget} && !udp.port==19788" ` +
-        `-T fields -e frame.time_relative -e udp.dstport -e udp.payload 2>/dev/null`,
-      ).toString().trim();
+          `-Y "udp && wpan.dst64==${filterTarget} && !udp.port==19788" ` +
+          `-T fields -e frame.time_relative -e udp.dstport -e udp.payload 2>/dev/null`,
+      )
+        .toString()
+        .trim();
       if (rawLines) {
         const lines = rawLines.split("\n");
         console.log(`Found ${lines.length} raw UDP packets to target.`);
 
         // Group by port
-        const portGroups = new Map<string, { count: number; totalBytes: number }>();
+        const portGroups = new Map<
+          string,
+          { count: number; totalBytes: number }
+        >();
         for (const line of lines) {
           const [, port, payload] = line.split("\t");
           const payloadClean = (payload ?? "").replace(/:/g, "");
@@ -512,11 +607,17 @@ async function extractFirmware(pcapFile: string) {
         }
 
         console.log("\nUDP traffic to target by port:");
-        for (const [port, { count, totalBytes }] of [...portGroups.entries()].sort((a, b) => b[1].totalBytes - a[1].totalBytes)) {
-          console.log(`  Port ${port}: ${count} pkts, ${formatBytes(totalBytes)}`);
+        for (const [port, { count, totalBytes }] of [
+          ...portGroups.entries(),
+        ].sort((a, b) => b[1].totalBytes - a[1].totalBytes)) {
+          console.log(
+            `  Port ${port}: ${count} pkts, ${formatBytes(totalBytes)}`,
+          );
         }
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
     return;
   }
 
@@ -524,7 +625,10 @@ async function extractFirmware(pcapFile: string) {
   console.log(`Found ${lines.length} CoAP packets to target device.`);
 
   // Separate by CoAP path
-  const pathData = new Map<string, { payloads: Buffer[]; totalBytes: number }>();
+  const pathData = new Map<
+    string,
+    { payloads: Buffer[]; totalBytes: number }
+  >();
 
   for (const line of lines) {
     const [timeStr, code, path, dataHex] = line.split("\t");
@@ -541,16 +645,24 @@ async function extractFirmware(pcapFile: string) {
   }
 
   console.log("\nPayload summary by CoAP path:");
-  for (const [path, { payloads, totalBytes }] of [...pathData.entries()].sort((a, b) => b[1].totalBytes - a[1].totalBytes)) {
-    console.log(`  ${path}: ${payloads.length} pkts, ${formatBytes(totalBytes)}`);
+  for (const [path, { payloads, totalBytes }] of [...pathData.entries()].sort(
+    (a, b) => b[1].totalBytes - a[1].totalBytes,
+  )) {
+    console.log(
+      `  ${path}: ${payloads.length} pkts, ${formatBytes(totalBytes)}`,
+    );
     if (payloads.length > 0) {
       const first = payloads[0];
-      console.log(`    First payload (${first.length} bytes): ${first.subarray(0, 32).toString("hex")}${first.length > 32 ? "..." : ""}`);
+      console.log(
+        `    First payload (${first.length} bytes): ${first.subarray(0, 32).toString("hex")}${first.length > 32 ? "..." : ""}`,
+      );
     }
   }
 
   // Extract the largest data stream (most likely firmware)
-  const largestPath = [...pathData.entries()].sort((a, b) => b[1].totalBytes - a[1].totalBytes)[0];
+  const largestPath = [...pathData.entries()].sort(
+    (a, b) => b[1].totalBytes - a[1].totalBytes,
+  )[0];
   if (largestPath) {
     const [path, { payloads, totalBytes }] = largestPath;
     console.log(`\nLargest stream: ${path} (${formatBytes(totalBytes)})`);
@@ -570,10 +682,15 @@ async function extractFirmware(pcapFile: string) {
     if (!existsSync(chunksDir)) mkdirSync(chunksDir, { recursive: true });
 
     for (let i = 0; i < payloads.length; i++) {
-      writeFileSync(`${chunksDir}/${String(i).padStart(5, "0")}.bin`, payloads[i]);
+      writeFileSync(
+        `${chunksDir}/${String(i).padStart(5, "0")}.bin`,
+        payloads[i],
+      );
     }
     console.log(`  Individual chunks saved to: ${chunksDir}/`);
-    console.log(`  ${payloads.length} chunks, avg ${formatBytes(Math.floor(totalBytes / payloads.length))}`);
+    console.log(
+      `  ${payloads.length} chunks, avg ${formatBytes(Math.floor(totalBytes / payloads.length))}`,
+    );
   }
 }
 
@@ -605,7 +722,10 @@ function identifyContent(data: Buffer) {
   if (data.length >= 8) {
     const sp = data.readUInt32LE(0);
     const resetVector = data.readUInt32LE(4);
-    if ((sp & 0xFF000000) === 0x20000000 && (resetVector & 0xFF000000) === 0x00000000) {
+    if (
+      (sp & 0xff000000) === 0x20000000 &&
+      (resetVector & 0xff000000) === 0x00000000
+    ) {
       console.log(`    Looks like ARM Cortex-M vector table!`);
       console.log(`    Initial SP: 0x${sp.toString(16)}`);
       console.log(`    Reset vector: 0x${resetVector.toString(16)}`);
@@ -615,12 +735,16 @@ function identifyContent(data: Buffer) {
 
   // SMP/CBOR markers
   if (data[0] === 0x02 || data[0] === 0x03) {
-    console.log(`    Starts with SMP-like op byte: 0x${data[0].toString(16).padStart(2, "0")}`);
+    console.log(
+      `    Starts with SMP-like op byte: 0x${data[0].toString(16).padStart(2, "0")}`,
+    );
   }
 
   // CBOR map/array
   if ((data[0] & 0xe0) === 0xa0 || (data[0] & 0xe0) === 0x80) {
-    console.log(`    Starts with CBOR ${(data[0] & 0xe0) === 0xa0 ? "map" : "array"}`);
+    console.log(
+      `    Starts with CBOR ${(data[0] & 0xe0) === 0xa0 ? "map" : "array"}`,
+    );
   }
 
   // Generic entropy check
@@ -633,7 +757,9 @@ function identifyContent(data: Buffer) {
     const p = count / sample.length;
     entropy -= p * Math.log2(p);
   }
-  console.log(`    Entropy: ${entropy.toFixed(2)} bits/byte (${entropy > 7.5 ? "encrypted/compressed" : entropy > 6 ? "binary/code" : "structured data"})`);
+  console.log(
+    `    Entropy: ${entropy.toFixed(2)} bits/byte (${entropy > 7.5 ? "encrypted/compressed" : entropy > 6 ? "binary/code" : "structured data"})`,
+  );
   console.log(`    First 64 bytes: ${data.subarray(0, 64).toString("hex")}`);
 }
 

@@ -22,6 +22,7 @@ function getArg(name: string): string | undefined {
 }
 
 import { RA3_HOST } from "../lib/env";
+
 const host = getArg("--host") ?? RA3_HOST;
 const certName = getArg("--cert") ?? "ra3";
 const deviceId = getArg("--device") ?? "3681";
@@ -29,6 +30,7 @@ const logFile = getArg("--log");
 const pollInterval = parseInt(getArg("--poll") ?? "2000", 10);
 
 import * as fs from "fs";
+
 let logStream: fs.WriteStream | null = null;
 
 function ts(): string {
@@ -158,7 +160,10 @@ async function main() {
       const reachable = dev.IsReachable;
 
       if (state !== lastState) {
-        log(`*** DEVICE STATE CHANGED: ${lastState || "(initial)"} → ${state}`, dev);
+        log(
+          `*** DEVICE STATE CHANGED: ${lastState || "(initial)"} → ${state}`,
+          dev,
+        );
         lastState = state;
       }
       if (reachable !== lastReachable) {
@@ -178,10 +183,7 @@ async function main() {
   let readCycle = 0;
   const deepPoller = setInterval(async () => {
     readCycle++;
-    const urls = [
-      `/device/${deviceId}/linknode`,
-      `/device/${deviceId}`,
-    ];
+    const urls = [`/device/${deviceId}/linknode`, `/device/${deviceId}`];
     // Every 5th cycle, also read expanded link nodes
     if (readCycle % 5 === 0) {
       urls.push(`/link/437/associatedlinknode/expanded`);

@@ -11,13 +11,18 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
-import { resolve, basename } from "path";
 import { existsSync } from "fs";
+import { basename, resolve } from "path";
+import { z } from "zod";
 
 // ── Config ──────────────────────────────────────────────────────────
 
-import { DESIGNER_VM_HOST, DESIGNER_VM_USER, DESIGNER_VM_PASS } from "../lib/env";
+import {
+  DESIGNER_VM_HOST,
+  DESIGNER_VM_PASS,
+  DESIGNER_VM_USER,
+} from "../lib/env";
+
 const VM_HOST = process.env.DESIGNER_VM_HOST ?? DESIGNER_VM_HOST;
 const VM_USER = process.env.DESIGNER_VM_USER ?? DESIGNER_VM_USER;
 const VM_PASS = process.env.DESIGNER_VM_PASS ?? DESIGNER_VM_PASS;
@@ -30,7 +35,7 @@ const SQL_DIR = resolve(import.meta.dir, "sql");
 async function httpQuery(
   endpoint: string,
   sql: string,
-  timeout = DEFAULT_TIMEOUT
+  timeout = DEFAULT_TIMEOUT,
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -53,7 +58,7 @@ async function httpQuery(
 
 async function httpGet(
   endpoint: string,
-  timeout = DEFAULT_TIMEOUT
+  timeout = DEFAULT_TIMEOUT,
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -81,7 +86,7 @@ function encodePowerShell(script: string): string {
 
 async function execPowerShell(
   script: string,
-  timeout = DEFAULT_TIMEOUT
+  timeout = DEFAULT_TIMEOUT,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const encoded = encodePowerShell(script);
   const proc = Bun.spawn(
@@ -103,7 +108,7 @@ async function execPowerShell(
       "-EncodedCommand",
       encoded,
     ],
-    { stdout: "pipe", stderr: "pipe" }
+    { stdout: "pipe", stderr: "pipe" },
   );
 
   const timer = setTimeout(() => proc.kill(), timeout);
@@ -181,15 +186,13 @@ Write-Output "$db"
   const result = await execPowerShell(discoverScript, 20_000);
   if (result.exitCode !== 0) {
     throw new Error(
-      `Pipe discovery failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`
+      `Pipe discovery failed (exit ${result.exitCode}): ${result.stderr.trim() || result.stdout.trim()}`,
     );
   }
 
   const lines = result.stdout.trim().split("\n").filter(Boolean);
   if (lines.length < 2) {
-    throw new Error(
-      `Unexpected discovery output: ${result.stdout.trim()}`
-    );
+    throw new Error(`Unexpected discovery output: ${result.stdout.trim()}`);
   }
 
   cachedPipe = lines[0].trim();
@@ -226,7 +229,7 @@ function isPipeError(output: string): boolean {
 async function runSQL(
   sql: string,
   timeout = DEFAULT_TIMEOUT,
-  retried = false
+  retried = false,
 ): Promise<string> {
   // Try HTTP API first
   try {
@@ -254,9 +257,7 @@ exit $LASTEXITCODE
       invalidateCache();
       return runSQL(sql, timeout, true);
     }
-    throw new Error(
-      `SQL error (exit ${result.exitCode}): ${combined.trim()}`
-    );
+    throw new Error(`SQL error (exit ${result.exitCode}): ${combined.trim()}`);
   }
 
   return result.stdout;
@@ -265,7 +266,7 @@ exit $LASTEXITCODE
 async function runSQLFile(
   filePath: string,
   timeout = DEFAULT_TIMEOUT,
-  retried = false
+  retried = false,
 ): Promise<string> {
   // Try HTTP API first
   try {
@@ -303,9 +304,7 @@ try {
       invalidateCache();
       return runSQLFile(filePath, timeout, true);
     }
-    throw new Error(
-      `SQL error (exit ${result.exitCode}): ${combined.trim()}`
-    );
+    throw new Error(`SQL error (exit ${result.exitCode}): ${combined.trim()}`);
   }
 
   return result.stdout;
@@ -334,9 +333,12 @@ server.tool(
       const output = await runSQL(sql, timeout ?? DEFAULT_TIMEOUT);
       return { content: [{ type: "text", text: output }] };
     } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Error: ${e.message}` }],
+        isError: true,
+      };
     }
-  }
+  },
 );
 
 // Tool: list_tables
@@ -347,7 +349,9 @@ server.tool(
     filter: z
       .string()
       .optional()
-      .describe("Optional SQL LIKE pattern to filter table names (e.g. '%Zone%')"),
+      .describe(
+        "Optional SQL LIKE pattern to filter table names (e.g. '%Zone%')",
+      ),
   },
   async ({ filter }) => {
     const where = filter
@@ -364,9 +368,12 @@ ORDER BY t.name;`;
       const output = await runSQL(sql);
       return { content: [{ type: "text", text: output }] };
     } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Error: ${e.message}` }],
+        isError: true,
+      };
     }
-  }
+  },
 );
 
 // Tool: describe_table
@@ -410,9 +417,12 @@ ORDER BY c.column_id;`;
       }
       return { content: [{ type: "text", text: output }] };
     } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Error: ${e.message}` }],
+        isError: true,
+      };
     }
-  }
+  },
 );
 
 // Tool: list_databases
@@ -445,9 +455,12 @@ exit $LASTEXITCODE
       }
       return { content: [{ type: "text", text: result.stdout }] };
     } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Error: ${e.message}` }],
+        isError: true,
+      };
     }
-  }
+  },
 );
 
 // Tool: execute_sql_file
@@ -457,7 +470,9 @@ server.tool(
   {
     filename: z
       .string()
-      .describe("SQL filename within tools/sql/ (e.g. 'designer-keypad-led-map.sql')"),
+      .describe(
+        "SQL filename within tools/sql/ (e.g. 'designer-keypad-led-map.sql')",
+      ),
     timeout: z
       .number()
       .optional()
@@ -505,9 +520,12 @@ server.tool(
       const output = await runSQLFile(filePath, timeout ?? DEFAULT_TIMEOUT);
       return { content: [{ type: "text", text: output }] };
     } catch (e: any) {
-      return { content: [{ type: "text", text: `Error: ${e.message}` }], isError: true };
+      return {
+        content: [{ type: "text", text: `Error: ${e.message}` }],
+        isError: true,
+      };
     }
-  }
+  },
 );
 
 // ── Start ───────────────────────────────────────────────────────────

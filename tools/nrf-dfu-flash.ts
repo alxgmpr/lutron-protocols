@@ -18,8 +18,8 @@
  *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host $NUCLEO_HOST
  */
 
-import { readFileSync } from "fs";
 import { createSocket } from "dgram";
+import { readFileSync } from "fs";
 
 const args = process.argv.slice(2);
 function getArg(name: string): string | undefined {
@@ -35,7 +35,9 @@ const DEFAULT_PORT = 9433;
 const CHUNK_SIZE = 200; // Stay under 255 limit with margin
 
 const firmwarePath = args.find((a) => !a.startsWith("--"));
+
 import { NUCLEO_HOST as DEFAULT_NUCLEO_HOST } from "../lib/env";
+
 const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? DEFAULT_NUCLEO_HOST;
 const port = parseInt(getArg("--port") ?? String(DEFAULT_PORT), 10);
 const chunkDelay = parseInt(getArg("--delay") ?? "250", 10);
@@ -82,7 +84,9 @@ async function main() {
   console.log(`==================`);
   console.log(`Firmware: ${firmwarePath} (${imageSize} bytes)`);
   console.log(`Target:   ${host}:${port}`);
-  console.log(`Chunks:   ${totalChunks} × ${CHUNK_SIZE} bytes (${chunkDelay}ms interval)`);
+  console.log(
+    `Chunks:   ${totalChunks} × ${CHUNK_SIZE} bytes (${chunkDelay}ms interval)`,
+  );
   console.log(`ETA:      ~${Math.ceil((totalChunks * chunkDelay) / 1000)}s`);
   console.log();
 
@@ -129,7 +133,9 @@ async function main() {
     //   - 2s Spinel reset wait
     //   - 1s baud switch to 115200
     //   - ~1-2s SMP probe + response
-    console.log("Waiting for STM32 to enter bootloader mode (baud switch + SMP probe)...");
+    console.log(
+      "Waiting for STM32 to enter bootloader mode (baud switch + SMP probe)...",
+    );
     await sleep(6000);
 
     // Step 2: Send firmware in chunks
@@ -159,7 +165,9 @@ async function main() {
     await sleep(5000);
 
     console.log("Done. The nRF should now boot into NCP firmware.");
-    console.log("Verify with: connect to the STM32 CLI and run 'spinel get ncp-version'");
+    console.log(
+      "Verify with: connect to the STM32 CLI and run 'spinel get ncp-version'",
+    );
   } catch (err) {
     console.error(`\nDFU error: ${(err as Error).message}`);
     process.exit(1);

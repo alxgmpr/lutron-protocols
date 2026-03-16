@@ -17,9 +17,9 @@
  *   bun run tools/ipl-client.ts --quiet            # Only show non-heartbeat messages
  */
 
-import { connect, TLSSocket } from "tls";
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
+import { connect, type TLSSocket } from "tls";
 import { inflateSync } from "zlib";
 
 const args = process.argv.slice(2);
@@ -32,6 +32,7 @@ function hasFlag(name: string): boolean {
 }
 
 import { RA3_HOST } from "../lib/env";
+
 const HOST = getArg("--host") ?? RA3_HOST;
 const PORT = parseInt(getArg("--port") ?? "8902");
 const SAVE = hasFlag("--save");
@@ -73,7 +74,10 @@ interface IPLMessage {
  * Header: LEI<type> + 00 01 00 FF + <seq:u16> + <subtype:u16>
  * Body follows the 12-byte header until the next LEI marker.
  */
-function parseMessages(buf: Buffer): { messages: IPLMessage[]; remainder: Buffer } {
+function parseMessages(buf: Buffer): {
+  messages: IPLMessage[];
+  remainder: Buffer;
+} {
   const messages: IPLMessage[] = [];
   let pos = 0;
 
@@ -117,26 +121,45 @@ function parseMessages(buf: Buffer): { messages: IPLMessage[]; remainder: Buffer
     const msg: IPLMessage = { marker, typeChar, seq, subtype, body };
 
     // LEI@ with command name: body starts with 00 3B <name> <nulls> <zlib>
-    if (typeChar === "@" && body.length > 2 && body[0] === 0x00 && body[1] === 0x3b) {
+    if (
+      typeChar === "@" &&
+      body.length > 2 &&
+      body[0] === 0x00 &&
+      body[1] === 0x3b
+    ) {
       const nameEnd = body.indexOf(0x00, 2);
       if (nameEnd > 2) {
         msg.command = body.subarray(2, nameEnd).toString("ascii");
       }
       // Find and decompress zlib payload
       for (let i = nameEnd; i < body.length - 2; i++) {
-        if (body[i] === 0x78 && (body[i + 1] === 0xda || body[i + 1] === 0x9c)) {
+        if (
+          body[i] === 0x78 &&
+          (body[i + 1] === 0xda || body[i + 1] === 0x9c)
+        ) {
           try {
             const dec = inflateSync(body.subarray(i));
             const text = dec.toString("utf-8");
-            try { msg.json = JSON.parse(text); } catch { msg.json = text; }
-          } catch { /* not zlib */ }
+            try {
+              msg.json = JSON.parse(text);
+            } catch {
+              msg.json = text;
+            }
+          } catch {
+            /* not zlib */
+          }
           break;
         }
       }
     }
 
     // LEI@ init message: body starts with 00 31
-    if (typeChar === "@" && body.length > 2 && body[0] === 0x00 && body[1] === 0x31) {
+    if (
+      typeChar === "@" &&
+      body.length > 2 &&
+      body[0] === 0x00 &&
+      body[1] === 0x31
+    ) {
       msg.command = "(init)";
     }
 
@@ -146,18 +169,31 @@ function parseMessages(buf: Buffer): { messages: IPLMessage[]; remainder: Buffer
       if (payloadLen > 1 && body.length >= 8) {
         const objId = body.readUInt16BE(4);
         const prop = body.readUInt16BE(6);
-        const propName = PROP_NAMES[prop] ?? `0x${prop.toString(16).padStart(4, "0")}`;
+        const propName =
+          PROP_NAMES[prop] ?? `0x${prop.toString(16).padStart(4, "0")}`;
         const valueBytes = body.subarray(8);
 
         if (payloadLen <= 9 && valueBytes.length >= 2) {
           // Short value: decode level16
-          const lastTwo = valueBytes.length >= 2
-            ? valueBytes.readUInt16BE(valueBytes.length - 2) : 0;
-          const pct = lastTwo <= 0xfeff ? (lastTwo * 100 / 0xfeff) : -1;
-          const pctStr = pct >= 0 ? `${pct.toFixed(0)}%` : valueBytes.toString("hex");
-          msg.json = { objId, prop: propName, value: pctStr, raw: valueBytes.toString("hex") };
+          const lastTwo =
+            valueBytes.length >= 2
+              ? valueBytes.readUInt16BE(valueBytes.length - 2)
+              : 0;
+          const pct = lastTwo <= 0xfeff ? (lastTwo * 100) / 0xfeff : -1;
+          const pctStr =
+            pct >= 0 ? `${pct.toFixed(0)}%` : valueBytes.toString("hex");
+          msg.json = {
+            objId,
+            prop: propName,
+            value: pctStr,
+            raw: valueBytes.toString("hex"),
+          };
         } else if (payloadLen > 9) {
-          msg.json = { objId, prop: propName, data: body.subarray(6).toString("hex") };
+          msg.json = {
+            objId,
+            prop: propName,
+            data: body.subarray(6).toString("hex"),
+          };
         }
       } else if (payloadLen <= 1) {
         // Heartbeat (body = 00)
@@ -183,16 +219,25 @@ function parseMessages(buf: Buffer): { messages: IPLMessage[]; remainder: Buffer
 
 function formatMessage(msg: IPLMessage): string {
   const seqStr = `#${msg.seq.toString().padStart(3)}`;
-  const markerColor = msg.typeChar === "@" ? "\x1b[33m" : msg.typeChar === "E" ? "\x1b[36m" : "\x1b[35m";
+  const markerColor =
+    msg.typeChar === "@"
+      ? "\x1b[33m"
+      : msg.typeChar === "E"
+        ? "\x1b[36m"
+        : "\x1b[35m";
 
   if (msg.command === "(heartbeat)") {
-    return QUIET ? "" : `  ${markerColor}${msg.marker}\x1b[0m ${seqStr} heartbeat`;
+    return QUIET
+      ? ""
+      : `  ${markerColor}${msg.marker}\x1b[0m ${seqStr} heartbeat`;
   }
 
   const parts: string[] = [];
 
   if (msg.command) {
-    parts.push(`${markerColor}${msg.marker}\x1b[0m ${seqStr} \x1b[1m${msg.command}\x1b[0m`);
+    parts.push(
+      `${markerColor}${msg.marker}\x1b[0m ${seqStr} \x1b[1m${msg.command}\x1b[0m`,
+    );
   } else {
     parts.push(`${markerColor}${msg.marker}\x1b[0m ${seqStr}`);
   }
@@ -200,7 +245,9 @@ function formatMessage(msg: IPLMessage): string {
   if (msg.json) {
     parts.push(`  ${JSON.stringify(msg.json)}`);
   } else if (msg.body.length > 0) {
-    parts.push(`  body: ${msg.body.toString("hex").slice(0, 80)}${msg.body.length > 40 ? "..." : ""}`);
+    parts.push(
+      `  body: ${msg.body.toString("hex").slice(0, 80)}${msg.body.length > 40 ? "..." : ""}`,
+    );
   }
 
   return parts.join("\n");
@@ -210,7 +257,7 @@ function formatMessage(msg: IPLMessage): string {
 
 const allMessages: IPLMessage[] = [];
 const rawChunks: Buffer[] = [];
-let lastObjStates = new Map<string, string>(); // track state changes
+const lastObjStates = new Map<string, string>(); // track state changes
 
 console.log(`Connecting to ${HOST}:${PORT}...`);
 

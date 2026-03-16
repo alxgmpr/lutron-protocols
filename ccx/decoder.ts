@@ -372,7 +372,12 @@ export function formatMessage(msg: CCXMessage): string {
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      const dir = msg.action === 3 ? "RAISE" : msg.action === 2 ? "LOWER" : `action=${msg.action}`;
+      const dir =
+        msg.action === 3
+          ? "RAISE"
+          : msg.action === 2
+            ? "LOWER"
+            : `action=${msg.action}`;
       const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
       return `DIM_HOLD(${dir}, ${label}, id=${idHex}${zoneStr}, seq=${msg.sequence})`;
     }
@@ -385,7 +390,12 @@ export function formatMessage(msg: CCXMessage): string {
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      const dir = msg.action === 3 ? "RAISE" : msg.action === 2 ? "LOWER" : `action=${msg.action}`;
+      const dir =
+        msg.action === 3
+          ? "RAISE"
+          : msg.action === 2
+            ? "LOWER"
+            : `action=${msg.action}`;
       const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
       return `DIM_STEP(${dir}, ${label}, step=${msg.stepValue}${zoneStr}, seq=${msg.sequence})`;
     }

@@ -81,7 +81,10 @@ sock.bind(() => {
     }, delay + 3000);
   } else {
     // Interactive mode
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     rl.setPrompt("nucleo> ");
     rl.prompt();
     rl.on("line", (line: string) => {

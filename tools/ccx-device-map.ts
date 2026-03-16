@@ -54,8 +54,7 @@ function eui64FromSecondaryMleid(addr: string): string {
   // Parse the IPv6 address to get last 8 bytes (IID)
   const parts = expandIPv6(addr).split(":");
   // IID is last 4 groups (bytes 8-15)
-  const iidHex =
-    parts[4] + parts[5] + parts[6] + parts[7];
+  const iidHex = parts[4] + parts[5] + parts[6] + parts[7];
   const iidBytes = Buffer.from(iidHex, "hex");
 
   // Flip bit 6 of byte 0 to recover original MAC/EUI-64
@@ -232,12 +231,12 @@ function loadSavedMap(): DeviceMap | null {
 /** Map Designer ModelInfoID to human-readable device type */
 function modelToType(modelInfoId: number): string {
   const models: Record<number, string> = {
-    5056: "SunnataDimmer",       // HRST-PRO-N-XX
-    5062: "SunnataKeypad",       // HRST-W4B-XX (4-button)
-    5063: "SunnataKeypad",       // HRST-W3RL-XX (3-button raise/lower)
+    5056: "SunnataDimmer", // HRST-PRO-N-XX
+    5062: "SunnataKeypad", // HRST-W4B-XX (4-button)
+    5063: "SunnataKeypad", // HRST-W3RL-XX (3-button raise/lower)
     5194: "SunnataHybridKeypad", // HRST-HN3RL-XX (hybrid 3-button R/L)
     5195: "SunnataHybridKeypad", // HRST-HN4B-XX (hybrid 4-button)
-    5248: "SunnataFanControl",   // HRST-ANF-XX
+    5248: "SunnataFanControl", // HRST-ANF-XX
   };
   return models[modelInfoId] ?? "Unknown";
 }
@@ -379,9 +378,7 @@ function displayDeviceMap(map: DeviceMap): void {
 
     if (dev.zones.length > 0) {
       for (const z of dev.zones) {
-        console.log(
-          `    ${DIM}zone ${z.id}: ${z.name}${RESET}`,
-        );
+        console.log(`    ${DIM}zone ${z.id}: ${z.name}${RESET}`);
       }
     }
   }

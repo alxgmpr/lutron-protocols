@@ -18,26 +18,45 @@ const COAP_PORT = 5683;
 
 // ─── CoAP helpers ────────────────────────────────────────────────────
 
-function encodeOption(buf: Buffer, offset: number, delta: number, value: Buffer): number {
+function encodeOption(
+  buf: Buffer,
+  offset: number,
+  delta: number,
+  value: Buffer,
+): number {
   let pos = offset;
   const deltaNibble = delta < 13 ? delta : delta < 269 ? 13 : 14;
-  const lenNibble = value.length < 13 ? value.length : value.length < 269 ? 13 : 14;
+  const lenNibble =
+    value.length < 13 ? value.length : value.length < 269 ? 13 : 14;
   buf[pos++] = ((deltaNibble & 0xf) << 4) | (lenNibble & 0xf);
   if (deltaNibble === 13) buf[pos++] = delta - 13;
-  else if (deltaNibble === 14) { buf.writeUInt16BE(delta - 269, pos); pos += 2; }
+  else if (deltaNibble === 14) {
+    buf.writeUInt16BE(delta - 269, pos);
+    pos += 2;
+  }
   if (lenNibble === 13) buf[pos++] = value.length - 13;
-  else if (lenNibble === 14) { buf.writeUInt16BE(value.length - 269, pos); pos += 2; }
+  else if (lenNibble === 14) {
+    buf.writeUInt16BE(value.length - 269, pos);
+    pos += 2;
+  }
   value.copy(buf, pos);
   pos += value.length;
   return pos;
 }
 
-function buildCoap(code: number, mid: number, token: number, path: string, payload?: Buffer): Buffer {
+function buildCoap(
+  code: number,
+  mid: number,
+  token: number,
+  path: string,
+  payload?: Buffer,
+): Buffer {
   const buf = Buffer.alloc(256);
   let pos = 0;
   buf[pos++] = 0x41; // Ver=1, Type=CON, TKL=1
   buf[pos++] = code;
-  buf.writeUInt16BE(mid, pos); pos += 2;
+  buf.writeUInt16BE(mid, pos);
+  pos += 2;
   buf[pos++] = token;
 
   // URI-Path options (option 11)
@@ -98,34 +117,138 @@ const KEYPAD_OFFICE_RECORDS: ProgramRecord[] = [
   { method: METHOD.POST, path: "/cg/db/mc/c/AAI", payload: "814500000207ef" },
   { method: METHOD.POST, path: "/cg/db/mc/c/AAI", payload: "814500000020ef" },
   // Phase 3: pr records
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440ee4ef20821848a10000" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440ea6ef20821848a20019feff031828" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440e10ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440744ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440aeaef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440ae8ef20821848a200193dd20301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14409b1ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440629ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a144023def20821848a20019feff0301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440c10ef20821848a20019feff0301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440a97ef20821848a10000" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14402c5ef20821848a200000301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14402c2ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14402bfef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14402bcef20821848a20019feff0301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440220ef20821848a20019feff0301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a1440274ef20821848a10000" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14401f9ef20821848a10000" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14401f8ef20821848a200193dd20301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14401f0ef20821848a20019feff0301" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14328ef20821848a100193dd2" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14327ef20821848a100197e36" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14326ef20821848a10019be9b" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14325ef20821848a10019feff" },
-  { method: METHOD.POST, path: "/cg/db/pr/c/AAI", payload: "a14324ef20821848a10000" },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440ee4ef20821848a10000",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440ea6ef20821848a20019feff031828",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440e10ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440744ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440aeaef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440ae8ef20821848a200193dd20301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14409b1ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440629ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a144023def20821848a20019feff0301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440c10ef20821848a20019feff0301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440a97ef20821848a10000",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14402c5ef20821848a200000301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14402c2ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14402bfef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14402bcef20821848a20019feff0301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440220ef20821848a20019feff0301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a1440274ef20821848a10000",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14401f9ef20821848a10000",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14401f8ef20821848a200193dd20301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14401f0ef20821848a20019feff0301",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14328ef20821848a100193dd2",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14327ef20821848a100197e36",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14326ef20821848a10019be9b",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14325ef20821848a10019feff",
+  },
+  {
+    method: METHOD.POST,
+    path: "/cg/db/pr/c/AAI",
+    payload: "a14324ef20821848a10000",
+  },
   // Phase 4: ct records
   { method: METHOD.PUT, path: "/cg/db/ct/c/AAQ", payload: "82185ca0" },
-  { method: METHOD.PUT, path: "/cg/db/ct/c/AAI", payload: "8203a20219e53d0805" },
+  {
+    method: METHOD.PUT,
+    path: "/cg/db/ct/c/AAI",
+    payload: "8203a20219e53d0805",
+  },
   { method: METHOD.PUT, path: "/cg/db/ct/c/AAU", payload: "821839a1011832" },
   { method: METHOD.PUT, path: "/cg/db/ct/c/AAc", payload: "821839a1011832" },
   { method: METHOD.PUT, path: "/cg/db/ct/c/AAg", payload: "821839a10101" },
@@ -134,7 +257,11 @@ const KEYPAD_OFFICE_RECORDS: ProgramRecord[] = [
   { method: METHOD.PUT, path: "/cg/db/ct/c/AFE", payload: "82186ba10000" },
   { method: METHOD.PUT, path: "/cg/db/ct/c/AFI", payload: "82186ba10001" },
   { method: METHOD.PUT, path: "/cg/db/ct/c/AFM", payload: "82186ba10002" },
-  { method: METHOD.PUT, path: "/cg/db/ct/c/AHA", payload: "82186ca20418990514" }, // original: active=153, inactive=20
+  {
+    method: METHOD.PUT,
+    path: "/cg/db/ct/c/AHA",
+    payload: "82186ca20418990514",
+  }, // original: active=153, inactive=20
   { method: METHOD.PUT, path: "/cg/db/ct/c/AIE", payload: "82185ea0" },
 ];
 
@@ -239,7 +366,7 @@ optionally overriding AHA LED brightness values.
 // Apply AHA override
 const records = [...KEYPAD_OFFICE_RECORDS];
 if (k4str !== undefined || k5str !== undefined) {
-  const ahaIdx = records.findIndex(r => r.path === "/cg/db/ct/c/AHA");
+  const ahaIdx = records.findIndex((r) => r.path === "/cg/db/ct/c/AHA");
   if (ahaIdx >= 0) {
     const k4 = k4str !== undefined ? parseInt(k4str, 10) : 153;
     const k5 = k5str !== undefined ? parseInt(k5str, 10) : 20;
@@ -257,7 +384,9 @@ const methodName = (code: number) =>
 if (dryRun) {
   console.log(`\nDry run — ${records.length} records to ${dst}:\n`);
   for (const [i, r] of records.entries()) {
-    console.log(`  ${(i + 1).toString().padStart(2)}. ${methodName(r.method).padEnd(6)} ${r.path}  ${r.payload || "(empty)"}`);
+    console.log(
+      `  ${(i + 1).toString().padStart(2)}. ${methodName(r.method).padEnd(6)} ${r.path}  ${r.payload || "(empty)"}`,
+    );
   }
   process.exit(0);
 }
@@ -292,10 +421,21 @@ for (const [i, rec] of records.entries()) {
   token = (token + 1) & 0xff;
 
   try {
-    const rsp = await sendCoap(sock, dst, rec.method, rec.path, payload, mid, token, timeoutMs);
+    const rsp = await sendCoap(
+      sock,
+      dst,
+      rec.method,
+      rec.path,
+      payload,
+      mid,
+      token,
+      timeoutMs,
+    );
     const codeStr = coapCodeStr(rsp.code);
     const isOk = rsp.code >= 64 && rsp.code < 96; // 2.xx
-    console.log(`  ${(i + 1).toString().padStart(2)}. ${label}  → ${codeStr}${isOk ? "" : " ⚠️"}`);
+    console.log(
+      `  ${(i + 1).toString().padStart(2)}. ${label}  → ${codeStr}${isOk ? "" : " ⚠️"}`,
+    );
     if (isOk) ok++;
     else fail++;
 
@@ -308,7 +448,9 @@ for (const [i, rec] of records.entries()) {
       await new Promise((r) => setTimeout(r, 120));
     }
   } catch (err: any) {
-    console.log(`  ${(i + 1).toString().padStart(2)}. ${label}  → FAIL: ${err.message}`);
+    console.log(
+      `  ${(i + 1).toString().padStart(2)}. ${label}  → FAIL: ${err.message}`,
+    );
     fail++;
     if (rec.method === METHOD.DELETE) {
       console.error("\nDELETE failed — aborting (device DB not initialized)");

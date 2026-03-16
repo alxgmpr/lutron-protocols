@@ -30,6 +30,7 @@ function getAllArgs(name: string): string[] {
 }
 
 import { RA3_HOST } from "../lib/env";
+
 const host = getArg("--host") ?? RA3_HOST;
 const certName = getArg("--cert") ?? "ra3";
 const zoneArgs = getAllArgs("--zone");

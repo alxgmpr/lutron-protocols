@@ -13,7 +13,7 @@
  *   bun run tools/leap-explore.ts --section devices         # Only probe devices section
  */
 
-import { writeFileSync, mkdirSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { hrefId, LeapConnection } from "./leap-client";
 
@@ -27,6 +27,7 @@ function hasFlag(name: string): boolean {
 }
 
 import { RA3_HOST } from "../lib/env";
+
 const HOST = getArg("--host") ?? RA3_HOST;
 const CERT_NAME = getArg("--cert") ?? "ra3";
 const SAVE = hasFlag("--save");
@@ -80,7 +81,9 @@ async function probeAndFollow(url: string, depth = 0): Promise<any> {
 /** Extract all IDs from a collection response */
 function extractIds(body: any, key: string): number[] {
   const items = body?.[key] ?? [];
-  return items.map((item: any) => hrefId(item.href)).filter((id: number) => id > 0);
+  return items
+    .map((item: any) => hrefId(item.href))
+    .filter((id: number) => id > 0);
 }
 
 // --- Section probers ---
@@ -433,8 +436,8 @@ async function main() {
   conn.close();
 
   // Summary
-  const ok = Object.values(results).filter(
-    (r) => r.status?.startsWith("2"),
+  const ok = Object.values(results).filter((r) =>
+    r.status?.startsWith("2"),
   ).length;
   const fail = Object.values(results).filter(
     (r) => !r.status?.startsWith("2"),

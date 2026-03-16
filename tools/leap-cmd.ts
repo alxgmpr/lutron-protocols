@@ -19,8 +19,8 @@
  */
 
 import { parseArgs } from "util";
-import { hrefId, LeapConnection } from "./leap-client";
 import { CASETA_HOST } from "../lib/env";
+import { hrefId, LeapConnection } from "./leap-client";
 
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),

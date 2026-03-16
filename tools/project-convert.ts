@@ -12,11 +12,11 @@
  */
 
 import "../lib/env"; // load .env
-import { parseArgs } from "util";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
-import { join, basename, extname } from "path";
-import { tmpdir } from "os";
 import { randomUUID } from "crypto";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
+import { tmpdir } from "os";
+import { basename, extname, join } from "path";
+import { parseArgs } from "util";
 
 // ── CLI ──────────────────────────────────────────────────────────────
 
@@ -91,15 +91,18 @@ interface ModelEntry {
 function loadModelInfo(): ModelEntry[] {
   const path = join(import.meta.dir, "data/model-info.json");
   if (!existsSync(path)) {
-    throw new Error(`Model info not found: ${path}\nRun: bun run tools/build-model-info.ts`);
+    throw new Error(
+      `Model info not found: ${path}\nRun: bun run tools/build-model-info.ts`,
+    );
   }
   const data = JSON.parse(require("fs").readFileSync(path, "utf-8"));
   return data.models;
 }
 
-function buildModelMap(
-  direction: "RA3_TO_HW" | "HW_TO_RA3"
-): { map: Record<number, number>; log: string[] } {
+function buildModelMap(direction: "RA3_TO_HW" | "HW_TO_RA3"): {
+  map: Record<number, number>;
+  log: string[];
+} {
   const models = loadModelInfo();
   const log: string[] = [];
 
@@ -136,7 +139,7 @@ function buildModelMap(
     direction === "RA3_TO_HW"
       ? MANUAL_OVERRIDES
       : Object.fromEntries(
-          Object.entries(MANUAL_OVERRIDES).map(([k, v]) => [v, k])
+          Object.entries(MANUAL_OVERRIDES).map(([k, v]) => [v, k]),
         );
 
   const map: Record<number, number> = {};
@@ -162,7 +165,9 @@ function buildModelMap(
       const targetId = nameToId.get(overrides[name]);
       if (targetId !== undefined) {
         map[m.id] = targetId;
-        log.push(`  ${name} (${m.id}) → ${overrides[name]} (${targetId}) [override]`);
+        log.push(
+          `  ${name} (${m.id}) → ${overrides[name]} (${targetId}) [override]`,
+        );
         continue;
       }
     }
@@ -185,7 +190,9 @@ function buildModelMap(
       }
 
       if (!matched) {
-        log.push(`  ${name} (${m.id}) → NO MATCH (tried: ${tgtPrefixes.map((p) => p + suffix).join(", ")})`);
+        log.push(
+          `  ${name} (${m.id}) → NO MATCH (tried: ${tgtPrefixes.map((p) => p + suffix).join(", ")})`,
+        );
       }
       break; // Only apply first matching prefix rule
     }
@@ -199,7 +206,9 @@ let _ra3ToHw: Record<number, number> | null = null;
 let _hwToRa3: Record<number, number> | null = null;
 let _mapLog: string[] = [];
 
-function getModelMap(direction: "RA3_TO_HW" | "HW_TO_RA3"): Record<number, number> {
+function getModelMap(
+  direction: "RA3_TO_HW" | "HW_TO_RA3",
+): Record<number, number> {
   if (direction === "RA3_TO_HW") {
     if (!_ra3ToHw) {
       const result = buildModelMap("RA3_TO_HW");
@@ -247,7 +256,7 @@ function makeTempDir(prefix: string): string {
 
 async function exec(
   cmd: string[],
-  opts?: { timeout?: number; cwd?: string }
+  opts?: { timeout?: number; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const proc = Bun.spawn(cmd, {
     stdout: "pipe",
@@ -271,7 +280,7 @@ async function exec(
 async function execOrDie(
   cmd: string[],
   label: string,
-  opts?: { timeout?: number; cwd?: string }
+  opts?: { timeout?: number; cwd?: string },
 ): Promise<string> {
   const r = await exec(cmd, opts);
   if (r.exitCode !== 0) {
@@ -306,13 +315,15 @@ async function extractBak(projectFile: string): Promise<ExtractResult> {
   const lutFile = files.find((f) => f.endsWith(".lut"));
   if (!lutFile) {
     throw new Error(
-      `No .lut file found in archive. Contents: ${files.join(", ")}`
+      `No .lut file found in archive. Contents: ${files.join(", ")}`,
     );
   }
 
   const lutPath = join(unzipDir, lutFile);
   const lutSize = statSync(lutPath).size;
-  console.log(`  LUT/BAK: ${lutFile} (${(lutSize / 1024 / 1024).toFixed(1)} MB)`);
+  console.log(
+    `  LUT/BAK: ${lutFile} (${(lutSize / 1024 / 1024).toFixed(1)} MB)`,
+  );
 
   // Copy .lut → .bak for clarity (it's the same file)
   const bakPath = join(tempDir, "Project.bak");
@@ -326,7 +337,7 @@ async function extractBak(projectFile: string): Promise<ExtractResult> {
 async function packProject(
   bakPath: string,
   lutFilename: string,
-  outputFile: string
+  outputFile: string,
 ): Promise<void> {
   console.log(`Packing project to ${basename(outputFile)}...`);
 
@@ -336,7 +347,9 @@ async function packProject(
   // cause Designer to reject the file.
   await execOrDie(
     [
-      "python3", "-c", `
+      "python3",
+      "-c",
+      `
 import zipfile, struct, sys, os, zlib, time
 
 # Build ZIP manually to get exact MS-DOS attributes matching Designer output.
@@ -415,11 +428,13 @@ print(f'ZIP created: {os.path.getsize(out_path)} bytes, CRC={crc:08x}')
       bakPath,
     ],
     "zip (python)",
-    { timeout: 120_000 }
+    { timeout: 120_000 },
   );
 
   const outSize = statSync(outputFile).size;
-  console.log(`  Output: ${basename(outputFile)} (${(outSize / 1024 / 1024).toFixed(1)} MB)`);
+  console.log(
+    `  Output: ${basename(outputFile)} (${(outSize / 1024 / 1024).toFixed(1)} MB)`,
+  );
 }
 
 // ── SSH + PowerShell execution ───────────────────────────────────────
@@ -433,28 +448,40 @@ function encodePowerShell(script: string): string {
 // SSH ControlMaster for connection multiplexing (avoids rate-limit failures)
 const SSH_CONTROL_PATH = `/tmp/lut-ssh-${process.pid}`;
 const SSH_OPTS = [
-  "-o", "StrictHostKeyChecking=no",
-  "-o", "ConnectTimeout=10",
-  "-o", "PreferredAuthentications=password",
-  "-o", "LogLevel=ERROR",
-  "-o", `ControlPath=${SSH_CONTROL_PATH}`,
-  "-o", "ControlMaster=auto",
-  "-o", "ControlPersist=60",
+  "-o",
+  "StrictHostKeyChecking=no",
+  "-o",
+  "ConnectTimeout=10",
+  "-o",
+  "PreferredAuthentications=password",
+  "-o",
+  "LogLevel=ERROR",
+  "-o",
+  `ControlPath=${SSH_CONTROL_PATH}`,
+  "-o",
+  "ControlMaster=auto",
+  "-o",
+  "ControlPersist=60",
 ];
 
 async function execPowerShell(
   script: string,
-  timeout = 120_000
+  timeout = 120_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const encoded = encodePowerShell(script);
   const proc = Bun.spawn(
     [
-      "/opt/homebrew/bin/sshpass", "-p", VM_PASS,
-      "ssh", ...SSH_OPTS,
+      "/opt/homebrew/bin/sshpass",
+      "-p",
+      VM_PASS,
+      "ssh",
+      ...SSH_OPTS,
       `${VM_USER}@${VM_HOST}`,
-      "powershell", "-EncodedCommand", encoded,
+      "powershell",
+      "-EncodedCommand",
+      encoded,
     ],
-    { stdout: "pipe", stderr: "pipe" }
+    { stdout: "pipe", stderr: "pipe" },
   );
 
   const timer = setTimeout(() => proc.kill(), timeout);
@@ -476,7 +503,7 @@ async function scp(
   localPath: string,
   remotePath: string,
   direction: "upload" | "download",
-  timeout = 120_000
+  timeout = 120_000,
 ): Promise<void> {
   // Windows OpenSSH SCP requires forward slashes in remote paths
   const remotePathFixed = remotePath.replace(/\\/g, "/");
@@ -488,7 +515,7 @@ async function scp(
   await execOrDie(
     ["/opt/homebrew/bin/sshpass", "-p", VM_PASS, "scp", ...SSH_OPTS, ...args],
     `scp ${direction}`,
-    { timeout }
+    { timeout },
   );
 }
 
@@ -534,7 +561,7 @@ Write-Output $foundServer
   const result = await execPowerShell(script, 20_000);
   if (result.exitCode !== 0) {
     throw new Error(
-      `Pipe discovery failed: ${result.stderr.trim() || result.stdout.trim()}`
+      `Pipe discovery failed: ${result.stderr.trim() || result.stdout.trim()}`,
     );
   }
   return result.stdout.trim().split("\n")[0].trim();
@@ -546,7 +573,7 @@ async function vmSqlcmd(
   pipe: string,
   dbName: string,
   sql: string,
-  timeout = 120_000
+  timeout = 120_000,
 ): Promise<string> {
   // Estimate encoded command size: UTF-16LE doubles, base64 adds 33%
   const estimatedCmdLen = sql.length * 2 * 1.34 + 500;
@@ -572,14 +599,16 @@ exit $LASTEXITCODE
       const result = await execPowerShell(script, timeout);
       if (result.exitCode !== 0) {
         const combined = result.stderr + result.stdout;
-        throw new Error(`SQL error (exit ${result.exitCode}): ${combined.trim()}`);
+        throw new Error(
+          `SQL error (exit ${result.exitCode}): ${combined.trim()}`,
+        );
       }
       return result.stdout;
     } finally {
       rmSync(localTmp, { force: true });
       await execPowerShell(
         `Remove-Item -Path '${remoteTmp}' -Force -ErrorAction SilentlyContinue`,
-        5_000
+        5_000,
       ).catch(() => {});
     }
   }
@@ -853,7 +882,9 @@ function buildConversionSql(direction: string): string {
   }
 
   if (Object.keys(map).length === 0) {
-    throw new Error("No model mappings found. Check tools/data/model-info.json");
+    throw new Error(
+      "No model mappings found. Check tools/data/model-info.json",
+    );
   }
 
   const mapValues = Object.entries(map)
@@ -1124,7 +1155,7 @@ PRINT '';
 
 async function runConversion(
   bakPath: string,
-  direction: string
+  direction: string,
 ): Promise<string> {
   console.log(`Running ${direction} conversion via VM LocalDB (${VM_HOST})...`);
 
@@ -1145,7 +1176,7 @@ async function runConversion(
 
   await execPowerShell(
     `New-Item -ItemType Directory -Force -Path '${VM_WORK_DIR}' | Out-Null`,
-    10_000
+    10_000,
   );
 
   // Upload .bak to VM
@@ -1156,9 +1187,10 @@ async function runConversion(
     // Discover logical file names from backup
     console.log("  Reading backup file list...");
     const fileListResult = await vmSqlcmd(
-      pipe, "master",
+      pipe,
+      "master",
       `RESTORE FILELISTONLY FROM DISK = '${remoteBak.replace(/'/g, "''")}';`,
-      30_000
+      30_000,
     );
 
     // Parse output for logical names
@@ -1166,7 +1198,8 @@ async function runConversion(
     let ldfLogical = "Project_log";
     for (const line of fileListResult.split("\n")) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("-") || trimmed.startsWith("Logical")) continue;
+      if (!trimmed || trimmed.startsWith("-") || trimmed.startsWith("Logical"))
+        continue;
       // sqlcmd default output: columns separated by spaces, Type is 3rd column
       // Look for lines containing .mdf or .ldf paths
       if (trimmed.includes(".mdf") && !trimmed.includes(".ldf")) {
@@ -1182,13 +1215,14 @@ async function runConversion(
     // RESTORE DATABASE
     console.log("  Restoring database from backup...");
     await vmSqlcmd(
-      pipe, "master",
+      pipe,
+      "master",
       `RESTORE DATABASE [${dbName}]
        FROM DISK = '${remoteBak.replace(/'/g, "''")}'
        WITH MOVE '${mdfLogical}' TO '${remoteMdf.replace(/'/g, "''")}',
             MOVE '${ldfLogical}' TO '${remoteLdf.replace(/'/g, "''")}',
             REPLACE;`,
-      120_000
+      120_000,
     );
 
     // Run conversion SQL
@@ -1200,9 +1234,10 @@ async function runConversion(
     // BACKUP converted database
     console.log("  Backing up converted database...");
     await vmSqlcmd(
-      pipe, "master",
+      pipe,
+      "master",
       `BACKUP DATABASE [${dbName}] TO DISK = '${remoteConvertedBak.replace(/'/g, "''")}' WITH INIT;`,
-      120_000
+      120_000,
     );
 
     // Download converted .bak
@@ -1219,13 +1254,14 @@ async function runConversion(
     console.log("  Cleaning up VM...");
     try {
       await vmSqlcmd(
-        pipe, "master",
+        pipe,
+        "master",
         `IF DB_ID('${dbName}') IS NOT NULL
          BEGIN
            ALTER DATABASE [${dbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
            DROP DATABASE [${dbName}];
          END`,
-        30_000
+        30_000,
       );
     } catch {
       // Best-effort cleanup
@@ -1233,7 +1269,7 @@ async function runConversion(
     try {
       await execPowerShell(
         `Remove-Item -Path '${VM_WORK_DIR}\\*' -Force -ErrorAction SilentlyContinue`,
-        10_000
+        10_000,
       );
     } catch {
       // Best-effort cleanup
@@ -1243,13 +1279,8 @@ async function runConversion(
 
 // ── Diff Mode ────────────────────────────────────────────────────────
 
-async function runDiff(
-  fileA: string,
-  fileB: string
-): Promise<void> {
-  console.log(
-    `Diffing ${basename(fileA)} vs ${basename(fileB)}...\n`
-  );
+async function runDiff(fileA: string, fileB: string): Promise<void> {
+  console.log(`Diffing ${basename(fileA)} vs ${basename(fileB)}...\n`);
 
   const extractA = await extractBak(fileA);
   const extractB = await extractBak(fileB);
@@ -1264,7 +1295,7 @@ async function runDiff(
     // Create working directory on VM
     await execPowerShell(
       `New-Item -ItemType Directory -Force -Path '${VM_WORK_DIR}' | Out-Null`,
-      10_000
+      10_000,
     );
 
     // Upload both backups
@@ -1274,17 +1305,21 @@ async function runDiff(
 
     // Restore both
     console.log("Restoring databases...");
-    await vmSqlcmd(pipe, "master",
+    await vmSqlcmd(
+      pipe,
+      "master",
       `RESTORE DATABASE [${dbNameA}]
        FROM DISK = '${VM_WORK_DIR}\\ProjectA.bak'
        WITH MOVE 'Project' TO '${VM_WORK_DIR}\\${dbNameA}.mdf',
-            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameA}_log.ldf', REPLACE;`
+            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameA}_log.ldf', REPLACE;`,
     );
-    await vmSqlcmd(pipe, "master",
+    await vmSqlcmd(
+      pipe,
+      "master",
       `RESTORE DATABASE [${dbNameB}]
        FROM DISK = '${VM_WORK_DIR}\\ProjectB.bak'
        WITH MOVE 'Project' TO '${VM_WORK_DIR}\\${dbNameB}.mdf',
-            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameB}_log.ldf', REPLACE;`
+            MOVE 'Project_log' TO '${VM_WORK_DIR}\\${dbNameB}_log.ldf', REPLACE;`,
     );
 
     // Run diff queries
@@ -1380,18 +1415,24 @@ PRINT 'Done.';
     const pipe = await discoverPipe().catch(() => null);
     if (pipe) {
       try {
-        await vmSqlcmd(pipe, "master",
+        await vmSqlcmd(
+          pipe,
+          "master",
           `IF DB_ID('${dbNameA}') IS NOT NULL BEGIN ALTER DATABASE [${dbNameA}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbNameA}]; END;
-           IF DB_ID('${dbNameB}') IS NOT NULL BEGIN ALTER DATABASE [${dbNameB}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbNameB}]; END;`
+           IF DB_ID('${dbNameB}') IS NOT NULL BEGIN ALTER DATABASE [${dbNameB}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbNameB}]; END;`,
         );
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
     }
     try {
       await execPowerShell(
         `Remove-Item -Path '${VM_WORK_DIR}\\*' -Force -ErrorAction SilentlyContinue`,
-        10_000
+        10_000,
       );
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     rmSync(extractA.tempDir, { recursive: true, force: true });
     rmSync(extractB.tempDir, { recursive: true, force: true });
   }
@@ -1435,8 +1476,8 @@ async function main(): Promise<void> {
       JSON.stringify(
         { lutFilename: result.lutFilename, sourceFile: basename(input) },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     rmSync(result.tempDir, { recursive: true, force: true });
@@ -1469,7 +1510,9 @@ async function main(): Promise<void> {
     } else {
       // Generate a UUID-based name
       lutFilename = `${randomUUID()}.lut`;
-      console.log(`  No metadata.json found, using generated LUT name: ${lutFilename}`);
+      console.log(
+        `  No metadata.json found, using generated LUT name: ${lutFilename}`,
+      );
     }
 
     const absOutput = output.startsWith("/")
@@ -1505,17 +1548,17 @@ async function main(): Promise<void> {
     } else if (inExt === ".ra3" && outExt === ".ra3") {
       // Same extension — require explicit direction
       console.error(
-        "Same input/output extension (.ra3). Specify --direction explicitly."
+        "Same input/output extension (.ra3). Specify --direction explicitly.",
       );
       process.exit(1);
     } else if (inExt === ".hw" && outExt === ".hw") {
       console.error(
-        "Same input/output extension (.hw). Specify --direction explicitly."
+        "Same input/output extension (.hw). Specify --direction explicitly.",
       );
       process.exit(1);
     } else {
       console.error(
-        `Cannot auto-detect direction from extensions ${inExt} -> ${outExt}. Use --direction.`
+        `Cannot auto-detect direction from extensions ${inExt} -> ${outExt}. Use --direction.`,
       );
       process.exit(1);
     }
@@ -1524,7 +1567,7 @@ async function main(): Promise<void> {
 
   if (direction !== "RA3_TO_HW" && direction !== "HW_TO_RA3") {
     console.error(
-      `Invalid direction: ${direction}. Use RA3_TO_HW or HW_TO_RA3.`
+      `Invalid direction: ${direction}. Use RA3_TO_HW or HW_TO_RA3.`,
     );
     process.exit(1);
   }
@@ -1538,19 +1581,14 @@ async function main(): Promise<void> {
 
   try {
     // Step 2: RESTORE → convert → BACKUP (on VM's LocalDB)
-    const convertedBak = await runConversion(
-      extracted.bakPath,
-      direction
-    );
+    const convertedBak = await runConversion(extracted.bakPath, direction);
 
     // Step 3: Pack .bak as .lut into ZIP
-    await packProject(
-      convertedBak,
-      extracted.lutFilename,
-      absOutput
-    );
+    await packProject(convertedBak, extracted.lutFilename, absOutput);
 
-    console.log(`\nConversion complete: ${basename(input)} -> ${basename(output)}`);
+    console.log(
+      `\nConversion complete: ${basename(input)} -> ${basename(output)}`,
+    );
   } finally {
     // Clean up temp dir
     rmSync(extracted.tempDir, { recursive: true, force: true });

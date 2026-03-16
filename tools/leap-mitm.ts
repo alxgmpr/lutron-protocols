@@ -14,13 +14,13 @@
  *      sudo pfctl -d
  */
 
-import * as tls from "tls";
-import * as net from "net";
 import * as fs from "fs";
+import * as net from "net";
 import * as path from "path";
+import * as tls from "tls";
+import { RA3_HOST } from "../lib/env";
 import { resolveCerts } from "./leap-client";
 
-import { RA3_HOST } from "../lib/env";
 const PROCESSOR_HOST = process.argv[2] ?? RA3_HOST;
 const PROCESSOR_PORT = 8081;
 const LISTEN_PORT = 8081;
