@@ -21,7 +21,6 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
-import { stripVTControlCharacters } from "util";
 import {
   getPresetInfo,
   getSerialName,
@@ -34,20 +33,25 @@ import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
 import { DeviceClassNames } from "../protocol/generated/typescript/protocol";
 import { identifyPacket, parseFieldValue } from "../protocol/protocol-ui";
-
-// ============================================================================
-// ANSI colors
-// ============================================================================
-const DIM = "\x1b[2m";
-const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
-const RED = "\x1b[31m";
-const GREEN = "\x1b[32m";
-const YELLOW = "\x1b[33m";
-const BLUE = "\x1b[34m";
-const MAGENTA = "\x1b[35m";
-const CYAN = "\x1b[36m";
-const WHITE = "\x1b[37m";
+import { LineEditor } from "./tui/line-editor";
+import { type IScreen, Screen } from "./tui/screen";
+import {
+  BLUE,
+  BOLD,
+  CYAN,
+  DIM,
+  GREEN,
+  getPacketLayout,
+  MAGENTA,
+  type PacketRow,
+  PacketTable,
+  RED,
+  RESET,
+  renderHeader,
+  renderRow,
+  WHITE,
+  YELLOW,
+} from "./tui/table";
 
 // ============================================================================
 // Constants
@@ -96,7 +100,9 @@ function getCliArg(name: string): string | undefined {
 const hasCliFlag = (name: string) => process.argv.includes(name);
 
 const UPDATE_LEAP = hasCliFlag("--update-leap");
+
 import { RA3_HOST } from "../lib/env";
+
 const LEAP_HOST = getCliArg("--leap-host") ?? RA3_HOST;
 const LEAP_CERTS = getCliArg("--leap-certs") ?? "ra3";
 
@@ -151,55 +157,11 @@ interface CcaSlotIndicator {
 }
 
 const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
-let packetRowsSinceHeader = 0;
-let packetHeaderSig = "";
 
-const PACKET_HEADER_INTERVAL = 40;
-const MIN_PACKET_STATE_WIDTH = 10;
-const MIN_PACKET_RAW_WIDTH = 12;
-const MIN_PACKET_DELTA_WIDTH = 6;
-const MIN_PACKET_SLOT_WIDTH = 6;
-const MIN_PACKET_MISS_WIDTH = 4;
-const MIN_PACKET_SEQ_WIDTH = 3;
-
-interface PacketLayout {
-  showRaw: boolean;
-  totalWidth: number;
-  time: number;
-  proto: number;
-  dir: number;
-  seq: number;
-  type: number;
-  device: number;
-  action: number;
-  state: number;
-  raw: number;
-  delta: number;
-  slot: number;
-  miss: number;
-}
-
-interface PacketRow {
-  ts: string;
-  proto: string;
-  protoColor: string;
-  direction: string;
-  dirColor: string;
-  seq: string;
-  type: string;
-  typeColor: string;
-  device: string;
-  deviceColor?: string;
-  action: string;
-  actionColor?: string;
-  state: string;
-  raw: string;
-  delta: string;
-  slot: string;
-  slotColor?: string;
-  miss: string;
-  missColor?: string;
-}
+// TUI instances
+const screen: IScreen = Screen.create();
+const packetTable = new PacketTable();
+const lineEditor = new LineEditor();
 
 // ============================================================================
 // Helpers
@@ -242,7 +204,7 @@ function buildCmd(cmd: number, data?: Uint8Array | number[]): Buffer {
 /** Send a command frame to the Nucleo via UDP */
 function send(frame: Buffer): boolean {
   if (!udpSocket) {
-    console.log(`${RED}Socket not ready${RESET}`);
+    screen.appendLine(`${RED}Socket not ready${RESET}`);
     return false;
   }
   udpSocket.send(frame, 0, frame.length, UDP_PORT, host);
@@ -253,11 +215,10 @@ function send(frame: Buffer): boolean {
 function sendTextCommand(text: string) {
   const textBytes = new TextEncoder().encode(text);
   send(buildCmd(CMD.TEXT, textBytes));
-  // Safety timeout — show prompt if no response in 10s
+  // Safety timeout — if no response in 10s
   textCmdTimer = setTimeout(() => {
     textCmdTimer = null;
-    console.log(`${YELLOW}(no response — timeout)${RESET}`);
-    showPrompt();
+    screen.appendLine(`${YELLOW}(no response — timeout)${RESET}`);
   }, TEXT_CMD_TIMEOUT_MS);
 }
 
@@ -322,202 +283,56 @@ function dominantStride(strideCounts: Map<number, number>): number | null {
   return bestCount > 0 ? bestStride : null;
 }
 
-function stripAnsi(text: string): string {
-  return stripVTControlCharacters(text);
+// ============================================================================
+// TUI helpers
+// ============================================================================
+let ccaRxCount = 0;
+let ccaTxCount = 0;
+let ccxRxCount = 0;
+let ccxTxCount = 0;
+
+function updateColumnHeaders(): void {
+  const layout = getPacketLayout(raw, screen.width);
+  const [labels, separator] = renderHeader(layout);
+  screen.setColumnHeaders(labels, separator);
 }
 
-function clipCell(
-  text: string,
-  width: number,
-  align: "left" | "right" | "center" = "left",
-): string {
-  if (width <= 0) return "";
-  const plain = stripAnsi(text);
-  const clipped =
-    plain.length > width
-      ? width <= 3
-        ? plain.slice(0, width)
-        : `${plain.slice(0, width - 3)}...`
-      : plain;
-
-  if (align === "right") return clipped.padStart(width);
-  if (align === "center") {
-    const left = Math.floor((width - clipped.length) / 2);
-    const right = width - clipped.length - left;
-    return `${" ".repeat(Math.max(0, left))}${clipped}${" ".repeat(Math.max(0, right))}`;
-  }
-  return clipped.padEnd(width);
+function updateStatusBar(): void {
+  const parts: string[] = [];
+  if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
+  if (raw) parts.push(`${CYAN}[raw]${RESET}`);
+  if (lockDetails) parts.push(`${GREEN}[lock]${RESET}`);
+  if (slotTracking) parts.push(`${DIM}[slot]${RESET}`);
+  if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
+  if (!packetTable.isLive()) parts.push(`${YELLOW}[scroll]${RESET}`);
+  screen.setStatusBar(parts.join(" "));
 }
 
-function colorCell(text: string, color: string, bold = false): string {
-  if (!color) return text;
-  return `${bold ? BOLD : ""}${color}${text}${RESET}`;
+function updateHeader(): void {
+  const connState = udpSocket
+    ? `${GREEN}● Connected${RESET}`
+    : `${RED}● Disconnected${RESET}`;
+  const left = `${BOLD}Nucleo CLI${RESET} — ${host}:${UDP_PORT}  ${connState}`;
+  const counters = `${DIM}CCA ${ccaRxCount}rx ${ccaTxCount}tx  CCX ${ccxRxCount}rx ${ccxTxCount}tx${RESET}`;
+  screen.setHeader(left, counters);
 }
 
-function getPacketLayout(showRaw: boolean): PacketLayout {
-  const termWidth =
-    typeof process.stdout.columns === "number" && process.stdout.columns > 0
-      ? process.stdout.columns
-      : 120;
-
-  const layout: PacketLayout = {
-    showRaw,
-    totalWidth: 0,
-    time: 12,
-    proto: 1,
-    dir: 2,
-    seq: 4,
-    type: 16,
-    device: 20,
-    action: 12,
-    state: MIN_PACKET_STATE_WIDTH,
-    raw: showRaw ? 24 : 0,
-    delta: 8,
-    slot: 12,
-    miss: 5,
-  };
-
-  const columns = showRaw ? 12 : 11;
-  const spaces = columns - 1;
-  const fixedNoState =
-    layout.time +
-    layout.proto +
-    layout.dir +
-    layout.seq +
-    layout.type +
-    layout.device +
-    layout.action +
-    layout.delta +
-    layout.slot +
-    layout.miss +
-    (showRaw ? layout.raw : 0);
-
-  let availableState = termWidth - fixedNoState - spaces;
-  while (availableState < MIN_PACKET_STATE_WIDTH) {
-    if (showRaw && layout.raw > MIN_PACKET_RAW_WIDTH) {
-      layout.raw--;
-      availableState++;
-      continue;
-    }
-    if (layout.slot > MIN_PACKET_SLOT_WIDTH) {
-      layout.slot--;
-      availableState++;
-      continue;
-    }
-    if (layout.delta > MIN_PACKET_DELTA_WIDTH) {
-      layout.delta--;
-      availableState++;
-      continue;
-    }
-    if (layout.miss > MIN_PACKET_MISS_WIDTH) {
-      layout.miss--;
-      availableState++;
-      continue;
-    }
-    if (layout.seq > MIN_PACKET_SEQ_WIDTH) {
-      layout.seq--;
-      availableState++;
-      continue;
-    }
-    if (layout.device > 10) {
-      layout.device--;
-      availableState++;
-      continue;
-    }
-    if (layout.action > 8) {
-      layout.action--;
-      availableState++;
-      continue;
-    }
-    if (layout.type > 10) {
-      layout.type--;
-      availableState++;
-      continue;
-    }
-    if (layout.time > 8) {
-      layout.time--;
-      availableState++;
-      continue;
-    }
-    break;
+function emitPacketRow(row: PacketRow): void {
+  const layout = getPacketLayout(raw, screen.width);
+  const rendered = renderRow(row, layout);
+  packetTable.addRow(row, rendered);
+  if (packetTable.isLive()) {
+    screen.appendLine(rendered);
   }
-
-  layout.state = Math.max(MIN_PACKET_STATE_WIDTH, availableState);
-  layout.totalWidth =
-    layout.time +
-    layout.proto +
-    layout.dir +
-    layout.seq +
-    layout.type +
-    layout.action +
-    layout.device +
-    layout.state +
-    (showRaw ? layout.raw : 0) +
-    layout.delta +
-    layout.slot +
-    layout.miss +
-    spaces;
-
-  return layout;
 }
 
-function renderPacketHeader(layout: PacketLayout) {
-  const headerCells: string[] = [
-    clipCell("TIME", layout.time),
-    clipCell("P", layout.proto, "center"),
-    clipCell("D", layout.dir, "center"),
-    clipCell("S", layout.seq, "right"),
-    clipCell("TYPE", layout.type),
-    clipCell("DEVICE", layout.device),
-    clipCell("ACTION", layout.action),
-    clipCell("STATE", layout.state),
-  ];
-  if (layout.showRaw) {
-    headerCells.push(clipCell("RAW", layout.raw, "right"));
-  }
-  headerCells.push(clipCell("DELTA", layout.delta, "right"));
-  headerCells.push(clipCell("SLOT", layout.slot));
-  headerCells.push(clipCell("MISS", layout.miss, "right"));
-  const headerLine = headerCells.join(" ");
-  console.log(`${DIM}${headerLine}${RESET}`);
-  console.log(`${DIM}${"-".repeat(layout.totalWidth)}${RESET}`);
-}
-
-function renderPacketRow(row: PacketRow) {
-  const layout = getPacketLayout(raw);
-  const headerSig = `${layout.totalWidth}:${layout.showRaw ? 1 : 0}`;
-  if (
-    packetHeaderSig !== headerSig ||
-    packetRowsSinceHeader >= PACKET_HEADER_INTERVAL
-  ) {
-    renderPacketHeader(layout);
-    packetHeaderSig = headerSig;
-    packetRowsSinceHeader = 0;
-  }
-
-  const cells: string[] = [
-    clipCell(row.ts, layout.time),
-    colorCell(clipCell(row.proto, layout.proto, "center"), row.protoColor),
-    colorCell(clipCell(row.direction, layout.dir, "center"), row.dirColor),
-    clipCell(row.seq, layout.seq, "right"),
-    colorCell(clipCell(row.type, layout.type), row.typeColor, true),
-    colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
-    colorCell(clipCell(row.action, layout.action), row.actionColor ?? WHITE),
-    clipCell(row.state, layout.state),
-  ];
-  if (layout.showRaw) {
-    cells.push(clipCell(row.raw, layout.raw, "right"));
-  }
-  cells.push(clipCell(row.delta, layout.delta, "right"));
-  cells.push(
-    colorCell(clipCell(row.slot, layout.slot), row.slotColor ?? WHITE),
-  );
-  cells.push(
-    colorCell(clipCell(row.miss, layout.miss, "right"), row.missColor ?? RED),
-  );
-
-  console.log(cells.join(" "));
-  packetRowsSinceHeader++;
+function fullRedraw(): void {
+  updateHeader();
+  updateColumnHeaders();
+  packetTable.rerender(raw, screen.width);
+  const lines = packetTable.getVisibleLines(screen.tableHeight);
+  screen.redrawTable(lines);
+  updateStatusBar();
 }
 
 function updateCcaSlotTracker(
@@ -622,6 +437,8 @@ function displayCcaPacket(
   deltaMs: number = 0,
 ) {
   const isTx = !!(flags & FLAG_TX);
+  if (isTx) ccaTxCount++;
+  else ccaRxCount++;
   const rssi = isTx ? 0 : -(flags & FLAG_RSSI_MASK);
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : GREEN;
@@ -798,8 +615,6 @@ function displayCcaPacket(
   const deltaText = deltaMs > 0 ? `+${deltaMs}ms` : "";
   let slotText = "";
   let slotColor = WHITE;
-  let missText = "";
-  let missColor = RED;
   if (slot) {
     slotColor =
       slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
@@ -816,8 +631,7 @@ function displayCcaPacket(
       slotParts.push(errPart);
     }
     if (slot.missedPackets && slot.missedPackets > 0) {
-      missText = String(slot.missedPackets);
-      missColor = RED;
+      slotParts.push(`${RED}miss:${slot.missedPackets}${RESET}`);
     }
     slotText = slotParts.join(" ");
   }
@@ -827,7 +641,7 @@ function displayCcaPacket(
     stateParts.push(rawHex);
   }
 
-  renderPacketRow({
+  emitPacketRow({
     ts,
     proto: "A",
     protoColor: CYAN,
@@ -845,8 +659,6 @@ function displayCcaPacket(
     delta: deltaText,
     slot: slotText,
     slotColor,
-    miss: missText,
-    missColor,
   });
 
   // CSV recording
@@ -981,6 +793,8 @@ function displayCcxPacket(
   deltaMs: number = 0,
 ) {
   const isTx = !!(flags & FLAG_TX);
+  if (isTx) ccxTxCount++;
+  else ccxRxCount++;
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : BLUE;
   const ts = new Date().toISOString().slice(11, 23);
@@ -1026,7 +840,7 @@ function displayCcxPacket(
     }
     const actionText = msg.type.replaceAll("_", " ");
 
-    renderPacketRow({
+    emitPacketRow({
       ts,
       proto: "X",
       protoColor: YELLOW,
@@ -1043,14 +857,13 @@ function displayCcxPacket(
       raw: raw ? rawHex : "",
       delta: deltaStr,
       slot: "",
-      miss: "",
     });
   } else {
     // Fallback: raw hex (always show)
     const rawHex = Array.from(data)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join(" ");
-    renderPacketRow({
+    emitPacketRow({
       ts,
       proto: "X",
       protoColor: YELLOW,
@@ -1066,7 +879,6 @@ function displayCcxPacket(
       raw: raw ? rawHex : "",
       delta: deltaStr,
       slot: "",
-      miss: "",
     });
   }
 
@@ -1083,20 +895,22 @@ function displayCcxPacket(
 
 function displayStatus(blob: Buffer) {
   if (blob.length < STATUS_BLOB_MIN_SIZE) {
-    console.log(`${RED}Status blob too short: ${blob.length} bytes${RESET}`);
+    screen.showOverlay([
+      `${RED}Status blob too short: ${blob.length} bytes${RESET}`,
+    ]);
     return;
   }
 
   const uptime = readU32LE(blob, 0);
-  const ccaRx = readU32LE(blob, 4);
-  const ccaTx = readU32LE(blob, 8);
+  const ccaRxStat = readU32LE(blob, 4);
+  const ccaTxStat = readU32LE(blob, 8);
   const ccaDrop = readU32LE(blob, 12);
   const ccaCrc = readU32LE(blob, 16);
   const ccaN81 = readU32LE(blob, 20);
   const ccOverflow = readU32LE(blob, 24);
   const ccRunt = readU32LE(blob, 28);
-  const ccxRx = readU32LE(blob, 32);
-  const ccxTx = readU32LE(blob, 36);
+  const ccxRxStat = readU32LE(blob, 32);
+  const ccxTxStat = readU32LE(blob, 36);
   const ccxJoined = blob[40];
   const ccxRole = blob[41];
   const ethLink = blob[42];
@@ -1108,25 +922,19 @@ function displayStatus(blob: Buffer) {
       ? THREAD_ROLES[ccxRole]
       : `unknown(${ccxRole})`;
 
-  console.log(`\n${BOLD}${WHITE}── Nucleo Status ──${RESET}`);
-  console.log(`  ${DIM}uptime:${RESET}          ${fmtUptime(uptime)}`);
-  console.log(`  ${DIM}heap_free:${RESET}       ${fmtNum(heapFree)} bytes`);
-  console.log();
-  console.log(
-    `  ${CYAN}CCA${RESET}  rx=${fmtNum(ccaRx)}  tx=${fmtNum(ccaTx)}  drop=${ccaDrop}  crc_fail=${ccaCrc}  n81_err=${ccaN81}`,
-  );
-  console.log(
+  const lines: string[] = [
+    `${BOLD}${WHITE}── Nucleo Status ──${RESET}`,
+    `  ${DIM}uptime:${RESET}          ${fmtUptime(uptime)}`,
+    `  ${DIM}heap_free:${RESET}       ${fmtNum(heapFree)} bytes`,
+    "",
+    `  ${CYAN}CCA${RESET}  rx=${fmtNum(ccaRxStat)}  tx=${fmtNum(ccaTxStat)}  drop=${ccaDrop}  crc_fail=${ccaCrc}  n81_err=${ccaN81}`,
     `  ${CYAN}CC1101${RESET}  overflow=${ccOverflow}  runt=${ccRunt}`,
-  );
-  console.log();
-  console.log(
-    `  ${YELLOW}CCX${RESET}  rx=${fmtNum(ccxRx)}  tx=${fmtNum(ccxTx)}  joined=${ccxJoined ? "yes" : "no"}  role=${roleName}`,
-  );
-  console.log();
-  console.log(
+    "",
+    `  ${YELLOW}CCX${RESET}  rx=${fmtNum(ccxRxStat)}  tx=${fmtNum(ccxTxStat)}  joined=${ccxJoined ? "yes" : "no"}  role=${roleName}`,
+    "",
     `  ${GREEN}ETH${RESET}  link=${ethLink ? "up" : "down"}  clients=${numClients}`,
-  );
-  console.log();
+    "",
+  ];
 
   if (blob.length >= STATUS_BLOB_V2_SIZE) {
     const restartTimeout = readU32LE(blob, 48);
@@ -1146,23 +954,17 @@ function displayStatus(blob: Buffer) {
     const isrLatMax = readU32LE(blob, 104);
     const isrLatSamples = readU32LE(blob, 108);
 
-    console.log(
+    lines.push(
       `  ${MAGENTA}CCA Radio${RESET}  ack=${fmtNum(ccaAck)}  crc_optional=${fmtNum(ccaCrcOptional)}  irq=${fmtNum(ccaIrq)}`,
-    );
-    console.log(
       `  ${MAGENTA}Restarts${RESET}  timeout=${fmtNum(restartTimeout)}  overflow=${fmtNum(restartOverflow)}  manual=${fmtNum(restartManual)}  packet=${fmtNum(restartPacket)}`,
-    );
-    console.log(
       `  ${MAGENTA}Sync${RESET}  hit=${fmtNum(syncHit)}  miss=${fmtNum(syncMiss)}  hit_rate=${syncHit + syncMiss > 0 ? ((syncHit * 100) / (syncHit + syncMiss)).toFixed(1) : "0.0"}%`,
-    );
-    console.log(
       `  ${MAGENTA}Ring${RESET}  max_occ=${fmtNum(ringMax)}  in=${fmtNum(ringBytesIn)}B  dropped=${fmtNum(ringBytesDropped)}B`,
-    );
-    console.log(
       `  ${MAGENTA}IRQ->RX${RESET}  min=${fmtNum(isrLatMin)}us  p95=${fmtNum(isrLatP95)}us  max=${fmtNum(isrLatMax)}us  n=${fmtNum(isrLatSamples)}`,
     );
-    console.log();
   }
+
+  lines.push("", `${DIM}Press any key to dismiss${RESET}`);
+  screen.showOverlay(lines);
 }
 
 // ============================================================================
@@ -1186,9 +988,21 @@ function handleDatagram(msg: Buffer) {
       clearTimeout(textCmdTimer);
       textCmdTimer = null;
     }
-    const text = msg.subarray(1).toString("utf-8");
-    if (text.length > 0) process.stdout.write(text);
-    showPrompt();
+    const text = msg.subarray(1).toString("utf-8").trim();
+    if (text.length > 0) {
+      const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
+      if (lines.length <= 3) {
+        // Short responses go into the table as styled lines
+        for (const line of lines) screen.appendLine(line);
+      } else {
+        // Multi-line → overlay
+        screen.showOverlay([
+          ...lines,
+          "",
+          `${DIM}Press any key to dismiss${RESET}`,
+        ]);
+      }
+    }
     return;
   }
 
@@ -1196,7 +1010,6 @@ function handleDatagram(msg: Buffer) {
   if (flags === 0xfe) {
     const data = msg.subarray(2, 2 + len);
     displayStatus(data);
-    showPrompt();
     return;
   }
 
@@ -1229,6 +1042,7 @@ function handleDatagram(msg: Buffer) {
   } else {
     displayCcaPacket(data, flags, radioTs, deltaMs);
   }
+  updateStatusBar();
 }
 
 // ============================================================================
@@ -1243,15 +1057,10 @@ function setupUdp() {
   });
 
   udpSocket.on("error", (err: Error) => {
-    console.error(`${RED}UDP error: ${err.message}${RESET}`);
+    screen.appendLine(`${RED}UDP error: ${err.message}${RESET}`);
   });
 
   udpSocket.bind(() => {
-    const addr = udpSocket.address();
-    console.log(
-      `${GREEN}UDP socket bound to :${addr.port}, sending to ${host}:${UDP_PORT}${RESET}`,
-    );
-
     // Send initial keepalive to register with the Nucleo
     send(buildCmd(CMD.KEEPALIVE));
 
@@ -1260,7 +1069,8 @@ function setupUdp() {
       send(buildCmd(CMD.KEEPALIVE));
     }, KEEPALIVE_MS);
 
-    showPrompt();
+    updateHeader();
+    updateStatusBar();
   });
 }
 
@@ -1268,35 +1078,30 @@ function setupUdp() {
 // Shell commands
 // ============================================================================
 
-function showPrompt() {
-  process.stdout.write(`${BOLD}nucleo>${RESET} `);
-}
-
 function showHelp() {
-  console.log(`
-${BOLD}Local commands:${RESET}
-  ${GREEN}status${RESET}         Query device status (rich formatted view)
-  ${GREEN}record${RESET} [name]  Start CSV recording
-  ${GREEN}stop${RESET}           Stop recording
-  ${GREEN}quiet${RESET}          Toggle packet display
-  ${GREEN}raw${RESET}            Toggle raw hex display
-  ${GREEN}lock${RESET} [on|off]  Toggle lock detail fields (%/d/e)
-  ${GREEN}slot${RESET} [reset]   Toggle slot-tracking overlay or reset tracker
-  ${GREEN}help${RESET}           This help
-  ${GREEN}quit${RESET}           Exit
-
-${DIM}All other commands (cca, ccx, tx, etc.) are forwarded to the STM32 shell.${RESET}
-${DIM}Type 'help' on the STM32 shell for the full command list: just type the${RESET}
-${DIM}command directly (e.g. 'cca button 0595E68D on').${RESET}
-`);
+  screen.showOverlay([
+    `${BOLD}Local commands:${RESET}`,
+    `  ${GREEN}status${RESET}         Query device status (rich formatted view)`,
+    `  ${GREEN}record${RESET} [name]  Start CSV recording`,
+    `  ${GREEN}stop${RESET}           Stop recording`,
+    `  ${GREEN}quiet${RESET}          Toggle packet display`,
+    `  ${GREEN}raw${RESET}            Toggle raw hex display`,
+    `  ${GREEN}lock${RESET} [on|off]  Toggle lock detail fields (%/d/e)`,
+    `  ${GREEN}slot${RESET} [reset]   Toggle slot-tracking overlay or reset tracker`,
+    `  ${GREEN}help${RESET}           This help`,
+    `  ${GREEN}quit${RESET}           Exit`,
+    "",
+    `${DIM}All other commands (cca, ccx, tx, etc.) are forwarded to the STM32 shell.${RESET}`,
+    `${DIM}Type 'help' on the STM32 shell for the full command list: just type the${RESET}`,
+    `${DIM}command directly (e.g. 'cca button 0595E68D on').${RESET}`,
+    "",
+    `${DIM}Press any key to dismiss${RESET}`,
+  ]);
 }
 
 function handleCommand(line: string) {
   const trimmed = line.trim();
-  if (!trimmed) {
-    showPrompt();
-    return;
-  }
+  if (!trimmed) return;
 
   const args = trimmed.split(/\s+/);
   const cmd = args[0].toLowerCase();
@@ -1306,24 +1111,23 @@ function handleCommand(line: string) {
     case "help":
     case "?":
       showHelp();
-      showPrompt();
       return;
 
     case "status":
       send(buildCmd(CMD.STATUS_QUERY));
-      // Don't show prompt — wait for status response handler
       return;
 
     case "quiet":
       quiet = !quiet;
-      console.log(`Packet display: ${quiet ? "off" : "on"}`);
-      showPrompt();
+      screen.appendLine(`Packet display: ${quiet ? "off" : "on"}`);
+      updateStatusBar();
       return;
 
     case "raw":
       raw = !raw;
-      console.log(`Raw hex display: ${raw ? "on" : "off"}`);
-      showPrompt();
+      updateColumnHeaders();
+      screen.appendLine(`Raw hex display: ${raw ? "on" : "off"}`);
+      updateStatusBar();
       return;
 
     case "lock": {
@@ -1331,25 +1135,25 @@ function handleCommand(line: string) {
       if (mode === "on") lockDetails = true;
       else if (mode === "off") lockDetails = false;
       else lockDetails = !lockDetails;
-      console.log(`Lock details: ${lockDetails ? "on" : "off"}`);
-      showPrompt();
+      screen.appendLine(`Lock details: ${lockDetails ? "on" : "off"}`);
+      updateStatusBar();
       return;
     }
 
     case "slot":
       if ((args[1] || "").toLowerCase() === "reset") {
         ccaSlotFlows.clear();
-        console.log("Slot tracker: reset");
+        screen.appendLine("Slot tracker: reset");
       } else {
         slotTracking = !slotTracking;
-        console.log(`Slot tracker: ${slotTracking ? "on" : "off"}`);
+        screen.appendLine(`Slot tracker: ${slotTracking ? "on" : "off"}`);
       }
-      showPrompt();
+      updateStatusBar();
       return;
 
     case "record": {
       if (recording) {
-        console.log(
+        screen.appendLine(
           `${YELLOW}Already recording to ${recording.file.split("/").pop()}${RESET}`,
         );
       } else {
@@ -1364,24 +1168,24 @@ function handleCommand(line: string) {
           "timestamp,direction,protocol,type,device_id,rssi,raw_hex\n",
         );
         recording = { file: filePath, count: 0, startTime: Date.now() };
-        console.log(`${GREEN}Recording to ${fileName}${RESET}`);
+        screen.appendLine(`${GREEN}Recording to ${fileName}${RESET}`);
       }
-      showPrompt();
+      updateStatusBar();
       return;
     }
 
     case "stop": {
       if (!recording) {
-        console.log(`${YELLOW}Not recording${RESET}`);
+        screen.appendLine(`${YELLOW}Not recording${RESET}`);
       } else {
         const elapsed = ((Date.now() - recording.startTime) / 1000).toFixed(1);
         const fileName = recording.file.split("/").pop();
-        console.log(
+        screen.appendLine(
           `${GREEN}Stopped recording: ${fileName} (${recording.count} packets, ${elapsed}s)${RESET}`,
         );
         recording = null;
       }
-      showPrompt();
+      updateStatusBar();
       return;
     }
 
@@ -1405,11 +1209,13 @@ function handleCommand(line: string) {
 // ============================================================================
 
 function cleanup() {
+  lineEditor.stop();
+  screen.destroy();
   if (keepaliveTimer) clearInterval(keepaliveTimer);
   if (recording) {
     const fileName = recording.file.split("/").pop();
     console.log(
-      `\n${YELLOW}Stopped recording: ${fileName} (${recording.count} packets)${RESET}`,
+      `${YELLOW}Stopped recording: ${fileName} (${recording.count} packets)${RESET}`,
     );
     recording = null;
   }
@@ -1437,16 +1243,6 @@ if (!host) {
   console.error(`  --leap-certs <name>   Cert name prefix (default: ra3)`);
   process.exit(1);
 }
-
-console.log(`${BOLD}Nucleo CLI${RESET} — UDP to ${host}:${UDP_PORT}`);
-console.log(`Type 'help' for commands, 'quit' to exit\n`);
-
-// Handle Ctrl-C
-process.on("SIGINT", () => {
-  cleanup();
-  console.log();
-  process.exit(0);
-});
 
 /** Load saved LEAP data from data/leap-*.json, merging all files */
 function loadSavedLeapData(): boolean {
@@ -1482,21 +1278,19 @@ function loadSavedLeapData(): boolean {
   if (nSerials === 0) return false;
 
   setLeapData(merged as any);
-  const nZones = Object.keys(merged.zones).length;
-  console.log(
-    `${DIM}LEAP: loaded ${nSerials} devices, ${nZones} zones from ${files.length} saved file(s)${RESET}`,
-  );
   return true;
 }
 
 // Fetch LEAP data if requested, then start
 async function startup() {
+  // Load LEAP data before initializing TUI (so device names are available)
   if (UPDATE_LEAP) {
     try {
       const { LeapConnection, fetchLeapData, buildDumpData } = await import(
         "../tools/leap-client"
       );
 
+      // LEAP fetch happens before TUI init — use console.log
       console.log(
         `${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`,
       );
@@ -1517,44 +1311,94 @@ async function startup() {
       setLeapData(dumpData);
       const nZones = Object.keys(dumpData.zones).length;
       const nDevices = Object.keys(dumpData.devices).length;
-      const nPresets = Object.keys(dumpData.presets).length;
       console.log(
-        `${GREEN}LEAP: ${nZones} zones, ${nDevices} devices, ${nPresets} presets → saved to ${filePath}${RESET}\n`,
+        `${GREEN}LEAP: ${nZones} zones, ${nDevices} devices → saved${RESET}`,
       );
     } catch (err: any) {
       console.error(
-        `${YELLOW}LEAP fetch failed: ${err.message} — using saved LEAP data${RESET}\n`,
+        `${YELLOW}LEAP fetch failed: ${err.message} — using saved data${RESET}`,
       );
-      // Fall back to saved data
       loadSavedLeapData();
     }
   } else {
-    // Auto-load saved LEAP data from data/ directory
     loadSavedLeapData();
   }
+
+  // Initialize TUI
+  screen.init();
+  updateHeader();
+  updateColumnHeaders();
+  updateStatusBar();
+
+  // Wire up resize handler
+  screen.handleResize(() => fullRedraw());
+
+  // Wire up line editor
+  lineEditor.onRender = (text, col) => {
+    screen.setInputLine(text);
+    screen.setCursorToInput(col);
+  };
+
+  lineEditor.onPageUp = () => {
+    packetTable.scrollBack(-1, screen.tableHeight);
+    const lines = packetTable.getVisibleLines(screen.tableHeight);
+    screen.redrawTable(lines);
+    updateStatusBar();
+  };
+
+  lineEditor.onPageDown = () => {
+    packetTable.scrollBack(1, screen.tableHeight);
+    const lines = packetTable.getVisibleLines(screen.tableHeight);
+    screen.redrawTable(lines);
+    updateStatusBar();
+  };
+
+  lineEditor.onEnd = () => {
+    if (!packetTable.isLive()) {
+      packetTable.scrollToLive();
+      const lines = packetTable.getVisibleLines(screen.tableHeight);
+      screen.redrawTable(lines);
+      updateStatusBar();
+    }
+  };
+
+  lineEditor.onRedraw = () => fullRedraw();
+
+  lineEditor.onQuit = () => {
+    cleanup();
+    process.exit(0);
+  };
+
+  lineEditor.onAnyKey = () => {
+    screen.clearOverlay();
+    // After clearing overlay, redraw table if we had one
+    const lines = packetTable.getVisibleLines(screen.tableHeight);
+    screen.redrawTable(lines);
+  };
+
+  // Tab completion candidates
+  lineEditor.setCompletions([
+    "status",
+    "record",
+    "stop",
+    "quiet",
+    "raw",
+    "lock",
+    "slot",
+    "help",
+    "quit",
+    "exit",
+    "restart",
+    "cca",
+    "ccx",
+    "tx",
+    "pass",
+  ]);
+
+  lineEditor.start(handleCommand);
 
   // Start UDP socket
   setupUdp();
 }
 
 startup();
-
-// Read stdin line by line
-const decoder = new TextDecoder();
-const reader = Bun.stdin.stream().getReader();
-
-async function readInput() {
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const text = decoder.decode(value);
-    const lines = text.split("\n");
-    for (const line of lines) {
-      if (line.length > 0) {
-        handleCommand(line);
-      }
-    }
-  }
-}
-
-readInput();
