@@ -219,12 +219,13 @@ export class Screen implements IScreen {
     if (right) {
       const leftLen = stripAnsi(left).length;
       const rightLen = stripAnsi(right).length;
-      const gap = Math.max(2, this._width - leftLen - rightLen);
+      const usable = this._width - 1; // avoid writing to last column
+      const gap = Math.max(2, usable - leftLen - rightLen);
       this.headerText = left + " ".repeat(gap) + right;
     } else {
       this.headerText = left;
     }
-    this.headerSep = "\x1b[2m" + "─".repeat(this._width) + "\x1b[0m";
+    this.headerSep = "\x1b[2m" + "─".repeat(this._width - 1) + "\x1b[0m";
     this.writeAt(this.headerRow, this.headerText);
     this.writeAt(this.headerSepRow, this.headerSep);
   }
