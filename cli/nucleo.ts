@@ -57,8 +57,8 @@ import {
 // Constants
 // ============================================================================
 const UDP_PORT = 9433;
-const KEEPALIVE_MS = 10000;
-const CONNECTION_TIMEOUT_MS = 15000; // no datagram for 15s → disconnected
+const KEEPALIVE_MS = 5000;
+const CONNECTION_TIMEOUT_MS = 12000; // no datagram for 12s → disconnected
 const CAPTURES_DIR = join(import.meta.dir, "../captures/cca-sessions");
 const STATUS_BLOB_MIN_SIZE = 48;
 const STATUS_BLOB_V2_SIZE = 112;
