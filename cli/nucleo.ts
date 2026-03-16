@@ -58,6 +58,7 @@ import {
 // ============================================================================
 const UDP_PORT = 9433;
 const KEEPALIVE_MS = 10000;
+const CONNECTION_TIMEOUT_MS = 15000; // no datagram for 15s → disconnected
 const CAPTURES_DIR = join(import.meta.dir, "../captures/cca-sessions");
 const STATUS_BLOB_MIN_SIZE = 48;
 const STATUS_BLOB_V2_SIZE = 112;
@@ -133,6 +134,8 @@ let recording: { file: string; count: number; startTime: number } | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval>;
 let lastCcaRadioTs = 0; // for CCA inter-packet delta
 let lastCcxRadioTs = 0; // for CCX inter-packet delta
+let lastDatagramTime = 0; // wall-clock ms of last received datagram
+let connected = false;
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
 let lockDetails = false;
@@ -309,7 +312,7 @@ function updateStatusBar(): void {
 }
 
 function updateHeader(): void {
-  const connState = udpSocket
+  const connState = connected
     ? `${GREEN}● Connected${RESET}`
     : `${RED}● Disconnected${RESET}`;
   const left = `${BOLD}Nucleo CLI${RESET} — ${host}:${UDP_PORT}  ${connState}`;
@@ -977,6 +980,12 @@ function handleDatagram(msg: Buffer) {
   const flags = msg[0];
   const len = msg[1];
 
+  // Track connection liveness from any datagram
+  const wasConnected = connected;
+  lastDatagramTime = Date.now();
+  connected = true;
+  if (!wasConnected) updateHeader();
+
   // Heartbeat: [0xFF][0x00]
   if (flags === 0xff && len === 0x00) {
     return;
@@ -1064,9 +1073,18 @@ function setupUdp() {
     // Send initial keepalive to register with the Nucleo
     send(buildCmd(CMD.KEEPALIVE));
 
-    // Periodic keepalive to stay registered (firmware expires after 30s)
+    // Periodic keepalive + connection liveness check
     keepaliveTimer = setInterval(() => {
       send(buildCmd(CMD.KEEPALIVE));
+      // Check if we've heard back recently
+      if (
+        connected &&
+        lastDatagramTime > 0 &&
+        Date.now() - lastDatagramTime > CONNECTION_TIMEOUT_MS
+      ) {
+        connected = false;
+        updateHeader();
+      }
     }, KEEPALIVE_MS);
 
     updateHeader();

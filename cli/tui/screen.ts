@@ -137,6 +137,7 @@ export class Screen implements IScreen {
   private _width = 120;
   private _height = 24;
   private headerText = "";
+  private headerSep = "";
   private colLabels = "";
   private colSeparator = "";
   private statusText = "";
@@ -153,8 +154,8 @@ export class Screen implements IScreen {
     return this._height;
   }
   get tableHeight(): number {
-    // rows 1 (header) + 2 (col labels) + 3 (separator) + H-1 (status) + H (input)
-    return Math.max(1, this._height - 5);
+    // rows: 1 (header) + 2 (header sep) + 3 (col labels) + 4 (col sep) + H-1 (status) + H (input)
+    return Math.max(1, this._height - 6);
   }
   get isTTY(): boolean {
     return true;
@@ -164,14 +165,17 @@ export class Screen implements IScreen {
   private get headerRow(): number {
     return 1;
   }
-  private get colLabelRow(): number {
+  private get headerSepRow(): number {
     return 2;
   }
-  private get colSepRow(): number {
+  private get colLabelRow(): number {
     return 3;
   }
-  private get scrollTop(): number {
+  private get colSepRow(): number {
     return 4;
+  }
+  private get scrollTop(): number {
+    return 5;
   }
   private get scrollBottom(): number {
     return this._height - 2;
@@ -220,7 +224,9 @@ export class Screen implements IScreen {
     } else {
       this.headerText = left;
     }
+    this.headerSep = "\x1b[2m" + "─".repeat(this._width) + "\x1b[0m";
     this.writeAt(this.headerRow, this.headerText);
+    this.writeAt(this.headerSepRow, this.headerSep);
   }
 
   setColumnHeaders(labels: string, separator: string): void {
@@ -325,6 +331,7 @@ export class Screen implements IScreen {
   // ============================================================================
   private drawChrome(): void {
     if (this.headerText) this.writeAt(this.headerRow, this.headerText);
+    if (this.headerSep) this.writeAt(this.headerSepRow, this.headerSep);
     if (this.colLabels) this.writeAt(this.colLabelRow, this.colLabels);
     if (this.colSeparator) this.writeAt(this.colSepRow, this.colSeparator);
     if (this.statusText) this.writeAt(this.statusRow, this.statusText);
