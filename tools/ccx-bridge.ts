@@ -268,7 +268,7 @@ function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
 // The device is supposed to ramp itself; we simulate for Wiz.
 
 const RAMP_INTERVAL_MS = 100; // step every 100ms
-const RAMP_RATE_PCT_PER_SEC = 20; // 0→100% in 5 seconds
+const RAMP_RATE_PCT_PER_SEC = 20; // 0→100% in 5 seconds (Lutron default)
 const RAMP_STEP = (RAMP_RATE_PCT_PER_SEC * RAMP_INTERVAL_MS) / 1000;
 
 // Track current level per zone (updated by LEVEL_CONTROL and ramp)
