@@ -305,7 +305,7 @@ function updateStatusBar(): void {
   if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
   if (raw) parts.push(`${CYAN}[raw]${RESET}`);
   if (lockDetails) parts.push(`${GREEN}[lock]${RESET}`);
-  if (slotTracking) parts.push(`${DIM}[slot]${RESET}`);
+  if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
   if (!packetTable.isLive()) parts.push(`${YELLOW}[scroll]${RESET}`);
   screen.setStatusBar(parts.join(" "));

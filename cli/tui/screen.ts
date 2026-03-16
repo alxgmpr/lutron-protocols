@@ -154,8 +154,8 @@ export class Screen implements IScreen {
     return this._height;
   }
   get tableHeight(): number {
-    // rows: 1 (header) + 2 (header sep) + 3 (col labels) + 4 (col sep) + H-1 (status) + H (input)
-    return Math.max(1, this._height - 6);
+    // chrome: header, header sep, col labels, col sep (top) + status, input sep, input (bottom)
+    return Math.max(1, this._height - 7);
   }
   get isTTY(): boolean {
     return true;
@@ -178,9 +178,12 @@ export class Screen implements IScreen {
     return 5;
   }
   private get scrollBottom(): number {
-    return this._height - 2;
+    return this._height - 3;
   }
   private get statusRow(): number {
+    return this._height - 2;
+  }
+  private get inputSepRow(): number {
     return this._height - 1;
   }
   private get inputRow(): number {
@@ -331,11 +334,13 @@ export class Screen implements IScreen {
   // Internal helpers
   // ============================================================================
   private drawChrome(): void {
+    const dimSep = "\x1b[2m" + "─".repeat(this._width - 1) + "\x1b[0m";
     if (this.headerText) this.writeAt(this.headerRow, this.headerText);
     if (this.headerSep) this.writeAt(this.headerSepRow, this.headerSep);
     if (this.colLabels) this.writeAt(this.colLabelRow, this.colLabels);
     if (this.colSeparator) this.writeAt(this.colSepRow, this.colSeparator);
     if (this.statusText) this.writeAt(this.statusRow, this.statusText);
+    this.writeAt(this.inputSepRow, dimSep);
     if (this.inputText) this.writeAt(this.inputRow, this.inputText);
   }
 
