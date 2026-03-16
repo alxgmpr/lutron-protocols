@@ -22,9 +22,9 @@ import { spawn } from "child_process";
 import { createSocket } from "dgram";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { CCX_CONFIG, getZoneName, getSerialName } from "../ccx/config";
+import { CCX_CONFIG, getZoneName, getSerialName, getPresetInfo, presetIdFromDeviceId } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import type { CCXDeviceReport, CCXLevelControl, CCXPacket } from "../ccx/types";
+import type { CCXDeviceReport, CCXDimHold, CCXLevelControl, CCXPacket } from "../ccx/types";
 
 // ── CLI args ──────────────────────────────────────────────
 
@@ -72,10 +72,15 @@ interface SerialZoneMap {
   [serial: string]: number; // device serial → zone ID
 }
 
+interface PresetZoneMap {
+  [presetId: string]: number; // LEAP preset ID → zone ID
+}
+
 interface BridgeConfig {
   outputs: (WizOutput | WebhookOutput)[];
   devices?: { name: string; zoneIds: number[] }[];
   serialToZone?: SerialZoneMap;
+  presetToZone?: PresetZoneMap;
 }
 
 function loadConfig(): BridgeConfig {
@@ -116,6 +121,34 @@ if (config.serialToZone) {
   }
 }
 
+// Build preset → zone mapping (for pico buttons: On/Off/Raise/Lower)
+const presetToZone = new Map<number, number>();
+if (config.presetToZone) {
+  for (const [preset, zoneId] of Object.entries(config.presetToZone)) {
+    presetToZone.set(Number(preset), zoneId);
+  }
+}
+
+/** Resolve zone ID from a DIM_HOLD/DIM_STEP deviceId via preset lookup */
+function resolveZoneFromPreset(deviceId: Uint8Array): number {
+  if (deviceId.length < 2) return 0;
+  const presetId = presetIdFromDeviceId(deviceId);
+  return presetToZone.get(presetId) ?? 0;
+}
+
+/** Get raise/lower direction from preset name (for BUTTON_PRESS On/Off handling) */
+function getPresetAction(deviceId: Uint8Array): "on" | "off" | "raise" | "lower" | null {
+  const presetId = presetIdFromDeviceId(deviceId);
+  const info = getPresetInfo(presetId);
+  if (!info) return null;
+  const name = info.name.toLowerCase();
+  if (name === "on") return "on";
+  if (name === "off") return "off";
+  if (name === "raise") return "raise";
+  if (name === "lower") return "lower";
+  return null;
+}
+
 // ── Deduplication ─────────────────────────────────────────
 // Processor sends 6-7 copies of each command. Dedup by type+key+seq/level.
 
@@ -142,14 +175,20 @@ const wizSocket = config.outputs.some((o) => o.type === "wiz")
   ? createSocket("udp4")
   : null;
 
+/** Scale Lutron 1-100% → Wiz 10-100% linearly. 0% = off. */
+function lutronToWizDimming(lutronPercent: number): number {
+  return Math.round(10 + (lutronPercent / 100) * 90);
+}
+
 async function sendWiz(output: WizOutput, levelPercent: number) {
   if (!wizSocket) return;
-  const isOff = levelPercent === 0;
+  const isOff = levelPercent <= 0;
+  const wizDim = lutronToWizDimming(levelPercent);
   const payload = isOff
     ? JSON.stringify({ method: "setPilot", params: { state: false } })
     : JSON.stringify({
         method: "setPilot",
-        params: { state: true, dimming: Math.max(10, Math.round(levelPercent)) },
+        params: { state: true, dimming: wizDim },
       });
 
   const buf = Buffer.from(payload);
@@ -160,7 +199,7 @@ async function sendWiz(output: WizOutput, levelPercent: number) {
       if (err) {
         console.error(`  [wiz] Error → ${output.wizIp}: ${err.message}`);
       } else {
-        console.log(`  [wiz] → ${output.wizIp} ${isOff ? "OFF" : `${Math.round(levelPercent)}%`}`);
+        console.log(`  [wiz] → ${output.wizIp} ${isOff ? "OFF" : `${Math.round(levelPercent)}%→wiz${wizDim}%`}`);
       }
       resolve();
     });
@@ -370,6 +409,9 @@ function main() {
       ? "log only"
       : config.outputs.map((o) => o.type).join(", ");
   console.log(`Outputs: ${outputDesc}`);
+  if (presetToZone.size > 0) {
+    console.log(`Presets: ${presetToZone.size} mapped to zones`);
+  }
   console.log("");
 
   const tsharkArgs = [
@@ -442,10 +484,30 @@ function main() {
         continue;
       }
 
+      // Handle BUTTON_PRESS (pico On/Off → dispatch, Raise/Lower → ramp)
+      if (pkt.parsed.type === "BUTTON_PRESS") {
+        const zone = resolveZoneFromPreset(pkt.parsed.deviceId);
+        if (!zone) continue;
+        if (watchedZones.size > 0 && !watchedZones.has(zone)) continue;
+        if (isDuplicate(`bp:${zone}:${pkt.parsed.sequence}`)) continue;
+        const action = getPresetAction(pkt.parsed.deviceId);
+        if (action === "on") {
+          matchCount++;
+          dispatch(zone, 100, "BUTTON(On)");
+        } else if (action === "off") {
+          matchCount++;
+          dispatch(zone, 0, "BUTTON(Off)");
+        }
+        // Raise/Lower handled via DIM_HOLD below
+        continue;
+      }
+
       // Handle DIM_HOLD (raise/lower start)
       if (pkt.parsed.type === "DIM_HOLD") {
-        const { zoneId, action, sequence } = pkt.parsed;
-        if (!zoneId) continue; // pico-originated, no zone — skip for now
+        let { zoneId, action, sequence } = pkt.parsed;
+        // Fall back to preset→zone lookup for pico-originated holds
+        if (!zoneId) zoneId = resolveZoneFromPreset(pkt.parsed.deviceId);
+        if (!zoneId) continue;
         if (watchedZones.size > 0 && !watchedZones.has(zoneId)) continue;
         if (isDuplicate(`dh:${zoneId}:${sequence}`)) continue;
         matchCount++;
@@ -456,7 +518,8 @@ function main() {
 
       // Handle DIM_STEP (raise/lower release)
       if (pkt.parsed.type === "DIM_STEP") {
-        const { zoneId, sequence } = pkt.parsed;
+        let { zoneId, sequence } = pkt.parsed;
+        if (!zoneId) zoneId = resolveZoneFromPreset(pkt.parsed.deviceId);
         if (!zoneId) continue;
         if (watchedZones.size > 0 && !watchedZones.has(zoneId)) continue;
         if (isDuplicate(`ds:${zoneId}:${sequence}`)) continue;
