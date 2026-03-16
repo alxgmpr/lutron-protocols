@@ -85,7 +85,7 @@ static bool transmit_one(const uint8_t* packet, size_t len)
 static void exec_button(uint32_t device_id, uint8_t button)
 {
     uint8_t packet[24];
-    uint8_t type_base = type_alternate_ ? PKT_BUTTON_SHORT_B : PKT_BUTTON_SHORT_A;
+    uint8_t type_base = type_alternate_ ? PKT_BTN_SHORT_B : PKT_BTN_SHORT_A;
     type_alternate_ = !type_alternate_;
 
     bool    is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
@@ -174,7 +174,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
         else {
             packet[17] = QS_CLASS_LEVEL;
             packet[18] = QS_TYPE_HOLD;
-            packet[19] = 0x1E + button;  /* preset base offset */
+            packet[19] = QS_PRESET_BASE + button;
             packet[20] = 0x00;
             packet[21] = 0x00;
         }
@@ -428,17 +428,17 @@ static void exec_state_report(uint32_t device_id, uint8_t level_pct)
         packet[5] = (device_id >> 24) & 0xFF;
 
         packet[6] = 0x00;
-        packet[7] = 0x08;
+        packet[7] = QS_FMT_STATE;
         packet[8] = 0x00;
-        packet[9] = 0x1B;
+        packet[9] = QS_STATE_ENTITY_COMP;
         packet[10] = 0x01;
 
         /* Level byte (first instance) */
         packet[11] = level_byte;
 
         packet[12] = 0x00;
-        packet[13] = 0x1B;
-        packet[14] = 0x92;
+        packet[13] = QS_STATE_ENTITY_COMP;
+        packet[14] = QS_STATE_STATUS_FLAG;
 
         /* Level byte (second instance) */
         packet[15] = level_byte;
@@ -1005,7 +1005,7 @@ static void exec_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
 static void exec_save_fav(uint32_t device_id)
 {
     uint8_t packet[24];
-    uint8_t type_base = type_alternate_ ? PKT_BUTTON_SHORT_B : PKT_BUTTON_SHORT_A;
+    uint8_t type_base = type_alternate_ ? PKT_BTN_SHORT_B : PKT_BTN_SHORT_A;
     type_alternate_ = !type_alternate_;
 
     uint8_t seq = 0x00;
@@ -1063,7 +1063,7 @@ static void exec_save_fav(uint32_t device_id)
         packet[16] = 0x00;
         packet[17] = QS_CLASS_LEVEL;
         packet[18] = QS_TYPE_HOLD;
-        packet[19] = 0x1E + BTN_FAVORITE;
+        packet[19] = QS_PRESET_BASE + BTN_FAVORITE;
         packet[20] = 0x00;
         packet[21] = 0x00;
 
@@ -1178,6 +1178,198 @@ static void exec_query(uint32_t target_id)
 }
 
 /* -----------------------------------------------------------------------
+ * Raw command — universal packet builder
+ * Builds a valid CCA packet from format byte + payload, handles type
+ * cycling, sequence, device_id, CRC, and packet length selection.
+ * ----------------------------------------------------------------------- */
+static void exec_raw_cmd(uint32_t zone_id, uint32_t target_id, uint8_t format,
+                         const uint8_t* payload, uint8_t payload_len,
+                         uint8_t repeat)
+{
+    if (repeat == 0) repeat = 12;
+
+    /* Packet length: format < 0x20 → 24 bytes (22 data), format >= 0x20 → 53 bytes (51 data) */
+    bool   is_long = (format >= 0x20);
+    size_t data_len = is_long ? 51 : 22;
+    uint8_t type_base = is_long ? 0xA1 : 0x81;
+
+    printf("[cca] CMD raw zone=%08X target=%08X fmt=0x%02X len=%u repeat=%u\r\n",
+           (unsigned)zone_id, (unsigned)target_id, format, payload_len, repeat);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[53];
+    uint8_t seq = 0x01;
+
+    for (int rep = 0; rep < repeat; rep++) {
+        memset(packet, QS_PADDING, sizeof(packet));
+
+        packet[0] = type_base + (rep % 3);
+        packet[1] = seq;
+
+        /* Zone/source ID little-endian */
+        packet[2] = zone_id & 0xFF;
+        packet[3] = (zone_id >> 8) & 0xFF;
+        packet[4] = (zone_id >> 16) & 0xFF;
+        packet[5] = (zone_id >> 24) & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = format;
+        packet[8] = 0x00;  /* flags */
+
+        /* Target object_id big-endian */
+        packet[9] = (target_id >> 24) & 0xFF;
+        packet[10] = (target_id >> 16) & 0xFF;
+        packet[11] = (target_id >> 8) & 0xFF;
+        packet[12] = target_id & 0xFF;
+
+        /* Copy payload bytes starting at [13] (includes addr_mode) */
+        size_t max_payload = data_len - 13;
+        size_t copy_len = payload_len < max_payload ? payload_len : max_payload;
+        if (copy_len > 0) {
+            memcpy(packet + 13, payload, copy_len);
+        }
+
+        transmit_one(packet, data_len);
+        seq = (seq + 5 + (rep % 2)) & 0xFF;
+        if (rep < repeat - 1) vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD raw complete\r\n");
+}
+
+/* -----------------------------------------------------------------------
+ * Scene execute — format 0x0C with QS_CLASS_SCENE
+ * Activates a scene on a target device with level and fade.
+ * Packet structure from ESN-QS Case 0x53.
+ * ----------------------------------------------------------------------- */
+static void exec_scene_execute(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs)
+{
+    if (level_pct > 100) level_pct = 100;
+
+    uint16_t level_value;
+    if (level_pct == 100)
+        level_value = QS_LEVEL_MAX;
+    else if (level_pct == 0)
+        level_value = 0x0000;
+    else
+        level_value = (uint16_t)((uint32_t)level_pct * 65279 / 100);
+
+    printf("[cca] CMD scene zone=%08X target=%08X %u%% fade=%uqs\r\n",
+           (unsigned)zone_id, (unsigned)target_id, level_pct, fade_qs);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
+
+    /* Same format as bridge_level (0x0E) but with CLASS_SCENE instead of CLASS_LEVEL */
+    for (int rep = 0; rep < 20; rep++) {
+        memset(packet, QS_PADDING, sizeof(packet));
+
+        packet[0] = 0x81 + (rep % 3);
+        packet[1] = seq;
+
+        /* Zone ID little-endian */
+        packet[2] = zone_id & 0xFF;
+        packet[3] = (zone_id >> 8) & 0xFF;
+        packet[4] = (zone_id >> 16) & 0xFF;
+        packet[5] = (zone_id >> 24) & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_LEVEL;       /* 0x0E — same as bridge level */
+        packet[8] = 0x00;  /* flags */
+
+        /* Target object_id big-endian */
+        packet[9] = (target_id >> 24) & 0xFF;
+        packet[10] = (target_id >> 16) & 0xFF;
+        packet[11] = (target_id >> 8) & 0xFF;
+        packet[12] = target_id & 0xFF;
+
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_SCENE;    /* 0x09 — scene instead of level */
+        packet[15] = QS_TYPE_EXECUTE;   /* 0x02 */
+
+        /* Level16 big-endian */
+        packet[16] = (level_value >> 8) & 0xFF;
+        packet[17] = level_value & 0xFF;
+
+        packet[18] = 0x00;
+        packet[19] = fade_qs;
+        packet[20] = 0x00;
+        packet[21] = 0x00;
+
+        transmit_one(packet, 22);
+        seq = (seq + 5 + (rep % 2)) & 0xFF;
+        if (rep < 19) vTaskDelay(pdMS_TO_TICKS(60));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD scene complete\r\n");
+}
+
+/* -----------------------------------------------------------------------
+ * Dimming config — format 0x13, 53-byte packet
+ * Sends dimming capability / config bytes from ESN-QS Case 0x51.
+ * Payload bytes are passed through from shell.
+ * ----------------------------------------------------------------------- */
+static void exec_dim_config(uint32_t zone_id, uint32_t target_id,
+                            const uint8_t* config_bytes, uint8_t config_len)
+{
+    printf("[cca] CMD dim_config zone=%08X target=%08X config_len=%u\r\n",
+           (unsigned)zone_id, (unsigned)target_id, config_len);
+
+    cc1101_stop_rx();
+
+    uint8_t packet[53];
+    uint8_t seq = 0x01;
+
+    for (int rep = 0; rep < 5; rep++) {
+        memset(packet, QS_PADDING, sizeof(packet));
+
+        packet[0] = 0xA3;  /* config type byte — always 0xA3 for trim-style */
+        packet[1] = seq;
+
+        uint32_t active_zone = (rep == 0) ? zone_id : (zone_id + 2);
+
+        /* Zone ID little-endian */
+        packet[2] = active_zone & 0xFF;
+        packet[3] = (active_zone >> 8) & 0xFF;
+        packet[4] = (active_zone >> 16) & 0xFF;
+        packet[5] = (active_zone >> 24) & 0xFF;
+
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = QS_FMT_DIM_CAP;  /* 0x13 — dimming capability format */
+        packet[8] = 0x00;  /* flags */
+
+        /* Target object_id big-endian */
+        packet[9] = (target_id >> 24) & 0xFF;
+        packet[10] = (target_id >> 16) & 0xFF;
+        packet[11] = (target_id >> 8) & 0xFF;
+        packet[12] = target_id & 0xFF;
+
+        packet[13] = QS_ADDR_COMPONENT;
+        packet[14] = QS_CLASS_LEGACY;     /* 0x06 */
+        packet[15] = QS_TYPE_DIM_CONFIG;  /* 0x78 */
+
+        /* Config payload starting at [16] */
+        size_t max_payload = 51 - 16;
+        size_t copy_len = config_len < max_payload ? config_len : max_payload;
+        if (copy_len > 0) {
+            memcpy(packet + 16, config_bytes, copy_len);
+        }
+
+        transmit_one(packet, 51);
+        seq = (seq + 1) & 0xFF;
+        if (rep < 4) vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD dim_config complete\r\n");
+}
+
+/* -----------------------------------------------------------------------
  * Command dispatcher — called from CCA task context
  * ----------------------------------------------------------------------- */
 void cca_cmd_execute(const CcaCmdItem* item)
@@ -1230,6 +1422,17 @@ void cca_cmd_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_QUERY:
         exec_query(item->target_id);
+        break;
+    case CCA_CMD_RAW:
+        exec_raw_cmd(item->device_id, item->target_id, item->raw_format,
+                     item->raw_payload, item->raw_payload_len,
+                     item->raw_repeat);
+        break;
+    case CCA_CMD_SCENE_EXEC:
+        exec_scene_execute(item->device_id, item->target_id, item->level_pct, item->fade_qs);
+        break;
+    case CCA_CMD_DIM_CONFIG:
+        exec_dim_config(item->device_id, item->target_id, item->raw_payload, item->raw_payload_len);
         break;
     case CCA_CMD_PICO_PAIR:
     case CCA_CMD_BRIDGE_PAIR:

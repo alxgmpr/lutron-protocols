@@ -22,10 +22,10 @@ static const size_t CCA_PKT_STANDARD_LEN = 24;
 static const size_t CCA_PKT_PAIRING_LEN = 53;
 
 // Packet type constants
-static const uint8_t PKT_BUTTON_SHORT_A = 0x88;
-static const uint8_t PKT_BUTTON_LONG_A = 0x89;
-static const uint8_t PKT_BUTTON_SHORT_B = 0x8A;
-static const uint8_t PKT_BUTTON_LONG_B = 0x8B;
+static const uint8_t PKT_BTN_SHORT_A = 0x88;
+static const uint8_t PKT_BTN_LONG_A = 0x89;
+static const uint8_t PKT_BTN_SHORT_B = 0x8A;
+static const uint8_t PKT_BTN_LONG_B = 0x8B;
 static const uint8_t PKT_STATE_REPORT_81 = 0x81;
 static const uint8_t PKT_STATE_REPORT_82 = 0x82;
 static const uint8_t PKT_STATE_REPORT_83 = 0x83;
@@ -57,6 +57,15 @@ static const uint8_t PKT_HS_E0 = 0xE0;
 static const uint8_t PKT_UNPAIR = 0xF0;
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;
 static const uint8_t PKT_LED_CONFIG = 0xF2;
+
+// Virtual packet types — format-discriminated config packets (0xF3-0xF9)
+static const uint8_t PKT_ZONE_BIND   = 0xF3;  /* format 0x12: final config w/ zone */
+static const uint8_t PKT_DIM_CONFIG  = 0xF4;  /* format 0x13: dimming capability */
+static const uint8_t PKT_FUNC_MAP    = 0xF5;  /* format 0x14: function mapping */
+static const uint8_t PKT_TRIM_CONFIG = 0xF6;  /* format 0x15: trim / phase config */
+static const uint8_t PKT_SCENE_CONFIG = 0xF7; /* format 0x1A: scene config */
+static const uint8_t PKT_FADE_CONFIG = 0xF8;  /* format 0x1C: fade config */
+static const uint8_t PKT_ZONE_ASSIGN = 0xF9;  /* format 0x28: zone assignment */
 
 // Button codes
 static const uint8_t BTN_ON = 0x2;
@@ -99,10 +108,10 @@ static const uint16_t LUTRON_CRC_POLY = 0xCA0F;
 // Get human-readable packet type name
 inline const char *cca_packet_type_name(uint8_t type_byte) {
   switch (type_byte) {
-    case 0x88: return "BTN_PRESS_A";
-    case 0x89: return "BTN_RELEASE_A";
-    case 0x8A: return "BTN_PRESS_B";
-    case 0x8B: return "BTN_RELEASE_B";
+    case 0x88: return "BTN_SHORT_A";
+    case 0x89: return "BTN_LONG_A";
+    case 0x8A: return "BTN_SHORT_B";
+    case 0x8B: return "BTN_LONG_B";
     case 0x81: return "STATE_RPT_81";
     case 0x82: return "STATE_RPT_82";
     case 0x83: return "STATE_RPT_83";
@@ -133,6 +142,13 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xF0: return "UNPAIR";
     case 0xF1: return "UNPAIR_PREP";
     case 0xF2: return "LED_CONFIG";
+    case 0xF3: return "ZONE_BIND";
+    case 0xF4: return "DIM_CONFIG";
+    case 0xF5: return "FUNC_MAP";
+    case 0xF6: return "TRIM_CONFIG";
+    case 0xF7: return "SCENE_CONFIG";
+    case 0xF8: return "FADE_CONFIG";
+    case 0xF9: return "ZONE_ASSIGN";
     default: return "UNKNOWN";
   }
 }

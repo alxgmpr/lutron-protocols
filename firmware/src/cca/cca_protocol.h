@@ -90,6 +90,24 @@ static const uint16_t QS_LEVEL_MAX     = 0xFEFF;  /* 100% as 16-bit */
 static const uint8_t  QS_LEVEL_MAX_8   = 0xFE;    /* 100% as 8-bit */
 
 /* ----------------------------------------------------------------------- *
+ * Property operation types (ESN-QS Case 0x51/0x13)                        *
+ * ----------------------------------------------------------------------- */
+static const uint8_t QS_TYPE_PROP_SET_FIXED = 0x64;  /* Property set (fixed-size) */
+static const uint8_t QS_TYPE_PROP_SET_VAR   = 0x65;  /* Property set (variable-size) */
+static const uint8_t QS_TYPE_DIM_CONFIG     = 0x78;  /* Dimming config sub-type */
+
+/* ----------------------------------------------------------------------- *
+ * State report field values                                               *
+ * ----------------------------------------------------------------------- */
+static const uint8_t QS_STATE_ENTITY_COMP = 0x1B;  /* Component entity marker (state rpt bytes 9/13) */
+static const uint8_t QS_STATE_STATUS_FLAG = 0x92;  /* Status flag (state rpt byte 14) */
+
+/* ----------------------------------------------------------------------- *
+ * Preset base offset (button → preset mapping in pico long format)        *
+ * ----------------------------------------------------------------------- */
+static const uint8_t QS_PRESET_BASE = 0x1E;
+
+/* ----------------------------------------------------------------------- *
  * Padding                                                                 *
  * ----------------------------------------------------------------------- */
 static const uint8_t QS_PADDING        = 0x00;

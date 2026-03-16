@@ -1462,25 +1462,144 @@ static void cmd_cca(const char* arg)
         return;
     }
 
-    /* cca pair bridge <bridge_id> <target_id> [beacon_sec] */
+    /* cca pair bridge <bridge_id> <target_id> <zone_hex> [beacon_sec] */
     if (strncmp(arg, "pair bridge ", 12) == 0) {
         char*    p;
         uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
         if (*p != ' ') {
-            printf("Usage: cca pair bridge <bridge_id_hex> <target_id_hex> [beacon_sec]\r\n");
+            printf("Usage: cca pair bridge <bridge_id_hex> <target_id_hex> <zone_hex> [beacon_sec]\r\n");
             return;
         }
         uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
+        uint8_t  zone = 0;
         uint8_t  dur = 5;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        if (*p == ' ') {
+            zone = (uint8_t)strtoul(p + 1, &p, 16);
+            if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        }
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_BRIDGE_PAIR;
         item.device_id = bridge_id;
         item.target_id = target_id;
+        item.zone_byte = zone;
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
-            printf("Bridge pair command queued (beacon=%us)\r\n", dur);
+            printf("Bridge pair command queued (zone=0x%02X beacon=%us)\r\n", zone, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca raw <zone_hex> <target_hex> <format_hex> <payload_hex_bytes...>
+     * Payload starts at byte 13 (first byte is typically addr_mode: FE/EF/FF).
+     * Bytes 0-12 are auto-built: [type][seq][zone:4 LE][0x21][fmt][0x00][target:4 BE] */
+    if (strncmp(arg, "raw ", 4) == 0) {
+        char*    p;
+        uint32_t zone_id = (uint32_t)strtoul(arg + 4, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca raw <zone> <target> <fmt> <payload_bytes...>\r\n");
+            return;
+        }
+        uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca raw <zone> <target> <fmt> <payload_bytes...>\r\n");
+            return;
+        }
+        uint8_t format = (uint8_t)strtoul(p + 1, &p, 16);
+
+        /* All remaining args are payload hex bytes (space-separated) */
+        uint8_t payload[40];
+        uint8_t payload_len = 0;
+        while (*p == ' ' && payload_len < sizeof(payload)) {
+            payload[payload_len++] = (uint8_t)strtoul(p + 1, &p, 16);
+        }
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_RAW;
+        item.device_id = zone_id;
+        item.target_id = target_id;
+        item.raw_format = format;
+        item.raw_repeat = 12;
+        item.raw_payload_len = payload_len;
+        if (payload_len > 0) memcpy(item.raw_payload, payload, payload_len);
+        if (cca_cmd_enqueue(&item)) {
+            printf("Raw command queued (fmt=0x%02X payload=%u bytes)\r\n",
+                   format, payload_len);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca scene <zone_id> <target_id> <level%> [fade_qs] */
+    if (strncmp(arg, "scene ", 6) == 0) {
+        char*    p;
+        uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca scene <zone_hex> <target_hex> <level%%> [fade_qs]\r\n");
+            return;
+        }
+        uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca scene <zone_hex> <target_hex> <level%%> [fade_qs]\r\n");
+            return;
+        }
+        uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
+        uint8_t fade = 4;  /* default 1 second */
+        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_SCENE_EXEC;
+        item.device_id = zone_id;
+        item.target_id = target_id;
+        item.level_pct = pct;
+        item.fade_qs = fade;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Scene command queued (%u%% fade=%uqs)\r\n", pct, fade);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca dim-config <zone_id> <target_id> <hex_bytes...> */
+    if (strncmp(arg, "dim-config ", 11) == 0) {
+        char*    p;
+        uint32_t zone_id = (uint32_t)strtoul(arg + 11, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca dim-config <zone_hex> <target_hex> <hex_bytes...>\r\n");
+            return;
+        }
+        uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca dim-config <zone_hex> <target_hex> <hex_bytes...>\r\n");
+            return;
+        }
+
+        uint8_t config[40];
+        uint8_t config_len = 0;
+        while (*p == ' ' && config_len < sizeof(config)) {
+            config[config_len++] = (uint8_t)strtoul(p + 1, &p, 16);
+        }
+
+        if (config_len == 0) {
+            printf("Usage: cca dim-config <zone_hex> <target_hex> <hex_bytes...>\r\n");
+            return;
+        }
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_DIM_CONFIG;
+        item.device_id = zone_id;
+        item.target_id = target_id;
+        item.raw_payload_len = config_len;
+        memcpy(item.raw_payload, config, config_len);
+        if (cca_cmd_enqueue(&item)) {
+            printf("Dim-config command queued (%u config bytes)\r\n", config_len);
         }
         else {
             printf("Command queue full!\r\n");
@@ -1531,12 +1650,15 @@ static void cmd_cca(const char* arg)
     printf("  cca trim <zone> <target> <hi%%> <lo%%>  — trim config\r\n");
     printf("  cca phase <zone> <target> <hex>       — phase config\r\n");
     printf("  cca save-fav <dev_id>                 — save favorite level\r\n");
+    printf("  cca raw <zone> <target> <fmt> <payload...> — raw packet\r\n");
+    printf("  cca scene <zone> <target> <%%> [fade]  — scene execute\r\n");
+    printf("  cca dim-config <zone> <target> <hex...> — dimming config\r\n");
     printf("  cca vive-level <hub> <zone> <%%> [fade] — Vive set-level\r\n");
     printf("  cca vive-raise <hub> <zone>           — Vive raise\r\n");
     printf("  cca vive-lower <hub> <zone>           — Vive lower\r\n");
     printf("  cca vive-pair <hub> <zone> [dur]      — Vive pairing\r\n");
     printf("  cca pair pico <dev> [type] [dur]      — pico pairing\r\n");
-    printf("  cca pair bridge <id> <target> [dur]   — bridge pairing\r\n");
+    printf("  cca pair bridge <id> <target> <zone> [dur] — bridge pairing\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
     printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");

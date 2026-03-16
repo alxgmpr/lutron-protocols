@@ -208,13 +208,16 @@ packet_types:
   # on successive button events. This alternation enables double-tap detection:
   # the receiver can distinguish a new press from retransmissions of the same press.
   #
-  # Within each group, SHORT = press, LONG = release:
-  #   Group A press:   0x88 (BTN_PRESS_A)    - short format
-  #   Group A release: 0x89 (BTN_RELEASE_A)  - long format
-  #   Group B press:   0x8A (BTN_PRESS_B)    - short format
-  #   Group B release: 0x8B (BTN_RELEASE_B)  - long format
+  # Within each group, SHORT and LONG are two packet formats:
+  #   Group A short:   0x88 (BTN_SHORT_A)    - tap format (fmt 0x04)
+  #   Group A long:    0x89 (BTN_LONG_A)     - extended format (fmt 0x0E)
+  #   Group B short:   0x8A (BTN_SHORT_B)    - tap format (fmt 0x04)
+  #   Group B long:    0x8B (BTN_LONG_B)     - extended format (fmt 0x0E)
   #
-  # Bit pattern: base 0x88 | bit 1 = group (0=A, 1=B) | bit 0 = action (0=press, 1=release)
+  # Bit pattern: base 0x88 | bit 1 = group (0=A, 1=B) | bit 0 = format (0=short, 1=long)
+  # NOTE: SHORT/LONG does NOT mean press/release! The action byte (offset 11)
+  # determines press (0x00) vs release (0x01). The mapping between SHORT/LONG
+  # and press/release is INVERTED between pico types (see below).
   # Button packet format notes:
   #
   # All 4-button picos (scene + raise/lower) use button codes SCENE1-SCENE4 (0x08-0x0B).
@@ -242,12 +245,12 @@ packet_types:
   # cmd_class 0x42 dim direction (byte 19):
   #   0x01 = raise, 0x00 = lower
 
-  BTN_PRESS_A:
+  BTN_SHORT_A:
     value: 0x88
     length: 24
     category: BUTTON
     ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
-    description: "Button press, group A"
+    description: "Button short format, group A"
     device_id_endian: big
     fields:
       - { name: type,          offset: 0,  size: 1, format: hex }
@@ -263,12 +266,12 @@ packet_types:
       - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
       - { name: crc,           offset: 22, size: 2, format: hex }
 
-  BTN_RELEASE_A:
+  BTN_LONG_A:
     value: 0x89
     length: 24
     category: BUTTON
     ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
-    description: "Button release, group A"
+    description: "Button long format, group A"
     device_id_endian: big
     fields:
       - { name: type,          offset: 0,  size: 1, format: hex }
@@ -284,12 +287,12 @@ packet_types:
       - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
       - { name: crc,           offset: 22, size: 2, format: hex }
 
-  BTN_PRESS_B:
+  BTN_SHORT_B:
     value: 0x8A
     length: 24
     category: BUTTON
     ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
-    description: "Button press, group B"
+    description: "Button short format, group B"
     device_id_endian: big
     fields:
       - { name: type,          offset: 0,  size: 1, format: hex }
@@ -305,12 +308,12 @@ packet_types:
       - { name: cmd_param,     offset: 19, size: 1, format: hex, description: "Preset ID or dim direction (when format=0x0E)" }
       - { name: crc,           offset: 22, size: 2, format: hex }
 
-  BTN_RELEASE_B:
+  BTN_LONG_B:
     value: 0x8B
     length: 24
     category: BUTTON
     ecosystems: [CASETA, RA3, VIVE, HOMEWORKS]
-    description: "Button release, group B"
+    description: "Button long format, group B"
     device_id_endian: big
     fields:
       - { name: type,          offset: 0,  size: 1, format: hex }
@@ -692,8 +695,8 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_PRESS_A, count: 3, interval_ms: 70 }
-      - { packet: BTN_RELEASE_A, count: 1 }
+      - { packet: BTN_SHORT_A, count: 3, interval_ms: 70 }
+      - { packet: BTN_LONG_A, count: 1 }
 
   button_release:
     description: "Button release (sent after press)"
@@ -701,8 +704,8 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_PRESS_B, count: 3, interval_ms: 70 }
-      - { packet: BTN_RELEASE_B, count: 1 }
+      - { packet: BTN_SHORT_B, count: 3, interval_ms: 70 }
+      - { packet: BTN_LONG_B, count: 1 }
 
   button_hold:
     description: "Dimming hold (raise/lower)"
@@ -710,7 +713,7 @@ sequences:
       - { name: device_id, type: u32 }
       - { name: button, type: button }
     steps:
-      - { packet: BTN_PRESS_A, count: null, interval_ms: 65 }  # Repeat until stop
+      - { packet: BTN_SHORT_A, count: null, interval_ms: 65 }  # Repeat until stop
 
   set_level:
     description: "Set dimmer level"

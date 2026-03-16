@@ -212,14 +212,14 @@ export const PacketType = {
   STATE_RPT_82: 130,
   /** State report (type 83, cycles 81→82→83) */
   STATE_RPT_83: 131,
-  /** Button press, group A */
-  BTN_PRESS_A: 136,
-  /** Button release, group A */
-  BTN_RELEASE_A: 137,
-  /** Button press, group B */
-  BTN_PRESS_B: 138,
-  /** Button release, group B */
-  BTN_RELEASE_B: 139,
+  /** Button short format, group A */
+  BTN_SHORT_A: 136,
+  /** Button long format, group A */
+  BTN_LONG_A: 137,
+  /** Button short format, group B */
+  BTN_SHORT_B: 138,
+  /** Button long format, group B */
+  BTN_LONG_B: 139,
   /** Pairing beacon */
   BEACON_91: 145,
   /** Beacon stop */
@@ -324,37 +324,37 @@ export const PacketTypeInfo: Record<number, PacketTypeInfo> = {
     ecosystems: ["CASETA","RA3","HOMEWORKS"],
   },
   [136]: {
-    name: 'BTN_PRESS_A',
+    name: 'BTN_SHORT_A',
     length: 24,
     category: 'BUTTON',
-    description: 'Button press, group A',
+    description: 'Button short format, group A',
     usesBigEndianDeviceId: true,
     isVirtual: false,
     ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
   },
   [137]: {
-    name: 'BTN_RELEASE_A',
+    name: 'BTN_LONG_A',
     length: 24,
     category: 'BUTTON',
-    description: 'Button release, group A',
+    description: 'Button long format, group A',
     usesBigEndianDeviceId: true,
     isVirtual: false,
     ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
   },
   [138]: {
-    name: 'BTN_PRESS_B',
+    name: 'BTN_SHORT_B',
     length: 24,
     category: 'BUTTON',
-    description: 'Button press, group B',
+    description: 'Button short format, group B',
     usesBigEndianDeviceId: true,
     isVirtual: false,
     ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
   },
   [139]: {
-    name: 'BTN_RELEASE_B',
+    name: 'BTN_LONG_B',
     length: 24,
     category: 'BUTTON',
-    description: 'Button release, group B',
+    description: 'Button long format, group B',
     usesBigEndianDeviceId: true,
     isVirtual: false,
     ecosystems: ["CASETA","RA3","VIVE","HOMEWORKS"],
@@ -608,7 +608,7 @@ export interface FieldDef {
 
 /** Field definitions by packet type */
 export const PacketFields: Record<string, FieldDef[]> = {
-  'BTN_PRESS_A': [
+  'BTN_SHORT_A': [
     {
       name: 'type',
       offset: 0,
@@ -689,7 +689,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'BTN_RELEASE_A': [
+  'BTN_LONG_A': [
     {
       name: 'type',
       offset: 0,
@@ -768,7 +768,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'BTN_PRESS_B': [
+  'BTN_SHORT_B': [
     {
       name: 'type',
       offset: 0,
@@ -849,7 +849,7 @@ export const PacketFields: Record<string, FieldDef[]> = {
       format: 'hex',
     },
   ],
-  'BTN_RELEASE_B': [
+  'BTN_LONG_B': [
     {
       name: 'type',
       offset: 0,
@@ -2399,23 +2399,23 @@ export const Sequences: Record<string, Sequence> = {
     name: 'button_press',
     description: 'Standard 5-button Pico press',
     steps: [
-      { packetType: 'BTN_PRESS_A', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_RELEASE_A', count: 1, intervalMs: 0 },
+      { packetType: 'BTN_SHORT_A', count: 3, intervalMs: 70 },
+      { packetType: 'BTN_LONG_A', count: 1, intervalMs: 0 },
     ],
   },
   'button_release': {
     name: 'button_release',
     description: 'Button release (sent after press)',
     steps: [
-      { packetType: 'BTN_PRESS_B', count: 3, intervalMs: 70 },
-      { packetType: 'BTN_RELEASE_B', count: 1, intervalMs: 0 },
+      { packetType: 'BTN_SHORT_B', count: 3, intervalMs: 70 },
+      { packetType: 'BTN_LONG_B', count: 1, intervalMs: 0 },
     ],
   },
   'button_hold': {
     name: 'button_hold',
     description: 'Dimming hold (raise/lower)',
     steps: [
-      { packetType: 'BTN_PRESS_A', count: null, intervalMs: 65 },
+      { packetType: 'BTN_SHORT_A', count: null, intervalMs: 65 },
     ],
   },
   'set_level': {

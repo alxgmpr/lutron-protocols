@@ -53,7 +53,7 @@ static size_t build_fifo(const uint8_t *pkt, size_t pkt_len,
 TEST(decoder_button_press)
 {
     uint8_t pkt[22] = {};
-    pkt[0] = PKT_BUTTON_SHORT_A;  /* 0x88 */
+    pkt[0] = PKT_BTN_SHORT_A;  /* 0x88 */
     pkt[1] = 0x42;                 /* sequence */
     pkt[2] = 0x4E; pkt[3] = 0x10; /* device ID (BE) */
     pkt[4] = 0xA2; pkt[5] = 0xC7;
@@ -301,7 +301,7 @@ TEST(crc_sliding_nonstandard_length)
 TEST(decoder_n81_recovery_pipeline)
 {
     uint8_t pkt[22] = {};
-    pkt[0] = PKT_BUTTON_SHORT_A;
+    pkt[0] = PKT_BTN_SHORT_A;
     pkt[1] = 0x30;  /* sequence */
     pkt[2] = 0x08; pkt[3] = 0x69; pkt[4] = 0x2D; pkt[5] = 0x70;
     pkt[7] = 0x02;

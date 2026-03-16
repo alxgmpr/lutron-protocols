@@ -737,7 +737,9 @@ function displayCcaPacket(
       hasCmd = true;
     }
     if (hasCmd) {
-      actionText = btn;
+      // Show action qualifier: action byte 0x00 = start/press, 0x01 = stop/release
+      const actByte = data.length > 11 ? data[11] : 0;
+      actionText = actByte === 0x00 ? `${btn} PRESS` : btn;
     } else {
       // 5-button pico or short 4-button tap — use action as-is
       const btnAct = `${btn}${btn && act ? " " : ""}${act}`.trim();

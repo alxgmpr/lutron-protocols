@@ -172,6 +172,17 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
 }
 
 /* -----------------------------------------------------------------------
+ * Shared helper — big-endian 32-bit write
+ * ----------------------------------------------------------------------- */
+static inline void put_be32(uint8_t* dst, uint32_t val)
+{
+    dst[0] = (val >> 24) & 0xFF;
+    dst[1] = (val >> 16) & 0xFF;
+    dst[2] = (val >> 8) & 0xFF;
+    dst[3] = val & 0xFF;
+}
+
+/* -----------------------------------------------------------------------
  * Bridge pairing — handshake state machine
  * ----------------------------------------------------------------------- */
 
@@ -214,12 +225,12 @@ static void bridge_rx_hook(const DecodedPacket* pkt)
     printf("[cca] HS challenge slot=%d type=0x%02X seq=0x%02X\r\n", slot, t, pkt->sequence);
 }
 
-static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t beacon_sec)
+static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zone_byte, uint8_t beacon_sec)
 {
     if (beacon_sec == 0) beacon_sec = 5;
 
-    printf("[cca] CMD bridge_pair bridge=%08X target=%08X beacon=%us\r\n", (unsigned)bridge_id, (unsigned)target_id,
-           beacon_sec);
+    printf("[cca] CMD bridge_pair bridge=%08X target=%08X zone=0x%02X beacon=%us\r\n",
+           (unsigned)bridge_id, (unsigned)target_id, zone_byte, beacon_sec);
 
     /* Reset handshake state */
     memset(hs_challenges, 0, sizeof(hs_challenges));
@@ -330,6 +341,133 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t bea
         }
     }
 
+    /* ---- Phase 4: POST-HANDSHAKE CONFIG (same as Vive accept+config) ---- */
+    if (zone_byte != 0) {
+        printf("[cca] Bridge pair: post-handshake config (zone=0x%02X)\r\n", zone_byte);
+
+        uint8_t cfg[51];
+
+        /* Format 0x10 — Accept (5 packets) */
+        for (int i = 0; i < 5; i++) {
+            memset(cfg, 0x00, sizeof(cfg));
+            cfg[0] = 0xA1 + (i % 3);
+            cfg[1] = 0x01;
+            put_be32(cfg + 2, bridge_id);
+            cfg[6] = QS_PROTO_RADIO_TX;
+            cfg[7] = QS_FMT_ACCEPT;
+            cfg[8] = 0x00;
+            put_be32(cfg + 9, target_id);
+            cfg[13] = QS_ADDR_COMPONENT;
+            cfg[14] = 0x60;  /* accept class */
+            cfg[15] = 0x0A;  /* accept type */
+            put_be32(cfg + 16, bridge_id);
+            put_be32(cfg + 20, bridge_id);
+            transmit_one(cfg, 51);
+            vTaskDelay(pdMS_TO_TICKS(70));
+        }
+
+        /* Format 0x13 — Dimming Capability (5 packets) */
+        for (int i = 0; i < 5; i++) {
+            memset(cfg, 0x00, sizeof(cfg));
+            cfg[0] = 0xA1 + (i % 3);
+            cfg[1] = 0x01;
+            put_be32(cfg + 2, bridge_id);
+            cfg[6] = QS_PROTO_RADIO_TX;
+            cfg[7] = QS_FMT_DIM_CAP;
+            cfg[8] = 0x00;
+            put_be32(cfg + 9, target_id);
+            cfg[13] = QS_ADDR_COMPONENT;
+            cfg[14] = QS_CLASS_LEGACY;
+            cfg[15] = QS_COMP_DIMMER;
+            cfg[16] = 0x00;
+            cfg[17] = 0x0D;
+            cfg[18] = 0x08;
+            cfg[19] = 0x02;
+            cfg[20] = 0x0F;
+            cfg[21] = 0x03;
+            put_be32(cfg + 22, target_id);
+            transmit_one(cfg, 51);
+            vTaskDelay(pdMS_TO_TICKS(70));
+        }
+
+        /* Format 0x28 — Zone Assignment (5 packets) */
+        for (int i = 0; i < 5; i++) {
+            memset(cfg, 0x00, sizeof(cfg));
+            cfg[0] = 0xA1 + (i % 3);
+            cfg[1] = 0x01;
+            put_be32(cfg + 2, bridge_id);
+            cfg[6] = QS_FMT_ZONE;        /* format at byte 6 */
+            cfg[7] = 0x03;
+            cfg[8] = 0x01;
+            cfg[9] = QS_COMP_DIMMER;
+            cfg[10] = zone_byte + 0x23;
+            cfg[11] = QS_PROTO_RADIO_TX;
+            cfg[12] = 0x1A;
+            cfg[13] = 0x00;
+            put_be32(cfg + 14, target_id);
+            cfg[18] = QS_ADDR_COMPONENT;
+            cfg[19] = QS_CLASS_LEGACY;
+            cfg[20] = QS_CLASS_LEVEL;
+            cfg[24] = 0x01;
+            cfg[25] = QS_ADDR_GROUP;
+            cfg[26] = 0x20;
+            cfg[28] = 0x03;
+            cfg[29] = 0x09;
+            cfg[30] = 0x2B;
+            cfg[31] = 0xFF;
+            cfg[36] = 0xB4;
+            transmit_one(cfg, 51);
+            vTaskDelay(pdMS_TO_TICKS(70));
+        }
+
+        /* Format 0x14 — Function Mapping (5 packets) */
+        for (int i = 0; i < 5; i++) {
+            memset(cfg, 0x00, sizeof(cfg));
+            cfg[0] = 0xA1 + (i % 3);
+            cfg[1] = 0x01;
+            put_be32(cfg + 2, bridge_id);
+            cfg[6] = QS_PROTO_RADIO_TX;
+            cfg[7] = QS_FMT_FUNC_MAP;
+            cfg[8] = 0x00;
+            put_be32(cfg + 9, target_id);
+            cfg[13] = QS_ADDR_COMPONENT;
+            cfg[14] = QS_CLASS_LEGACY;
+            cfg[15] = QS_COMP_DIMMER;
+            cfg[17] = 0x0B;
+            cfg[18] = 0x09;
+            cfg[19] = 0xFE;
+            cfg[20] = 0xFF;
+            cfg[22] = 0x02;
+            transmit_one(cfg, 51);
+            vTaskDelay(pdMS_TO_TICKS(70));
+        }
+
+        /* Format 0x12 — Zone Bind Final (8 packets, 50ms) */
+        static const uint8_t bind_types[] = {0xA9, 0x8D, 0x93, 0x9F, 0xAB, 0xB7, 0xBD, 0xC3};
+        for (int i = 0; i < 8; i++) {
+            memset(cfg, 0x00, sizeof(cfg));
+            cfg[0] = bind_types[i];
+            cfg[1] = 0x01;
+            put_be32(cfg + 2, bridge_id);
+            cfg[6] = QS_PROTO_RADIO_TX;
+            cfg[7] = QS_FMT_FINAL;
+            cfg[8] = 0x00;
+            put_be32(cfg + 9, target_id);
+            cfg[13] = QS_ADDR_COMPONENT;
+            cfg[14] = QS_CLASS_LEGACY;
+            cfg[15] = 0x6E;
+            cfg[16] = 0x01;
+            cfg[18] = 0x07;
+            cfg[20] = 0x02;
+            cfg[24] = zone_byte;
+            cfg[25] = 0xEF;
+            transmit_one(cfg, 51);
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        printf("[cca] Bridge pair: config complete\r\n");
+    }
+
     cc1101_start_rx();
     printf("[cca] CMD bridge_pair complete (%d challenges echoed)\r\n", hs_count);
 }
@@ -341,15 +479,6 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t bea
 /* B8 detection state */
 static volatile bool vive_device_detected = false;
 static uint32_t      vive_detected_device_id = 0;
-
-/* Put a 32-bit ID big-endian into buffer */
-static inline void put_be32(uint8_t* dst, uint32_t val)
-{
-    dst[0] = (val >> 24) & 0xFF;
-    dst[1] = (val >> 16) & 0xFF;
-    dst[2] = (val >> 8) & 0xFF;
-    dst[3] = val & 0xFF;
-}
 
 /* RX hook for capturing B8 pairing requests */
 static void vive_rx_hook(const DecodedPacket* pkt)
@@ -702,7 +831,7 @@ void cca_pairing_execute(const CcaCmdItem* item)
         exec_pico_pair(item->device_id, item->pico_type, item->duration_sec);
         break;
     case CCA_CMD_BRIDGE_PAIR:
-        exec_bridge_pair(item->device_id, item->target_id, item->duration_sec);
+        exec_bridge_pair(item->device_id, item->target_id, item->zone_byte, item->duration_sec);
         break;
     case CCA_CMD_VIVE_PAIR:
         exec_vive_pair(item->device_id, item->zone_byte, item->duration_sec);

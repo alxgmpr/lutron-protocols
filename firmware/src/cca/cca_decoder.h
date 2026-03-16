@@ -6,6 +6,7 @@
 
 #include "cca_crc.h"
 #include "cca_n81.h"
+#include "cca_protocol.h"
 #include "cca_types.h"
 
 class CcaDecoder {
@@ -316,7 +317,7 @@ class CcaDecoder {
             packet.device_id = read_device_id_le(bytes, len);
             uint8_t fmt = packet.has_format ? packet.format_byte : 0;
 
-            if (fmt == 0x0E) {
+            if (fmt == QS_FMT_LEVEL) {  /* 0x0E */
                 packet.type = PKT_LEVEL;
                 if (len >= 18) {
                     uint16_t raw_level = (static_cast<uint16_t>(bytes[16]) << 8) | bytes[17];
@@ -328,33 +329,83 @@ class CcaDecoder {
                     packet.target_id = read_u32_be(bytes + 9);
                 }
             }
-            else if (fmt == 0x0C) {
-                packet.type = PKT_UNPAIR;
-                if (len >= 20) {
-                    packet.target_id = read_u32_be(bytes + 16);
-                }
-            }
-            else if (fmt == 0x09) {
-                packet.type = PKT_UNPAIR_PREP;
+            else if (fmt == QS_FMT_BEACON) {  /* 0x0C: beacon / dim-stop / unpair (multi-purpose) */
                 if (len >= 13) {
                     packet.target_id = read_u32_be(bytes + 9);
                 }
             }
-            else if (fmt == 0x08) {
+            else if (fmt == QS_FMT_CTRL) {  /* 0x09: device ctrl / hold-start / dim-stop (multi-purpose) */
+                if (len >= 13) {
+                    packet.target_id = read_u32_be(bytes + 9);
+                }
+            }
+            else if (fmt == QS_FMT_STATE) {  /* 0x08 */
                 if (len > PKT_OFFSET_LEVEL) {
                     uint8_t raw_level = bytes[PKT_OFFSET_LEVEL];
                     packet.level = static_cast<uint8_t>((static_cast<uint32_t>(raw_level) * 100 + 127) / 254);
                 }
             }
+            else if (fmt == QS_FMT_FINAL) {  /* 0x12: zone bind */
+                packet.type = PKT_ZONE_BIND;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_DIM_CAP) {  /* 0x13: dimming config */
+                packet.type = PKT_DIM_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_FUNC_MAP) {  /* 0x14: function mapping */
+                packet.type = PKT_FUNC_MAP;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_TRIM) {  /* 0x15: trim / phase config */
+                packet.type = PKT_TRIM_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_SCENE_CFG) {  /* 0x1A: scene config */
+                packet.type = PKT_SCENE_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_FADE) {  /* 0x1C: fade config */
+                packet.type = PKT_FADE_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
         }
-        else if (type == 0xA2 || type == 0xA3) {
+        else if (type >= 0xA1 && type <= 0xA3) {
             packet.device_id = read_device_id_le(bytes, len);
             uint8_t fmt = packet.has_format ? packet.format_byte : 0;
 
-            if (fmt == 0x11) {
+            if (fmt == QS_FMT_LED) {  /* 0x11 */
                 packet.type = PKT_LED_CONFIG;
                 if (len >= 24) packet.level = bytes[23];
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_FINAL) {  /* 0x12: zone bind */
+                packet.type = PKT_ZONE_BIND;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_DIM_CAP) {  /* 0x13: dimming config */
+                packet.type = PKT_DIM_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_FUNC_MAP) {  /* 0x14: function mapping */
+                packet.type = PKT_FUNC_MAP;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_TRIM) {  /* 0x15: trim / phase config */
+                packet.type = PKT_TRIM_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_SCENE_CFG) {  /* 0x1A: scene config */
+                packet.type = PKT_SCENE_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_FADE) {  /* 0x1C: fade config */
+                packet.type = PKT_FADE_CONFIG;
+                if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
+            }
+            else if (fmt == QS_FMT_ZONE) {  /* 0x28: zone assignment (format at byte 6) */
+                packet.type = PKT_ZONE_ASSIGN;
+                if (len >= 18) packet.target_id = read_u32_be(bytes + 14);
             }
             else {
                 packet.type = PKT_LEVEL;
