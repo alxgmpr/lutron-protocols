@@ -288,7 +288,7 @@ function startRamp(zoneId: number, direction: "raise" | "lower") {
     if (direction === "raise") {
       current = Math.min(100, current + RAMP_STEP);
     } else {
-      current = Math.max(0, current - RAMP_STEP);
+      current = Math.max(1, current - RAMP_STEP);
     }
     zoneLevel.set(zoneId, current);
 
@@ -298,8 +298,8 @@ function startRamp(zoneId: number, direction: "raise" | "lower") {
       }
     }
 
-    // Stop at limits
-    if (current >= 100 || current <= 0) {
+    // Stop at limits (lower stops at 1%, not 0% — off is a separate command)
+    if (current >= 100 || current <= 1) {
       stopRamp(zoneId);
     }
   }, RAMP_INTERVAL_MS);
