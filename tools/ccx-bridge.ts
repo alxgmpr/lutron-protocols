@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 
 /**
  * CCX Bridge — Listen for Lutron level changes on Thread, forward to external outputs.
@@ -8,14 +8,16 @@
  *   - DEVICE_REPORT (device → processor, unicast) — physical dimmer touches
  *
  * Uses tshark + nRF sniffer dongle to capture all Thread traffic, decodes CBOR,
- * deduplicates, and forwards level changes to WiZ lights, HTTP webhooks, or stdout.
+ * deduplicates, and forwards level changes to WiZ smart lights.
  *
  * Usage:
- *   bun run tools/ccx-bridge.ts                          # Use default config
- *   bun run tools/ccx-bridge.ts --zone 3697              # Single zone, log only
- *   bun run tools/ccx-bridge.ts --zone 3697 --zone 518   # Multiple zones
- *   bun run tools/ccx-bridge.ts --config path/to/cfg.json
- *   bun run tools/ccx-bridge.ts -v                       # Verbose (all CCX traffic)
+ *   npx tsx tools/ccx-bridge.ts                          # Use default config
+ *   npx tsx tools/ccx-bridge.ts --zone 3697              # Single zone, log only
+ *   npx tsx tools/ccx-bridge.ts --zone 3697 --zone 518   # Multiple zones
+ *   npx tsx tools/ccx-bridge.ts --config path/to/cfg.json
+ *   npx tsx tools/ccx-bridge.ts -v                       # Verbose (all CCX traffic)
+ *   npx tsx tools/ccx-bridge.ts --decrypt -v             # Native decrypt MAC-encrypted frames
+ *   npx tsx tools/ccx-bridge.ts --decrypt --key <hex>    # Custom master key
  */
 
 import { spawn } from "child_process";
@@ -24,18 +26,17 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import {
   CCX_CONFIG,
+  getAllDevices,
   getPresetInfo,
   getSerialName,
   getZoneName,
   presetIdFromDeviceId,
 } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import type {
-  CCXDeviceReport,
-  CCXDimHold,
-  CCXLevelControl,
-  CCXPacket,
-} from "../ccx/types";
+import type { CCXDeviceReport, CCXPacket } from "../ccx/types";
+import { formatAddr, parseFrame } from "../lib/ieee802154";
+import { decryptMacFrame, deriveThreadKeys } from "../lib/thread-crypto";
+import { generateWarmDimTable, getWarmDimCurve } from "../lib/warm-dim";
 
 // ── CLI args ──────────────────────────────────────────────
 
@@ -59,50 +60,58 @@ function hasFlag(name: string): boolean {
 
 const configPath =
   getArg("--config") ??
-  join(import.meta.dir, "..", "data", "virtual-device.json");
+  join(
+    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
+    "..",
+    "data",
+    "ccx-bridge.json",
+  );
 const zoneArgs = getAllArgs("--zone");
 const verbose = hasFlag("--verbose") || hasFlag("-v");
 const snifferIface = getArg("--iface"); // tshark interface override
+const decryptMode = hasFlag("--decrypt");
+const masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
 
 // ── Config ────────────────────────────────────────────────
 
-interface WizOutput {
-  type: "wiz";
+interface PairingConfig {
+  name: string;
+  lutron: {
+    zoneId: number;
+    serials?: number[];
+    presets?: number[];
+  };
+  wiz: {
+    ip: string;
+    port?: number;
+  };
+  warmDimming?: boolean;
+  warmDimCurve?: string;
+  warmDimMin?: number;
+  warmDimMax?: number;
+}
+
+interface BridgeConfigFile {
+  pairings: PairingConfig[];
+  defaults?: {
+    wizPort?: number;
+    warmDimming?: boolean;
+    warmDimCurve?: string;
+    warmDimMin?: number;
+    warmDimMax?: number;
+  };
+}
+
+interface WizPairing {
+  name: string;
   zoneId: number;
   wizIp: string;
-  wizPort?: number;
+  wizPort: number;
+  warmDimTable: number[] | null;
 }
 
-interface WebhookOutput {
-  type: "webhook";
-  url: string;
-  zoneId?: number;
-}
-
-interface SerialZoneMap {
-  [serial: string]: number; // device serial → zone ID
-}
-
-interface PresetZoneMap {
-  [presetId: string]: number; // LEAP preset ID → zone ID
-}
-
-interface BridgeConfig {
-  outputs: (WizOutput | WebhookOutput)[];
-  devices?: { name: string; zoneIds: number[] }[];
-  serialToZone?: SerialZoneMap;
-  presetToZone?: PresetZoneMap;
-}
-
-function loadConfig(): BridgeConfig {
-  if (zoneArgs.length > 0) {
-    return {
-      outputs: [],
-      devices: [
-        { name: "CLI zones", zoneIds: zoneArgs.map((z) => parseInt(z, 10)) },
-      ],
-    };
-  }
+function loadConfig(): WizPairing[] {
+  if (zoneArgs.length > 0) return []; // --zone mode, no pairings
 
   if (!existsSync(configPath)) {
     console.error(`Config not found: ${configPath}`);
@@ -110,37 +119,62 @@ function loadConfig(): BridgeConfig {
     process.exit(1);
   }
 
-  return JSON.parse(readFileSync(configPath, "utf-8"));
+  const raw: BridgeConfigFile = JSON.parse(readFileSync(configPath, "utf-8"));
+  const defaultPort = raw.defaults?.wizPort ?? 38899;
+  const defaultWarmDim = raw.defaults?.warmDimming ?? false;
+  const defaultCurve = raw.defaults?.warmDimCurve ?? "default";
+  const defaultMin = raw.defaults?.warmDimMin;
+  const defaultMax = raw.defaults?.warmDimMax;
+
+  return raw.pairings.map((p) => {
+    const warmDimming = p.warmDimming ?? defaultWarmDim;
+    let warmDimTable: number[] | null = null;
+    if (warmDimming) {
+      const curveName = p.warmDimCurve ?? defaultCurve;
+      const curve = getWarmDimCurve(curveName);
+      const min = p.warmDimMin ?? defaultMin;
+      const max = p.warmDimMax ?? defaultMax;
+      warmDimTable = generateWarmDimTable(curve, min, max);
+    }
+    return {
+      name: p.name,
+      zoneId: p.lutron.zoneId,
+      wizIp: p.wiz.ip,
+      wizPort: p.wiz.port ?? defaultPort,
+      warmDimTable,
+    };
+  });
 }
 
-const config = loadConfig();
+const pairings = loadConfig();
+const pairingsByZone = new Map<number, WizPairing>();
+for (const p of pairings) pairingsByZone.set(p.zoneId, p);
 
 // Build set of watched zone IDs
 const watchedZones = new Set<number>();
-if (config.devices) {
-  for (const d of config.devices) {
-    for (const z of d.zoneIds) watchedZones.add(z);
-  }
-}
-for (const out of config.outputs) {
-  if ("zoneId" in out && out.zoneId) watchedZones.add(out.zoneId);
+if (zoneArgs.length > 0) {
+  for (const z of zoneArgs) watchedZones.add(parseInt(z, 10));
+} else {
+  for (const p of pairings) watchedZones.add(p.zoneId);
 }
 
-// Build serial → zone mapping from config + LEAP data
+// Build serial → zone and preset → zone from config pairings
 const serialToZone = new Map<number, number>();
-if (config.serialToZone) {
-  for (const [serial, zoneId] of Object.entries(config.serialToZone)) {
-    serialToZone.set(Number(serial), zoneId);
-  }
-}
-
-// Build preset → zone mapping (for pico buttons: On/Off/Raise/Lower)
 const presetToZone = new Map<number, number>();
-if (config.presetToZone) {
-  for (const [preset, zoneId] of Object.entries(config.presetToZone)) {
-    presetToZone.set(Number(preset), zoneId);
+
+function loadPairingMaps() {
+  if (zoneArgs.length > 0) return; // --zone mode
+  const raw: BridgeConfigFile = JSON.parse(readFileSync(configPath, "utf-8"));
+  for (const p of raw.pairings) {
+    if (p.lutron.serials) {
+      for (const s of p.lutron.serials) serialToZone.set(s, p.lutron.zoneId);
+    }
+    if (p.lutron.presets) {
+      for (const pr of p.lutron.presets) presetToZone.set(pr, p.lutron.zoneId);
+    }
   }
 }
+loadPairingMaps();
 
 /** Resolve zone ID from a DIM_HOLD/DIM_STEP deviceId via preset lookup */
 function resolveZoneFromPreset(deviceId: Uint8Array): number {
@@ -161,6 +195,172 @@ function getPresetAction(
   if (name === "off") return "off";
   if (name === "raise") return "raise";
   if (name === "lower") return "lower";
+  return null;
+}
+
+// ── Native decrypt state ──────────────────────────────────
+// Short addr → EUI-64 mapping, pre-populated from LEAP device map
+const addrTable = new Map<number, Buffer>();
+const keyCache = new Map<number, Buffer>();
+
+if (decryptMode) {
+  for (const dev of getAllDevices()) {
+    if (dev.eui64) {
+      const eui64 = Buffer.from(dev.eui64.replace(/:/g, ""), "hex");
+      if (eui64.length === 8) addrTable.set(-dev.serial, eui64);
+    }
+  }
+}
+
+function getMacKey(keySequence: number): Buffer {
+  let key = keyCache.get(keySequence);
+  if (!key) {
+    key = deriveThreadKeys(Buffer.from(masterKey, "hex"), keySequence).macKey;
+    keyCache.set(keySequence, key);
+  }
+  return key;
+}
+
+/** Reconstruct 802.15.4 frame from tshark fields and decrypt */
+function reconstructAndDecrypt(fields: string[]): CCXPacket | null {
+  const [
+    epochStr,
+    ,
+    ,
+    srcEui64Str,
+    ,
+    ,
+    fcfStr,
+    seqStr,
+    dstPanStr,
+    dst16Str,
+    src16Str,
+    secLevelStr,
+    keyIdModeStr,
+    frameCounterStr,
+    keyIndexStr,
+    dataHex,
+    micHex,
+  ] = fields;
+
+  if (!dataHex || !micHex) return null;
+
+  const fcf = parseInt(fcfStr, 16);
+  const seqNo = parseInt(seqStr, 10);
+  const dstPan = parseInt(dstPanStr, 16);
+  const dst16 = parseInt(dst16Str, 16);
+  const src16 = parseInt(src16Str, 16);
+  const secLevel = parseInt(secLevelStr, 10);
+  const keyIdMode = parseInt(keyIdModeStr, 10);
+  const frameCounter = parseInt(frameCounterStr, 10);
+  const keyIndex = parseInt(keyIndexStr, 10);
+
+  if (Number.isNaN(fcf) || Number.isNaN(frameCounter)) return null;
+
+  // Reconstruct the 802.15.4 header
+  const headerParts: number[] = [];
+  // Frame control (2 bytes LE)
+  headerParts.push(fcf & 0xff, (fcf >> 8) & 0xff);
+  // Sequence number
+  headerParts.push(seqNo & 0xff);
+  // Destination PAN (2 bytes LE)
+  headerParts.push(dstPan & 0xff, (dstPan >> 8) & 0xff);
+  // Destination short addr (2 bytes LE)
+  headerParts.push(dst16 & 0xff, (dst16 >> 8) & 0xff);
+  // Source short addr (2 bytes LE) — PAN compressed, no src PAN
+  headerParts.push(src16 & 0xff, (src16 >> 8) & 0xff);
+  // Aux security header: security control byte
+  const secControl = (keyIdMode << 3) | secLevel;
+  headerParts.push(secControl);
+  // Frame counter (4 bytes LE)
+  headerParts.push(
+    frameCounter & 0xff,
+    (frameCounter >> 8) & 0xff,
+    (frameCounter >> 16) & 0xff,
+    (frameCounter >> 24) & 0xff,
+  );
+  // Key index (1 byte for keyIdMode 1)
+  if (keyIdMode >= 1) {
+    headerParts.push(keyIndex & 0xff);
+  }
+
+  const header = Buffer.from(headerParts);
+  const encPayload = Buffer.from(dataHex.replace(/:/g, ""), "hex");
+  const mic = Buffer.from(micHex.replace(/:/g, ""), "hex");
+  const frame = Buffer.concat([header, encPayload, mic]);
+
+  const parsed = parseFrame(frame);
+  if (!parsed.securityEnabled) return null;
+
+  const keySeq = keyIndex > 0 ? keyIndex - 1 : 0;
+  const macKey = getMacKey(keySeq);
+
+  const tryWith = (eui64: Buffer) =>
+    decryptMacFrame({
+      frame,
+      headerEnd: parsed.headerEnd,
+      secLevel: parsed.secLevel,
+      frameCounter: parsed.frameCounter,
+      macKey,
+      eui64,
+    });
+
+  let plaintext: Buffer | null = null;
+  let matchedEui64 = Buffer.alloc(8);
+
+  // Try tshark-provided EUI-64
+  if (srcEui64Str?.includes(":")) {
+    const eui64 = Buffer.from(srcEui64Str.replace(/:/g, ""), "hex");
+    if (eui64.length === 8) {
+      plaintext = tryWith(eui64);
+      if (plaintext) matchedEui64 = eui64;
+    }
+  }
+
+  // Try address table (short → EUI-64)
+  if (!plaintext && !Number.isNaN(src16)) {
+    const eui64 = addrTable.get(src16);
+    if (eui64) {
+      plaintext = tryWith(eui64);
+      if (plaintext) matchedEui64 = eui64;
+    }
+  }
+
+  // Brute-force all known EUI-64s
+  if (!plaintext) {
+    for (const [, eui64] of addrTable) {
+      plaintext = tryWith(eui64);
+      if (plaintext) {
+        matchedEui64 = eui64;
+        break;
+      }
+    }
+  }
+
+  if (!plaintext) return null;
+
+  // Scan for CBOR array marker (0x82 = 2-element array)
+  for (let i = 0; i < plaintext.length - 2; i++) {
+    if (plaintext[i] !== 0x82) continue;
+    try {
+      const epoch = parseFloat(epochStr);
+      const eui64Hex = matchedEui64
+        .toString("hex")
+        .replace(/(.{2})/g, "$1:")
+        .slice(0, -1);
+      return buildPacket({
+        timestamp: new Date(epoch * 1000).toISOString(),
+        srcAddr: formatAddr(parsed.srcAddr),
+        dstAddr: formatAddr(parsed.dstAddr),
+        srcEui64: eui64Hex,
+        dstEui64: "",
+        payloadHex: plaintext.subarray(i).toString("hex"),
+      });
+    } catch {
+      /* try next offset */
+    }
+  }
+
   return null;
 }
 
@@ -186,67 +386,46 @@ function isDuplicate(key: string): boolean {
 
 // ── Output: WiZ UDP ───────────────────────────────────────
 
-const wizSocket = config.outputs.some((o) => o.type === "wiz")
-  ? createSocket("udp4")
-  : null;
+const wizSocket = pairings.length > 0 ? createSocket("udp4") : null;
 
 /** Scale Lutron 1-100% → Wiz 10-100% linearly. 0% = off. */
 function lutronToWizDimming(lutronPercent: number): number {
   return Math.round(10 + (lutronPercent / 100) * 90);
 }
 
-async function sendWiz(output: WizOutput, levelPercent: number) {
+async function sendWiz(pairing: WizPairing, levelPercent: number) {
   if (!wizSocket) return;
   const isOff = levelPercent <= 0;
   const wizDim = lutronToWizDimming(levelPercent);
-  const payload = isOff
-    ? JSON.stringify({ method: "setPilot", params: { state: false } })
-    : JSON.stringify({
-        method: "setPilot",
-        params: { state: true, dimming: wizDim },
-      });
+
+  let payload: string;
+  let cctInfo = "";
+  if (isOff) {
+    payload = JSON.stringify({ method: "setPilot", params: { state: false } });
+  } else {
+    const params: Record<string, any> = { state: true, dimming: wizDim };
+    if (pairing.warmDimTable) {
+      const cct = pairing.warmDimTable[Math.round(levelPercent)];
+      params.temp = cct;
+      cctInfo = ` ${cct}K`;
+    }
+    payload = JSON.stringify({ method: "setPilot", params });
+  }
 
   const buf = Buffer.from(payload);
-  const port = output.wizPort ?? 38899;
 
   return new Promise<void>((resolve) => {
-    wizSocket!.send(buf, port, output.wizIp, (err) => {
+    wizSocket!.send(buf, pairing.wizPort, pairing.wizIp, (err) => {
       if (err) {
-        console.error(`  [wiz] Error → ${output.wizIp}: ${err.message}`);
+        console.error(`  [wiz] Error → ${pairing.wizIp}: ${err.message}`);
       } else {
         console.log(
-          `  [wiz] → ${output.wizIp} ${isOff ? "OFF" : `${Math.round(levelPercent)}%→wiz${wizDim}%`}`,
+          `  [wiz] → ${pairing.name} (${pairing.wizIp}) ${isOff ? "OFF" : `${Math.round(levelPercent)}%→wiz${wizDim}%${cctInfo}`}`,
         );
       }
       resolve();
     });
   });
-}
-
-// ── Output: Webhook ───────────────────────────────────────
-
-async function sendWebhook(
-  output: WebhookOutput,
-  zoneId: number,
-  levelPercent: number,
-  fade: number,
-) {
-  try {
-    const resp = await fetch(output.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        zoneId,
-        zoneName: getZoneName(zoneId) ?? `Zone ${zoneId}`,
-        level: levelPercent,
-        fade: fade / 4,
-        timestamp: new Date().toISOString(),
-      }),
-    });
-    console.log(`  [webhook] → ${output.url} ${resp.status}`);
-  } catch (err) {
-    console.error(`  [webhook] Error: ${(err as Error).message}`);
-  }
 }
 
 // ── DEVICE_REPORT level extraction ────────────────────────
@@ -316,11 +495,8 @@ function startRamp(zoneId: number, direction: "raise" | "lower") {
     }
     zoneLevel.set(zoneId, current);
 
-    for (const output of config.outputs) {
-      if (output.type === "wiz" && output.zoneId === zoneId) {
-        sendWiz(output, current);
-      }
-    }
+    const pairing = pairingsByZone.get(zoneId);
+    if (pairing) sendWiz(pairing, current);
 
     // Stop at limits (lower stops at 1%, not 0% — off is a separate command)
     if (current >= 100 || current <= 1) {
@@ -363,19 +539,8 @@ async function dispatch(
     `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}`,
   );
 
-  const promises: Promise<void>[] = [];
-
-  for (const output of config.outputs) {
-    if (output.type === "wiz" && output.zoneId === zoneId) {
-      promises.push(sendWiz(output, levelPercent));
-    } else if (output.type === "webhook") {
-      if (!output.zoneId || output.zoneId === zoneId) {
-        promises.push(sendWebhook(output, zoneId, levelPercent, fade));
-      }
-    }
-  }
-
-  await Promise.all(promises);
+  const pairing = pairingsByZone.get(zoneId);
+  if (pairing) await sendWiz(pairing, levelPercent);
 }
 
 // ── tshark sniffer pipeline ───────────────────────────────
@@ -399,25 +564,51 @@ function processLine(line: string): CCXPacket | null {
   if (fields.length < 6) return null;
 
   const [epochStr, srcAddr, dstAddr, srcEui64, dstEui64, dataHex] = fields;
-  if (!dataHex) return null;
 
-  const payloadHex = dataHex.replace(/:/g, "");
-  if (!payloadHex) return null;
-
-  try {
-    const epoch = parseFloat(epochStr);
-    const timestamp = new Date(epoch * 1000).toISOString();
-    return buildPacket({
-      timestamp,
-      srcAddr: srcAddr ?? "",
-      dstAddr: dstAddr ?? "",
-      srcEui64: srcEui64 ?? "",
-      dstEui64: dstEui64 ?? "",
-      payloadHex,
-    });
-  } catch {
-    return null;
+  // Learn short→EUI-64 mappings from any frame that has both
+  if (decryptMode && fields.length >= 12) {
+    const src16Str = fields[10];
+    if (srcEui64?.includes(":") && src16Str) {
+      const shortAddr = parseInt(src16Str, 16);
+      if (!Number.isNaN(shortAddr) && shortAddr !== 0xffff) {
+        const eui64 = Buffer.from(srcEui64.replace(/:/g, ""), "hex");
+        if (eui64.length === 8 && !addrTable.has(shortAddr)) {
+          addrTable.set(shortAddr, eui64);
+          if (verbose) {
+            console.log(`  [addr] learned ${src16Str} → ${srcEui64}`);
+          }
+        }
+      }
+    }
   }
+
+  // Path 1: tshark-decoded UDP payload (existing path)
+  if (dataHex) {
+    const payloadHex = dataHex.replace(/:/g, "");
+    if (payloadHex) {
+      try {
+        const epoch = parseFloat(epochStr);
+        const timestamp = new Date(epoch * 1000).toISOString();
+        return buildPacket({
+          timestamp,
+          srcAddr: srcAddr ?? "",
+          dstAddr: dstAddr ?? "",
+          srcEui64: srcEui64 ?? "",
+          dstEui64: dstEui64 ?? "",
+          payloadHex,
+        });
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  // Path 2: MAC-encrypted frame — reconstruct and decrypt natively
+  if (decryptMode && fields.length >= 17) {
+    return reconstructAndDecrypt(fields);
+  }
+
+  return null;
 }
 
 function main() {
@@ -427,30 +618,54 @@ function main() {
   console.log("==========================");
   console.log(`Sniffer: ${iface}`);
   console.log(`Channel: ${CCX_CONFIG.channel}`);
-  if (watchedZones.size > 0) {
+  if (decryptMode) {
+    console.log(`Decrypt: enabled (key: ${masterKey.slice(0, 8)}...)`);
+    const addrCount = [...addrTable.values()].length;
+    console.log(`Address table: ${addrCount} EUI-64s pre-loaded`);
+  }
+  if (pairings.length > 0) {
+    console.log(`Pairings:`);
+    for (const p of pairings) {
+      const zoneName = getZoneName(p.zoneId) ?? `Zone ${p.zoneId}`;
+      if (p.warmDimTable) {
+        console.log(
+          `  ${zoneName} → ${p.wizIp} (warm dim: ${p.warmDimTable[0]}→${p.warmDimTable[100]}K)`,
+        );
+        // Print truth table at key percentages
+        const sample = [0, 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+        console.log(
+          `    CCT: ${sample.map((i) => `${i}%=${p.warmDimTable![i]}K`).join("  ")}`,
+        );
+      } else {
+        console.log(`  ${zoneName} → ${p.wizIp} (${p.name})`);
+      }
+    }
+  } else if (watchedZones.size > 0) {
     const zoneList = [...watchedZones]
       .map((z) => `${z} (${getZoneName(z) ?? "?"})`)
       .join(", ");
-    console.log(`Zones: ${zoneList}`);
+    console.log(`Zones: ${zoneList} (log only)`);
   } else {
-    console.log("Zones: ALL (no filter)");
+    console.log("Zones: ALL (no filter, log only)");
   }
-  const outputDesc =
-    config.outputs.length === 0
-      ? "log only"
-      : config.outputs.map((o) => o.type).join(", ");
-  console.log(`Outputs: ${outputDesc}`);
+  if (serialToZone.size > 0) {
+    console.log(`Serials: ${serialToZone.size} dimmer(s) mapped`);
+  }
   if (presetToZone.size > 0) {
-    console.log(`Presets: ${presetToZone.size} mapped to zones`);
+    console.log(`Presets: ${presetToZone.size} button(s) mapped`);
   }
   console.log("");
+
+  const displayFilter = decryptMode
+    ? `udp.port == ${CCX_CONFIG.udpPort} or (wpan.security == 1 and wpan.frame_type == 1)`
+    : `udp.port == ${CCX_CONFIG.udpPort}`;
 
   const tsharkArgs = [
     "-i",
     iface,
     "-l", // line-buffered
     "-Y",
-    `udp.port == 9190`,
+    displayFilter,
     "-T",
     "fields",
     "-e",
@@ -465,6 +680,33 @@ function main() {
     "wpan.dst64",
     "-e",
     "udp.payload",
+    // Additional fields for native decryption
+    ...(decryptMode
+      ? [
+          "-e",
+          "wpan.fcf",
+          "-e",
+          "wpan.seq_no",
+          "-e",
+          "wpan.dst_pan",
+          "-e",
+          "wpan.dst16",
+          "-e",
+          "wpan.src16",
+          "-e",
+          "wpan.aux_sec.sec_level",
+          "-e",
+          "wpan.aux_sec.key_id_mode",
+          "-e",
+          "wpan.aux_sec.frame_counter",
+          "-e",
+          "wpan.aux_sec.key_index",
+          "-e",
+          "data.data",
+          "-e",
+          "wpan.mic",
+        ]
+      : []),
     "-E",
     "separator=\t",
   ];
@@ -520,7 +762,7 @@ function main() {
           if (!isDuplicate(`dr:${serial}:${Math.round(level)}`)) {
             const time = new Date().toISOString().slice(11, 23);
             console.log(
-              `\n${time}    DIMMER ${serialName ?? `serial=${serial}`} → ${level.toFixed(1)}% (unmapped — add to serialToZone config)`,
+              `\n${time}    DIMMER ${serialName ?? `serial=${serial}`} → ${level.toFixed(1)}% (unmapped — add serial to lutron.serials in config)`,
             );
           }
         }
