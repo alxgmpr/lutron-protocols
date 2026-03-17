@@ -63,7 +63,7 @@ const configPath =
   join(
     (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
     "..",
-    "data",
+    "config",
     "ccx-bridge.json",
   );
 const zoneArgs = getAllArgs("--zone");

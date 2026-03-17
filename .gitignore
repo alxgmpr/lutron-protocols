@@ -13,6 +13,10 @@ ENV/
 # Data directory (captures, projects, certs)
 data/
 
+# Config (local overrides — template committed as *.example.json)
+config/*
+!config/*.example.json
+
 # ESPHome build artifacts
 rf/esphome/.esphome/
 rf/esphome/**/.pioenvs/
