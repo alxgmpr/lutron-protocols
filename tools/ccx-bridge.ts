@@ -99,6 +99,7 @@ interface BridgeConfigFile {
     warmDimCurve?: string;
     warmDimMin?: number;
     warmDimMax?: number;
+    wizDimScaling?: boolean;
   };
 }
 
@@ -120,6 +121,7 @@ function loadConfig(): WizPairing[] {
   }
 
   const raw: BridgeConfigFile = JSON.parse(readFileSync(configPath, "utf-8"));
+  wizDimScaling = raw.defaults?.wizDimScaling ?? true;
   const defaultPort = raw.defaults?.wizPort ?? 38899;
   const defaultWarmDim = raw.defaults?.warmDimming ?? false;
   const defaultCurve = raw.defaults?.warmDimCurve ?? "default";
@@ -146,6 +148,7 @@ function loadConfig(): WizPairing[] {
   });
 }
 
+let wizDimScaling = true; // default: scale Lutron 1-100% → Wiz 10-100%
 const pairings = loadConfig();
 const pairingsByZone = new Map<number, WizPairing>();
 for (const p of pairings) pairingsByZone.set(p.zoneId, p);
@@ -388,8 +391,9 @@ function isDuplicate(key: string): boolean {
 
 const wizSocket = pairings.length > 0 ? createSocket("udp4") : null;
 
-/** Scale Lutron 1-100% → Wiz 10-100% linearly. 0% = off. */
+/** Scale Lutron 1-100% → Wiz 10-100% linearly. 0% = off. Disable with wizDimScaling: false. */
 function lutronToWizDimming(lutronPercent: number): number {
+  if (!wizDimScaling) return Math.round(lutronPercent);
   return Math.round(10 + (lutronPercent / 100) * 90);
 }
 
@@ -468,55 +472,73 @@ function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
 // Lutron DIM_HOLD = start ramping, DIM_STEP = stop ramping.
 // The device is supposed to ramp itself; we simulate for Wiz.
 
-const RAMP_INTERVAL_MS = 100; // step every 100ms
-const RAMP_RATE_PCT_PER_SEC = 20; // 0→100% in 5 seconds (Lutron default)
-const RAMP_STEP = (RAMP_RATE_PCT_PER_SEC * RAMP_INTERVAL_MS) / 1000;
+const RAMP_INTERVAL_MS = 100; // visual update tick
+const RAMP_RATE_PCT_PER_SEC = 100 / 4.75; // 4.75s full range (19 quarter-seconds)
+
+interface ActiveRamp {
+  timer: ReturnType<typeof setInterval>;
+  direction: "raise" | "lower";
+  startLevel: number;
+  startTime: number;
+}
 
 // Track current level per zone (updated by LEVEL_CONTROL and ramp)
 const zoneLevel = new Map<number, number>();
 
 // Active ramp timers per zone
-const activeRamps = new Map<number, ReturnType<typeof setInterval>>();
+const activeRamps = new Map<number, ActiveRamp>();
+
+function computeRampLevel(startLevel: number, direction: "raise" | "lower", elapsedMs: number): number {
+  const delta = (elapsedMs / 1000) * RAMP_RATE_PCT_PER_SEC;
+  if (direction === "raise") {
+    return Math.min(100, startLevel + delta);
+  }
+  return Math.max(1, startLevel - delta);
+}
 
 function startRamp(zoneId: number, direction: "raise" | "lower") {
   stopRamp(zoneId);
-  let current = zoneLevel.get(zoneId) ?? 50; // assume 50% if unknown
+  const startLevel = zoneLevel.get(zoneId) ?? 50; // assume 50% if unknown
+  const startTime = Date.now();
   const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
   const time = new Date().toISOString().slice(11, 23);
   console.log(
-    `\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${current.toFixed(0)}%`,
+    `\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${startLevel.toFixed(0)}%`,
   );
 
   const timer = setInterval(() => {
-    if (direction === "raise") {
-      current = Math.min(100, current + RAMP_STEP);
-    } else {
-      current = Math.max(1, current - RAMP_STEP);
-    }
-    zoneLevel.set(zoneId, current);
+    const level = computeRampLevel(startLevel, direction, Date.now() - startTime);
+    zoneLevel.set(zoneId, level);
 
     const pairing = pairingsByZone.get(zoneId);
-    if (pairing) sendWiz(pairing, current);
+    if (pairing) sendWiz(pairing, level);
 
     // Stop at limits (lower stops at 1%, not 0% — off is a separate command)
-    if (current >= 100 || current <= 1) {
+    if (level >= 100 || level <= 1) {
       stopRamp(zoneId);
     }
   }, RAMP_INTERVAL_MS);
 
-  activeRamps.set(zoneId, timer);
+  activeRamps.set(zoneId, { timer, direction, startLevel, startTime });
 }
 
 function stopRamp(zoneId: number) {
-  const timer = activeRamps.get(zoneId);
-  if (timer) {
-    clearInterval(timer);
+  const ramp = activeRamps.get(zoneId);
+  if (ramp) {
+    clearInterval(ramp.timer);
     activeRamps.delete(zoneId);
-    const level = zoneLevel.get(zoneId) ?? 0;
+    const elapsedMs = Date.now() - ramp.startTime;
+    const finalLevel = computeRampLevel(ramp.startLevel, ramp.direction, elapsedMs);
+    zoneLevel.set(zoneId, finalLevel);
+
+    // Send final Wiz update with corrected level
+    const pairing = pairingsByZone.get(zoneId);
+    if (pairing) sendWiz(pairing, finalLevel);
+
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
     const time = new Date().toISOString().slice(11, 23);
     console.log(
-      `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${level.toFixed(0)}%`,
+      `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
     );
   }
 }
