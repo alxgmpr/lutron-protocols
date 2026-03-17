@@ -653,11 +653,6 @@ function main() {
         console.log(
           `  ${zoneName} → ${p.wizIp} (warm dim: ${p.warmDimTable[0]}→${p.warmDimTable[100]}K)`,
         );
-        // Print truth table at key percentages
-        const sample = [0, 1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-        console.log(
-          `    CCT: ${sample.map((i) => `${i}%=${p.warmDimTable![i]}K`).join("  ")}`,
-        );
       } else {
         console.log(`  ${zoneName} → ${p.wizIp} (${p.name})`);
       }
