@@ -19,7 +19,10 @@ function base64ToHex(base64: string, separator = ""): string {
 }
 
 function loadLeapFromDisk(): LeapDumpData | null {
-  const dataDir = join((import.meta as any).dir, "../data");
+  const dataDir = join(
+    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
+    "../data",
+  );
   if (!existsSync(dataDir)) return null;
 
   const files = readdirSync(dataDir)
@@ -84,7 +87,10 @@ interface DeviceMapData {
 }
 
 function loadDeviceMap(): DeviceMapData | null {
-  const mapFile = join((import.meta as any).dir, "../data/ccx-device-map.json");
+  const mapFile = join(
+    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
+    "../data/ccx-device-map.json",
+  );
   if (!existsSync(mapFile)) return null;
   try {
     return JSON.parse(readFileSync(mapFile, "utf-8"));

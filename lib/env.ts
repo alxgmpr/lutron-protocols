@@ -8,7 +8,7 @@
 import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
 
-const ROOT = resolve(import.meta.dir, "..");
+const ROOT = resolve((import.meta as any).dir ?? import.meta.dirname ?? __dirname, "..");
 const envPath = resolve(ROOT, ".env");
 
 // Load .env file into process.env (only if not already set)

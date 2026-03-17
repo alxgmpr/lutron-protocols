@@ -1,14 +1,15 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 /**
  * CCX Sniffer - tshark-based capture and decode pipeline
  *
  * Bridges tshark's Thread/802.15.4 decryption with our CCX CBOR decoder.
  *
  * Usage:
- *   bun run tools/ccx-sniffer.ts --file capture.pcapng
- *   bun run tools/ccx-sniffer.ts --live [--channel 25] [--duration 60]
- *   bun run tools/ccx-sniffer.ts --file capture.pcapng --json
- *   bun run tools/ccx-sniffer.ts --live --relay
+ *   npx tsx tools/ccx-sniffer.ts --file capture.pcapng
+ *   npx tsx tools/ccx-sniffer.ts --live [--channel 25] [--duration 60]
+ *   npx tsx tools/ccx-sniffer.ts --file capture.pcapng --json
+ *   npx tsx tools/ccx-sniffer.ts --live --relay
+ *   npx tsx tools/ccx-sniffer.ts --file capture.pcapng --decrypt
  *
  * Options:
  *   --file <path>       Process a pcapng capture file
@@ -18,14 +19,23 @@
  *   --key <hex>         Thread master key (default: from config)
  *   --json              Output JSON (one object per line)
  *   --relay             Forward decoded packets to backend via UDP
+ *   --decrypt           Native decrypt MAC-encrypted frames tshark can't handle
  *   --iface <name>      nRF sniffer interface name for tshark (auto-detected)
  */
 
-import { spawn } from "child_process";
+import { execSync, spawn } from "child_process";
 import { createSocket } from "dgram";
-import { CCX_CONFIG, getDeviceName, getZoneName } from "../ccx/config";
+import { existsSync } from "fs";
+import {
+  CCX_CONFIG,
+  getAllDevices,
+  getDeviceName,
+  getZoneName,
+} from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
+import { formatAddr, parseFrame } from "../lib/ieee802154";
+import { decryptMacFrame, deriveThreadKeys } from "../lib/thread-crypto";
 
 // Parse CLI arguments
 const args = process.argv.slice(2);
@@ -44,6 +54,7 @@ const duration = getArg("--duration");
 const masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
 const jsonOutput = hasFlag("--json");
 const relayMode = hasFlag("--relay");
+const decryptMode = hasFlag("--decrypt");
 const ifaceName = getArg("--iface");
 
 if (!fileMode && !liveMode) {
@@ -51,8 +62,8 @@ if (!fileMode && !liveMode) {
 CCX Sniffer - tshark-based Thread/802.15.4 capture & decode
 
 Usage:
-  bun run tools/ccx-sniffer.ts --file <capture.pcapng>   Process a capture file
-  bun run tools/ccx-sniffer.ts --live                     Live capture from nRF sniffer
+  npx tsx tools/ccx-sniffer.ts --file <capture.pcapng>   Process a capture file
+  npx tsx tools/ccx-sniffer.ts --live                     Live capture from nRF sniffer
 
 Options:
   --channel <n>       802.15.4 channel (default: ${CCX_CONFIG.channel})
@@ -60,6 +71,7 @@ Options:
   --key <hex>         Thread master key (default: from config)
   --json              Output JSON (one object per line)
   --relay             Forward decoded packets to backend UDP
+  --decrypt           Native decrypt MAC-encrypted frames (--file only)
   --iface <name>      tshark interface name (auto-detected from nRF sniffer)
 
 Requirements:
@@ -83,8 +95,7 @@ function detectSnifferInterface(): string {
   ];
   for (const path of candidates) {
     try {
-      const stat = Bun.file(path);
-      if (stat) return path;
+      if (existsSync(path)) return path;
     } catch {
       /* skip */
     }
@@ -204,6 +215,180 @@ function relayPacket(pkt: CCXPacket) {
   });
 }
 
+/** Output a decoded packet via the appropriate channel */
+function outputPacket(pkt: CCXPacket): void {
+  if (relayMode) {
+    relayPacket(pkt);
+  } else if (jsonOutput) {
+    console.log(JSON.stringify(pkt));
+  } else {
+    console.log(formatPacket(pkt));
+  }
+}
+
+// ── Native decrypt post-pass (--file --decrypt) ───────────────────
+
+function runDecryptPass(file: string): number {
+  const MASTER_KEY = Buffer.from(masterKey, "hex");
+  let decryptedCount = 0;
+
+  // Build short→EUI-64 address table from MLE exchanges
+  const addrTable = new Map<number, Buffer>();
+  const addrRaw = execSync(
+    `tshark -r "${file}" -T fields -e wpan.src16 -e wpan.src64 -Y "wpan.src64" 2>/dev/null`,
+  )
+    .toString()
+    .trim();
+
+  if (addrRaw) {
+    for (const line of addrRaw.split("\n")) {
+      const [shortHex, eui64Str] = line.split("\t");
+      if (!shortHex || !eui64Str?.includes(":")) continue;
+      const shortAddr = parseInt(shortHex.replace("0x", ""), 16);
+      if (Number.isNaN(shortAddr)) continue;
+      const eui64 = Buffer.from(eui64Str.replace(/:/g, ""), "hex");
+      if (eui64.length === 8) addrTable.set(shortAddr, eui64);
+    }
+  }
+
+  // Add device map EUI-64s as brute-force fallback
+  for (const dev of getAllDevices()) {
+    if (dev.eui64) {
+      const eui64 = Buffer.from(dev.eui64.replace(/:/g, ""), "hex");
+      if (eui64.length === 8) addrTable.set(-dev.serial, eui64);
+    }
+  }
+
+  // Get frame numbers of MAC-encrypted frames
+  const filter = "wpan.security == 1 and not ipv6 and not mle";
+  const fieldsRaw = execSync(
+    `tshark -r "${file}" -T fields -e frame.number -e frame.time_epoch -e wpan.src64 -Y "${filter}" 2>/dev/null`,
+  )
+    .toString()
+    .trim();
+
+  if (!fieldsRaw) return 0;
+
+  const metaMap = new Map<number, { epoch: number; srcEui64: string }>();
+  for (const line of fieldsRaw.split("\n")) {
+    const [numStr, epochStr, srcEui64] = line.split("\t");
+    metaMap.set(parseInt(numStr, 10), {
+      epoch: parseFloat(epochStr),
+      srcEui64: srcEui64 || "",
+    });
+  }
+
+  const frameNums = [...metaMap.keys()];
+  if (frameNums.length === 0) return 0;
+
+  // Get raw hex dumps for these frames
+  const frameFilter = frameNums.map((n) => `frame.number == ${n}`).join(" or ");
+  const hexRaw = execSync(
+    `tshark -r "${file}" -x -Y "${frameFilter}" 2>/dev/null`,
+  ).toString();
+
+  const packetBlocks = hexRaw.split(/\n(?=Packet \()/);
+
+  let blockIdx = 0;
+  for (const block of packetBlocks) {
+    if (!block.trim()) continue;
+    if (blockIdx >= frameNums.length) break;
+
+    const frameNum = frameNums[blockIdx];
+    blockIdx++;
+    const meta = metaMap.get(frameNum);
+    if (!meta) continue;
+
+    // Extract "IEEE 802.15.4 Data" hex section
+    const dataMatch = block.match(
+      /IEEE 802\.15\.4 Data \(\d+ bytes\):\n([\s\S]+?)(?:\n\n|\n$|$)/,
+    );
+    if (!dataMatch) continue;
+
+    let hexStr = "";
+    for (const line of dataMatch[1].split("\n")) {
+      if (/^[0-9a-f]{4}\s/.test(line)) {
+        hexStr += line.substring(6, 53).trim().replace(/\s+/g, "");
+      }
+    }
+    if (!hexStr) continue;
+
+    const rawBytes = Buffer.from(hexStr, "hex");
+    const parsed = parseFrame(rawBytes);
+    if (!parsed.securityEnabled) continue;
+
+    const keySeq = parsed.keyIndex > 0 ? parsed.keyIndex - 1 : 0;
+    const { macKey } = deriveThreadKeys(MASTER_KEY, keySeq);
+
+    const tryWith = (eui64: Buffer) =>
+      decryptMacFrame({
+        frame: rawBytes,
+        headerEnd: parsed.headerEnd,
+        secLevel: parsed.secLevel,
+        frameCounter: parsed.frameCounter,
+        macKey,
+        eui64,
+      });
+
+    // Try EUI-64 sources: tshark MLE > address table > brute-force
+    let plaintext: Buffer | null = null;
+    let matchedEui64 = Buffer.alloc(8);
+
+    if (meta.srcEui64.includes(":")) {
+      const eui64 = Buffer.from(meta.srcEui64.replace(/:/g, ""), "hex");
+      if (eui64.length === 8) {
+        plaintext = tryWith(eui64);
+        if (plaintext) matchedEui64 = eui64;
+      }
+    }
+
+    if (!plaintext && parsed.srcAddrMode === 2 && parsed.srcAddr.length === 2) {
+      const srcShort = parsed.srcAddr.readUInt16LE(0);
+      const eui64 = addrTable.get(srcShort);
+      if (eui64) {
+        plaintext = tryWith(eui64);
+        if (plaintext) matchedEui64 = eui64;
+      }
+    }
+
+    if (!plaintext) {
+      for (const [, eui64] of addrTable) {
+        plaintext = tryWith(eui64);
+        if (plaintext) {
+          matchedEui64 = eui64;
+          break;
+        }
+      }
+    }
+
+    if (!plaintext) continue;
+
+    // Scan for CBOR array marker
+    for (let i = 0; i < plaintext.length - 2; i++) {
+      if (plaintext[i] !== 0x82) continue;
+      try {
+        const eui64Hex = matchedEui64
+          .toString("hex")
+          .replace(/(.{2})/g, "$1:")
+          .slice(0, -1);
+        const pkt = buildPacket({
+          timestamp: new Date(meta.epoch * 1000).toISOString(),
+          srcAddr: formatAddr(parsed.srcAddr),
+          dstAddr: formatAddr(parsed.dstAddr),
+          srcEui64: eui64Hex,
+          dstEui64: "",
+          payloadHex: plaintext.subarray(i).toString("hex"),
+        });
+        outputPacket(pkt);
+        decryptedCount++;
+        break;
+      } catch {}
+    }
+  }
+
+  return decryptedCount;
+}
+
 /** Main: spawn tshark and process output */
 async function main() {
   const tsharkArgs = buildTsharkArgs();
@@ -214,6 +399,7 @@ async function main() {
     );
     console.log(`  Channel: ${channel}`);
     console.log(`  Master key: ${masterKey.slice(0, 8)}...`);
+    if (decryptMode) console.log("  Native decrypt: enabled");
     if (relayMode) console.log(`  Relaying to localhost:${RELAY_PORT}`);
     console.log("");
   }
@@ -236,14 +422,7 @@ async function main() {
       if (!pkt) continue;
 
       packetCount++;
-
-      if (relayMode) {
-        relayPacket(pkt);
-      } else if (jsonOutput) {
-        console.log(JSON.stringify(pkt));
-      } else {
-        console.log(formatPacket(pkt));
-      }
+      outputPacket(pkt);
     }
   });
 
@@ -263,18 +442,20 @@ async function main() {
       const pkt = processLine(buffer);
       if (pkt) {
         packetCount++;
-        if (relayMode) {
-          relayPacket(pkt);
-        } else if (jsonOutput) {
-          console.log(JSON.stringify(pkt));
-        } else {
-          console.log(formatPacket(pkt));
-        }
+        outputPacket(pkt);
       }
     }
 
+    // Run decrypt post-pass for --file --decrypt mode
+    let decryptedCount = 0;
+    if (decryptMode && fileMode) {
+      decryptedCount = runDecryptPass(fileMode);
+    }
+
     if (!jsonOutput && !relayMode) {
-      console.log(`\n${packetCount} CCX packets decoded.`);
+      const extra =
+        decryptedCount > 0 ? ` + ${decryptedCount} natively decrypted` : "";
+      console.log(`\n${packetCount} CCX packets decoded${extra}.`);
     }
 
     if (relaySocket) relaySocket.close();
