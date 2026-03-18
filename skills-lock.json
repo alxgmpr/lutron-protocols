@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "hindsight-docs": {
+      "source": "vectorize-io/hindsight",
+      "sourceType": "github",
+      "computedHash": "5b1846d2c578369555ce9d9a314f217295c76258cdef617645f5119708ecf064"
+    }
+  }
+}
