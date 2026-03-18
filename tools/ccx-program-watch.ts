@@ -1,12 +1,20 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 
 /**
  * CCX Programming Watcher - live CoAP/CBOR decode for /cg/db programming traffic.
  *
+ * Decodes all known CoAP programming paths:
+ *   /cg/db              DELETE  Database clear
+ *   /cg/db/pr/c/AAI     POST   Preset/scene level assignments
+ *   /cg/db/mc/c/AAI     POST   Device→zone multicast group membership
+ *   /cg/db/ct/c/AAI     PUT    Dimmer trim levels (opcode 3)
+ *   /cg/db/ct/c/AHA     PUT    Status LED brightness (opcode 108)
+ *   /cg/db/ct/c/AFE+    PUT    LED link indices for keypad buttons (opcode 107)
+ *
  * Usage:
- *   bun run tools/ccx-program-watch.ts --live
- *   bun run tools/ccx-program-watch.ts --live --iface /dev/cu.usbmodem201401 --channel 25
- *   bun run tools/ccx-program-watch.ts --file /tmp/capture.pcapng
+ *   npx tsx tools/ccx-program-watch.ts --live
+ *   npx tsx tools/ccx-program-watch.ts --live --iface /dev/cu.usbmodem201401 --channel 25
+ *   npx tsx tools/ccx-program-watch.ts --file /tmp/capture.pcapng
  *
  * Notes:
  *   - Assumes Wireshark/tshark has Thread decryption configured (same as existing tooling).
@@ -15,7 +23,13 @@
 
 import { Decoder } from "cbor-x";
 import { spawn } from "child_process";
-import { CCX_CONFIG } from "../ccx/config";
+import {
+  CCX_CONFIG,
+  getDeviceName,
+  getPresetInfo,
+  getSceneName,
+  getZoneName,
+} from "../ccx/config";
 
 const decoder = new Decoder({ mapsAsObjects: false });
 const args = process.argv.slice(2);
@@ -34,8 +48,8 @@ function usage() {
 CCX Programming Watcher (real-time CoAP + CBOR)
 
 Usage:
-  bun run tools/ccx-program-watch.ts --live
-  bun run tools/ccx-program-watch.ts --file <capture.pcapng>
+  npx tsx tools/ccx-program-watch.ts --live
+  npx tsx tools/ccx-program-watch.ts --file <capture.pcapng>
 
 Options:
   --live                 Live capture from nRF sniffer (default if --file omitted)
@@ -46,9 +60,17 @@ Options:
   --all                  Show all CoAP on UDP/5683 (default: focus on /cg/db*)
   --json                 JSON output (one event per line)
 
+Known programming paths:
+  /cg/db              DELETE  Clear device database before transfer
+  /cg/db/pr/c/AAI     POST   Preset assignments: [72, {0: level, 3?: fade}]
+  /cg/db/mc/c/AAI     POST   Zone membership: [<5-byte zone-id>]
+  /cg/db/ct/c/AAI     PUT    Dimmer trim: [3, {2: high, 3: low, 8: profile}]
+  /cg/db/ct/c/AHA     PUT    Status LED: [108, {4: active, 5: inactive}]
+  /cg/db/ct/c/AF*     PUT    LED link: [107, {0: button_index}]
+
 Examples:
-  bun run tools/ccx-program-watch.ts --live --iface /dev/cu.usbmodem201401 --channel 25
-  bun run tools/ccx-program-watch.ts --file /tmp/lutron-sniff/live/lutron-thread-ch25_00001_20260217235133.pcapng
+  npx tsx tools/ccx-program-watch.ts --live --channel 25
+  npx tsx tools/ccx-program-watch.ts --file captures/ccx-full-transfer.pcapng
 `);
 }
 
@@ -127,7 +149,126 @@ function pct(v: number): string {
   return `${((v / 65279) * 100).toFixed(1)}%`;
 }
 
-function annotation(path: string, decoded: unknown): string | null {
+// ── Rich annotation for all known /cg/db paths ─────────────────────
+
+function annotation(
+  path: string,
+  code: number,
+  decoded: unknown,
+  dst: string,
+): string | null {
+  // DELETE /cg/db — database clear
+  if (path === "/cg/db" && code === 4) {
+    const devName = getDeviceName(dst);
+    return devName ? `DB_CLEAR → ${devName}` : "DB_CLEAR";
+  }
+
+  // Preset assignments: /cg/db/pr/c/AAI POST
+  if (path === "/cg/db/pr/c/AAI" && code === 2) {
+    return annotatePresetAssignment(decoded, dst);
+  }
+
+  // Zone membership: /cg/db/mc/c/AAI POST
+  if (path === "/cg/db/mc/c/AAI" && code === 2) {
+    return annotateZoneMembership(decoded, dst);
+  }
+
+  // Configuration tables: /cg/db/ct/c/<bucket> PUT
+  if (path.startsWith("/cg/db/ct/c/") && code === 3) {
+    const bucket = path.slice("/cg/db/ct/c/".length);
+    return annotateConfigTable(bucket, decoded, dst);
+  }
+
+  // CoAP ACK responses
+  if (code > 31) {
+    const devName = getDeviceName(dst);
+    if (devName) return `→ ${devName}`;
+  }
+
+  return null;
+}
+
+/** Annotate /cg/db/pr/c/AAI — preset level assignments */
+function annotatePresetAssignment(
+  decoded: unknown,
+  dst: string,
+): string | null {
+  if (typeof decoded !== "object" || decoded == null) return null;
+  const m = decoded as Record<string, unknown>;
+
+  // CBOR map: {<4-byte-key-hex>: [72, {0: level16, 3?: fade_qs}]}
+  const parts: string[] = [];
+  const devName = getDeviceName(dst);
+
+  for (const [keyHex, value] of Object.entries(m)) {
+    if (typeof keyHex !== "string" || keyHex.length < 8) continue;
+
+    // Extract preset ID from 4-byte key (bytes 0-1 = BE uint16)
+    const presetId = parseInt(keyHex.slice(0, 4), 16);
+
+    if (!Array.isArray(value) || value.length < 2) continue;
+    const opcode = value[0];
+    const body = value[1];
+    if (opcode !== 72 || typeof body !== "object" || body == null) continue;
+
+    const bodyMap = body as Record<string, unknown>;
+    const level16 = typeof bodyMap["0"] === "number" ? bodyMap["0"] : undefined;
+    const fadeQs = typeof bodyMap["3"] === "number" ? bodyMap["3"] : undefined;
+
+    // Resolve preset name from LEAP data
+    const presetInfo = getPresetInfo(presetId);
+    const sceneName = getSceneName(presetId);
+    const nameStr = presetInfo
+      ? `"${presetInfo.name}" [${presetInfo.device}]`
+      : sceneName
+        ? `"${sceneName}"`
+        : `preset=${presetId}`;
+
+    const levelStr =
+      level16 !== undefined ? `level=${pct(level16 as number)}` : "";
+    const fadeStr =
+      fadeQs !== undefined ? ` fade=${(fadeQs as number) / 4}s` : "";
+
+    parts.push(`${nameStr} ${levelStr}${fadeStr}`);
+  }
+
+  if (parts.length === 0) return null;
+  const target = devName ? ` → ${devName}` : "";
+  return `PRESET ${parts.join("; ")}${target}`;
+}
+
+/** Annotate /cg/db/mc/c/AAI — multicast group / zone membership */
+function annotateZoneMembership(decoded: unknown, dst: string): string | null {
+  if (!Array.isArray(decoded)) return null;
+
+  const parts: string[] = [];
+  const devName = getDeviceName(dst);
+
+  for (const item of decoded) {
+    if (typeof item !== "string") continue;
+    // 5-byte hex: first 4 bytes = zone ID (various encodings), last byte = 0xef
+    const hex = item as string;
+    if (hex.length < 10) continue;
+
+    // Try parsing zone ID from middle bytes (observed: bytes 2-5 = BE uint32 zone ID)
+    const zoneId = parseInt(hex.slice(4, 8), 16);
+    const zoneName = getZoneName(zoneId);
+    parts.push(
+      zoneName ? `zone=${zoneId} "${zoneName}"` : `zone=0x${hex.slice(0, 8)}`,
+    );
+  }
+
+  if (parts.length === 0) return null;
+  const target = devName ? ` → ${devName}` : "";
+  return `ZONE_MAP ${parts.join(", ")}${target}`;
+}
+
+/** Annotate /cg/db/ct/c/<bucket> — configuration table writes */
+function annotateConfigTable(
+  bucket: string,
+  decoded: unknown,
+  dst: string,
+): string | null {
   if (!Array.isArray(decoded) || decoded.length < 2) return null;
   const op = decoded[0];
   const body = decoded[1];
@@ -135,27 +276,63 @@ function annotation(path: string, decoded: unknown): string | null {
     return null;
   }
   const m = body as Record<string, unknown>;
+  const devName = getDeviceName(dst);
+  const target = devName ? ` → ${devName}` : "";
 
-  if (path === "/cg/db/ct/c/AAI" && op === 3) {
+  // AAI bucket, opcode 3 = dimmer trim
+  if (bucket === "AAI" && op === 3) {
     const hi = typeof m["2"] === "number" ? (m["2"] as number) : null;
     const lo = typeof m["3"] === "number" ? (m["3"] as number) : null;
     const profile = typeof m["8"] === "number" ? (m["8"] as number) : null;
     const parts: string[] = [];
-    if (hi != null) parts.push(`high=${hi} (${pct(hi)})`);
-    if (lo != null) parts.push(`low=${lo} (${pct(lo)})`);
-    if (profile != null) parts.push(`k8=${profile}`);
-    return parts.length ? `trim ${parts.join(", ")}` : null;
+    if (hi != null) parts.push(`high=${pct(hi)}`);
+    if (lo != null) parts.push(`low=${pct(lo)}`);
+    if (profile != null) parts.push(`profile=${profile}`);
+    return parts.length ? `TRIM ${parts.join(", ")}${target}` : null;
   }
 
-  if (path === "/cg/db/ct/c/AHA" && op === 108) {
+  // AHA bucket, opcode 108 = status LED brightness
+  if (bucket === "AHA" && op === 108) {
     const k4 = typeof m["4"] === "number" ? (m["4"] as number) : null;
     const k5 = typeof m["5"] === "number" ? (m["5"] as number) : null;
     if (k4 != null || k5 != null) {
-      return `status-led activated=${k4 ?? "?"} deactivated=${k5 ?? "?"}`;
+      return `STATUS_LED active=${k4 ?? "?"}/255 inactive=${k5 ?? "?"}/255${target}`;
     }
   }
 
-  return null;
+  // AFE/AFI/AFM/AFQ buckets, opcode 107 = LED link index
+  if (bucket.startsWith("AF") && op === 107) {
+    const btnIdx = typeof m["0"] === "number" ? (m["0"] as number) : null;
+    if (btnIdx != null) {
+      return `LED_LINK ${bucket} button=${btnIdx}${target}`;
+    }
+  }
+
+  // Opcode 9 — observed in captures, purpose partially known
+  if (op === 9) {
+    const k1 = typeof m["1"] === "number" ? (m["1"] as number) : null;
+    const k7 = typeof m["7"] === "number" ? (m["7"] as number) : null;
+    const k10 = typeof m["10"] === "number" ? (m["10"] as number) : null;
+    const parts: string[] = [`op=9`];
+    if (k1 != null) parts.push(`k1=${k1}`);
+    if (k7 != null) parts.push(`k7=${k7}`);
+    if (k10 != null) parts.push(`k10=${k10}`);
+    return `CONFIG ${bucket} ${parts.join(", ")}${target}`;
+  }
+
+  // Opcode 57 — observed in captures
+  if (op === 57) {
+    const k1 = typeof m["1"] === "number" ? (m["1"] as number) : null;
+    return `CONFIG ${bucket} op=57${k1 != null ? ` k1=${k1}` : ""}${target}`;
+  }
+
+  // Opcode 92/94 — observed with empty body
+  if (op === 92 || op === 94) {
+    return `CONFIG ${bucket} op=${op}${target}`;
+  }
+
+  // Generic fallback for unknown opcodes
+  return `CONFIG ${bucket} op=${op}${target}`;
 }
 
 function shortTime(epochSec: string): string {
@@ -218,6 +395,17 @@ function shouldShow(path: string | null): boolean {
   return !!path && path.startsWith("/cg/db");
 }
 
+// ── Statistics tracking ─────────────────────────────────────────────
+
+const stats = {
+  total: 0,
+  byPath: new Map<string, number>(),
+  presetCount: 0,
+  zoneMapCount: 0,
+  configCount: 0,
+  dbClearCount: 0,
+};
+
 function processLine(line: string) {
   if (!line.trim()) return;
   const f = line.split("\t");
@@ -252,8 +440,17 @@ function processLine(line: string) {
 
   if (!shouldShow(path || null)) return;
 
+  stats.total++;
+  if (path) {
+    stats.byPath.set(path, (stats.byPath.get(path) ?? 0) + 1);
+  }
+  if (path === "/cg/db" && code === 4) stats.dbClearCount++;
+  if (path === "/cg/db/pr/c/AAI" && code === 2) stats.presetCount++;
+  if (path === "/cg/db/mc/c/AAI" && code === 2) stats.zoneMapCount++;
+  if (path.startsWith("/cg/db/ct/c/") && code === 3) stats.configCount++;
+
   const decoded = payloadHex ? decodeCbor(payloadHex) : null;
-  const note = path ? annotation(path, decoded) : null;
+  const note = path ? annotation(path, code, decoded, dst) : null;
 
   const event = {
     t: shortTime(epoch),
@@ -277,9 +474,10 @@ function processLine(line: string) {
 
   const header = `${event.t} #${event.frame} ${event.type} ${event.code} ${event.src} -> ${event.dst}${event.path ? ` ${event.path}` : ""}${event.token ? ` tok=${event.token}` : ""}${event.mid != null ? ` mid=${event.mid}` : ""}`;
   console.log(header);
-  if (event.payloadHex) console.log(`  payload=${event.payloadHex}`);
-  if (event.cbor != null) console.log(`  cbor=${JSON.stringify(event.cbor)}`);
-  if (event.note) console.log(`  note=${event.note}`);
+  if (event.note) console.log(`  ${event.note}`);
+  else if (event.payloadHex) console.log(`  payload=${event.payloadHex}`);
+  if (event.cbor != null && !event.note)
+    console.log(`  cbor=${JSON.stringify(event.cbor)}`);
 }
 
 async function main() {
@@ -323,6 +521,17 @@ async function main() {
   });
 
   p.on("close", (code) => {
+    if (!json && stats.total > 0) {
+      console.log(`\n${stats.total} CoAP packets decoded.`);
+      if (stats.dbClearCount > 0)
+        console.log(`  DB clears: ${stats.dbClearCount}`);
+      if (stats.presetCount > 0)
+        console.log(`  Preset assignments: ${stats.presetCount}`);
+      if (stats.zoneMapCount > 0)
+        console.log(`  Zone mappings: ${stats.zoneMapCount}`);
+      if (stats.configCount > 0)
+        console.log(`  Config writes: ${stats.configCount}`);
+    }
     if (!json) console.log(`tshark exited (${code ?? 0})`);
   });
 

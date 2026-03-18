@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+
 /**
  * CCX Sniffer - tshark-based capture and decode pipeline
  *
@@ -23,10 +24,18 @@
  *   --iface <name>      nRF sniffer interface name for tshark (auto-detected)
  */
 
+import { Decoder } from "cbor-x";
 import { execSync, spawn } from "child_process";
 import { createSocket } from "dgram";
 import { existsSync } from "fs";
-import { CCX_CONFIG, getAllDevices, getDeviceName } from "../ccx/config";
+import {
+  CCX_CONFIG,
+  getAllDevices,
+  getDeviceName,
+  getPresetInfo,
+  getSceneName,
+  getZoneName,
+} from "../ccx/config";
 import {
   buildPacket,
   formatMessage,
@@ -56,6 +65,7 @@ const jsonOutput = hasFlag("--json");
 const relayMode = hasFlag("--relay");
 const decryptMode = hasFlag("--decrypt");
 const verboseMode = hasFlag("--verbose") || hasFlag("-v");
+const coapMode = hasFlag("--coap");
 const ifaceName = getArg("--iface");
 
 if (!fileMode && !liveMode) {
@@ -74,6 +84,7 @@ Options:
   --relay             Forward decoded packets to backend UDP
   --decrypt           Native decrypt MAC-encrypted frames (--file only)
   --verbose / -v      Show raw CBOR body + unknown keys alongside decoded text
+  --coap              Also capture CoAP programming traffic (port 5683)
   --iface <name>      tshark interface name (auto-detected from nRF sniffer)
 
 Requirements:
@@ -124,11 +135,21 @@ function buildTsharkArgs(): string[] {
   // Line-buffered output so packets appear in real-time (not buffered until exit)
   tsharkArgs.push("-l");
 
-  // Thread key is read from Wireshark's ieee802154_keys UAT file automatically
-  // Filter to Lutron UDP port
-  tsharkArgs.push("-Y", `udp.port == ${CCX_CONFIG.udpPort}`);
+  if (coapMode) {
+    // Capture both CCX control (9190) and CoAP programming (5683)
+    tsharkArgs.push("-d", "udp.port==5683,coap");
+    tsharkArgs.push(
+      "-Y",
+      `udp.port == ${CCX_CONFIG.udpPort} || (udp.port == 5683 && coap)`,
+    );
+  } else {
+    // Thread key is read from Wireshark's ieee802154_keys UAT file automatically
+    tsharkArgs.push("-Y", `udp.port == ${CCX_CONFIG.udpPort}`);
+  }
 
   // Output fields as tab-separated values
+  // When --coap, include udp.dstport to distinguish CCX vs CoAP,
+  // plus CoAP-specific fields
   tsharkArgs.push(
     "-T",
     "fields",
@@ -144,11 +165,194 @@ function buildTsharkArgs(): string[] {
     "wpan.dst64",
     "-e",
     "udp.payload",
-    "-E",
-    "separator=\t",
   );
 
+  if (coapMode) {
+    tsharkArgs.push(
+      "-e",
+      "udp.dstport",
+      "-e",
+      "coap.code",
+      "-e",
+      "coap.opt.uri_path_recon",
+      "-e",
+      "data",
+    );
+  }
+
+  tsharkArgs.push("-E", "separator=\t");
+
   return tsharkArgs;
+}
+
+// ── CoAP helpers (for --coap mode) ──────────────────────────────────
+
+const cborDecoder = new Decoder({ mapsAsObjects: false });
+
+function normalizeCbor(x: unknown): unknown {
+  if (x instanceof Map) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of x.entries()) out[String(k)] = normalizeCbor(v);
+    return out;
+  }
+  if (Array.isArray(x)) return x.map(normalizeCbor);
+  if (x instanceof Uint8Array) return Buffer.from(x).toString("hex");
+  return x;
+}
+
+function decodeCoapCbor(hex: string): unknown | null {
+  const clean = hex.replace(/[:\s]/g, "");
+  if (!clean) return null;
+  try {
+    return normalizeCbor(cborDecoder.decode(Buffer.from(clean, "hex")));
+  } catch {
+    return null;
+  }
+}
+
+function coapCodeStr(code: number): string {
+  if (code === 1) return "GET";
+  if (code === 2) return "POST";
+  if (code === 3) return "PUT";
+  if (code === 4) return "DELETE";
+  if (code > 31)
+    return `${code >> 5}.${(code & 0x1f).toString().padStart(2, "0")}`;
+  return String(code);
+}
+
+function pctStr(v: number): string {
+  return `${((v / 65279) * 100).toFixed(1)}%`;
+}
+
+function annotateCoapPayload(
+  path: string,
+  code: number,
+  decoded: unknown,
+  dst: string,
+): string {
+  const devName = getDeviceName(dst);
+  const target = devName ? ` → ${devName}` : "";
+
+  // DELETE /cg/db
+  if (path === "/cg/db" && code === 4) {
+    return `DB_CLEAR${target}`;
+  }
+
+  // Preset: /cg/db/pr/c/AAI POST
+  if (
+    path === "/cg/db/pr/c/AAI" &&
+    code === 2 &&
+    decoded &&
+    typeof decoded === "object"
+  ) {
+    const m = decoded as Record<string, unknown>;
+    for (const [keyHex, value] of Object.entries(m)) {
+      if (typeof keyHex !== "string" || keyHex.length < 8) continue;
+      const presetId = parseInt(keyHex.slice(0, 4), 16);
+      if (!Array.isArray(value) || value[0] !== 72) continue;
+      const body = value[1] as Record<string, unknown> | undefined;
+      const level16 = typeof body?.["0"] === "number" ? body["0"] : undefined;
+      const fadeQs = typeof body?.["3"] === "number" ? body["3"] : undefined;
+      const info = getPresetInfo(presetId) ?? getSceneName(presetId);
+      const name =
+        typeof info === "object"
+          ? `"${info.name}"`
+          : typeof info === "string"
+            ? `"${info}"`
+            : `preset=${presetId}`;
+      const lvl = level16 !== undefined ? ` ${pctStr(level16 as number)}` : "";
+      const fade =
+        fadeQs !== undefined ? ` fade=${(fadeQs as number) / 4}s` : "";
+      return `PRESET ${name}${lvl}${fade}${target}`;
+    }
+  }
+
+  // Zone membership: /cg/db/mc/c/AAI POST
+  if (path === "/cg/db/mc/c/AAI" && code === 2 && Array.isArray(decoded)) {
+    for (const item of decoded) {
+      if (typeof item !== "string" || item.length < 10) continue;
+      const zoneId = parseInt(item.slice(4, 8), 16);
+      const zoneName = getZoneName(zoneId);
+      return `ZONE_MAP zone=${zoneId}${zoneName ? ` "${zoneName}"` : ""}${target}`;
+    }
+  }
+
+  // Config tables: /cg/db/ct/c/<bucket> PUT
+  if (
+    path.startsWith("/cg/db/ct/c/") &&
+    code === 3 &&
+    Array.isArray(decoded) &&
+    decoded.length >= 2
+  ) {
+    const bucket = path.slice("/cg/db/ct/c/".length);
+    const op = decoded[0];
+    const body = decoded[1] as Record<string, unknown> | undefined;
+    if (typeof op === "number" && body) {
+      if (bucket === "AAI" && op === 3) {
+        const hi = typeof body["2"] === "number" ? body["2"] : null;
+        const lo = typeof body["3"] === "number" ? body["3"] : null;
+        const parts: string[] = [];
+        if (hi != null) parts.push(`high=${pctStr(hi as number)}`);
+        if (lo != null) parts.push(`low=${pctStr(lo as number)}`);
+        return `TRIM ${parts.join(", ")}${target}`;
+      }
+      if (bucket === "AHA" && op === 108) {
+        const k4 = body["4"];
+        const k5 = body["5"];
+        return `STATUS_LED active=${k4 ?? "?"}/255 inactive=${k5 ?? "?"}/255${target}`;
+      }
+      if (bucket.startsWith("AF") && op === 107) {
+        return `LED_LINK ${bucket} button=${body["0"] ?? "?"}${target}`;
+      }
+      return `CONFIG ${bucket} op=${op}${target}`;
+    }
+  }
+
+  return target.slice(3) || ""; // strip " → " prefix
+}
+
+/** Process a CoAP line from tshark (--coap mode) */
+function processCoapLine(
+  epochStr: string,
+  srcAddr: string,
+  dstAddr: string,
+  code: number,
+  path: string,
+  dataHex: string,
+): void {
+  const epoch = parseFloat(epochStr);
+  const time = new Date(epoch * 1000).toISOString().slice(11, 23);
+  const src = getDeviceName(srcAddr) ?? srcAddr;
+  const codeLabel = coapCodeStr(code);
+  const decoded = dataHex ? decodeCoapCbor(dataHex) : null;
+  const note = annotateCoapPayload(path, code, decoded, dstAddr);
+
+  let line = `${time} ${"COAP".padEnd(14)} ${src} → ${codeLabel} ${path}`;
+  if (note) line += ` [${note}]`;
+
+  if (verboseMode && dataHex) {
+    line += `\n${"".padEnd(13)}payload: ${dataHex}`;
+    if (decoded != null) {
+      line += `\n${"".padEnd(13)}cbor: ${JSON.stringify(decoded)}`;
+    }
+  }
+
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify({
+        timestamp: new Date(epoch * 1000).toISOString(),
+        type: "COAP",
+        srcAddr,
+        dstAddr,
+        code: codeLabel,
+        path,
+        payload: dataHex || undefined,
+        note: note || undefined,
+      }),
+    );
+  } else {
+    console.log(line);
+  }
 }
 
 /** Process a single tshark output line */
@@ -159,9 +363,32 @@ function processLine(line: string): CCXPacket | null {
   const fields = trimmed.split("\t");
   if (fields.length < 6) return null;
 
-  const [epochStr, srcAddr, dstAddr, srcEui64, dstEui64, dataHex] = fields;
+  const [epochStr, srcAddr, dstAddr, srcEui64, dstEui64, udpPayload] = fields;
 
-  // Skip if no payload data
+  // In --coap mode, extra fields: [6]=udp.dstport, [7]=coap.code, [8]=coap.opt.uri_path_recon, [9]=data
+  if (coapMode && fields.length >= 7) {
+    const dstPort = parseInt(fields[6] ?? "", 10);
+    if (dstPort === 5683) {
+      // This is a CoAP packet on port 5683
+      const coapCode = parseInt(fields[7] ?? "", 10);
+      const coapPath = fields[8] ?? "";
+      const coapData = (fields[9] ?? "").replace(/[:\s]/g, "");
+      if (coapPath || coapData) {
+        processCoapLine(
+          epochStr,
+          srcAddr ?? "",
+          dstAddr ?? "",
+          coapCode,
+          coapPath,
+          coapData,
+        );
+      }
+      return null; // Not a CCXPacket
+    }
+  }
+
+  // Standard CCX packet on port 9190
+  const dataHex = udpPayload;
   if (!dataHex) return null;
 
   // tshark outputs data.data as colon-separated hex
@@ -410,6 +637,8 @@ async function main() {
     if (decryptMode) console.log("  Native decrypt: enabled");
     if (verboseMode)
       console.log("  Verbose: enabled (raw CBOR + unknown keys)");
+    if (coapMode)
+      console.log("  CoAP: enabled (port 9190 + 5683 programming traffic)");
     if (relayMode) console.log(`  Relaying to localhost:${RELAY_PORT}`);
     console.log("");
   }
