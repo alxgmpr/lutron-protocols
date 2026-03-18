@@ -26,13 +26,13 @@
 import { execSync, spawn } from "child_process";
 import { createSocket } from "dgram";
 import { existsSync } from "fs";
+import { CCX_CONFIG, getAllDevices, getDeviceName } from "../ccx/config";
 import {
-  CCX_CONFIG,
-  getAllDevices,
-  getDeviceName,
-  getZoneName,
-} from "../ccx/config";
-import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
+  buildPacket,
+  formatMessage,
+  formatRawBody,
+  getMessageTypeName,
+} from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 import { formatAddr, parseFrame } from "../lib/ieee802154";
 import { decryptMacFrame, deriveThreadKeys } from "../lib/thread-crypto";
@@ -55,6 +55,7 @@ const masterKey = getArg("--key") ?? CCX_CONFIG.masterKey;
 const jsonOutput = hasFlag("--json");
 const relayMode = hasFlag("--relay");
 const decryptMode = hasFlag("--decrypt");
+const verboseMode = hasFlag("--verbose") || hasFlag("-v");
 const ifaceName = getArg("--iface");
 
 if (!fileMode && !liveMode) {
@@ -72,6 +73,7 @@ Options:
   --json              Output JSON (one object per line)
   --relay             Forward decoded packets to backend UDP
   --decrypt           Native decrypt MAC-encrypted frames (--file only)
+  --verbose / -v      Show raw CBOR body + unknown keys alongside decoded text
   --iface <name>      tshark interface name (auto-detected from nRF sniffer)
 
 Requirements:
@@ -195,14 +197,20 @@ function formatPacket(pkt: CCXPacket): string {
   const src = getDeviceName(pkt.srcAddr) ?? pkt.srcAddr;
   const msgStr = formatMessage(pkt.parsed);
 
-  // Add zone name annotation if applicable
-  let annotation = "";
-  if (pkt.parsed.type === "LEVEL_CONTROL") {
-    const zoneName = getZoneName(pkt.parsed.zoneId);
-    if (zoneName) annotation = ` [${zoneName}]`;
+  let line = `${time} ${typeName} ${src} → ${msgStr}`;
+
+  // Verbose mode: show raw CBOR body and unknown keys
+  if (verboseMode && pkt.parsed.rawBody) {
+    line += `\n${"".padEnd(13)}cbor: ${formatRawBody(pkt.parsed.rawBody)}`;
+    if (
+      pkt.parsed.unknownKeys &&
+      Object.keys(pkt.parsed.unknownKeys).length > 0
+    ) {
+      line += `\n${"".padEnd(13)}UNKNOWN: ${formatRawBody(pkt.parsed.unknownKeys as Record<number, unknown>)}`;
+    }
   }
 
-  return `${time} ${typeName} ${src} → ${msgStr}${annotation}`;
+  return line;
 }
 
 /** Relay a packet to the backend */
@@ -400,6 +408,8 @@ async function main() {
     console.log(`  Channel: ${channel}`);
     console.log(`  Master key: ${masterKey.slice(0, 8)}...`);
     if (decryptMode) console.log("  Native decrypt: enabled");
+    if (verboseMode)
+      console.log("  Verbose: enabled (raw CBOR + unknown keys)");
     if (relayMode) console.log(`  Relaying to localhost:${RELAY_PORT}`);
     console.log("");
   }

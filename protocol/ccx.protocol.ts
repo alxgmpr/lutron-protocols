@@ -91,7 +91,7 @@ const DIM_HOLD = messageType(
   2,
   "Dim hold start - first of a raise/lower pair (even sequence number)",
   "DEVICE",
-  ["COMMAND", "SEQUENCE"],
+  ["COMMAND", "ZONE", "SEQUENCE"],
   {
     commandSchema: [
       {
@@ -100,7 +100,12 @@ const DIM_HOLD = messageType(
         type: "bytes(4)",
         description: "Same format as BUTTON_PRESS",
       },
-      { key: 1, name: "action", type: "uint8", description: "3 = raise/lower" },
+      {
+        key: 1,
+        name: "action",
+        type: "uint8",
+        description: "2 = lower, 3 = raise",
+      },
     ],
   },
 );
@@ -109,7 +114,7 @@ const DIM_STEP = messageType(
   3,
   "Dim step - second of a raise/lower pair (odd sequence number)",
   "DEVICE",
-  ["COMMAND", "SEQUENCE"],
+  ["COMMAND", "ZONE", "SEQUENCE"],
   {
     commandSchema: [
       {
@@ -118,7 +123,12 @@ const DIM_STEP = messageType(
         type: "bytes(4)",
         description: "Same format as BUTTON_PRESS",
       },
-      { key: 1, name: "action", type: "uint8", description: "3 = raise/lower" },
+      {
+        key: 1,
+        name: "action",
+        type: "uint8",
+        description: "2 = lower, 3 = raise",
+      },
       {
         key: 2,
         name: "step_value",
@@ -131,7 +141,7 @@ const DIM_STEP = messageType(
 
 const ACK = messageType(
   7,
-  "Acknowledgment from processor",
+  "Acknowledgment from processor. Response codes: 0x50='P' (LEVEL_ACK), 0x55='U' (BUTTON_ACK)",
   "CONTROL",
   ["COMMAND", "SEQUENCE"],
   {
@@ -139,9 +149,9 @@ const ACK = messageType(
       {
         key: 1,
         name: "response",
-        type: "bytes",
+        type: "map",
         description:
-          "Response payload (0x50='P' for level, 0x55='U' for button)",
+          "Response map: {0: bytes} — first byte is response code (0x50=LEVEL_ACK, 0x55=BUTTON_ACK)",
       },
     ],
   },
@@ -151,8 +161,32 @@ const DEVICE_REPORT = messageType(
   27,
   "Device state report - broadcast by devices after executing commands",
   "STATE",
-  ["COMMAND", "DEVICE", "EXTRA"],
+  ["COMMAND", "DEVICE", "EXTRA", "SEQUENCE"],
   {
+    commandSchema: [
+      {
+        key: 0,
+        name: "action",
+        type: "uint8",
+        description: "Report action type",
+      },
+      {
+        key: 1,
+        name: "level_map",
+        type: "map",
+        optional: true,
+        description:
+          "Format A: {0: 8-bit level} — scale to 16-bit via level*0xFEFF/255",
+      },
+      {
+        key: 3,
+        name: "level_tuples",
+        type: "array",
+        optional: true,
+        description:
+          "Format B: [[idx, Uint8Array(2)]] — uint16 BE level per zone",
+      },
+    ],
     extraSchema: [
       {
         key: 1,
@@ -197,12 +231,17 @@ const SCENE_RECALL = messageType(
 
 const COMPONENT_CMD = messageType(
   40,
-  "Component command - shade position, fan speed, CCO relay, etc.",
+  "Component command - shade position, fan speed, CCO relay, etc. command[0]=0 for set",
   "OUTPUT",
   ["COMMAND", "ZONE", "EXTRA", "SEQUENCE"],
   {
     commandSchema: [
-      { key: 0, name: "action", type: "uint8", description: "0 = set" },
+      {
+        key: 0,
+        name: "action",
+        type: "uint8",
+        description: "0 = set, [4] = recall",
+      },
     ],
     extraSchema: [
       {

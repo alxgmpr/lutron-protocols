@@ -22,7 +22,9 @@ import {
 } from "fs";
 import { join } from "path";
 import {
+  getDeviceBySerial,
   getPresetInfo,
+  getSceneName,
   getSerialName,
   getZoneName,
   presetIdFromDeviceId,
@@ -751,6 +753,7 @@ function formatCcxMessage(msg: CCXMessage): {
       } else {
         parts.push(`preset=${presetId}`);
       }
+      parts.push(msg.direction ?? `action=${msg.action}`);
       parts.push(`step=${msg.stepValue}`);
       if (msg.zoneId) {
         const zoneName = getZoneName(msg.zoneId);
@@ -764,6 +767,7 @@ function formatCcxMessage(msg: CCXMessage): {
       const respHex = Array.from(msg.response)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
+      if (msg.responseLabel) parts.push(msg.responseLabel);
       parts.push(`response=${respHex}`);
       return { typeName: "ACK", parts };
     }
@@ -817,7 +821,15 @@ function formatCcxMessage(msg: CCXMessage): {
       return { typeName: "COMPONENT_CMD", parts };
     }
     case "STATUS": {
-      parts.push(`dev=0x${msg.deviceId.toString(16).padStart(8, "0")}`);
+      const serialName = getSerialName(msg.deviceId);
+      if (serialName) {
+        parts.push(`"${serialName}"`);
+      } else {
+        parts.push(`dev=0x${msg.deviceId.toString(16).padStart(8, "0")}`);
+      }
+      if (msg.rawBody) {
+        parts.push(`keys=[${Object.keys(msg.rawBody).join(",")}]`);
+      }
       return { typeName: "STATUS", parts };
     }
     case "PRESENCE": {

@@ -44,7 +44,7 @@ import type {
 } from "./types";
 
 /** Collect unknown keys from a CBOR map — anything not in consumed set */
-function _collectUnknown(
+function collectUnknown(
   map: Record<number, unknown>,
   consumed: Set<number>,
 ): Record<number, unknown> | undefined {
@@ -61,7 +61,7 @@ function _collectUnknown(
 }
 
 /** Derive direction string from action number */
-function _actionToDirection(
+function actionToDirection(
   action: number | undefined,
 ): "RAISE" | "LOWER" | undefined {
   if (action === 3) return "RAISE";
@@ -70,7 +70,7 @@ function _actionToDirection(
 }
 
 /** Known ACK response codes */
-const _ACK_LABELS: Record<number, string> = {
+const ACK_LABELS: Record<number, string> = {
   0x50: "LEVEL_ACK",
   0x55: "BUTTON_ACK",
 };
@@ -97,6 +97,14 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
   const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
+  // Collect unknown body keys
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.ZONE,
+    BodyKey.SEQUENCE,
+  ]);
+  const consumedInner = new Set([0, 3, 4]);
+
   return {
     type: "LEVEL_CONTROL",
     level,
@@ -106,6 +114,10 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     fade,
     delay,
     sequence,
+    rawBody: body,
+    unknownKeys:
+      collectUnknown(body, consumedBody) ??
+      collectUnknown(inner, consumedInner),
   };
 }
 
@@ -118,6 +130,8 @@ function parseButtonPress(body: CCXBody): CCXButtonPress {
   const counters = (inner[1] ?? []) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
+  const consumedBody = new Set([BodyKey.COMMAND, BodyKey.SEQUENCE]);
+
   return {
     type: "BUTTON_PRESS",
     deviceId,
@@ -125,6 +139,8 @@ function parseButtonPress(body: CCXBody): CCXButtonPress {
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
     counters,
     sequence,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -138,11 +154,16 @@ function parseAck(body: CCXBody): CCXAck {
   const responseCode = response.length > 0 ? response[0] : 0;
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
+  const consumedBody = new Set([BodyKey.COMMAND, BodyKey.SEQUENCE]);
+
   return {
     type: "ACK",
     responseCode,
     response,
+    responseLabel: ACK_LABELS[responseCode],
     sequence,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -175,15 +196,19 @@ function parseStatus(body: CCXBody): CCXStatus {
     deviceId: deviceInfo[1] ?? 0,
     extra,
     sequence,
+    rawBody: body,
   };
 }
 
 /** Parse Presence (Type 65535) */
 function parsePresence(body: CCXBody): CCXPresence {
+  const consumedBody = new Set([BodyKey.STATUS, BodyKey.SEQUENCE]);
   return {
     type: "PRESENCE",
     status: (body[BodyKey.STATUS] ?? 0) as number,
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -198,15 +223,26 @@ function parseDimHold(body: CCXBody): CCXDimHold {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const deviceId = extractDeviceId(inner);
   const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
+  const action = inner[1] as number | undefined;
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.ZONE,
+    BodyKey.SEQUENCE,
+  ]);
+
   return {
     type: "DIM_HOLD",
     deviceId,
     buttonZone: deviceId.length >= 2 ? deviceId[1] : 0,
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
-    action: inner[1] as number | undefined,
+    action,
+    direction: actionToDirection(action),
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -215,16 +251,27 @@ function parseDimStep(body: CCXBody): CCXDimStep {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const deviceId = extractDeviceId(inner);
   const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
+  const action = inner[1] as number | undefined;
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.ZONE,
+    BodyKey.SEQUENCE,
+  ]);
+
   return {
     type: "DIM_STEP",
     deviceId,
     buttonZone: deviceId.length >= 2 ? deviceId[1] : 0,
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
-    action: inner[1] as number | undefined,
+    action,
+    direction: actionToDirection(action),
     stepValue: (inner[2] ?? 0) as number,
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -233,12 +280,64 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
   const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+
+  // Extract level from inner command map
+  // Format A: inner key 1 is a map with key 0 = 8-bit level
+  // Format B: inner key 3 is array of tuples [idx, Uint8Array(2)] = uint16 BE level
+  let level: number | undefined;
+  let levelPercent: number | undefined;
+
+  const innerKey1 = inner[1];
+  const innerKey3 = inner[3];
+
+  if (
+    innerKey1 !== null &&
+    innerKey1 !== undefined &&
+    typeof innerKey1 === "object" &&
+    !Array.isArray(innerKey1) &&
+    !(innerKey1 instanceof Uint8Array)
+  ) {
+    // Format A: inner[1] is a map, inner[1][0] is 8-bit level
+    const rawLevel = (innerKey1 as Record<number, unknown>)[0];
+    if (typeof rawLevel === "number") {
+      // Scale 8-bit (0-255) to 16-bit (0-0xFEFF)
+      level = Math.round((rawLevel / 255) * 0xfeff);
+      levelPercent = levelToPercent(level);
+    }
+  } else if (Array.isArray(innerKey3)) {
+    // Format B: inner[3] is array of tuples [idx, Uint8Array(2)]
+    for (const entry of innerKey3) {
+      if (
+        Array.isArray(entry) &&
+        entry[1] instanceof Uint8Array &&
+        entry[1].length === 2
+      ) {
+        level = (entry[1][0] << 8) | entry[1][1];
+        levelPercent = levelToPercent(level);
+        break;
+      }
+    }
+  }
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.DEVICE,
+    BodyKey.EXTRA,
+    BodyKey.SEQUENCE,
+  ]);
+
   return {
     type: "DEVICE_REPORT",
     deviceType: deviceInfo[0] ?? 0,
     deviceSerial: deviceInfo[1] ?? 0,
     groupId: (extra[1] ?? 0) as number,
     innerData: inner,
+    level,
+    levelPercent,
+    sequence,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -247,6 +346,14 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const targets = (body[BodyKey.ZONE] ?? []) as number[];
   const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.ZONE,
+    BodyKey.EXTRA,
+    BodyKey.SEQUENCE,
+  ]);
+
   return {
     type: "SCENE_RECALL",
     command: inner[0],
@@ -254,6 +361,8 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
     sceneId: (extra[0] ?? 0) as number,
     params: (extra[2] ?? []) as number[],
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -262,6 +371,14 @@ function parseComponentCmd(body: CCXBody): CCXComponentCmd {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const targets = (body[BodyKey.ZONE] ?? []) as number[];
   const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.ZONE,
+    BodyKey.EXTRA,
+    BodyKey.SEQUENCE,
+  ]);
+
   return {
     type: "COMPONENT_CMD",
     command: inner[0],
@@ -269,6 +386,8 @@ function parseComponentCmd(body: CCXBody): CCXComponentCmd {
     groupId: (extra[0] ?? 0) as number,
     params: (extra[2] ?? []) as number[],
     sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
@@ -301,6 +420,7 @@ export function parseMessage(msgType: number, body: CCXBody): CCXMessage {
         msgType,
         body,
         sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+        rawBody: body,
       } satisfies CCXUnknown;
   }
 }
@@ -363,6 +483,44 @@ export function buildPacket(opts: {
 export function getMessageTypeName(msgType: number): string {
   return CCXMessageTypeName[msgType] ?? `UNKNOWN_${msgType}`;
 }
+
+// ── Raw body formatting (Phase 3B) ─────────────────────────────────
+
+/** Format a value for raw CBOR display */
+function formatRawValue(v: unknown): string {
+  if (v instanceof Uint8Array) {
+    return (
+      "h'" +
+      Array.from(v)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("") +
+      "'"
+    );
+  }
+  if (typeof v === "number") {
+    return v >= 256 ? `0x${v.toString(16).toUpperCase()}` : String(v);
+  }
+  if (Array.isArray(v)) {
+    return `[${v.map(formatRawValue).join(", ")}]`;
+  }
+  if (v !== null && v !== undefined && typeof v === "object") {
+    const entries = Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `${k}: ${formatRawValue(val)}`)
+      .join(", ");
+    return `{${entries}}`;
+  }
+  return String(v);
+}
+
+/** Format a raw CBOR body as compact readable notation */
+export function formatRawBody(body: CCXBody): string {
+  const entries = Object.entries(body)
+    .map(([k, v]) => `${k}: ${formatRawValue(v)}`)
+    .join(", ");
+  return `{${entries}}`;
+}
+
+// ── Human-readable formatting ───────────────────────────────────────
 
 /** Format a CCXMessage for human-readable display */
 export function formatMessage(msg: CCXMessage): string {

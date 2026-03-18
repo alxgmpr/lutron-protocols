@@ -1,30 +1,40 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
 
 /**
  * CCX Packet Analyzer - Reverse engineering helper for CCX (Thread/CBOR) traffic
  *
  * Usage:
- *   bun run tools/ccx-analyzer.ts decode <hex>
- *   bun run tools/ccx-analyzer.ts types --file <pcapng>
- *   bun run tools/ccx-analyzer.ts fields <type> --file <pcapng>
- *   bun run tools/ccx-analyzer.ts timeline --file <pcapng>
- *   bun run tools/ccx-analyzer.ts devices --file <pcapng>
- *   bun run tools/ccx-analyzer.ts compare <type> --file <pcapng>
- *   bun run tools/ccx-analyzer.ts unknown --file <pcapng>
- *   bun run tools/ccx-analyzer.ts stats --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts decode <hex>
+ *   npx tsx tools/ccx-analyzer.ts types --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts fields <type> --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts timeline --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts devices --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts compare <type> --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts unknown --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts stats --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts inner <type> --file <pcapng>
+ *   npx tsx tools/ccx-analyzer.ts crossref
  */
 
 import { decode as cborDecode } from "cbor-x";
 import { spawn } from "child_process";
-import { CCX_CONFIG, getDeviceName, getZoneName } from "../ccx/config";
+import {
+  CCX_CONFIG,
+  getDeviceName,
+  getSceneName,
+  getSerialName,
+  getZoneName,
+} from "../ccx/config";
 import { CCXMessageTypeName } from "../ccx/constants";
 import {
   buildPacket,
   decodeAndParse,
   formatMessage,
+  formatRawBody,
   getMessageTypeName,
 } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
+import { CCX } from "../protocol/ccx.protocol";
 
 // ── CLI argument parsing ────────────────────────────────────────────
 
@@ -47,7 +57,6 @@ async function loadPacketsFromPcap(file: string): Promise<CCXPacket[]> {
     const tsharkArgs = [
       "-r",
       file,
-      // Thread key is read from Wireshark's ieee802154_keys UAT file automatically
       "-Y",
       `udp.port == ${CCX_CONFIG.udpPort}`,
       "-T",
@@ -152,8 +161,9 @@ function cmdDecode(hex: string) {
   console.log(`Length: ${raw.length} bytes`);
 
   // Show raw CBOR structure
+  let decoded: unknown;
   try {
-    const decoded = cborDecode(raw);
+    decoded = cborDecode(raw);
     console.log(`\nCBOR structure:`);
     console.log(
       JSON.stringify(
@@ -174,6 +184,90 @@ function cmdDecode(hex: string) {
   const msg = decodeAndParse(hex);
   console.log(`\nParsed: ${formatMessage(msg)}`);
 
+  // Annotated CBOR tree using protocol schema
+  if (Array.isArray(decoded) && decoded.length >= 2) {
+    const msgType = decoded[0] as number;
+    const typeName = getMessageTypeName(msgType);
+    const typeDef = CCX.messageTypes[typeName];
+
+    console.log(`\nAnnotated CBOR:`);
+    console.log(`  [0] = ${msgType} (${typeName})`);
+    console.log(`  [1] = Map:`);
+
+    const body = decoded[1] as Record<number, unknown>;
+    if (body && typeof body === "object") {
+      for (const [k, v] of Object.entries(body)) {
+        const key = Number(k);
+        // Look up body key name
+        const bodyKeyDef = Object.entries(CCX.bodyKeys).find(
+          ([, def]) => def.key === key,
+        );
+        const bodyKeyName = bodyKeyDef ? bodyKeyDef[0] : `UNKNOWN_${key}`;
+
+        if (key === 0 && typeDef?.commandSchema) {
+          // Annotate inner command map
+          console.log(`    key ${key} (${bodyKeyName}) = Map:`);
+          const inner = v as Record<number, unknown>;
+          if (inner && typeof inner === "object") {
+            for (const [ik, iv] of Object.entries(inner)) {
+              const innerKey = Number(ik);
+              const fieldDef = typeDef.commandSchema.find(
+                (f) => f.key === innerKey,
+              );
+              const annotation = annotateValue(innerKey, iv, fieldDef);
+              console.log(
+                `      key ${innerKey}${fieldDef ? ` (${fieldDef.name})` : ""} = ${annotation}`,
+              );
+            }
+          }
+        } else if (key === 3 && typeDef?.extraSchema) {
+          // Annotate extra map
+          console.log(`    key ${key} (${bodyKeyName}) = Map:`);
+          const extra = v as Record<number, unknown>;
+          if (extra && typeof extra === "object") {
+            for (const [ek, ev] of Object.entries(extra)) {
+              const extraKey = Number(ek);
+              const fieldDef = typeDef.extraSchema.find(
+                (f) => f.key === extraKey,
+              );
+              const annotation = annotateValue(extraKey, ev, fieldDef);
+              console.log(
+                `      key ${extraKey}${fieldDef ? ` (${fieldDef.name})` : ""} = ${annotation}`,
+              );
+            }
+          }
+        } else if (key === 1 && Array.isArray(v) && v.length === 2) {
+          // Zone info
+          const zoneName = getZoneName(v[1] as number);
+          const zoneAnnotation = zoneName ? ` "${zoneName}"` : "";
+          console.log(
+            `    key ${key} (${bodyKeyName}) = [${v[0]}, ${v[1]}] → zone_type=${v[0]}, zone_id=${v[1]}${zoneAnnotation}`,
+          );
+        } else if (key === 2 && Array.isArray(v) && v.length === 2) {
+          // Device info
+          const serialName = getSerialName(v[1] as number);
+          const nameAnnotation = serialName ? ` "${serialName}"` : "";
+          console.log(
+            `    key ${key} (${bodyKeyName}) = [${v[0]}, ${v[1]}]${nameAnnotation}`,
+          );
+        } else if (key === 5) {
+          console.log(`    key ${key} (${bodyKeyName}) = ${v}`);
+        } else {
+          console.log(
+            `    key ${key} (${bodyKeyName}) = ${formatAnnotatedValue(v)}`,
+          );
+        }
+      }
+    }
+  }
+
+  // Show unknown keys if any
+  if (msg.unknownKeys && Object.keys(msg.unknownKeys).length > 0) {
+    console.log(
+      `\nUnknown keys: ${formatRawBody(msg.unknownKeys as Record<number, unknown>)}`,
+    );
+  }
+
   // Type-specific details
   if (msg.type === "LEVEL_CONTROL") {
     const zoneName = getZoneName(msg.zoneId);
@@ -183,6 +277,8 @@ function cmdDecode(hex: string) {
     );
     console.log(`  Zone: ${msg.zoneId}${zoneName ? ` (${zoneName})` : ""}`);
     console.log(`  Zone type: ${msg.zoneType}`);
+    console.log(`  Fade: ${msg.fade} (${msg.fade / 4}s)`);
+    if (msg.delay > 0) console.log(`  Delay: ${msg.delay} (${msg.delay / 4}s)`);
     console.log(`  Sequence: ${msg.sequence}`);
   } else if (msg.type === "BUTTON_PRESS") {
     console.log(`\nDetails:`);
@@ -198,17 +294,98 @@ function cmdDecode(hex: string) {
     console.log(
       `  Response: ${bytesToHex(msg.response)} (0x${msg.responseCode.toString(16).padStart(2, "0")} = '${String.fromCharCode(msg.responseCode)}')`,
     );
+    if (msg.responseLabel) console.log(`  Label: ${msg.responseLabel}`);
     console.log(`  Sequence: ${msg.sequence}`);
   } else if (msg.type === "STATUS") {
+    const serialName = getSerialName(msg.deviceId);
     console.log(`\nDetails:`);
     console.log(`  Device type: ${msg.deviceType}`);
-    console.log(`  Device ID: 0x${msg.deviceId.toString(16).padStart(8, "0")}`);
+    console.log(
+      `  Device ID: 0x${msg.deviceId.toString(16).padStart(8, "0")}${serialName ? ` (${serialName})` : ""}`,
+    );
     console.log(`  Inner data: ${bytesToHex(msg.innerData)}`);
     if (Object.keys(msg.extra).length > 0) {
       console.log(`  Extra fields: ${JSON.stringify(msg.extra)}`);
     }
     console.log(`  Sequence: ${msg.sequence}`);
+  } else if (msg.type === "DIM_HOLD" || msg.type === "DIM_STEP") {
+    const zoneName = msg.zoneId ? getZoneName(msg.zoneId) : undefined;
+    console.log(`\nDetails:`);
+    console.log(`  Device ID: ${bytesToHex(msg.deviceId)}`);
+    console.log(`  Direction: ${msg.direction ?? `action=${msg.action}`}`);
+    if (msg.zoneId)
+      console.log(`  Zone: ${msg.zoneId}${zoneName ? ` (${zoneName})` : ""}`);
+    if (msg.type === "DIM_STEP") console.log(`  Step value: ${msg.stepValue}`);
+    console.log(`  Sequence: ${msg.sequence}`);
+  } else if (msg.type === "DEVICE_REPORT") {
+    const serialName = getSerialName(msg.deviceSerial);
+    console.log(`\nDetails:`);
+    console.log(
+      `  Serial: ${msg.deviceSerial}${serialName ? ` (${serialName})` : ""}`,
+    );
+    if (msg.levelPercent !== undefined)
+      console.log(`  Level: ${msg.levelPercent.toFixed(1)}%`);
+    if (msg.groupId) {
+      const sceneName = getSceneName(msg.groupId);
+      console.log(
+        `  Group: ${msg.groupId}${sceneName ? ` (${sceneName})` : ""}`,
+      );
+    }
+    console.log(`  Sequence: ${msg.sequence}`);
+  } else if (msg.type === "SCENE_RECALL") {
+    const sceneName = getSceneName(msg.sceneId);
+    console.log(`\nDetails:`);
+    console.log(`  Scene: ${msg.sceneId}${sceneName ? ` (${sceneName})` : ""}`);
+    console.log(`  Command: ${JSON.stringify(msg.command)}`);
+    console.log(`  Targets: [${msg.targets.join(", ")}]`);
+    console.log(`  Params: [${msg.params.join(", ")}]`);
+    console.log(`  Sequence: ${msg.sequence}`);
   }
+}
+
+/** Annotate a value with type info from schema */
+function annotateValue(
+  _key: number,
+  value: unknown,
+  fieldDef?: { name: string; type: string; unit?: string },
+): string {
+  let base = formatAnnotatedValue(value);
+  if (!fieldDef) return base;
+
+  // Add semantic annotation
+  if (fieldDef.name === "level" && typeof value === "number") {
+    const pct = ((value / 0xfeff) * 100).toFixed(1);
+    base += ` (${pct}%)`;
+  } else if (fieldDef.unit === "quarter-seconds" && typeof value === "number") {
+    base += ` (${value / 4} seconds)`;
+  } else if (fieldDef.name === "device_id" && value instanceof Uint8Array) {
+    // Already formatted as hex
+  }
+
+  return base;
+}
+
+/** Format a single value for annotated display */
+function formatAnnotatedValue(v: unknown): string {
+  if (v instanceof Uint8Array) {
+    return `h'${Array.from(v)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")}'`;
+  }
+  if (typeof v === "number") {
+    if (v >= 256) return `${v} (0x${v.toString(16).toUpperCase()})`;
+    return String(v);
+  }
+  if (Array.isArray(v)) {
+    return `[${v.map(formatAnnotatedValue).join(", ")}]`;
+  }
+  if (v !== null && v !== undefined && typeof v === "object") {
+    const entries = Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `${k}: ${formatAnnotatedValue(val)}`)
+      .join(", ");
+    return `{${entries}}`;
+  }
+  return String(v);
 }
 
 /** Catalog all unique message types from a capture */
@@ -338,15 +515,7 @@ async function cmdTimeline() {
     const src = getDeviceName(pkt.srcAddr) ?? pkt.srcAddr;
     const msgStr = formatMessage(pkt.parsed);
 
-    let annotation = "";
-    if (pkt.parsed.type === "LEVEL_CONTROL") {
-      const zoneName = getZoneName(pkt.parsed.zoneId);
-      if (zoneName) annotation = ` [${zoneName}]`;
-    }
-
-    console.log(
-      `${timeStr} ${deltaStr.padStart(8)} ${src} ${msgStr}${annotation}`,
-    );
+    console.log(`${timeStr} ${deltaStr.padStart(8)} ${src} ${msgStr}`);
   }
 
   console.log(`\n${packets.length} packets total`);
@@ -491,63 +660,104 @@ async function cmdUnknown() {
   }
 
   const packets = await loadPacketsFromPcap(pcapFile);
+
+  // Find truly unknown types
   const unknowns = packets.filter((p) => p.parsed.type === "UNKNOWN");
 
-  if (unknowns.length === 0) {
-    console.log("\nNo unknown message types found.");
-    console.log(`All ${packets.length} packets matched known types.`);
+  // Find messages with unknown keys (known types but unexpected fields)
+  const withUnknownKeys = packets.filter(
+    (p) =>
+      p.parsed.type !== "UNKNOWN" &&
+      p.parsed.unknownKeys &&
+      Object.keys(p.parsed.unknownKeys).length > 0,
+  );
+
+  if (unknowns.length === 0 && withUnknownKeys.length === 0) {
+    console.log("\nNo unknown message types or fields found.");
+    console.log(
+      `All ${packets.length} packets matched known types with no extra keys.`,
+    );
     return;
   }
 
-  // Group by message type
-  const byType = new Map<number, CCXPacket[]>();
-  for (const pkt of unknowns) {
-    const typeId = pkt.msgType;
-    const list = byType.get(typeId) ?? [];
-    list.push(pkt);
-    byType.set(typeId, list);
+  if (unknowns.length > 0) {
+    // Group by message type
+    const byType = new Map<number, CCXPacket[]>();
+    for (const pkt of unknowns) {
+      const typeId = pkt.msgType;
+      const list = byType.get(typeId) ?? [];
+      list.push(pkt);
+      byType.set(typeId, list);
+    }
+
+    console.log(`\nUnknown Message Types (${unknowns.length} packets):`);
+    console.log("=".repeat(50));
+
+    for (const [typeId, pkts] of [...byType.entries()].sort(
+      (a, b) => a[0] - b[0],
+    )) {
+      console.log(
+        `\nType ${typeId} (0x${typeId.toString(16)}): ${pkts.length} packets`,
+      );
+
+      // Show CBOR structure of first example
+      console.log("  Example CBOR:");
+      const raw = new Uint8Array(
+        pkts[0].rawHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
+      );
+      try {
+        const decoded = cborDecode(raw);
+        console.log(
+          "  " +
+            JSON.stringify(
+              decoded,
+              (_, v) => {
+                if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
+                return v;
+              },
+              2,
+            ).replace(/\n/g, "\n  "),
+        );
+      } catch {
+        console.log(`  Raw hex: ${pkts[0].rawHex}`);
+      }
+
+      // Show all unique body keys
+      const allKeys = new Set<number>();
+      for (const pkt of pkts) {
+        for (const key of Object.keys(pkt.body)) allKeys.add(Number(key));
+      }
+      console.log(
+        `  Body keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`,
+      );
+    }
   }
 
-  console.log(`\nUnknown Message Types (${unknowns.length} packets):`);
-  console.log("=".repeat(50));
-
-  for (const [typeId, pkts] of [...byType.entries()].sort(
-    (a, b) => a[0] - b[0],
-  )) {
+  if (withUnknownKeys.length > 0) {
     console.log(
-      `\nType ${typeId} (0x${typeId.toString(16)}): ${pkts.length} packets`,
+      `\nKnown types with unknown body keys (${withUnknownKeys.length} packets):`,
     );
+    console.log("=".repeat(50));
 
-    // Show CBOR structure of first example
-    console.log("  Example CBOR:");
-    const raw = new Uint8Array(
-      pkts[0].rawHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
-    );
-    try {
-      const decoded = cborDecode(raw);
+    // Group by type
+    const byType = new Map<string, { count: number; keys: Set<string> }>();
+    for (const pkt of withUnknownKeys) {
+      const type = pkt.parsed.type;
+      const existing = byType.get(type);
+      const keySet = new Set(Object.keys(pkt.parsed.unknownKeys!).map(String));
+      if (existing) {
+        existing.count++;
+        for (const k of keySet) existing.keys.add(k);
+      } else {
+        byType.set(type, { count: 1, keys: keySet });
+      }
+    }
+
+    for (const [type, info] of byType) {
       console.log(
-        "  " +
-          JSON.stringify(
-            decoded,
-            (_, v) => {
-              if (v instanceof Uint8Array) return `<bytes:${bytesToHex(v)}>`;
-              return v;
-            },
-            2,
-          ).replace(/\n/g, "\n  "),
+        `  ${type}: ${info.count} packets, unknown keys: [${[...info.keys].join(", ")}]`,
       );
-    } catch {
-      console.log(`  Raw hex: ${pkts[0].rawHex}`);
     }
-
-    // Show all unique body keys
-    const allKeys = new Set<number>();
-    for (const pkt of pkts) {
-      for (const key of Object.keys(pkt.body)) allKeys.add(Number(key));
-    }
-    console.log(
-      `  Body keys: [${[...allKeys].sort((a, b) => a - b).join(", ")}]`,
-    );
   }
 }
 
@@ -586,6 +796,10 @@ async function cmdStats() {
   const zones = new Set<number>();
   for (const pkt of packets) {
     if (pkt.parsed.type === "LEVEL_CONTROL") zones.add(pkt.parsed.zoneId);
+    if (pkt.parsed.type === "DIM_HOLD" && pkt.parsed.zoneId)
+      zones.add(pkt.parsed.zoneId);
+    if (pkt.parsed.type === "DIM_STEP" && pkt.parsed.zoneId)
+      zones.add(pkt.parsed.zoneId);
   }
 
   console.log("\nCCX Capture Statistics:");
@@ -613,6 +827,257 @@ async function cmdStats() {
       `  ${name.padEnd(16)} ${count.toString().padStart(5)} (${pct.padStart(5)}%) ${bar}`,
     );
   }
+}
+
+// ── Phase 4A: inner command map explorer ────────────────────────────
+
+/** Analyze inner command maps for a given message type */
+async function cmdInner(typeStr: string) {
+  if (!pcapFile) {
+    console.error("Error: --file <pcapng> required");
+    process.exit(1);
+  }
+
+  const typeId = resolveTypeId(typeStr);
+  if (typeId === undefined) {
+    console.error(`Unknown type: ${typeStr}`);
+    process.exit(1);
+  }
+
+  const packets = await loadPacketsFromPcap(pcapFile);
+  const matched = packets.filter((p) => p.msgType === typeId);
+
+  if (matched.length === 0) {
+    console.log(`No packets of type ${typeStr} (${typeId}) found.`);
+    return;
+  }
+
+  console.log(
+    `\nInner Command Map Analysis for ${getMessageTypeName(typeId)} (${matched.length} packets):`,
+  );
+  console.log("=".repeat(60));
+
+  // Catalog inner keys
+  const innerStats = new Map<
+    number,
+    {
+      count: number;
+      types: Set<string>;
+      values: unknown[];
+      subKeys?: Map<
+        number,
+        { count: number; types: Set<string>; values: unknown[] }
+      >;
+    }
+  >();
+
+  for (const pkt of matched) {
+    const inner = pkt.body[0]; // BodyKey.COMMAND = 0
+    if (!inner || typeof inner !== "object" || Array.isArray(inner)) continue;
+
+    for (const [k, v] of Object.entries(inner as Record<number, unknown>)) {
+      const key = Number(k);
+      let stat = innerStats.get(key);
+      if (!stat) {
+        stat = { count: 0, types: new Set(), values: [] };
+        innerStats.set(key, stat);
+      }
+      stat.count++;
+      stat.types.add(typeOfValue(v));
+      if (stat.values.length < 20) stat.values.push(v);
+
+      // Recurse into nested maps
+      if (
+        v !== null &&
+        v !== undefined &&
+        typeof v === "object" &&
+        !Array.isArray(v) &&
+        !(v instanceof Uint8Array)
+      ) {
+        if (!stat.subKeys) stat.subKeys = new Map();
+        for (const [sk, sv] of Object.entries(v as Record<number, unknown>)) {
+          const subKey = Number(sk);
+          let sub = stat.subKeys.get(subKey);
+          if (!sub) {
+            sub = { count: 0, types: new Set(), values: [] };
+            stat.subKeys.set(subKey, sub);
+          }
+          sub.count++;
+          sub.types.add(typeOfValue(sv));
+          if (sub.values.length < 20) sub.values.push(sv);
+        }
+      }
+    }
+  }
+
+  // Show schema reference if available
+  const typeName = getMessageTypeName(typeId);
+  const typeDef = CCX.messageTypes[typeName];
+  if (typeDef?.commandSchema) {
+    console.log(`\nDocumented command schema:`);
+    for (const f of typeDef.commandSchema) {
+      console.log(
+        `  key ${f.key} (${f.name}): ${f.type}${f.description ? ` — ${f.description}` : ""}`,
+      );
+    }
+  }
+
+  console.log(
+    `\nObserved inner keys: [${[...innerStats.keys()].sort((a, b) => a - b).join(", ")}]`,
+  );
+
+  for (const [key, stat] of [...innerStats.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
+    const schemaField = typeDef?.commandSchema?.find((f) => f.key === key);
+    const nameStr = schemaField ? ` (${schemaField.name})` : "";
+
+    console.log(`\n  Key ${key}${nameStr}:`);
+    console.log(
+      `    Present: ${stat.count}/${matched.length} (${((stat.count / matched.length) * 100).toFixed(0)}%)`,
+    );
+    console.log(`    Types: ${[...stat.types].join(", ")}`);
+
+    // Show value summary
+    const uniqueRepr = new Set(stat.values.map((v) => formatAnnotatedValue(v)));
+    if (uniqueRepr.size <= 10) {
+      console.log(`    Values: ${[...uniqueRepr].join(", ")}`);
+    } else {
+      console.log(`    Unique values: ${uniqueRepr.size}`);
+      console.log(`    Examples: ${[...uniqueRepr].slice(0, 5).join(", ")}`);
+    }
+
+    // Show sub-keys
+    if (stat.subKeys && stat.subKeys.size > 0) {
+      console.log(`    Sub-keys:`);
+      for (const [sk, sub] of [...stat.subKeys.entries()].sort(
+        (a, b) => a[0] - b[0],
+      )) {
+        const subUnique = new Set(
+          sub.values.map((v) => formatAnnotatedValue(v)),
+        );
+        const valStr =
+          subUnique.size <= 5
+            ? [...subUnique].join(", ")
+            : `${subUnique.size} unique`;
+        console.log(
+          `      [${sk}]: ${[...sub.types].join("/")} (${sub.count}x) — ${valStr}`,
+        );
+      }
+    }
+  }
+}
+
+/** Get type description for a value */
+function typeOfValue(v: unknown): string {
+  if (v instanceof Uint8Array) return `bytes(${v.length})`;
+  if (Array.isArray(v)) return `array(${v.length})`;
+  if (v !== null && v !== undefined && typeof v === "object")
+    return `map(${Object.keys(v).length})`;
+  return typeof v;
+}
+
+// ── Phase 4B: crossref command ──────────────────────────────────────
+
+/** Print known CCA↔CCX structural parallels */
+function cmdCrossref() {
+  console.log("\nCCA ↔ CCX Protocol Cross-Reference:");
+  console.log("====================================");
+  console.log("");
+  console.log(
+    "Concept              │ CCA (433 MHz FSK)              │ CCX (Thread/CBOR)",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Zone level set       │ Type 0x0E, format byte         │ Type 0 (LEVEL_CONTROL)",
+  );
+  console.log(
+    "  level              │   byte 11-12: level16 BE       │   body[0][0]: uint16",
+  );
+  console.log(
+    "  fade               │   byte 19: quarter-seconds     │   body[0][3]: quarter-seconds",
+  );
+  console.log(
+    "  delay              │   byte 20: quarter-seconds     │   body[0][4]: quarter-seconds",
+  );
+  console.log(
+    "  zone id            │   byte 9-10: BE                │   body[1][1]: zone_id",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Button press         │ Pico type 0x80                 │ Type 1 (BUTTON_PRESS)",
+  );
+  console.log(
+    "  device id          │   byte 1-3: device_id LE      │   body[0][0]: bytes(4)",
+  );
+  console.log(
+    "  counters           │   —                            │   body[0][1]: array[uint]",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Dim hold / raise     │ —                              │ Type 2 (DIM_HOLD)",
+  );
+  console.log(
+    "Dim step / release   │ —                              │ Type 3 (DIM_STEP)",
+  );
+  console.log(
+    "  direction          │   —                            │   body[0][1]: 2=lower, 3=raise",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "ACK                  │ Type 0x0E dimmer ACK format    │ Type 7 (ACK)",
+  );
+  console.log(
+    "  response           │   —                            │   body[0][1][0]: 0x50/0x55",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Device report        │ —                              │ Type 27 (DEVICE_REPORT)",
+  );
+  console.log(
+    "  device serial      │   —                            │   body[2][1]: serial number",
+  );
+  console.log(
+    "  group/scene        │   —                            │   body[3][1]: group_id",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Scene recall         │ —                              │ Type 36 (SCENE_RECALL)",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Level encoding       │ level16 = pct * 0xFEFF / 100  │ Same (0x0000-0xFEFF)",
+  );
+  console.log(
+    "Fade encoding        │ byte = seconds * 4             │ Same (quarter-seconds)",
+  );
+  console.log(
+    "Sequence             │ —                              │ body[5]: 8-bit wrap",
+  );
+  console.log(
+    "OUTPUT vs DEVICE     │ format-byte split              │ type-code split",
+  );
+  console.log("");
+  console.log(
+    "Key insight: CCA's QS Link design (2009) is reused in CCX with CBOR framing.",
+  );
+  console.log(
+    "Level encoding, fade encoding, and the OUTPUT/DEVICE split are identical.",
+  );
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -699,19 +1164,35 @@ async function main() {
         await cmdStats();
         break;
 
+      case "inner": {
+        const typeStr = args[1];
+        if (!typeStr || typeStr.startsWith("--")) {
+          console.log("Usage: ccx-analyzer.ts inner <type> --file <pcapng>");
+          process.exit(1);
+        }
+        await cmdInner(typeStr);
+        break;
+      }
+
+      case "crossref":
+        cmdCrossref();
+        break;
+
       default:
         console.log(`
 CCX Packet Analyzer - Reverse Engineering Helper
 
 Commands:
-  decode <hex>                     Decode a single CBOR message with annotated dump
+  decode <hex>                     Decode a single CBOR message with annotated CBOR tree
   types --file <pcapng>            Catalog all unique message types from a capture
   fields <type> --file <pcapng>    Analyze field patterns for a specific message type
   timeline --file <pcapng>         Show packet timeline with timing analysis
   devices --file <pcapng>          List unique IPv6 addresses / devices
   compare <type> --file <pcapng>   Find constant vs variable fields across messages
-  unknown --file <pcapng>          Highlight unrecognized message types
+  unknown --file <pcapng>          Highlight unrecognized types + unexpected body keys
   stats --file <pcapng>            Summary statistics
+  inner <type> --file <pcapng>     Explore inner command maps (body key 0) across packets
+  crossref                         Print known CCA↔CCX structural parallels
 
 Options:
   --file <pcapng>   Input capture file (processed via tshark)
@@ -720,10 +1201,10 @@ Options:
 Type names: ${Object.values(CCXMessageTypeName).join(", ")}
 
 Examples:
-  bun run tools/ccx-analyzer.ts decode "8200a300a20019feff03010182101903c105185c"
-  bun run tools/ccx-analyzer.ts types --file captures/ccx-onoff.pcapng
-  bun run tools/ccx-analyzer.ts fields LEVEL_CONTROL --file captures/ccx-onoff.pcapng
-  bun run tools/ccx-analyzer.ts stats --file captures/ccx-full.pcapng
+  npx tsx tools/ccx-analyzer.ts decode "8200a300a20019feff03010182101903c105185c"
+  npx tsx tools/ccx-analyzer.ts types --file captures/ccx-onoff.pcapng
+  npx tsx tools/ccx-analyzer.ts inner DEVICE_REPORT --file captures/ccx-full.pcapng
+  npx tsx tools/ccx-analyzer.ts crossref
 `);
     }
   } catch (err) {

@@ -192,6 +192,42 @@ export function presetIdFromDeviceId(deviceId: Uint8Array): number {
   return (deviceId[0] << 8) | deviceId[1];
 }
 
+// ---------------------------------------------------------------------------
+// Scene/group names (from preset-zones.json)
+// ---------------------------------------------------------------------------
+
+interface PresetZoneEntry {
+  name: string;
+  zones: Record<string, { level: number; fade: number }>;
+}
+
+function loadPresetZones(): Map<number, string> | null {
+  const presetFile = join(
+    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
+    "../data/preset-zones.json",
+  );
+  if (!existsSync(presetFile)) return null;
+  try {
+    const data: Record<string, PresetZoneEntry> = JSON.parse(
+      readFileSync(presetFile, "utf-8"),
+    );
+    const map = new Map<number, string>();
+    for (const [id, entry] of Object.entries(data)) {
+      map.set(Number(id), entry.name);
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
+const _sceneNames = loadPresetZones();
+
+/** Look up a scene/group name by its ID (from preset-zones.json) */
+export function getSceneName(sceneId: number): string | undefined {
+  return _sceneNames?.get(sceneId);
+}
+
 /** Get all known zones as a flat list (for enumeration and name search) */
 export function getAllZones(): { id: number; name: string }[] {
   const data = getLeapData();
