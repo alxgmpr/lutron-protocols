@@ -1,22 +1,21 @@
 /**
  * Unified Protocol Module for Frontend & Backend
  *
- * Thin wrapper over auto-generated protocol data. Provides:
+ * Thin wrapper over protocol definitions. Provides:
  * - Multi-signal packet identification (type byte + format byte + length)
  * - Field value parsing utilities
  * - Broadcast address recognition
  *
- * Import this module instead of the generated file directly.
+ * Import this module instead of the protocol definition file directly.
  */
 
+// Re-export everything consumers need from cca.protocol
 export type {
   FieldDef,
   FieldFormat,
-  PacketTypeInfo as PacketTypeInfoType,
   Sequence,
   SequenceStep,
-} from "./generated/typescript/protocol";
-// Re-export everything from the generated module
+} from "./cca.protocol";
 export {
   Action,
   ActionNames,
@@ -38,16 +37,17 @@ export {
   SEQUENCE,
   Sequences,
   TIMING,
-} from "./generated/typescript/protocol";
+} from "./cca.protocol";
 
 import {
   ActionNames,
   ButtonNames,
+  CCA,
   type FieldDef,
   type FieldFormat,
   PacketFields,
   PacketTypeInfo,
-} from "./generated/typescript/protocol";
+} from "./cca.protocol";
 
 // ============================================================================
 // CONSTANTS
@@ -57,78 +57,23 @@ import {
 export const BROADCAST_PATTERN = [0xff, 0xff, 0xff, 0xff, 0xff] as const;
 
 // ============================================================================
-// PACKET IDENTIFICATION
+// FORMAT DISCRIMINATION — built from packet type definitions
 // ============================================================================
 
-/** Virtual type discrimination rules: format byte -> virtual type name */
-/** Format discrimination for short packet types (0x80-0x83).
- * Only includes formats that are UNAMBIGUOUS — format 0x09 (device ctrl)
- * and 0x0C (beacon) are multi-purpose and should NOT be remapped. */
-const STATE_FORMAT_MAP: Record<number, string> = {
-  0x0e: "SET_LEVEL",
-  0x12: "ZONE_BIND",
-  0x13: "DIM_CONFIG",
-  0x14: "FUNC_MAP",
-  0x15: "TRIM_CONFIG",
-  0x1a: "SCENE_CONFIG",
-  0x1c: "FADE_CONFIG",
-};
+/**
+ * Build virtual type lookup: { typeByte: { formatByte: virtualTypeName } }
+ * Reads formatDiscrimination from each packet type definition.
+ */
+const VIRTUAL_TYPE_MAP: Record<number, Record<number, string>> = {};
+for (const [, pkt] of Object.entries(CCA.packetTypes)) {
+  if (pkt.formatDiscrimination) {
+    VIRTUAL_TYPE_MAP[pkt.value] = pkt.formatDiscrimination;
+  }
+}
 
-/** Config formats recognized on long packet types (0xA1-0xA3) */
-const LONG_FORMAT_MAP: Record<number, string> = {
-  0x11: "LED_CONFIG",
-  0x12: "ZONE_BIND",
-  0x13: "DIM_CONFIG",
-  0x14: "FUNC_MAP",
-  0x15: "TRIM_CONFIG",
-  0x1a: "SCENE_CONFIG",
-  0x1c: "FADE_CONFIG",
-  0x28: "ZONE_ASSIGN",
-};
-
-/** Fallback info for virtual types not in generated protocol data */
-const VIRTUAL_TYPE_INFO: Record<
-  string,
-  { category: string; description: string }
-> = {
-  ZONE_BIND: { category: "config", description: "Zone bind (format 0x12)" },
-  DIM_CONFIG: {
-    category: "config",
-    description: "Dimming capability (format 0x13)",
-  },
-  FUNC_MAP: {
-    category: "config",
-    description: "Function mapping (format 0x14)",
-  },
-  TRIM_CONFIG: {
-    category: "config",
-    description: "Trim/phase config (format 0x15)",
-  },
-  SCENE_CONFIG: {
-    category: "config",
-    description: "Scene config (format 0x1A)",
-  },
-  FADE_CONFIG: {
-    category: "config",
-    description: "Fade config (format 0x1C)",
-  },
-  ZONE_ASSIGN: {
-    category: "config",
-    description: "Zone assignment (format 0x28)",
-  },
-};
-
-const VIRTUAL_TYPE_MAP: Record<number, Record<number, string>> = {
-  // STATE types (0x80-0x83): check format byte at offset 7
-  0x80: STATE_FORMAT_MAP,
-  0x81: STATE_FORMAT_MAP,
-  0x82: STATE_FORMAT_MAP,
-  0x83: STATE_FORMAT_MAP,
-  // CONFIG types (0xA1-0xA3): config formats only
-  0xa1: LONG_FORMAT_MAP,
-  0xa2: LONG_FORMAT_MAP,
-  0xa3: LONG_FORMAT_MAP,
-};
+// ============================================================================
+// PACKET IDENTIFICATION
+// ============================================================================
 
 export interface IdentifiedPacket {
   /** Resolved type name (e.g., 'UNPAIR' instead of 'STATE_RPT_81') */
@@ -149,7 +94,7 @@ export interface IdentifiedPacket {
  * Multi-signal packet identification.
  *
  * Uses type byte as primary signal, then checks format byte for
- * virtual type discrimination (UNPAIR, UNPAIR_PREP, LED_CONFIG).
+ * virtual type discrimination (UNPAIR, UNPAIR_PREP, LED_CONFIG, etc.).
  */
 export function identifyPacket(data: Uint8Array | number[]): IdentifiedPacket {
   if (data.length < 1) {
@@ -171,7 +116,7 @@ export function identifyPacket(data: Uint8Array | number[]): IdentifiedPacket {
   if (virtualRules && formatByte !== undefined) {
     const virtualName = virtualRules[formatByte];
     if (virtualName) {
-      // Look up the virtual type's info and fields from generated data
+      // Look up the virtual type's info from protocol definitions
       const virtualInfo = Object.values(PacketTypeInfo).find(
         (i) => i.name === virtualName,
       );
@@ -183,18 +128,6 @@ export function identifyPacket(data: Uint8Array | number[]): IdentifiedPacket {
           description: virtualInfo.description,
           usesBigEndianDeviceId: virtualInfo.usesBigEndianDeviceId,
           fields: virtualFields ?? [],
-          isVirtual: true,
-        };
-      }
-      // Fallback for virtual types not in generated data
-      const fallback = VIRTUAL_TYPE_INFO[virtualName];
-      if (fallback) {
-        return {
-          typeName: virtualName,
-          category: fallback.category,
-          description: fallback.description,
-          usesBigEndianDeviceId: false,
-          fields: [],
           isVirtual: true,
         };
       }

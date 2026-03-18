@@ -1,346 +1,122 @@
-import { mkdirSync, readFileSync, writeFileSync } from "fs";
-import yaml from "js-yaml";
+/**
+ * Protocol Codegen — Generate C headers from TypeScript protocol definitions.
+ *
+ * Reads: protocol/cca.protocol.ts, protocol/ccx.protocol.ts
+ * Writes: firmware/src/cca/cca_generated.h, firmware/src/ccx/ccx_generated.h
+ *
+ * No YAML parsing — TypeScript definitions ARE the source of truth.
+ */
+
+import { writeFileSync } from "fs";
 import { join } from "path";
+import { CCA } from "../protocol/cca.protocol";
+import { CCX } from "../protocol/ccx.protocol";
+import type { ConstantGroup, PacketTypeDef } from "../protocol/dsl";
 
-const YAML_PATH = join(import.meta.dir, "../protocol/cca.yaml");
-const TS_OUTPUT_PATH = join(
-  import.meta.dir,
-  "../protocol/generated/typescript/protocol.ts",
-);
-const CPP_OUTPUT_PATH = join(
-  import.meta.dir,
-  "../firmware/src/cca/cca_types.h",
-);
+const CCA_OUTPUT = join(import.meta.dir, "../firmware/src/cca/cca_generated.h");
+const CCX_OUTPUT = join(import.meta.dir, "../firmware/src/ccx/ccx_generated.h");
 
-interface ProtocolDef {
-  meta: {
-    name: string;
-    version: string;
-    description: string;
-    ecosystems: Record<string, any>;
-  };
-  id_schemas: Record<string, any>;
-  rf: Record<string, any>;
-  crc: Record<string, any>;
-  framing: Record<string, any>;
-  timing: Record<string, any>;
-  sequence: Record<string, any>;
-  lengths: Record<string, any>;
-  enums: Record<string, any>;
-  packet_types: Record<string, any>;
-  sequences: Record<string, any>;
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function hex(v: number, width = 2): string {
+  return "0x" + v.toString(16).toUpperCase().padStart(width, "0");
 }
 
-function toPascalCase(s: string): string {
-  return s
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join("");
+function cType(group: ConstantGroup): string {
+  return group.cType ?? "uint8_t";
 }
 
-function generateTS(def: ProtocolDef) {
-  let out =
-    "/**\n * Auto-generated from protocol/cca.yaml\n * DO NOT EDIT - regenerate with: npm run codegen\n *\n";
-  out += " * " + def.meta.name + " v" + def.meta.version + "\n */\n\n";
+// ============================================================================
+// CCA Header Generation
+// ============================================================================
 
-  // Meta & Ecosystems
-  out +=
-    "export const ECOSYSTEMS = " +
-    JSON.stringify(def.meta.ecosystems, null, 2) +
-    " as const;\n\n";
-  out +=
-    "export const ID_SCHEMAS = " +
-    JSON.stringify(def.id_schemas, null, 2) +
-    " as const;\n\n";
+/** C constant name mapping: TS packet name → C name */
+const CCA_NAME_MAP: Record<string, string> = {
+  BTN_SHORT_A: "PKT_BTN_SHORT_A",
+  BTN_LONG_A: "PKT_BTN_LONG_A",
+  BTN_SHORT_B: "PKT_BTN_SHORT_B",
+  BTN_LONG_B: "PKT_BTN_LONG_B",
+  STATE_RPT_81: "PKT_STATE_REPORT_81",
+  STATE_RPT_82: "PKT_STATE_REPORT_82",
+  STATE_RPT_83: "PKT_STATE_REPORT_83",
+  STATE_80: "PKT_STATE_REPORT_80",
+  CONFIG_A1: "PKT_CONFIG_A1",
+  SET_LEVEL: "PKT_LEVEL",
+  BEACON_91: "PKT_BEACON_91",
+  BEACON_92: "PKT_BEACON_STOP",
+  BEACON_93: "PKT_BEACON_93",
+  PAIR_B0: "PKT_PAIRING_B0",
+  PAIR_B8: "PKT_PAIRING_B8",
+  PAIR_B9: "PKT_PAIRING_B9",
+  PAIR_BA: "PKT_PAIRING_BA",
+  PAIR_BB: "PKT_PAIRING_BB",
+  PAIR_RESP_C0: "PKT_PAIR_RESP_C0",
+  UNPAIR: "PKT_UNPAIR",
+  UNPAIR_PREP: "PKT_UNPAIR_PREP",
+  LED_CONFIG: "PKT_LED_CONFIG",
+  ZONE_BIND: "PKT_ZONE_BIND",
+  DIM_CONFIG: "PKT_DIM_CONFIG",
+  FUNC_MAP: "PKT_FUNC_MAP",
+  TRIM_CONFIG: "PKT_TRIM_CONFIG",
+  SCENE_CONFIG: "PKT_SCENE_CONFIG",
+  FADE_CONFIG: "PKT_FADE_CONFIG",
+  ZONE_ASSIGN: "PKT_ZONE_ASSIGN",
+};
 
-  // Constants
-  const writeConst = (name: string, obj: Record<string, any>) => {
-    out += "/** " + name.toLowerCase().replace("_", " ") + " constants */\n";
-    out += "export const " + name + " = {\n";
-    for (const [k, v] of Object.entries(obj)) {
-      const key = k.toUpperCase();
-      const val = typeof v === "number" ? v : JSON.stringify(v);
-      out += "  " + key + ": " + val + ",\n";
-    }
-    out += "} as const;\n\n";
-  };
-
-  writeConst("RF", def.rf);
-  writeConst("CRC", def.crc);
-  writeConst("FRAMING", def.framing);
-  writeConst("TIMING", def.timing);
-  writeConst("SEQUENCE", def.sequence);
-  writeConst("LENGTHS", def.lengths);
-
-  // Enums
-  for (const [name, enumDef] of Object.entries(def.enums)) {
-    const enumName = toPascalCase(name);
-    out += "/** " + enumDef.description + " */\n";
-    out += "export const " + enumName + " = {\n";
-
-    const entries = Object.entries(enumDef.values);
-    const hasValues = entries.some(([_, v]: any) => v.value !== undefined);
-
-    if (hasValues) {
-      const sortedValues = entries.sort(
-        (a: any, b: any) => (a[1].value || 0) - (b[1].value || 0),
-      );
-      for (const [k, v] of sortedValues as any) {
-        if (v.description) out += "  /** " + v.description + " */\n";
-        out += "  " + k + ": " + v.value + ",\n";
-      }
-      out += "} as const;\n\n";
-      out +=
-        "export type " +
-        enumName +
-        " = typeof " +
-        enumName +
-        "[keyof typeof " +
-        enumName +
-        "];\n\n";
-      out += "export const " + enumName + "Names: Record<number, string> = {\n";
-      for (const [k, v] of sortedValues as any) {
-        out += "  [" + v.value + "]: '" + k + "',\n";
-      }
-      out += "};\n\n";
-    } else {
-      // String-based enum (like Category)
-      for (const [k, v] of entries as any) {
-        if (v.description) out += "  /** " + v.description + " */\n";
-        out += "  " + k + ": '" + k + "',\n";
-      }
-      out += "} as const;\n\n";
-      out +=
-        "export type " +
-        enumName +
-        " = typeof " +
-        enumName +
-        "[keyof typeof " +
-        enumName +
-        "];\n\n";
-    }
-  }
-
-  // Packet Types
-  out += "/** Packet type codes */\n";
-  out += "export const PacketType = {\n";
-  const sortedTypes = Object.entries(def.packet_types).sort(
-    (a: any, b: any) => (a[1] as any).value - (b[1] as any).value,
-  );
-  for (const [k, v] of sortedTypes as any) {
-    if (v.description) out += "  /** " + v.description + " */\n";
-    out += "  " + k + ": " + v.value + ",\n";
-  }
-  out += "} as const;\n\n";
-  out +=
-    "export type PacketType = typeof PacketType[keyof typeof PacketType];\n\n";
-
-  out += "export interface PacketTypeInfo {\n";
-  out += "  name: string;\n";
-  out += "  length: number;\n";
-  out += "  category: string;\n";
-  out += "  description: string;\n";
-  out += "  usesBigEndianDeviceId: boolean;\n";
-  out += "  isVirtual: boolean;\n";
-  out += "  ecosystems: string[];\n";
-  out += "}\n\n";
-
-  out += "export const PacketTypeInfo: Record<number, PacketTypeInfo> = {\n";
-  for (const [k, v] of sortedTypes as any) {
-    out += "  [" + v.value + "]: {\n";
-    out += "    name: '" + k + "',\n";
-    out += "    length: " + v.length + ",\n";
-    out += "    category: '" + v.category + "',\n";
-    out += "    description: '" + (v.description || "") + "',\n";
-    out +=
-      "    usesBigEndianDeviceId: " + (v.device_id_endian === "big") + ",\n";
-    out += "    isVirtual: " + !!v.virtual + ",\n";
-    out += "    ecosystems: " + JSON.stringify(v.ecosystems || []) + ",\n";
-    out += "  },\n";
-  }
-  out += "};\n\n";
-
-  // Packet Fields
-  out += "/** Field format types */\n";
-  out +=
-    "export type FieldFormat = 'hex' | 'decimal' | 'device_id' | 'device_id_be' | 'level_byte' | 'level_16bit' | 'button' | 'action';\n\n";
-  out += "export interface FieldDef {\n";
-  out += "  name: string;\n";
-  out += "  offset: number;\n";
-  out += "  size: number;\n";
-  out += "  format: FieldFormat;\n";
-  out += "  description?: string;\n";
-  out += "}\n\n";
-
-  // Resolve inheritance: if a type has `inherits` but no `fields`, use parent's fields
-  const resolvedFields: Record<string, any[]> = {};
-  for (const [k, v] of Object.entries(def.packet_types) as any) {
-    if (v.fields) {
-      resolvedFields[k] = v.fields;
-    } else if (v.inherits && def.packet_types[v.inherits]?.fields) {
-      resolvedFields[k] = def.packet_types[v.inherits].fields;
-    }
-  }
-
-  out += "/** Field definitions by packet type */\n";
-  out += "export const PacketFields: Record<string, FieldDef[]> = {\n";
-  for (const [k, fields] of Object.entries(resolvedFields)) {
-    out += "  '" + k + "': [\n";
-    for (const f of fields as any[]) {
-      out += "    {\n";
-      out += "      name: '" + f.name + "',\n";
-      out += "      offset: " + f.offset + ",\n";
-      out += "      size: " + f.size + ",\n";
-      out += "      format: '" + f.format + "',\n";
-      if (f.description) out += "      description: '" + f.description + "',\n";
-      out += "    },\n";
-    }
-    out += "  ],\n";
-  }
-  out += "};\n\n";
-
-  // Sequences
-  out += "/** Sequence step definition */\n";
-  out += "export interface SequenceStep {\n";
-  out += "  packetType: string;\n";
-  out += "  count: number | null;  // null = repeat until stopped\n";
-  out += "  intervalMs: number;\n";
-  out += "}\n\n";
-  out += "/** Sequence definition */\n";
-  out += "export interface Sequence {\n";
-  out += "  name: string;\n";
-  out += "  description: string;\n";
-  out += "  steps: SequenceStep[];\n";
-  out += "}\n\n";
-  out += "/** Transmission sequences */\n";
-  out += "export const Sequences: Record<string, Sequence> = {\n";
-  for (const [k, v] of Object.entries(def.sequences) as any) {
-    out += "  '" + k + "': {\n";
-    out += "    name: '" + k + "',\n";
-    out += "    description: '" + v.description + "',\n";
-    out += "    steps: [\n";
-    for (const s of v.steps) {
-      out +=
-        "      { packetType: '" +
-        s.packet +
-        "', count: " +
-        s.count +
-        ", intervalMs: " +
-        (s.interval_ms || 0) +
-        " },\n";
-    }
-    out += "    ],\n";
-    out += "  },\n";
-  }
-  out += "};\n\n";
-
-  // Helpers
-  out += "/** Get packet type name from type code */\n";
-  out += "export function getPacketTypeName(typeCode: number): string {\n";
-  out += "  return PacketTypeInfo[typeCode]?.name ?? 'UNKNOWN';\n";
-  out += "}\n\n";
-  out += "/** Get expected packet length from type code */\n";
-  out += "export function getPacketLength(typeCode: number): number {\n";
-  out += "  return PacketTypeInfo[typeCode]?.length ?? 0;\n";
-  out += "}\n\n";
-  out += "/** Check if packet type is a button packet */\n";
-  out += "export function isButtonPacket(typeCode: number): boolean {\n";
-  out += "  return PacketTypeInfo[typeCode]?.category === 'BUTTON';\n";
-  out += "}\n\n";
-  out += "/** Check if packet type belongs to a category */\n";
-  out +=
-    "export function isPacketCategory(typeCode: number, category: string): boolean {\n";
-  out += "  return PacketTypeInfo[typeCode]?.category === category;\n";
-  out += "}\n\n";
-  out += "/** Calculate next sequence number */\n";
-  out += "export function nextSequence(seq: number): number {\n";
-  out += "  return (seq + SEQUENCE.INCREMENT) % SEQUENCE.WRAP;\n";
-  out += "}\n";
-
-  return out;
+function getCName(tsName: string, pkt: PacketTypeDef): string {
+  if (pkt.cName) return pkt.cName;
+  return CCA_NAME_MAP[tsName] ?? "PKT_" + tsName;
 }
 
-function generateCPP(def: ProtocolDef) {
+function generateCCAHeader(): string {
   let out = "#pragma once\n\n";
   out +=
-    "/**\n * Auto-generated from protocol/cca.yaml\n * DO NOT EDIT - regenerate with: npm run codegen\n *\n";
-  out += " * " + def.meta.name + " v" + def.meta.version + "\n */\n\n";
-
+    "/**\n * Auto-generated from protocol/cca.protocol.ts\n * DO NOT EDIT - regenerate with: npm run codegen\n */\n\n";
   out +=
     "#include <cstdint>\n#include <cstddef>\n#include <cstdio>\n#include <cstring>\n\n";
   out += '#ifdef __cplusplus\nextern "C" {\n#endif\n\n';
 
-  out +=
-    "// Maximum raw packet size\nstatic const size_t CCA_MAX_PACKET_LEN = 64;\n";
+  // Packet length constants
+  out += "// Maximum raw packet size\n";
+  out += "static const size_t CCA_MAX_PACKET_LEN = 64;\n";
   out +=
     "static const size_t CCA_PKT_STANDARD_LEN = " +
-    def.lengths.standard +
+    CCA.constantGroups.lengths.values.STANDARD.value +
     ";\n";
   out +=
     "static const size_t CCA_PKT_PAIRING_LEN = " +
-    def.lengths.pairing +
+    CCA.constantGroups.lengths.values.PAIRING.value +
     ";\n\n";
 
+  // Packet type constants
   out += "// Packet type constants\n";
-
-  const typeMap: Record<string, string> = {
-    BTN_PRESS_A: "PKT_BUTTON_SHORT_A",
-    BTN_RELEASE_A: "PKT_BUTTON_LONG_A",
-    BTN_PRESS_B: "PKT_BUTTON_SHORT_B",
-    BTN_RELEASE_B: "PKT_BUTTON_LONG_B",
-    SET_LEVEL: "PKT_LEVEL",
-    STATE_RPT_81: "PKT_STATE_REPORT_81",
-    STATE_RPT_82: "PKT_STATE_REPORT_82",
-    STATE_RPT_83: "PKT_STATE_REPORT_83",
-    STATE_80: "PKT_STATE_REPORT_80",
-    BEACON_91: "PKT_BEACON_91",
-    BEACON_92: "PKT_BEACON_STOP",
-    BEACON_93: "PKT_BEACON_93",
-    CONFIG_A1: "PKT_CONFIG_A1",
-    PAIR_B0: "PKT_PAIRING_B0",
-    PAIR_B8: "PKT_PAIRING_B8",
-    PAIR_B9: "PKT_PAIRING_B9",
-    PAIR_BA: "PKT_PAIRING_BA",
-    PAIR_BB: "PKT_PAIRING_BB",
-    PAIR_RESP_C0: "PKT_PAIR_RESP_C0",
-    UNPAIR: "PKT_UNPAIR",
-    UNPAIR_PREP: "PKT_UNPAIR_PREP",
-    LED_CONFIG: "PKT_LED_CONFIG",
-  };
-
-  for (const [k, v] of Object.entries(def.packet_types) as any) {
-    const name = typeMap[k] || "PKT_" + k;
-    out +=
-      "static const uint8_t " +
-      name +
-      " = 0x" +
-      v.value.toString(16).toUpperCase() +
-      ";\n";
-    if (k === "SET_LEVEL") {
+  const sortedPkts = Object.entries(CCA.packetTypes).sort(
+    ([, a], [, b]) => a.value - b.value,
+  );
+  for (const [name, pkt] of sortedPkts) {
+    const cName = getCName(name, pkt);
+    out += "static const uint8_t " + cName + " = " + hex(pkt.value) + ";\n";
+    // Emit PKT_SET_LEVEL alias for backward compat
+    if (name === "SET_LEVEL") {
       out += "static const uint8_t PKT_SET_LEVEL = 0xA2;\n";
     }
   }
 
+  // Button codes
   out += "\n// Button codes\n";
-  for (const [k, v] of Object.entries(def.enums.button.values) as any) {
-    out +=
-      "static const uint8_t BTN_" +
-      k +
-      " = 0x" +
-      v.value.toString(16).toUpperCase() +
-      ";\n";
+  for (const [k, v] of Object.entries(CCA.enums.button.values)) {
+    out += "static const uint8_t BTN_" + k + " = " + hex(v.value) + ";\n";
   }
 
+  // Action codes
   out += "\n// Action codes\n";
-  for (const [k, v] of Object.entries(def.enums.action.values) as any) {
-    out +=
-      "static const uint8_t ACTION_" +
-      k +
-      " = 0x" +
-      v.value.toString(16).toUpperCase() +
-      ";\n";
+  for (const [k, v] of Object.entries(CCA.enums.action.values)) {
+    out += "static const uint8_t ACTION_" + k + " = " + hex(v.value) + ";\n";
   }
 
+  // Packet structure offsets
   out += "\n// Common Packet structure offsets\n";
   out += "static const uint8_t PKT_OFFSET_TYPE = 0;\n";
   out += "static const uint8_t PKT_OFFSET_SEQ = 1;\n";
@@ -352,23 +128,57 @@ function generateCPP(def: ProtocolDef) {
   out += "static const uint8_t PKT_OFFSET_CRC_24 = 22;\n";
   out += "static const uint8_t PKT_OFFSET_CRC_53 = 51;\n\n";
 
+  // CRC polynomial
   out += "// CRC polynomial\n";
   out +=
-    "static const uint16_t LUTRON_CRC_POLY = 0x" +
-    def.crc.polynomial.toString(16).toUpperCase() +
+    "static const uint16_t LUTRON_CRC_POLY = " +
+    hex(CCA.constantGroups.crc.values.POLYNOMIAL.value, 4) +
     ";\n\n";
 
-  out += "#ifdef __cplusplus\n}\n#endif\n\n#ifdef __cplusplus\n\n";
+  // QS Link protocol constants (from cca_protocol.h)
+  out += "// QS Link protocol constants\n";
+  const qsGroups = [
+    "qsProto",
+    "qsAddr",
+    "qsClass",
+    "qsType",
+    "qsComp",
+    "qsFormat",
+    "qsPico",
+    "qsLevelMax",
+    "qsLevelMax8",
+    "qsState",
+    "qsPreset",
+    "qsPadding",
+  ] as const;
+  for (const groupName of qsGroups) {
+    const group = CCA.constantGroups[groupName];
+    if (!group) continue;
+    out += "\n// " + group.description + "\n";
+    const ct = cType(group);
+    for (const [k, v] of Object.entries(group.values)) {
+      const constName = group.cPrefix + k;
+      const desc = v.description ? "  /* " + v.description + " */" : "";
+      out +=
+        "static const " +
+        ct +
+        " " +
+        constName +
+        " = " +
+        hex(v.value, ct === "uint16_t" ? 4 : 2) +
+        ";" +
+        desc +
+        "\n";
+    }
+  }
 
+  out += "\n#ifdef __cplusplus\n}\n#endif\n\n#ifdef __cplusplus\n\n";
+
+  // Inline C++ functions
   out +=
     "// Get human-readable packet type name\ninline const char *cca_packet_type_name(uint8_t type_byte) {\n  switch (type_byte) {\n";
-  for (const [k, v] of Object.entries(def.packet_types) as any) {
-    out +=
-      "    case 0x" +
-      v.value.toString(16).toUpperCase() +
-      ': return "' +
-      k +
-      '";\n';
+  for (const [name, pkt] of sortedPkts) {
+    out += "    case " + hex(pkt.value) + ': return "' + name + '";\n';
   }
   out += '    default: return "UNKNOWN";\n  }\n}\n\n';
 
@@ -396,22 +206,17 @@ function generateCPP(def: ProtocolDef) {
 
   out +=
     "// Check if type byte uses big-endian device ID\ninline bool cca_uses_be_device_id(uint8_t type_byte) {\n  switch (type_byte) {\n";
-  for (const [_k, v] of Object.entries(def.packet_types) as any) {
-    if (v.device_id_endian === "big") {
-      out += "    case 0x" + v.value.toString(16).toUpperCase() + ":\n";
+  for (const [, pkt] of sortedPkts) {
+    if (pkt.deviceIdEndian === "big") {
+      out += "    case " + hex(pkt.value) + ":\n";
     }
   }
   out += "      return true;\n    default:\n      return false;\n  }\n}\n\n";
 
   out +=
     "// Get human-readable button name\ninline const char *cca_button_name(uint8_t button) {\n  switch (button) {\n";
-  for (const [k, v] of Object.entries(def.enums.button.values) as any) {
-    out +=
-      "    case 0x" +
-      v.value.toString(16).toUpperCase() +
-      ': return "' +
-      k +
-      '";\n';
+  for (const [k, v] of Object.entries(CCA.enums.button.values)) {
+    out += "    case " + hex(v.value) + ': return "' + k + '";\n';
   }
   out += '    default: return "?";\n  }\n}\n\n';
 
@@ -424,18 +229,55 @@ function generateCPP(def: ProtocolDef) {
   return out;
 }
 
+// ============================================================================
+// CCX Header Generation
+// ============================================================================
+
+function generateCCXHeader(): string {
+  let out = "#ifndef CCX_GENERATED_H\n#define CCX_GENERATED_H\n\n";
+  out +=
+    "/**\n * Auto-generated from protocol/ccx.protocol.ts\n * DO NOT EDIT - regenerate with: npm run codegen\n */\n\n";
+
+  // Message type IDs
+  out += "/* Message type IDs */\n";
+  for (const [name, msg] of Object.entries(CCX.messageTypes)) {
+    const val = msg.id > 255 ? hex(msg.id, 4) : String(msg.id);
+    out += "#define CCX_MSG_" + name + " " + val + "\n";
+  }
+
+  // Body map keys
+  out += "\n/* Body map keys */\n";
+  for (const [name, entry] of Object.entries(CCX.bodyKeys)) {
+    out += "#define CCX_KEY_" + name + " " + entry.key + "\n";
+  }
+
+  // Level constants
+  out += "\n/* Level constants */\n";
+  out += "#define CCX_LEVEL_FULL_ON 0xFEFF\n";
+  out += "#define CCX_LEVEL_OFF     0x0000\n";
+
+  // UDP port
+  out += "\n/* UDP port */\n";
+  out += "#define CCX_UDP_PORT 9190\n";
+
+  // Zone type
+  out += "\n/* Default zone type for dimmers */\n";
+  out += "#define CCX_ZONE_TYPE_DIMMER 16\n";
+
+  out += "\n#endif /* CCX_GENERATED_H */\n";
+  return out;
+}
+
+// ============================================================================
+// Main
+// ============================================================================
+
 try {
-  const yamlContent = readFileSync(YAML_PATH, "utf8");
-  const def = yaml.load(yamlContent) as ProtocolDef;
+  writeFileSync(CCA_OUTPUT, generateCCAHeader());
+  console.log("Generated: " + CCA_OUTPUT);
 
-  mkdirSync(join(import.meta.dir, "../protocol/generated/typescript"), {
-    recursive: true,
-  });
-  writeFileSync(TS_OUTPUT_PATH, generateTS(def));
-  console.log("Generated: " + TS_OUTPUT_PATH);
-
-  writeFileSync(CPP_OUTPUT_PATH, generateCPP(def));
-  console.log("Generated: " + CPP_OUTPUT_PATH);
+  writeFileSync(CCX_OUTPUT, generateCCXHeader());
+  console.log("Generated: " + CCX_OUTPUT);
 } catch (e) {
   console.error("Codegen failed:", e);
   process.exit(1);

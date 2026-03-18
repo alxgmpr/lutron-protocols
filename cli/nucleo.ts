@@ -31,7 +31,7 @@ import {
 import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
-import { DeviceClassNames } from "../protocol/generated/typescript/protocol";
+import { DeviceClassNames } from "../protocol/cca.protocol";
 import { identifyPacket, parseFieldValue } from "../protocol/protocol-ui";
 import { LineEditor } from "./tui/line-editor";
 import { type IScreen, Screen } from "./tui/screen";

@@ -6,47 +6,19 @@
  *
  * Matches the TypeScript reference: ccx/constants.ts, ccx/encoder.ts, ccx/decoder.ts.
  * All messages are CBOR arrays: [msg_type, body_map].
+ *
+ * Constants (CCX_MSG_*, CCX_KEY_*, CCX_LEVEL_*, CCX_UDP_PORT, CCX_ZONE_TYPE_*)
+ * are now in ccx_generated.h (auto-generated from protocol/ccx.protocol.ts).
  */
 
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "ccx_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* -----------------------------------------------------------------------
- * Message type IDs (from constants.ts)
- * ----------------------------------------------------------------------- */
-#define CCX_MSG_LEVEL_CONTROL 0
-#define CCX_MSG_BUTTON_PRESS  1
-#define CCX_MSG_DIM_HOLD      2
-#define CCX_MSG_DIM_STEP      3
-#define CCX_MSG_ACK           7
-#define CCX_MSG_DEVICE_REPORT 27 /* 0x1B */
-#define CCX_MSG_SCENE_RECALL  36 /* 0x24 */
-#define CCX_MSG_COMPONENT_CMD 40 /* 0x28 */
-#define CCX_MSG_STATUS        41 /* 0x29 */
-#define CCX_MSG_PRESENCE      0xFFFF
-
-/* Body map keys */
-#define CCX_KEY_COMMAND  0
-#define CCX_KEY_ZONE     1
-#define CCX_KEY_DEVICE   2
-#define CCX_KEY_EXTRA    3
-#define CCX_KEY_STATUS   4
-#define CCX_KEY_SEQUENCE 5
-
-/* Level constants */
-#define CCX_LEVEL_FULL_ON 0xFEFF
-#define CCX_LEVEL_OFF     0x0000
-
-/* UDP port */
-#define CCX_UDP_PORT 9190
-
-/* Default zone type for dimmers */
-#define CCX_ZONE_TYPE_DIMMER 16
 
 /* -----------------------------------------------------------------------
  * Encoder — build CBOR into buffer, return length (0 on error)
