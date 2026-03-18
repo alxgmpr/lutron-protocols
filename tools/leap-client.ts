@@ -93,7 +93,10 @@ export interface LeapDumpData {
 
 // --- Cert resolver ---
 
-const DEFAULT_CERT_DIR = path.resolve(import.meta.dir, "..");
+const DEFAULT_CERT_DIR = path.resolve(
+  import.meta.dirname ?? (import.meta as any).dir ?? __dirname,
+  "..",
+);
 
 /**
  * Resolve LEAP TLS certificate paths.

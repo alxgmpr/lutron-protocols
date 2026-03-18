@@ -201,3 +201,18 @@ export function getAllZones(): { id: number; name: string }[] {
     name: formatZoneName(zone),
   }));
 }
+
+/** Get all zones with controlType (for filtering dimmable/switched zones) */
+export function getAllZonesWithControlType(): {
+  id: number;
+  name: string;
+  controlType: string;
+}[] {
+  const data = getLeapData();
+  if (!data) return [];
+  return Object.entries(data.zones).map(([id, zone]) => ({
+    id: Number(id),
+    name: formatZoneName(zone),
+    controlType: zone.controlType,
+  }));
+}

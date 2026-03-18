@@ -47,7 +47,10 @@ const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
 const SAVE_OUTPUT = hasFlag("--save");
-const DATA_DIR = join(import.meta.dir, "../data");
+const DATA_DIR = join(
+  import.meta.dirname ?? (import.meta as any).dir ?? __dirname,
+  "../data",
+);
 
 function log(msg: string): void {
   if (!JSON_OUTPUT && !CONFIG_OUTPUT) {
