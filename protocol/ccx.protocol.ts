@@ -166,7 +166,7 @@ const DEVICE_REPORT = messageType(
 
 const SCENE_RECALL = messageType(
   36,
-  "Scene/group recall - triggers devices to execute stored scenes",
+  "Scene/group recall - triggers devices to execute stored scenes. command[0]=[4] for recall",
   "OUTPUT",
   ["COMMAND", "ZONE", "EXTRA", "SEQUENCE"],
   {
@@ -175,7 +175,7 @@ const SCENE_RECALL = messageType(
         key: 0,
         name: "recall_cmd",
         type: "array[uint]",
-        description: "[4] = recall action",
+        description: "[4] = recall action, 0 = set/program",
       },
     ],
     extraSchema: [
@@ -186,14 +186,11 @@ const SCENE_RECALL = messageType(
         description: "Scene/group identifier",
       },
       {
-        description:
-          "State category: 5, 8, 18 observed; likely local interaction/UI state rather than a generic ACK",
-        description:
-          "2-byte data: 0x000e, 0x000c, 0x0116, 0x0008 observed around press/hold/release activity",
-  "Scene/group recall - triggers devices to execute stored scenes. Recent captures show command[0] as a fixed-length vector, not just [4]",
-        name: "recall_vector",
-        description:
-          "Observed recall/program byte vector; older docs simplified this to [4], but transfer captures carry 7 bytes",
+        key: 2,
+        name: "params",
+        type: "array[uint]",
+        description: "[component_type, value] e.g. [5, 60]",
+      },
     ],
   },
 );

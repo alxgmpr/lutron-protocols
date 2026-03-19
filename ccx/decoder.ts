@@ -11,7 +11,14 @@
  */
 
 import { decode as cborDecode } from "cbor-x";
-import { getPresetInfo, getSerialName, presetIdFromDeviceId } from "./config";
+import {
+  getDeviceBySerial,
+  getPresetInfo,
+  getSceneName,
+  getSerialName,
+  getZoneName,
+  presetIdFromDeviceId,
+} from "./config";
 import {
   BodyKey,
   CCXMessageType,
@@ -35,6 +42,38 @@ import type {
   CCXStatus,
   CCXUnknown,
 } from "./types";
+
+/** Collect unknown keys from a CBOR map — anything not in consumed set */
+function _collectUnknown(
+  map: Record<number, unknown>,
+  consumed: Set<number>,
+): Record<number, unknown> | undefined {
+  const unknown: Record<number, unknown> = {};
+  let hasAny = false;
+  for (const k of Object.keys(map)) {
+    const key = Number(k);
+    if (!consumed.has(key)) {
+      unknown[key] = map[key];
+      hasAny = true;
+    }
+  }
+  return hasAny ? unknown : undefined;
+}
+
+/** Derive direction string from action number */
+function _actionToDirection(
+  action: number | undefined,
+): "RAISE" | "LOWER" | undefined {
+  if (action === 3) return "RAISE";
+  if (action === 2) return "LOWER";
+  return undefined;
+}
+
+/** Known ACK response codes */
+const _ACK_LABELS: Record<number, string> = {
+  0x50: "LEVEL_ACK",
+  0x55: "BUTTON_ACK",
+};
 
 /** Decode raw CBOR bytes into message type + body */
 function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
@@ -151,10 +190,6 @@ function parsePresence(body: CCXBody): CCXPresence {
 /** Extract device ID bytes from inner command map (shared by button/dim types) */
 function extractDeviceId(inner: Record<number, unknown>): Uint8Array {
   const raw = inner[0];
-  const extraMap = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
-  const sceneFamilyId =
-    typeof extraMap[1] === "number" ? (extraMap[1] as number) : undefined;
-    sceneFamilyId,
   return raw instanceof Uint8Array ? raw : new Uint8Array(0);
 }
 
@@ -332,12 +367,7 @@ export function getMessageTypeName(msgType: number): string {
 /** Format a CCXMessage for human-readable display */
 export function formatMessage(msg: CCXMessage): string {
   switch (msg.type) {
-  const recallRaw = inner[0];
-  const recallVector = Array.isArray(recallRaw)
-    ? recallRaw.filter((v): v is number => typeof v === "number")
-    : [];
-    command: recallRaw,
-    recallVector,
+    case "LEVEL_CONTROL": {
       let state: string;
       if (msg.level === Level.OFF) state = "OFF";
       else if (msg.level === Level.FULL_ON) state = "FULL_ON";
@@ -345,7 +375,9 @@ export function formatMessage(msg: CCXMessage): string {
       const fadeSec = msg.fade / 4;
       const fadeStr = fadeSec !== 0.25 ? `, fade=${fadeSec}s` : "";
       const delayStr = msg.delay > 0 ? `, delay=${msg.delay / 4}s` : "";
-      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${fadeStr}${delayStr}, seq=${msg.sequence})`;
+      const zoneName = getZoneName(msg.zoneId);
+      const zoneAnnotation = zoneName ? ` [${zoneName}]` : "";
+      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${zoneAnnotation}${fadeStr}${delayStr}, seq=${msg.sequence})`;
     }
     case "BUTTON_PRESS": {
       const idHex = Array.from(msg.deviceId)
@@ -362,7 +394,8 @@ export function formatMessage(msg: CCXMessage): string {
       const respHex = Array.from(msg.response)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
-      return `ACK(response=${respHex}, seq=${msg.sequence})`;
+      const labelStr = msg.responseLabel ? ` ${msg.responseLabel}` : "";
+      return `ACK(${labelStr}, response=${respHex}, seq=${msg.sequence})`;
     }
     case "STATUS": {
       const dataHex = Array.from(msg.innerData)
@@ -370,7 +403,14 @@ export function formatMessage(msg: CCXMessage): string {
         .join("");
       const preview =
         dataHex.length > 32 ? dataHex.slice(0, 32) + "..." : dataHex;
-      return `STATUS(device=0x${msg.deviceId.toString(16).padStart(8, "0")}, data=${preview})`;
+      const serialName = getSerialName(msg.deviceId);
+      const nameStr = serialName
+        ? `"${serialName}"`
+        : `0x${msg.deviceId.toString(16).padStart(8, "0")}`;
+      const bodyKeys = msg.rawBody
+        ? `, keys=[${Object.keys(msg.rawBody).join(",")}]`
+        : "";
+      return `STATUS(${nameStr}, device=${msg.deviceId}${bodyKeys}, data=${preview})`;
     }
     case "DIM_HOLD": {
       const idHex = Array.from(msg.deviceId)
@@ -381,53 +421,75 @@ export function formatMessage(msg: CCXMessage): string {
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      const dir =
-        msg.action === 3
-          ? "RAISE"
-          : msg.action === 2
-            ? "LOWER"
-            : `action=${msg.action}`;
-      const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
+      const dir = msg.direction ?? `action=${msg.action}`;
+      const zoneName = msg.zoneId ? getZoneName(msg.zoneId) : undefined;
+      const zoneStr = msg.zoneId
+        ? `, zone=${msg.zoneId}${zoneName ? ` [${zoneName}]` : ""}`
+        : "";
       return `DIM_HOLD(${dir}, ${label}, id=${idHex}${zoneStr}, seq=${msg.sequence})`;
     }
     case "DIM_STEP": {
-      const idHex = Array.from(msg.deviceId)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
       const presetId = presetIdFromDeviceId(msg.deviceId);
       const preset = getPresetInfo(presetId);
       const label = preset
         ? `"${preset.name}" [${preset.device}]`
         : `preset=${presetId}`;
-      const dir =
-        msg.action === 3
-          ? "RAISE"
-          : msg.action === 2
-            ? "LOWER"
-            : `action=${msg.action}`;
-      const zoneStr = msg.zoneId ? `, zone=${msg.zoneId}` : "";
+      const dir = msg.direction ?? `action=${msg.action}`;
+      const zoneName = msg.zoneId ? getZoneName(msg.zoneId) : undefined;
+      const zoneStr = msg.zoneId
+        ? `, zone=${msg.zoneId}${zoneName ? ` [${zoneName}]` : ""}`
+        : "";
       return `DIM_STEP(${dir}, ${label}, step=${msg.stepValue}${zoneStr}, seq=${msg.sequence})`;
     }
     case "DEVICE_REPORT": {
       const serialName = getSerialName(msg.deviceSerial);
-      const serialLabel = serialName
+      const dev = getDeviceBySerial(msg.deviceSerial);
+      const nameStr = serialName
         ? `"${serialName}"`
         : `0x${msg.deviceSerial.toString(16).padStart(8, "0")}`;
-      return `DEVICE_REPORT(${serialLabel}, serial=${msg.deviceSerial}, group=${msg.groupId})`;
+      const areaStr = dev?.area ? ` [${dev.area}]` : "";
+      const levelStr =
+        msg.levelPercent !== undefined
+          ? `, level=${msg.levelPercent.toFixed(1)}%`
+          : "";
+      const outStr =
+        msg.outputType !== undefined ? `, out=${msg.outputType}` : "";
+      const groupName = msg.groupId ? getSceneName(msg.groupId) : undefined;
+      const groupStr = msg.groupId
+        ? `, group=${msg.groupId}${groupName ? ` "${groupName}"` : ""}`
+        : "";
+      return `DEVICE_REPORT(${nameStr}${areaStr}, serial=${msg.deviceSerial}${levelStr}${outStr}${groupStr}, seq=${msg.sequence})`;
     }
-    case "SCENE_RECALL":
-      return `SCENE_RECALL(scene=${msg.sceneId}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
-    case "COMPONENT_CMD":
-      return `COMPONENT_CMD(group=${msg.groupId}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
+    case "DEVICE_STATE": {
+      const serialName = getSerialName(msg.deviceSerial);
+      const nameStr = serialName
+        ? `"${serialName}"`
+        : `serial=${msg.deviceSerial}`;
+      const dataHex = msg.stateData
+        ? Array.from(msg.stateData)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("")
+        : "";
+      const dataStr = dataHex ? `, data=0x${dataHex}` : "";
+      return `DEVICE_STATE(${nameStr}, type=${msg.stateType}, val=${msg.stateValue}${dataStr}, seq=${msg.sequence})`;
+    }
+    case "SCENE_RECALL": {
+      const sceneName = getSceneName(msg.sceneId);
+      const sceneStr = sceneName
+        ? `scene=${msg.sceneId} "${sceneName}"`
+        : `scene=${msg.sceneId}`;
+      return `SCENE_RECALL(${sceneStr}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
+    }
+    case "COMPONENT_CMD": {
+      const groupName = getSceneName(msg.groupId);
+      const groupStr = groupName
+        ? `group=${msg.groupId} "${groupName}"`
+        : `group=${msg.groupId}`;
+      return `COMPONENT_CMD(${groupStr}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
+    }
     case "PRESENCE":
       return `PRESENCE(status=${msg.status}, seq=${msg.sequence})`;
     case "UNKNOWN":
       return `UNKNOWN(type=${msg.msgType}, keys=[${Object.keys(msg.body).join(",")}], seq=${msg.sequence})`;
   }
 }
-      const sceneFamilyStr =
-        msg.sceneFamilyId !== undefined
-          ? `, scene_family=${msg.sceneFamilyId}`
-          : "";
-      return `STATUS(${nameStr}, device=${msg.deviceId}${sceneFamilyStr}${bodyKeys}, data=${preview})`;
-      return `SCENE_RECALL(${sceneStr}, recall=[${msg.recallVector.join(",")}], params=[${msg.params.join(",")}], seq=${msg.sequence})`;
