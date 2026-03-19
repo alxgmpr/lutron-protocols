@@ -6,6 +6,7 @@
   "scripts": {
     "codegen": "bun run tools/codegen.ts",
     "codegen:check": "npm run codegen && git diff --exit-code -- firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h",
+    "cca:owt": "bun run tools/cca-owt-analyze.ts",
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "ccx:send": "bun run tools/ccx-send.ts",

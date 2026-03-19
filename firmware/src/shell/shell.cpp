@@ -574,6 +574,8 @@ static void cmd_cca_tune_print_usage(void)
 {
     printf("Usage: cca tune <cmd>\r\n");
     printf("  cca tune show                             — show active profile, params, key regs\r\n");
+    printf("  cca tune freq <MHz>                       — retune CC1101 center frequency\r\n");
+    printf("  cca tune lutron <channel>                 — set Lutron CCA channel (freq = 431.0 + 0.1*ch MHz)\r\n");
     printf("  cca tune profile <default|burst|noisy>   — apply built-in RX profile\r\n");
     printf("  cca tune reg get <addr>                  — read CC1101 reg/status (hex or dec)\r\n");
     printf("  cca tune reg set <addr> <value>          — write CC1101 config reg\r\n");
@@ -589,11 +591,16 @@ static void cmd_cca_tune_show(void)
 {
     cc1101_runtime_tuning_t tuning = {};
     cc1101_get_runtime_tuning(&tuning);
+    uint32_t freq_word = ((uint32_t)cc1101_read_register(CC1101_FREQ2) << 16) |
+                         ((uint32_t)cc1101_read_register(CC1101_FREQ1) << 8) | (uint32_t)cc1101_read_register(CC1101_FREQ0);
+    double   freq_mhz = ((double)freq_word * 26.0) / 65536.0;
 
     printf("CCA tune profile: %s\r\n", cc1101_tune_profile_name(cc1101_get_tune_profile()));
     printf("  params: drain_passes=%u max_packets=%u miss_streak=%u miss_ring=%u timeout_ms=%u fifothr=0x%02X\r\n",
            tuning.fifo_drain_passes, tuning.max_packets_per_check, tuning.sync_miss_bail_streak,
            tuning.sync_miss_bail_ring, tuning.stale_timeout_ms, tuning.fifothr);
+    printf("  rf: center=%.6f MHz  freq_word=0x%06lX  channr=%u\r\n", freq_mhz, (unsigned long)freq_word,
+           (unsigned)cc1101_read_register(CC1101_CHANNR));
 
     struct RegDef {
         uint8_t     reg;
@@ -651,6 +658,57 @@ static void cmd_cca_tune_profile(const char* profile_name)
 
     printf("Applied CCA tune profile: %s\r\n", cc1101_tune_profile_name(profile));
     cmd_cca_tune_show();
+}
+
+static bool cc1101_write_center_freq_word(uint32_t freq_word)
+{
+    if (freq_word > 0xFFFFFFu) return false;
+
+    bool was_rx = cc1101_is_rx_active();
+    if (was_rx) cc1101_stop_rx();
+
+    cc1101_write_register(CC1101_CHANNR, 0x00);
+    cc1101_write_register(CC1101_FREQ2, (uint8_t)((freq_word >> 16) & 0xFFu));
+    cc1101_write_register(CC1101_FREQ1, (uint8_t)((freq_word >> 8) & 0xFFu));
+    cc1101_write_register(CC1101_FREQ0, (uint8_t)(freq_word & 0xFFu));
+
+    if (was_rx) {
+        cc1101_start_rx();
+    }
+    else {
+        cc1101_strobe(CC1101_SCAL);
+    }
+    return true;
+}
+
+static void cmd_cca_tune_freq(const char* mhz_tok)
+{
+    if (mhz_tok == nullptr || mhz_tok[0] == '\0') {
+        printf("Usage: cca tune freq <MHz>\r\n");
+        return;
+    }
+
+    char*  endptr = nullptr;
+    double mhz = strtod(mhz_tok, &endptr);
+    if (endptr == mhz_tok || *endptr != '\0' || mhz < 300.0 || mhz > 1000.0) {
+        printf("Usage: cca tune freq <MHz>\r\n");
+        return;
+    }
+
+    double reg_f = (mhz * 65536.0) / 26.0;
+    if (reg_f < 0.0 || reg_f > 16777215.0) {
+        printf("Frequency out of range: %.6f MHz\r\n", mhz);
+        return;
+    }
+
+    uint32_t freq_word = (uint32_t)(reg_f + 0.5);
+    if (!cc1101_write_center_freq_word(freq_word)) {
+        printf("Failed to set frequency\r\n");
+        return;
+    }
+
+    double actual_mhz = ((double)freq_word * 26.0) / 65536.0;
+    printf("CCA center frequency set to %.6f MHz (freq_word=0x%06lX)\r\n", actual_mhz, (unsigned long)freq_word);
 }
 
 static void cmd_cca_tune_reg_get(const char* addr_tok)
@@ -878,6 +936,36 @@ static void cmd_cca_tune(const char* arg)
 
     if (strcmp(t0, "show") == 0) {
         cmd_cca_tune_show();
+        return;
+    }
+
+    if (strcmp(t0, "freq") == 0) {
+        char mhz_tok[24];
+        if (!next_token(&cursor, mhz_tok, sizeof(mhz_tok))) {
+            printf("Usage: cca tune freq <MHz>\r\n");
+            return;
+        }
+        cmd_cca_tune_freq(mhz_tok);
+        return;
+    }
+
+    if (strcmp(t0, "lutron") == 0) {
+        char ch_tok[24];
+        if (!next_token(&cursor, ch_tok, sizeof(ch_tok))) {
+            printf("Usage: cca tune lutron <channel>\r\n");
+            printf("Known Lutron channels: 5 14 17 20 23 26 29 32 38 41 44 47 50 53 56\r\n");
+            return;
+        }
+        uint32_t channel = 0;
+        if (!parse_u32_token(ch_tok, &channel) || channel > 63u) {
+            printf("Usage: cca tune lutron <channel>\r\n");
+            printf("Known Lutron channels: 5 14 17 20 23 26 29 32 38 41 44 47 50 53 56\r\n");
+            return;
+        }
+        double mhz = 431.0 + ((double)channel * 0.1);
+        char   mhz_tok[24];
+        snprintf(mhz_tok, sizeof(mhz_tok), "%.1f", mhz);
+        cmd_cca_tune_freq(mhz_tok);
         return;
     }
 

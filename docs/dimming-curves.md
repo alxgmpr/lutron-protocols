@@ -1,7 +1,7 @@
 # Lutron Dimming Curve Definitions
 
 ## Source
-Extracted from Lutron Designer LocalDB `SqlModelInfo.mdf` v26.0.1.100, table `TBLDimCurveDefinition`.
+Extracted from Lutron Designer LocalDB `SqlModelInfo.mdf` v26.1.0.112, table `TBLDimCurveDefinition`.
 
 ## Database Structure
 

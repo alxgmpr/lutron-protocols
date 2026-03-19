@@ -158,6 +158,9 @@ rtl_sdr -f 433602844 -s 2000000 -g 40 capture.bin
 # Decode packets
 bun run tools/rtlsdr-cca-decode.ts --rate 2000000 capture.bin
 
+# Analyze a recorded STM32/Bun CLI session for a one-way transmitter serial
+bun run cca:owt -- captures/cca-sessions/<session>.csv --serial 00c7e498
+
 # Decode QS Link RS-485 traffic
 bun run tools/qslink-decode.ts <capture>
 ```

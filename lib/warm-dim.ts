@@ -1,7 +1,7 @@
 /**
  * Warm Dimming — Evaluate Lutron's B-spline curves to map brightness → CCT (Kelvin).
  *
- * Curves extracted from Designer's SqlModelInfo.mdf v26.0.1.100, table TBLDimCurveDefinition.
+ * Curves extracted from Designer's SqlModelInfo.mdf v26.1.0.112, table TBLDimCurveDefinition.
  * All curves are clamped quadratic B-splines (degree 2), 11 knots, up to 8 coefficients.
  * Domain: 0–0x7FFF (32767). Trailing 0xFFFF values in knot arrays are padding.
  */
@@ -32,7 +32,7 @@ export const WARM_DIM_CURVES: Record<string, WarmDimCurve> = {
   finire3000: {
     name: "Finiré 3000K",
     knots: [32, 32, 32, 1756, 7243, 18570, 32767, 32767, 65535, 65535, 65535],
-    coeffs: [1794, 1764, 2278, 2759, 3007, 3040, null, null],
+    coeffs: [1794, 1764, 2278, 2759, 2991, 3040, null, null],
   },
 };
 

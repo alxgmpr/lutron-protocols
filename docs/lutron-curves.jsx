@@ -39,7 +39,7 @@ const CURVES = {
     color: "#7ecfb0",
     cct: {
       knots: [32, 32, 32, 1756, 7243, 18570, 32767, 32767, 65535, 65535, 65535],
-      coeffs: [1794, 1764, 2278, 2759, 3007, 3040, null, null],
+      coeffs: [1794, 1764, 2278, 2759, 2991, 3040, null, null],
     },
   },
   curve5: {
@@ -426,7 +426,7 @@ export default function App() {
             <h1 style={{ fontSize: 19, fontWeight: 600, margin: 0, letterSpacing: "-0.02em" }}>Lutron Warm Dim Curve Explorer</h1>
           </div>
           <p style={{ color: "#555", fontSize: 11, margin: "2px 0 0 14px", fontFamily: "'IBM Plex Mono', monospace" }}>
-            SqlModelInfo.mdf v26.0.1.100 · Quadratic B-spline (deg 2) · Domain: 0–0x7FFF
+            SqlModelInfo.mdf v26.1.0.112 · Quadratic B-spline (deg 2) · Domain: 0–0x7FFF
           </p>
           <div style={{ margin: "8px 0 0 14px", padding: "8px 12px", background: "#1a0a00", border: "1px solid #3a2000", borderRadius: 4, fontSize: 11, color: "#ff9955" }}>
             ⚠ <strong>Corrected:</strong> Knot domain is 0–0x7FFF (32767), not 0–0xFFFF. The trailing 0xFFFF values are padding.
@@ -605,7 +605,7 @@ export default function App() {
         )}
 
         <div style={{ marginTop: 20, borderTop: "1px solid #111", paddingTop: 10, fontSize: 10, color: "#333", fontFamily: "monospace" }}>
-          Lutron Designer v26.0.1.100 · Domain corrected: 0x0000–0x7FFF · Trailing 0xFFFF = padding
+          Lutron Designer v26.1.0.112 · Domain corrected: 0x0000–0x7FFF · Trailing 0xFFFF = padding
         </div>
       </div>
     </div>

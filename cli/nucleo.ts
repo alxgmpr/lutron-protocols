@@ -512,6 +512,13 @@ function displayCcaPacket(
     }
   }
 
+  const fallbackDeviceId =
+    data.length >= 6
+      ? Array.from(data.subarray(2, 6))
+          .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
+          .join("")
+      : "";
+
   let deviceText = "";
   let deviceColor = WHITE;
   const takeDevice = (fieldName: string, label: string): boolean => {
@@ -533,6 +540,16 @@ function displayCcaPacket(
     takeDevice("load_id", "load") ||
     takeDevice("hardware_id", "hw") ||
     takeDevice("target_id", "target");
+  if (!deviceText && fallbackDeviceId) {
+    let text = `dev:${fallbackDeviceId}`;
+    const serial = parseInt(fallbackDeviceId, 16);
+    if (serial > 0) {
+      const name = getSerialName(serial);
+      if (name) text += ` "${name}"`;
+    }
+    deviceText = text;
+    deviceColor = YELLOW;
+  }
 
   let actionText = "";
   let actionColor = WHITE;
@@ -688,6 +705,7 @@ function displayCcaPacket(
         }
       }
     }
+    if (!deviceId) deviceId = fallbackDeviceId;
     const line = `${new Date().toISOString()},${direction.toLowerCase()},cca,${typeName},${deviceId},${rssi},${rawHex}\n`;
     appendFileSync(recording.file, line);
     recording.count++;
