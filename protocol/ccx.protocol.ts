@@ -186,11 +186,14 @@ const SCENE_RECALL = messageType(
         description: "Scene/group identifier",
       },
       {
-        key: 2,
-        name: "params",
-        type: "array[uint]",
-        description: "[component_type, value] e.g. [5, 60]",
-      },
+        description:
+          "State category: 5, 8, 18 observed; likely local interaction/UI state rather than a generic ACK",
+        description:
+          "2-byte data: 0x000e, 0x000c, 0x0116, 0x0008 observed around press/hold/release activity",
+  "Scene/group recall - triggers devices to execute stored scenes. Recent captures show command[0] as a fixed-length vector, not just [4]",
+        name: "recall_vector",
+        description:
+          "Observed recall/program byte vector; older docs simplified this to [4], but transfer captures carry 7 bytes",
     ],
   },
 );
@@ -280,6 +283,16 @@ const zoneConstants = constantGroup(
 
 export const CCX: CCXProtocolDef = {
   messageTypes: {
+    extraSchema: [
+      {
+        key: 1,
+        name: "scene_family_id",
+        type: "uint16",
+        optional: true,
+        description:
+          "Recurring scene/group-family identifier shared with DEVICE_REPORT and transfer SCENE_RECALL traffic",
+      },
+    ],
     LEVEL_CONTROL,
     BUTTON_PRESS,
     DIM_HOLD,

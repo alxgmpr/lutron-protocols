@@ -36,7 +36,7 @@ These bytes appear across multiple CCA packet formats. Our firmware (`cca_comman
 | 15 (fmt 0x0E) | `0x02` | `cmd_type` | Set/Execute command | `cca_commands.cpp:240` |
 | 15 (config) | `0x50` | `component_type` | Dimmer component | `cca_pairing.cpp:429,498` |
 | 15 (scene cfg) | `0x40` | `component_type_scene` | Scene component | scene config packets |
-| 15 (fmt 0x12) | `0x6E` | `entity_type` | Zone binding entity (unknown exact meaning) | `cca_pairing.cpp:567` |
+| 15 (fmt 0x12) | `0x6E` | `entity_type` | Zone binding entity selector; likely a stable table/entity descriptor, not a command subtype | `cca_pairing.cpp:567` |
 
 ### Pico Packet Fields (Format 0x0E, Byte Offsets Shifted)
 
@@ -70,7 +70,7 @@ the 40-byte payload needs the space.
 | CCA Byte | Value | Proper Name | Notes |
 |----------|-------|-------------|-------|
 | 14 | `0x06` | `cmd_class_legacy` | Original config class |
-| 15 | `0x6E` | `entity_type` | Possibly "zone binding" entity |
+| 15 | `0x6E` | `entity_type` | Likely "zone binding" table/entity selector |
 | 24 | zone | `zone_id` | **THE** authoritative zone assignment byte |
 | 25 | `0xEF` | `addr_mode_group` | Group addressing |
 
@@ -80,11 +80,11 @@ the 40-byte payload needs the space.
 |----------|-------|-------------|-------|
 | 14 | `0x06` | `cmd_class_legacy` | Original config class (NOT modern 0x42) |
 | 15 | `0x50` | `component_type` | Dimmer |
-| 17 | `0x0D` | unknown | Config sub-parameter |
-| 18 | `0x08` | unknown | Config sub-parameter |
-| 19 | `0x02` | unknown | Config sub-parameter |
-| 20 | `0x0F` | unknown | Config sub-parameter |
-| 21 | `0x03` | unknown | Config sub-parameter |
+| 17 | `0x0D` | profile_0 | Conserved capability/profile tuple byte |
+| 18 | `0x08` | profile_1 | Conserved capability/profile tuple byte |
+| 19 | `0x02` | profile_2 | Conserved capability/profile tuple byte |
+| 20 | `0x0F` | profile_3 | Conserved capability/profile tuple byte |
+| 21 | `0x03` | profile_4 | Conserved capability/profile tuple byte |
 
 ### Format 0x14 (Function Mapping) Fields
 

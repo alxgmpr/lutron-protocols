@@ -384,12 +384,14 @@ Recalls a stored scene/group, triggering all member devices to execute and broad
 
 ```cbor
 [36, {
-    0: {0: [4]},                   # Command (4 = recall)
+    0: {0: [1,133,135,140,138,16,142]},  # Recall/program vector (7 bytes observed in transfer captures)
     1: [0],                         # Targets (0 = all members)
-    3: {0: <scene_id>, 2: [5, 60]}, # Scene ID + params [component_type, value]
+    3: {0: <scene_id>, 1: <scene_family_id>, 2: [5, 60]}, # Scene ID + related family/group ID + params
     5: <sequence>
 }]
 ```
+
+Older runtime notes simplified `body[0][0]` to `[4]`, but the included transfer captures show a stable 7-byte vector instead. Treat it as a packed recall/program descriptor until more captures prove a shorter canonical form.
 
 ### Component Command (Type 40) — Shade/Fan Control
 
@@ -607,6 +609,7 @@ Regenerate with `npm run leap:dump -- --config`.
 ## Remaining Unknowns
 
 - **Type 34**: Observed from keypads, structure `{0: {0:7, 1:0}, 2: [1, serial]}` — possibly button activity acknowledgment
+- **Type 34**: More likely local interaction/UI state than a generic ACK. In keypad captures, types `5`, `18`, and `8` bracket press/hold/release-like behavior.
 - **COMPONENT_CMD params**: `[10, 4800]` meaning not yet determined (likely shade position)
-- **SCENE_RECALL params**: `[5, 60]` meaning not yet determined
-- **STATUS inner data**: Raw bytes not yet decoded
+- **SCENE_RECALL params**: `[5, 60]` meaning not yet determined, but current captures also carry a distinct recall vector and recurring `scene_family_id`
+- **STATUS inner data**: Raw bytes not yet decoded, though `body[3][1]` appears to be a recurring scene/group-family identifier
