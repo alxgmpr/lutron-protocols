@@ -32,6 +32,7 @@ import type {
   CCXButtonPress,
   CCXComponentCmd,
   CCXDeviceReport,
+  CCXDeviceState,
   CCXDimHold,
   CCXDimStep,
   CCXLevelControl,
@@ -284,9 +285,10 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
 
   // Extract level from inner command map
   // Format A: inner key 1 is a map with key 0 = 8-bit level
-  // Format B: inner key 3 is array of tuples [idx, Uint8Array(2)] = uint16 BE level
+  // Format B: inner key 3 is array of tuples [idx, Uint8Array(2), outputType?] = uint16 BE level
   let level: number | undefined;
   let levelPercent: number | undefined;
+  let outputType: number | undefined;
 
   const innerKey1 = inner[1];
   const innerKey3 = inner[3];
@@ -306,7 +308,8 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
       levelPercent = levelToPercent(level);
     }
   } else if (Array.isArray(innerKey3)) {
-    // Format B: inner[3] is array of tuples [idx, Uint8Array(2)]
+    // Format B: inner[3] is array of tuples [idx, Uint8Array(2), outputType?]
+    // Element [2] is observed as 2 or 3 — possibly zone_type or output_type
     for (const entry of innerKey3) {
       if (
         Array.isArray(entry) &&
@@ -315,6 +318,9 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
       ) {
         level = (entry[1][0] << 8) | entry[1][1];
         levelPercent = levelToPercent(level);
+        if (typeof entry[2] === "number") {
+          outputType = entry[2];
+        }
         break;
       }
     }
@@ -335,6 +341,7 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
     innerData: inner,
     level,
     levelPercent,
+    outputType,
     sequence,
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
@@ -391,6 +398,34 @@ function parseComponentCmd(body: CCXBody): CCXComponentCmd {
   };
 }
 
+/** Parse Device State (Type 34) — component/output state notification */
+function parseDeviceState(body: CCXBody): CCXDeviceState {
+  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
+  const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
+  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+
+  const rawData = inner[2];
+  const stateData = rawData instanceof Uint8Array ? rawData : undefined;
+
+  const consumedBody = new Set([
+    BodyKey.COMMAND,
+    BodyKey.DEVICE,
+    BodyKey.SEQUENCE,
+  ]);
+
+  return {
+    type: "DEVICE_STATE",
+    deviceType: deviceInfo[0] ?? 0,
+    deviceSerial: deviceInfo[1] ?? 0,
+    stateType: (inner[0] ?? 0) as number,
+    stateValue: (inner[1] ?? 0) as number,
+    stateData,
+    sequence,
+    rawBody: body,
+    unknownKeys: collectUnknown(body, consumedBody),
+  };
+}
+
 /** Parse CBOR body into typed CCX message */
 export function parseMessage(msgType: number, body: CCXBody): CCXMessage {
   switch (msgType) {
@@ -410,6 +445,8 @@ export function parseMessage(msgType: number, body: CCXBody): CCXMessage {
       return parseSceneRecall(body);
     case CCXMessageType.COMPONENT_CMD:
       return parseComponentCmd(body);
+    case CCXMessageType.DEVICE_STATE:
+      return parseDeviceState(body);
     case CCXMessageType.STATUS:
       return parseStatus(body);
     case CCXMessageType.PRESENCE:

@@ -184,7 +184,7 @@ const DEVICE_REPORT = messageType(
         type: "array",
         optional: true,
         description:
-          "Format B: [[idx, Uint8Array(2)]] — uint16 BE level per zone",
+          "Format B: [[idx, Uint8Array(2), outputType?]] — uint16 BE level, element[2]=2|3",
       },
     ],
     extraSchema: [
@@ -193,6 +193,36 @@ const DEVICE_REPORT = messageType(
         name: "group_id",
         type: "uint16",
         description: "Scene/group identifier",
+      },
+    ],
+  },
+);
+
+const DEVICE_STATE = messageType(
+  34,
+  "Device state notification — component/output state from a device after command execution",
+  "STATE",
+  ["COMMAND", "DEVICE", "SEQUENCE"],
+  {
+    commandSchema: [
+      {
+        key: 0,
+        name: "state_type",
+        type: "uint8",
+        description: "State category: 5, 8, 18 observed",
+      },
+      {
+        key: 1,
+        name: "state_value",
+        type: "uint8",
+        description: "State value: 0 or 1 (boolean-like)",
+      },
+      {
+        key: 2,
+        name: "state_data",
+        type: "bytes(2)",
+        optional: true,
+        description: "2-byte data: 0x000e, 0x000c, 0x0116, 0x0008 observed",
       },
     ],
   },
@@ -325,6 +355,7 @@ export const CCX: CCXProtocolDef = {
     DIM_STEP,
     ACK,
     DEVICE_REPORT,
+    DEVICE_STATE,
     SCENE_RECALL,
     COMPONENT_CMD,
     STATUS,
@@ -352,6 +383,7 @@ export const CCXMessageType = Object.fromEntries(
   readonly DIM_STEP: 3;
   readonly ACK: 7;
   readonly DEVICE_REPORT: 27;
+  readonly DEVICE_STATE: 34;
   readonly SCENE_RECALL: 36;
   readonly COMPONENT_CMD: 40;
   readonly STATUS: 41;
