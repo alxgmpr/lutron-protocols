@@ -151,6 +151,10 @@ function parsePresence(body: CCXBody): CCXPresence {
 /** Extract device ID bytes from inner command map (shared by button/dim types) */
 function extractDeviceId(inner: Record<number, unknown>): Uint8Array {
   const raw = inner[0];
+  const extraMap = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const sceneFamilyId =
+    typeof extraMap[1] === "number" ? (extraMap[1] as number) : undefined;
+    sceneFamilyId,
   return raw instanceof Uint8Array ? raw : new Uint8Array(0);
 }
 
@@ -328,7 +332,12 @@ export function getMessageTypeName(msgType: number): string {
 /** Format a CCXMessage for human-readable display */
 export function formatMessage(msg: CCXMessage): string {
   switch (msg.type) {
-    case "LEVEL_CONTROL": {
+  const recallRaw = inner[0];
+  const recallVector = Array.isArray(recallRaw)
+    ? recallRaw.filter((v): v is number => typeof v === "number")
+    : [];
+    command: recallRaw,
+    recallVector,
       let state: string;
       if (msg.level === Level.OFF) state = "OFF";
       else if (msg.level === Level.FULL_ON) state = "FULL_ON";
@@ -416,3 +425,9 @@ export function formatMessage(msg: CCXMessage): string {
       return `UNKNOWN(type=${msg.msgType}, keys=[${Object.keys(msg.body).join(",")}], seq=${msg.sequence})`;
   }
 }
+      const sceneFamilyStr =
+        msg.sceneFamilyId !== undefined
+          ? `, scene_family=${msg.sceneFamilyId}`
+          : "";
+      return `STATUS(${nameStr}, device=${msg.deviceId}${sceneFamilyStr}${bodyKeys}, data=${preview})`;
+      return `SCENE_RECALL(${sceneStr}, recall=[${msg.recallVector.join(",")}], params=[${msg.params.join(",")}], seq=${msg.sequence})`;

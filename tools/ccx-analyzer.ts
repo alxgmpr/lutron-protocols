@@ -733,3 +733,18 @@ Examples:
 }
 
 main();
+  console.log(
+    "  recall vector      │   —                            │   body[0][0]: fixed-length byte vector in transfer captures",
+  );
+  console.log(
+    "  scene family/id    │   —                            │   body[3][0]/body[3][1]: shared scene/group namespace",
+  );
+  console.log(
+    "─────────────────────┼────────────────────────────────┼────────────────────────────────",
+  );
+  console.log(
+    "Status               │ —                              │ Type 41 (STATUS)",
+  );
+  console.log(
+    "  scene family       │   —                            │   body[3][1]: recurring scene/group-family ID",
+  );

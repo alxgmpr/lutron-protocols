@@ -27,6 +27,7 @@ export interface CCXButtonPress {
   buttonZone: number; // Extracted from deviceId[1]
   cmdType: number; // deviceId[0], 0x03 = button
   counters: number[]; // Frame counters (replay protection)
+  sceneFamilyId?: number; // key 3.1 — recurring scene/group-family identifier
   sequence: number;
 }
 
@@ -77,10 +78,11 @@ export interface CCXDimStep {
   stepValue: number; // elapsed ms (~1000/sec observed from pico, 0 from app)
   zoneType: number; // body key 1[0]
   zoneId: number; // body key 1[1]
-  sequence: number;
-}
+  stateType: number; // inner key 0 — 5, 8, 18 observed; likely local UI/interaction state
+  stateData?: Uint8Array; // inner key 2 — 2-byte payload (optional, 000e/000c/0116/0008 observed)
 
-/** Device state report — broadcast by devices after executing commands */
+  command: unknown; // key 0.0 raw value for compatibility
+  recallVector: number[]; // key 0.0 observed as a fixed-length byte vector, not just [4]
 export interface CCXDeviceReport {
   type: "DEVICE_REPORT";
   deviceType: number; // key 2[0] — always 1 observed
