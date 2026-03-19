@@ -14,8 +14,10 @@ import {
   enumDef,
   type FieldDef,
   field,
+  type PairingPreset,
   packetType,
   packetTypeFrom,
+  type Sequence,
 } from "./dsl";
 
 // ============================================================================
