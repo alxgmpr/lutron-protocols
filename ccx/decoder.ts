@@ -176,6 +176,9 @@ function parseStatus(body: CCXBody): CCXStatus {
     rawInnerData instanceof Uint8Array ? rawInnerData : new Uint8Array(0);
   const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const extraMap = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const sceneFamilyId =
+    typeof extraMap[1] === "number" ? (extraMap[1] as number) : undefined;
 
   // Collect extra fields (everything except command, device, sequence)
   const extra: Record<number, unknown> = {};
@@ -195,6 +198,7 @@ function parseStatus(body: CCXBody): CCXStatus {
     innerData,
     deviceType: deviceInfo[0] ?? 0,
     deviceId: deviceInfo[1] ?? 0,
+    sceneFamilyId,
     extra,
     sequence,
     rawBody: body,
@@ -353,6 +357,10 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const targets = (body[BodyKey.ZONE] ?? []) as number[];
   const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const recallRaw = inner[0];
+  const recallVector = Array.isArray(recallRaw)
+    ? recallRaw.filter((v): v is number => typeof v === "number")
+    : [];
 
   const consumedBody = new Set([
     BodyKey.COMMAND,
@@ -363,7 +371,8 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
 
   return {
     type: "SCENE_RECALL",
-    command: inner[0],
+    command: recallRaw,
+    recallVector,
     targets,
     sceneId: (extra[0] ?? 0) as number,
     params: (extra[2] ?? []) as number[],
@@ -602,10 +611,14 @@ export function formatMessage(msg: CCXMessage): string {
       const nameStr = serialName
         ? `"${serialName}"`
         : `0x${msg.deviceId.toString(16).padStart(8, "0")}`;
+      const sceneFamilyStr =
+        msg.sceneFamilyId !== undefined
+          ? `, scene_family=${msg.sceneFamilyId}`
+          : "";
       const bodyKeys = msg.rawBody
         ? `, keys=[${Object.keys(msg.rawBody).join(",")}]`
         : "";
-      return `STATUS(${nameStr}, device=${msg.deviceId}${bodyKeys}, data=${preview})`;
+      return `STATUS(${nameStr}, device=${msg.deviceId}${sceneFamilyStr}${bodyKeys}, data=${preview})`;
     }
     case "DIM_HOLD": {
       const idHex = Array.from(msg.deviceId)
@@ -673,7 +686,7 @@ export function formatMessage(msg: CCXMessage): string {
       const sceneStr = sceneName
         ? `scene=${msg.sceneId} "${sceneName}"`
         : `scene=${msg.sceneId}`;
-      return `SCENE_RECALL(${sceneStr}, params=[${msg.params.join(",")}], seq=${msg.sequence})`;
+      return `SCENE_RECALL(${sceneStr}, recall=[${msg.recallVector.join(",")}], params=[${msg.params.join(",")}], seq=${msg.sequence})`;
     }
     case "COMPONENT_CMD": {
       const groupName = getSceneName(msg.groupId);

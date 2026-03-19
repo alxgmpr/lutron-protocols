@@ -1,4 +1,5 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S npx tsx
+
 /**
  * CCX Firmware Update Capture Tool
  *
@@ -14,17 +15,20 @@
  *   - MLE (UDP 19788) for network maintenance
  *
  * Usage:
- *   bun run tools/ccx-fw-capture.ts --live
- *   bun run tools/ccx-fw-capture.ts --live --duration 900
- *   bun run tools/ccx-fw-capture.ts --live --target <eui64>
- *   bun run tools/ccx-fw-capture.ts --file <capture.pcapng>
- *   bun run tools/ccx-fw-capture.ts --file <capture.pcapng> --extract
+ *   npx tsx tools/ccx-fw-capture.ts --live
+ *   npx tsx tools/ccx-fw-capture.ts --live --duration 900
+ *   npx tsx tools/ccx-fw-capture.ts --live --target <eui64>
+ *   npx tsx tools/ccx-fw-capture.ts --file <capture.pcapng>
+ *   npx tsx tools/ccx-fw-capture.ts --file <capture.pcapng> --extract
  */
 
+import { Decoder } from "cbor-x";
 import { execSync, spawn } from "child_process";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from "fs";
 import { CCX_CONFIG } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
+
+const cborDecoder = new Decoder({ mapsAsObjects: false });
 
 const args = process.argv.slice(2);
 function getArg(name: string): string | undefined {
@@ -50,13 +54,15 @@ if (!fileMode && !liveMode) {
 CCX Firmware Update Capture Tool
 
 Captures all Thread traffic during firmware updates to intercept OTA images.
+Decodes MCUboot SMP image upload frames (CBOR offset+data chunks) and
+reconstructs the firmware image ordered by offset.
 
 Usage:
-  bun run tools/ccx-fw-capture.ts --live                    Live capture (all traffic)
-  bun run tools/ccx-fw-capture.ts --live --duration 900     Capture for 15 minutes
-  bun run tools/ccx-fw-capture.ts --live --target <eui64>   Filter display to target device
-  bun run tools/ccx-fw-capture.ts --file <pcapng>           Analyze existing capture
-  bun run tools/ccx-fw-capture.ts --file <pcapng> --extract Extract firmware data from capture
+  npx tsx tools/ccx-fw-capture.ts --live                    Live capture (all traffic)
+  npx tsx tools/ccx-fw-capture.ts --live --duration 1200    Capture for 20 minutes
+  npx tsx tools/ccx-fw-capture.ts --live --target <eui64>   Filter display to target device
+  npx tsx tools/ccx-fw-capture.ts --file <pcapng>           Analyze existing capture
+  npx tsx tools/ccx-fw-capture.ts --file <pcapng> --extract Extract firmware via SMP decode
 
 Options:
   --channel <n>       802.15.4 channel (default: ${CCX_CONFIG.channel})
@@ -114,6 +120,112 @@ function getOrCreateStats(eui64: string): DeviceStats {
     deviceStats.set(eui64, stats);
   }
   return stats;
+}
+
+// ── SMP/MCUboot Frame Decoder ────────────────────────────────
+
+/** Parsed SMP image upload chunk */
+interface SmpChunk {
+  offset: number;
+  data: Buffer;
+  totalSize?: number; // present in first chunk (len field)
+}
+
+/**
+ * Try to decode an SMP image upload frame from a CoAP payload.
+ *
+ * MCUboot SMP over CoAP: the CoAP payload is either:
+ *   1. Raw CBOR map: {0: offset, 1: data, 2?: totalLen} (integer keys)
+ *      or {"off": offset, "data": data, "len"?: totalLen} (string keys)
+ *   2. SMP header (8 bytes) + CBOR map (raw SMP framing)
+ *
+ * Returns null if the payload is not an SMP upload frame.
+ */
+function decodeSmpChunk(payload: Buffer): SmpChunk | null {
+  // Try raw CBOR first, then with 8-byte SMP header skip
+  for (const skip of [0, 8]) {
+    if (payload.length <= skip) continue;
+    const buf = skip > 0 ? payload.subarray(skip) : payload;
+    try {
+      const decoded = cborDecoder.decode(buf);
+      if (!(decoded instanceof Map)) continue;
+
+      // Extract offset — integer key 0 or string key "off"
+      const offset = decoded.get(0) ?? decoded.get("off");
+      if (typeof offset !== "number") continue;
+
+      // Extract data — integer key 1 or string key "data"
+      let data = decoded.get(1) ?? decoded.get("data");
+      if (!data) continue;
+      if (data instanceof Uint8Array) data = Buffer.from(data);
+      if (!Buffer.isBuffer(data)) continue;
+
+      // Extract optional total size — integer key 2 or string key "len"
+      const totalSize = decoded.get(2) ?? decoded.get("len");
+
+      return {
+        offset,
+        data,
+        totalSize: typeof totalSize === "number" ? totalSize : undefined,
+      };
+    } catch {
+      // Not valid CBOR at this offset
+    }
+  }
+  return null;
+}
+
+// ── Live Firmware Transfer Tracking ──────────────────────────
+
+interface FirmwareTransfer {
+  targetEui64: string;
+  totalSize: number | undefined;
+  bytesReceived: number;
+  chunkCount: number;
+  highestOffset: number;
+  startTime: number;
+  lastProgressTime: number;
+  phase: "programming" | "uploading" | "unknown";
+  programmingPaths: Set<string>;
+}
+
+const activeTransfers = new Map<string, FirmwareTransfer>();
+
+function getOrCreateTransfer(eui64: string): FirmwareTransfer {
+  let transfer = activeTransfers.get(eui64);
+  if (!transfer) {
+    transfer = {
+      targetEui64: eui64,
+      totalSize: undefined,
+      bytesReceived: 0,
+      chunkCount: 0,
+      highestOffset: 0,
+      startTime: Date.now(),
+      lastProgressTime: 0,
+      phase: "unknown",
+      programmingPaths: new Set(),
+    };
+    activeTransfers.set(eui64, transfer);
+  }
+  return transfer;
+}
+
+function printTransferProgress(transfer: FirmwareTransfer) {
+  const elapsed = (Date.now() - transfer.startTime) / 1000;
+  const speed = transfer.bytesReceived / elapsed;
+  const pct = transfer.totalSize
+    ? ((transfer.bytesReceived / transfer.totalSize) * 100).toFixed(1)
+    : "?";
+  const eta = transfer.totalSize
+    ? ((transfer.totalSize - transfer.bytesReceived) / speed).toFixed(0)
+    : "?";
+
+  console.log(
+    `  [FW] ${transfer.targetEui64.slice(-5)}: ${formatBytes(transfer.bytesReceived)}` +
+      (transfer.totalSize ? `/${formatBytes(transfer.totalSize)}` : "") +
+      ` (${pct}%) ${transfer.chunkCount} chunks` +
+      ` ${formatBytes(speed)}/s ETA ${eta}s`,
+  );
 }
 
 /** Auto-detect nRF sniffer interface */
@@ -190,26 +302,16 @@ async function runLiveCapture() {
   console.log();
   console.log("Trigger the firmware update now. Press Ctrl+C to stop.\n");
 
-  // Spawn tshark for raw pcapng capture (no filtering — get everything)
-  const dumpcap = spawn(
-    "tshark",
-    ["-i", iface, "-w", pcapFile, "-a", `duration:${duration}`],
-    { stdio: ["ignore", "pipe", "pipe"] },
-  );
+  // Architecture: single tshark captures raw pcapng to stdout. We pipe it to
+  // both a file (for post-processing) and a decoder tshark (for live display).
+  // This avoids opening the nRF sniffer interface twice (exclusive serial lock).
 
-  dumpcap.stderr.on("data", (chunk: Buffer) => {
-    const msg = chunk.toString().trim();
-    if (msg.includes("Capturing on") || msg.includes("packets captured")) {
-      console.log(`  [tshark] ${msg}`);
-    }
-  });
-
-  // Second tshark for live decode (all UDP traffic, not just 9190)
+  // Decoder tshark reads pcapng from stdin — spawn first so it's ready
   const decoder = spawn(
     "tshark",
     [
-      "-i",
-      iface,
+      "-r",
+      "-",
       "-l",
       // Decode CoAP on port 5683
       "-d",
@@ -243,20 +345,43 @@ async function runLiveCapture() {
       "data.data",
       "-E",
       "separator=\t",
-      // No display filter — capture everything with UDP
+      // Only decode UDP packets
       "-Y",
       "udp",
     ],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+
+  // Capture tshark writes raw pcapng to stdout
+  const capture = spawn(
+    "tshark",
+    ["-i", iface, "-w", "-", "-l", "-a", `duration:${duration}`],
     { stdio: ["ignore", "pipe", "pipe"] },
   );
 
+  // Tee capture stdout to both the pcapng file and the decoder stdin
+  const fileStream = createWriteStream(pcapFile);
+  capture.stdout.on("data", (chunk: Buffer) => {
+    fileStream.write(chunk);
+    if (decoder.stdin && !decoder.stdin.destroyed) {
+      decoder.stdin.write(chunk);
+    }
+  });
+
+  capture.stderr.on("data", (chunk: Buffer) => {
+    const msg = chunk.toString().trim();
+    if (msg.includes("Capturing on") || msg.includes("packets captured")) {
+      console.log(`  [tshark] ${msg}`);
+    }
+  });
+
   let packetCount = 0;
-  let buffer = "";
+  let decoderBuffer = "";
 
   decoder.stdout.on("data", (chunk: Buffer) => {
-    buffer += chunk.toString();
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    decoderBuffer += chunk.toString();
+    const lines = decoderBuffer.split("\n");
+    decoderBuffer = lines.pop() ?? "";
 
     for (const line of lines) {
       processLiveLine(line);
@@ -284,22 +409,42 @@ async function runLiveCapture() {
   function shutdown() {
     console.log("\nStopping capture...");
     clearInterval(statsInterval);
-    dumpcap.kill("SIGINT");
-    decoder.kill("SIGINT");
+    capture.kill("SIGINT");
   }
 
   process.on("SIGINT", shutdown);
 
-  dumpcap.on("close", () => {
+  capture.on("close", () => {
     clearInterval(statsInterval);
-    decoder.kill("SIGINT");
+    fileStream.end();
+    if (decoder.stdin && !decoder.stdin.destroyed) {
+      decoder.stdin.end();
+    }
     console.log(`\nCapture saved to: ${pcapFile}`);
     console.log(`Total packets with UDP: ${packetCount}`);
     printStats();
+
+    // Print firmware transfer summary
+    if (activeTransfers.size > 0) {
+      console.log("--- Firmware Transfer Summary ---");
+      for (const transfer of activeTransfers.values()) {
+        console.log(`  ${transfer.targetEui64}:`);
+        console.log(`    Phase: ${transfer.phase}`);
+        if (transfer.programmingPaths.size > 0) {
+          console.log(
+            `    Programming paths: ${[...transfer.programmingPaths].join(", ")}`,
+          );
+        }
+        if (transfer.chunkCount > 0) {
+          printTransferProgress(transfer);
+        }
+      }
+      console.log("---\n");
+    }
     console.log(`\nPost-process with:`);
-    console.log(`  bun run tools/ccx-fw-capture.ts --file ${pcapFile}`);
+    console.log(`  npx tsx tools/ccx-fw-capture.ts --file ${pcapFile}`);
     console.log(
-      `  bun run tools/ccx-fw-capture.ts --file ${pcapFile} --extract`,
+      `  npx tsx tools/ccx-fw-capture.ts --file ${pcapFile} --extract`,
     );
   });
 }
@@ -363,13 +508,55 @@ function processLiveLine(line: string) {
   const dstLabel = dstEui64 ? dstEui64.slice(-5) : (dstIpv6?.slice(-8) ?? "?");
 
   if (dstPort === 5683 || srcPort === 5683) {
-    // CoAP traffic — likely firmware-related
+    // CoAP traffic — detect programming vs firmware upload
     const method = coapCode ?? "?";
     const path = coapPath ?? "";
     const sizeStr = payloadBytes > 0 ? ` (${formatBytes(payloadBytes)})` : "";
-    const marker = payloadBytes > 200 ? " **FW?**" : "";
+
+    // Try SMP decode on CoAP payloads
+    let smpInfo = "";
+    if (payloadHex && payloadBytes > 8) {
+      const chunk = decodeSmpChunk(Buffer.from(payloadHex, "hex"));
+      if (chunk) {
+        const dstEui = dstEui64 || srcEui64 || "unknown";
+        const transfer = getOrCreateTransfer(dstEui);
+        transfer.phase = "uploading";
+        transfer.chunkCount++;
+        transfer.bytesReceived += chunk.data.length;
+        if (chunk.offset + chunk.data.length > transfer.highestOffset) {
+          transfer.highestOffset = chunk.offset + chunk.data.length;
+        }
+        if (chunk.totalSize !== undefined && !transfer.totalSize) {
+          transfer.totalSize = chunk.totalSize;
+          console.log(
+            `  [FW] Upload started to ${dstEui.slice(-5)} — total image size: ${formatBytes(chunk.totalSize)}`,
+          );
+        }
+        smpInfo = ` SMP[off=${chunk.offset} +${chunk.data.length}B]`;
+
+        // Show progress every 5 seconds
+        const now = Date.now();
+        if (now - transfer.lastProgressTime > 5000) {
+          transfer.lastProgressTime = now;
+          printTransferProgress(transfer);
+        }
+      }
+    }
+
+    // Detect programming phase — CoAP to /cg/db paths
+    let phaseMarker = "";
+    if (path.startsWith("/cg/db")) {
+      phaseMarker = " [PROGRAM]";
+      const dstEui = dstEui64 || "unknown";
+      const transfer = getOrCreateTransfer(dstEui);
+      if (transfer.phase === "unknown") transfer.phase = "programming";
+      transfer.programmingPaths.add(path);
+    } else if (payloadBytes > 200 && !smpInfo) {
+      phaseMarker = " **FW?**";
+    }
+
     console.log(
-      `${time} CoAP  ${srcLabel}→${dstLabel}  ${method} ${path}${sizeStr}${marker}`,
+      `${time} CoAP  ${srcLabel}→${dstLabel}  ${method} ${path}${sizeStr}${smpInfo}${phaseMarker}`,
     );
   } else if (dstPort === 9190 || srcPort === 9190) {
     // Runtime CCX — try to decode CBOR
@@ -502,12 +689,12 @@ async function analyzeFile(pcapFile: string) {
   } else {
     console.log(`\nTo extract firmware data, run:`);
     console.log(
-      `  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract`,
+      `  npx tsx tools/ccx-fw-capture.ts --file "${pcapFile}" --extract`,
     );
     if (sortedEuis.length > 0) {
       const topEui = sortedEuis[0][0];
       console.log(
-        `  bun run tools/ccx-fw-capture.ts --file "${pcapFile}" --extract --target ${topEui}`,
+        `  npx tsx tools/ccx-fw-capture.ts --file "${pcapFile}" --extract --target ${topEui}`,
       );
     }
   }
@@ -624,14 +811,14 @@ async function extractFirmware(pcapFile: string) {
   const lines = rawLines.split("\n");
   console.log(`Found ${lines.length} CoAP packets to target device.`);
 
-  // Separate by CoAP path
+  // Separate by CoAP path and track payloads
   const pathData = new Map<
     string,
     { payloads: Buffer[]; totalBytes: number }
   >();
 
   for (const line of lines) {
-    const [_timeStr, code, path, dataHex] = line.split("\t");
+    const [, code, path, dataHex] = line.split("\t");
     if (!dataHex) continue;
 
     const cleanHex = dataHex.replace(/:/g, "");
@@ -642,6 +829,19 @@ async function extractFirmware(pcapFile: string) {
     entry.payloads.push(buf);
     entry.totalBytes += buf.length;
     pathData.set(key, entry);
+  }
+
+  // Show programming phase commands (/cg/db paths)
+  const programmingPaths = [...pathData.entries()].filter(([p]) =>
+    p.startsWith("/cg/db"),
+  );
+  if (programmingPaths.length > 0) {
+    console.log("\n  Programming phase (CoAP /cg/db commands):");
+    for (const [path, { payloads, totalBytes }] of programmingPaths) {
+      console.log(
+        `    ${path}: ${payloads.length} pkts, ${formatBytes(totalBytes)}`,
+      );
+    }
   }
 
   console.log("\nPayload summary by CoAP path:");
@@ -659,37 +859,161 @@ async function extractFirmware(pcapFile: string) {
     }
   }
 
-  // Extract the largest data stream (most likely firmware)
+  // ── SMP/MCUboot Frame Decoding ──────────────────────────────
+  //
+  // Try to decode all CoAP payloads as SMP image upload frames.
+  // Each frame is a CBOR map: {off: <offset>, data: <bytes>, len?: <total>}
+  // Reconstruct the firmware image ordered by offset.
+
+  console.log("\n--- SMP Image Upload Decode ---\n");
+
+  const smpChunks: { offset: number; data: Buffer; packetIndex: number }[] = [];
+  let smpTotalSize: number | undefined;
+  let nonSmpPayloads = 0;
+
+  // Collect all payloads from all paths (firmware upload may use any path)
+  const allPayloads: Buffer[] = [];
+  for (const [, { payloads }] of [...pathData.entries()].sort(
+    (a, b) => b[1].totalBytes - a[1].totalBytes,
+  )) {
+    allPayloads.push(...payloads);
+  }
+
+  for (let i = 0; i < allPayloads.length; i++) {
+    const chunk = decodeSmpChunk(allPayloads[i]);
+    if (chunk) {
+      smpChunks.push({
+        offset: chunk.offset,
+        data: chunk.data,
+        packetIndex: i,
+      });
+      if (chunk.totalSize !== undefined && smpTotalSize === undefined) {
+        smpTotalSize = chunk.totalSize;
+      }
+    } else {
+      nonSmpPayloads++;
+    }
+  }
+
+  if (smpChunks.length === 0) {
+    console.log("No SMP image upload frames found in CoAP payloads.");
+    console.log("Falling back to raw concatenation...\n");
+
+    // Fall back to raw concatenation of the largest stream
+    const largestPath = [...pathData.entries()].sort(
+      (a, b) => b[1].totalBytes - a[1].totalBytes,
+    )[0];
+    if (largestPath) {
+      const [path, { payloads, totalBytes }] = largestPath;
+      console.log(`Largest stream: ${path} (${formatBytes(totalBytes)})`);
+      const combined = Buffer.concat(payloads);
+      const outFile = `${outDir}/fw-extract-${target.replace(/:/g, "")}.bin`;
+      writeFileSync(outFile, combined);
+      console.log(`  Raw concatenated payloads saved to: ${outFile}`);
+      console.log(`  Total size: ${formatBytes(combined.length)}`);
+      identifyContent(combined);
+    }
+    return;
+  }
+
+  console.log(`SMP chunks decoded: ${smpChunks.length}`);
+  console.log(`Non-SMP payloads: ${nonSmpPayloads}`);
+  if (smpTotalSize !== undefined) {
+    console.log(
+      `Total image size (from SMP len field): ${formatBytes(smpTotalSize)}`,
+    );
+  }
+
+  // Sort by offset and reconstruct
+  smpChunks.sort((a, b) => a.offset - b.offset);
+
+  const imageSize =
+    smpTotalSize ??
+    smpChunks.reduce((max, c) => Math.max(max, c.offset + c.data.length), 0);
+  const image = Buffer.alloc(imageSize);
+  const coverage = new Uint8Array(imageSize); // track which bytes are filled
+
+  let overlaps = 0;
+  let gapBytes = 0;
+
+  for (const chunk of smpChunks) {
+    const end = Math.min(chunk.offset + chunk.data.length, imageSize);
+    // Check for overlaps
+    for (let j = chunk.offset; j < end; j++) {
+      if (coverage[j]) overlaps++;
+      coverage[j] = 1;
+    }
+    chunk.data.copy(image, chunk.offset, 0, end - chunk.offset);
+  }
+
+  // Count gaps
+  for (let j = 0; j < imageSize; j++) {
+    if (!coverage[j]) gapBytes++;
+  }
+
+  const firstChunk = smpChunks[0];
+  const lastChunk = smpChunks[smpChunks.length - 1];
+  console.log(`\nReconstruction summary:`);
+  console.log(`  Image size:    ${formatBytes(imageSize)}`);
+  console.log(`  Chunks:        ${smpChunks.length}`);
+  console.log(
+    `  Offset range:  ${firstChunk.offset} — ${lastChunk.offset + lastChunk.data.length}`,
+  );
+  console.log(
+    `  Avg chunk:     ${formatBytes(Math.floor(imageSize / smpChunks.length))}`,
+  );
+  if (overlaps > 0) {
+    console.log(`  Overlaps:      ${formatBytes(overlaps)} (retransmissions)`);
+  }
+  if (gapBytes > 0) {
+    console.log(
+      `  GAPS:          ${formatBytes(gapBytes)} — image may be incomplete!`,
+    );
+
+    // Find gap ranges
+    let inGap = false;
+    let gapStart = 0;
+    const gaps: { start: number; end: number }[] = [];
+    for (let j = 0; j <= imageSize; j++) {
+      if (j < imageSize && !coverage[j]) {
+        if (!inGap) {
+          gapStart = j;
+          inGap = true;
+        }
+      } else if (inGap) {
+        gaps.push({ start: gapStart, end: j });
+        inGap = false;
+      }
+    }
+    for (const g of gaps.slice(0, 10)) {
+      console.log(
+        `    Gap: 0x${g.start.toString(16)} — 0x${g.end.toString(16)} (${formatBytes(g.end - g.start)})`,
+      );
+    }
+    if (gaps.length > 10)
+      console.log(`    ... and ${gaps.length - 10} more gaps`);
+  } else {
+    console.log(`  Coverage:      100% — no gaps`);
+  }
+
+  // Save the reconstructed firmware image
+  const outFile = `${outDir}/fw-smp-${target.replace(/:/g, "")}.bin`;
+  writeFileSync(outFile, image);
+  console.log(`\n  Reconstructed firmware saved to: ${outFile}`);
+
+  // Identify content
+  identifyContent(image);
+
+  // Also save raw concatenated payloads for comparison
   const largestPath = [...pathData.entries()].sort(
     (a, b) => b[1].totalBytes - a[1].totalBytes,
   )[0];
   if (largestPath) {
-    const [path, { payloads, totalBytes }] = largestPath;
-    console.log(`\nLargest stream: ${path} (${formatBytes(totalBytes)})`);
-
-    // Concatenate all payloads
-    const combined = Buffer.concat(payloads);
-    const outFile = `${outDir}/fw-extract-${target.replace(/:/g, "")}.bin`;
-    writeFileSync(outFile, combined);
-    console.log(`  Raw concatenated payloads saved to: ${outFile}`);
-    console.log(`  Total size: ${formatBytes(combined.length)}`);
-
-    // Try to identify the content
-    identifyContent(combined);
-
-    // Also save individual payloads for analysis
-    const chunksDir = `${outDir}/chunks-${target.replace(/:/g, "")}`;
-    if (!existsSync(chunksDir)) mkdirSync(chunksDir, { recursive: true });
-
-    for (let i = 0; i < payloads.length; i++) {
-      writeFileSync(
-        `${chunksDir}/${String(i).padStart(5, "0")}.bin`,
-        payloads[i],
-      );
-    }
-    console.log(`  Individual chunks saved to: ${chunksDir}/`);
+    const [, { payloads, totalBytes }] = largestPath;
+    const rawFile = `${outDir}/fw-raw-${target.replace(/:/g, "")}.bin`;
+    writeFileSync(rawFile, Buffer.concat(payloads));
     console.log(
-      `  ${payloads.length} chunks, avg ${formatBytes(Math.floor(totalBytes / payloads.length))}`,
+      `  Raw concatenated payloads saved to: ${rawFile} (${formatBytes(totalBytes)})`,
     );
   }
 }

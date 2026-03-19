@@ -209,7 +209,8 @@ const DEVICE_STATE = messageType(
         key: 0,
         name: "state_type",
         type: "uint8",
-        description: "State category: 5, 8, 18 observed",
+        description:
+          "State category: 5, 8, 18 observed; likely local interaction/UI state rather than a generic ACK",
       },
       {
         key: 1,
@@ -222,7 +223,8 @@ const DEVICE_STATE = messageType(
         name: "state_data",
         type: "bytes(2)",
         optional: true,
-        description: "2-byte data: 0x000e, 0x000c, 0x0116, 0x0008 observed",
+        description:
+          "2-byte data: 0x000e, 0x000c, 0x0116, 0x0008 observed around press/hold/release activity",
       },
     ],
   },
@@ -230,16 +232,17 @@ const DEVICE_STATE = messageType(
 
 const SCENE_RECALL = messageType(
   36,
-  "Scene/group recall - triggers devices to execute stored scenes. command[0]=[4] for recall",
+  "Scene/group recall - triggers devices to execute stored scenes. Recent captures show command[0] as a fixed-length vector, not just [4]",
   "OUTPUT",
   ["COMMAND", "ZONE", "EXTRA", "SEQUENCE"],
   {
     commandSchema: [
       {
         key: 0,
-        name: "recall_cmd",
+        name: "recall_vector",
         type: "array[uint]",
-        description: "[4] = recall action, 0 = set/program",
+        description:
+          "Observed recall/program byte vector; older docs simplified this to [4], but transfer captures carry 7 bytes",
       },
     ],
     extraSchema: [
@@ -303,6 +306,16 @@ const STATUS = messageType(
         name: "payload",
         type: "bytes",
         description: "Binary status payload",
+      },
+    ],
+    extraSchema: [
+      {
+        key: 1,
+        name: "scene_family_id",
+        type: "uint16",
+        optional: true,
+        description:
+          "Recurring scene/group-family identifier shared with DEVICE_REPORT and transfer SCENE_RECALL traffic",
       },
     ],
   },

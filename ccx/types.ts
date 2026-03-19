@@ -49,6 +49,7 @@ export interface CCXStatus extends CCXMessageBase {
   innerData: Uint8Array; // Raw status payload
   deviceType: number;
   deviceId: number;
+  sceneFamilyId?: number; // key 3.1 — recurring scene/group-family identifier
   extra: Record<number, unknown>;
 }
 
@@ -100,15 +101,16 @@ export interface CCXDeviceState extends CCXMessageBase {
   type: "DEVICE_STATE";
   deviceType: number; // key 2[0] — always 1
   deviceSerial: number; // key 2[1]
-  stateType: number; // inner key 0 — 5, 8, 18 observed
+  stateType: number; // inner key 0 — 5, 8, 18 observed; likely local UI/interaction state
   stateValue: number; // inner key 1 — 0 or 1 (boolean-like)
-  stateData?: Uint8Array; // inner key 2 — 2-byte payload (optional)
+  stateData?: Uint8Array; // inner key 2 — 2-byte payload (optional, 000e/000c/0116/0008 observed)
 }
 
 /** Scene/group recall command */
 export interface CCXSceneRecall extends CCXMessageBase {
   type: "SCENE_RECALL";
-  command: unknown; // key 0.0 — e.g. [4] for recall
+  command: unknown; // key 0.0 raw value for compatibility
+  recallVector: number[]; // key 0.0 observed as a fixed-length byte vector, not just [4]
   targets: number[]; // key 1 — target list, e.g. [0] for all
   sceneId: number; // key 3.0 — scene/group identifier
   params: number[]; // key 3.2 — [component_type, value], e.g. [5, 60]
