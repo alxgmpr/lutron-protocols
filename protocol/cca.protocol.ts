@@ -14,8 +14,10 @@ import {
   enumDef,
   type FieldDef,
   field,
+  type PairingPreset,
   packetType,
   packetTypeFrom,
+  type Sequence,
 } from "./dsl";
 
 // ============================================================================
@@ -372,6 +374,8 @@ const pairRespFields: FieldDef[] = [
 
 /** Format discrimination for short packet types (0x80-0x83) */
 const stateFormatDisc: Record<number, string> = {
+  0x09: "UNPAIR_PREP",
+  0x0c: "UNPAIR",
   0x0e: "SET_LEVEL",
   0x12: "ZONE_BIND",
   0x13: "DIM_CONFIG",

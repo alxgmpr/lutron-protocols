@@ -1091,7 +1091,7 @@ PRINT 'Done.';
 `;
 }
 
-function buildVerifySql(direction: string): string {
+function _buildVerifySql(direction: string): string {
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
   const map = getModelMap(direction as "RA3_TO_HW" | "HW_TO_RA3");
 

@@ -14,7 +14,6 @@
  */
 
 import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
 import { hrefId, LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
@@ -72,7 +71,7 @@ function bodyCount(val: any): string {
 }
 
 /** Probe a URL and follow all hrefs in the response */
-async function probeAndFollow(url: string, depth = 0): Promise<any> {
+async function _probeAndFollow(url: string, depth = 0): Promise<any> {
   if (depth > 2) return null;
   const body = await probe(url);
   return body;
@@ -428,7 +427,7 @@ async function main() {
     }
     await fn();
   } else {
-    for (const [name, fn] of Object.entries(sections)) {
+    for (const [_name, fn] of Object.entries(sections)) {
       await fn();
     }
   }

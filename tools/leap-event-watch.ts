@@ -174,7 +174,7 @@ async function main() {
 
     // Also poll for any new link nodes
     try {
-      const resp = await conn.read(`/link/437/associatedlinknode`);
+      const _resp = await conn.read(`/link/437/associatedlinknode`);
       // Just log if the count changes
     } catch {}
   }, pollInterval);

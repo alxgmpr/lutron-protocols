@@ -68,7 +68,7 @@ function hexToUartBitstream(hexStr: string): number[] {
 // QS Link idle = 0xFF (all ones in N81 = mark/idle)
 function extractPackets(
   bytes: number[],
-  positions: number[],
+  _positions: number[],
 ): { packets: number[][]; gaps: number[] } {
   const packets: number[][] = [];
   const gaps: number[] = [];
