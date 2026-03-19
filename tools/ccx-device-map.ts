@@ -50,7 +50,7 @@ interface DeviceMap {
  * e.g. fd00::3c2e:f5ff:fef9:73f9 → 3e:2e:f5:f9:73:f9
  * The EUI-64 is in the last 8 bytes of the IPv6 IID, with bit 6 flipped.
  */
-function eui64FromSecondaryMleid(addr: string): string {
+function _eui64FromSecondaryMleid(addr: string): string {
   // Parse the IPv6 address to get last 8 bytes (IID)
   const parts = expandIPv6(addr).split(":");
   // IID is last 4 groups (bytes 8-15)
@@ -342,7 +342,7 @@ const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 const GREEN = "\x1b[32m";
-const YELLOW = "\x1b[33m";
+const _YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const CYAN = "\x1b[36m";
 

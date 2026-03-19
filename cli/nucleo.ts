@@ -734,7 +734,13 @@ function formatCcxMessage(msg: CCXMessage): {
       } else {
         parts.push(`preset=${presetId}`);
       }
-      if (msg.action !== undefined) parts.push(`action=${msg.action}`);
+      parts.push(msg.direction ?? `action=${msg.action}`);
+      if (msg.zoneId) {
+        const zoneName = getZoneName(msg.zoneId);
+        parts.push(
+          zoneName ? `zone=${msg.zoneId} "${zoneName}"` : `zone=${msg.zoneId}`,
+        );
+      }
       return { typeName: "DIM_HOLD", parts };
     }
     case "DIM_STEP": {
@@ -746,6 +752,12 @@ function formatCcxMessage(msg: CCXMessage): {
         parts.push(`preset=${presetId}`);
       }
       parts.push(`step=${msg.stepValue}`);
+      if (msg.zoneId) {
+        const zoneName = getZoneName(msg.zoneId);
+        parts.push(
+          zoneName ? `zone=${msg.zoneId} "${zoneName}"` : `zone=${msg.zoneId}`,
+        );
+      }
       return { typeName: "DIM_STEP", parts };
     }
     case "ACK": {
@@ -761,11 +773,41 @@ function formatCcxMessage(msg: CCXMessage): {
         parts.push(`"${serialInfo}"`);
       }
       parts.push(`serial=${msg.deviceSerial}`);
-      if (msg.groupId) parts.push(`group=${msg.groupId}`);
+      if (msg.levelPercent !== undefined) {
+        parts.push(`level=${msg.levelPercent.toFixed(0)}%`);
+      }
+      if (msg.groupId) {
+        const sceneName = getSceneName(msg.groupId);
+        parts.push(
+          sceneName
+            ? `group=${msg.groupId} "${sceneName}"`
+            : `group=${msg.groupId}`,
+        );
+      }
+      const dev = getDeviceBySerial(msg.deviceSerial);
+      if (dev?.area) parts.push(`[${dev.area}]`);
       return { typeName: "DEVICE_REPORT", parts };
     }
+    case "DEVICE_STATE": {
+      const serialInfo = getSerialName(msg.deviceSerial);
+      if (serialInfo) parts.push(`"${serialInfo}"`);
+      parts.push(`type=${msg.stateType}`);
+      parts.push(`val=${msg.stateValue}`);
+      if (msg.stateData) {
+        const hex = Array.from(msg.stateData)
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("");
+        parts.push(`data=0x${hex}`);
+      }
+      return { typeName: "DEVICE_STATE", parts };
+    }
     case "SCENE_RECALL": {
-      parts.push(`scene=${msg.sceneId}`);
+      const sceneName = getSceneName(msg.sceneId);
+      parts.push(
+        sceneName
+          ? `scene=${msg.sceneId} "${sceneName}"`
+          : `scene=${msg.sceneId}`,
+      );
       if (msg.params.length > 0) parts.push(`params=[${msg.params.join(",")}]`);
       return { typeName: "SCENE_RECALL", parts };
     }

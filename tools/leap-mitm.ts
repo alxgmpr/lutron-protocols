@@ -15,7 +15,6 @@
  */
 
 import * as fs from "fs";
-import * as net from "net";
 import * as path from "path";
 import * as tls from "tls";
 import { RA3_HOST } from "../lib/env";
@@ -39,7 +38,7 @@ function timestamp(): string {
   return new Date().toISOString().slice(11, 23);
 }
 
-function logData(id: number, direction: string, data: Buffer) {
+function logData(_id: number, direction: string, data: Buffer) {
   const text = data.toString("utf-8");
   // LEAP uses newline-delimited JSON
   const lines = text.split("\r\n").filter((l) => l.trim());

@@ -5,6 +5,7 @@
   "packageManager": "npm@11.6.1",
   "scripts": {
     "codegen": "bun run tools/codegen.ts",
+    "codegen:check": "npm run codegen && git diff --exit-code -- firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h",
     "ccx:sniff": "bun run tools/ccx-sniffer.ts",
     "ccx:analyze": "bun run tools/ccx-analyzer.ts",
     "ccx:send": "bun run tools/ccx-send.ts",
@@ -17,6 +18,10 @@
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",
     "format": "biome format --fix .",
+    "test:ts": "node --import tsx --test test/**/*.test.ts",
+    "test:firmware": "make -C firmware test",
+    "typecheck": "npm exec --yes --package=typescript --package=@types/node -- tsc -p tsconfig.json --noEmit",
+    "test": "npm run test:ts && npm run test:firmware",
     "clean": "rm -rf node_modules"
   },
   "dependencies": {

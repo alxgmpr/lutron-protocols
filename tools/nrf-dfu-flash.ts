@@ -104,11 +104,11 @@ async function main() {
   }, 2000);
 
   // Listen for heartbeats and text responses from STM32
-  let lastHeartbeat = 0;
+  let _lastHeartbeat = 0;
   const STREAM_RESP_TEXT = 0xfd;
   sock.on("message", (msg) => {
     if (msg.length >= 2 && msg[0] === STREAM_HEARTBEAT) {
-      lastHeartbeat = Date.now();
+      _lastHeartbeat = Date.now();
     } else if (msg.length >= 1 && msg[0] === STREAM_RESP_TEXT) {
       // STM32 shell output (DFU progress goes here via text passthrough)
       const text = msg.subarray(1).toString("utf8").trim();

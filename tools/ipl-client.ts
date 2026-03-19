@@ -34,7 +34,7 @@ function hasFlag(name: string): boolean {
 import { RA3_HOST } from "../lib/env";
 
 const HOST = getArg("--host") ?? RA3_HOST;
-const PORT = parseInt(getArg("--port") ?? "8902");
+const PORT = Number.parseInt(getArg("--port") ?? "8902", 10);
 const SAVE = hasFlag("--save");
 const QUIET = hasFlag("--quiet");
 const CERT_DIR = join(import.meta.dir, "..", "certs", "designer");

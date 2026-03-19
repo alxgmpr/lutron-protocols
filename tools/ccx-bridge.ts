@@ -28,7 +28,6 @@ import {
   CCX_CONFIG,
   getAllDevices,
   getPresetInfo,
-  getSerialName,
   getZoneName,
   presetIdFromDeviceId,
 } from "../ccx/config";
@@ -185,7 +184,7 @@ function loadPresetZones() {
 loadPresetZones();
 
 /** Get raise/lower direction from preset name (for DIM_HOLD/DIM_STEP) */
-function getPresetAction(deviceId: Uint8Array): "raise" | "lower" | null {
+function _getPresetAction(deviceId: Uint8Array): "raise" | "lower" | null {
   const presetId = presetIdFromDeviceId(deviceId);
   const info = getPresetInfo(presetId);
   if (!info) return null;
@@ -439,7 +438,7 @@ async function sendWiz(pairing: WizPairing, levelPercent: number) {
 //   Format B: {3: [[4, Uint8Array([hi, lo]), 2]]}
 //     level as uint16 BE in byte array (0xFEFF = 100%), seen from hybrid keypads
 
-function extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
+function _extractDeviceReportLevel(msg: CCXDeviceReport): number | null {
   const inner = msg.innerData;
   if (!inner || typeof inner !== "object") return null;
 

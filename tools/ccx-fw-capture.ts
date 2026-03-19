@@ -631,7 +631,7 @@ async function extractFirmware(pcapFile: string) {
   >();
 
   for (const line of lines) {
-    const [timeStr, code, path, dataHex] = line.split("\t");
+    const [_timeStr, code, path, dataHex] = line.split("\t");
     if (!dataHex) continue;
 
     const cleanHex = dataHex.replace(/:/g, "");

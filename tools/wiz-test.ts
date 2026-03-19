@@ -57,8 +57,8 @@ async function main() {
   } else if (cmd === "on") {
     params = { state: true };
   } else {
-    const pct = parseInt(cmd, 10);
-    if (isNaN(pct) || pct < 0 || pct > 100) {
+    const pct = Number.parseInt(cmd, 10);
+    if (Number.isNaN(pct) || pct < 0 || pct > 100) {
       console.error("Usage: wiz-test.ts [off | on | 0-100]");
       process.exit(1);
     }
