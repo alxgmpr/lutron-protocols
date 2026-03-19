@@ -280,16 +280,6 @@ const zoneConstants = constantGroup(
 
 export const CCX: CCXProtocolDef = {
   messageTypes: {
-    extraSchema: [
-      {
-        key: 1,
-        name: "scene_family_id",
-        type: "uint16",
-        optional: true,
-        description:
-          "Recurring scene/group-family identifier shared with DEVICE_REPORT and transfer SCENE_RECALL traffic",
-      },
-    ],
     LEVEL_CONTROL,
     BUTTON_PRESS,
     DIM_HOLD,
