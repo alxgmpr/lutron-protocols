@@ -24,24 +24,30 @@
 
 import { existsSync } from "fs";
 import { join } from "path";
-import { CCX_CONFIG, getAllDevices, resolveDataDir } from "../ccx/config";
-import {
-  BridgeCore,
-  loadBridgeConfig,
-  loadPresetZones,
-} from "../lib/bridge-core";
-import { FramePipeline } from "../lib/frame-pipeline";
-import { detectSnifferPort, SerialSniffer } from "../lib/serial-sniffer";
 
-// ── Config resolution ─────────────────────────────────────
-
+// Set CCX_DATA_DIR BEFORE importing ccx/config (which loads LEAP data at import time).
+// Must happen before dynamic import() since ESM hoists static imports.
 const configDir = process.env.CCX_DATA_DIR ?? "/config";
-// Set CCX_DATA_DIR so ccx/config.ts picks it up for LEAP data
 if (!process.env.CCX_DATA_DIR && existsSync(configDir)) {
   process.env.CCX_DATA_DIR = configDir;
 }
 
-const configPath =
+async function main() {
+  // Dynamic imports — ccx/config reads CCX_DATA_DIR at module load time
+  const { CCX_CONFIG, getAllDevices, resolveDataDir } = await import(
+    "../ccx/config"
+  );
+  const { BridgeCore, loadBridgeConfig, loadPresetZones } = await import(
+    "../lib/bridge-core"
+  );
+  const { FramePipeline } = await import("../lib/frame-pipeline");
+  const { SerialSniffer, detectSnifferPort } = await import(
+    "../lib/serial-sniffer"
+  );
+
+  // ── Config resolution ─────────────────────────────────────
+
+  const configPath =
   process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.json");
 const snifferDevice = process.env.SNIFFER_DEVICE ?? detectSnifferPort();
 const channel = process.env.THREAD_CHANNEL
@@ -73,7 +79,7 @@ for (const p of pairings) watchedZones.add(p.zoneId);
 
 // ── Build pipeline ────────────────────────────────────────
 
-const devices = getAllDevices().map((d) => ({
+const devices = getAllDevices().map((d: any) => ({
   serial: d.serial,
   eui64: d.eui64,
 }));
@@ -89,7 +95,7 @@ const bridge = new BridgeCore({
 
 // ── Wire everything together ──────────────────────────────
 
-pipeline.onAddressLearned = (shortAddr, eui64) => {
+pipeline.onAddressLearned = (shortAddr: number, eui64: string) => {
   console.log(`  [addr] learned 0x${shortAddr.toString(16)} → ${eui64}`);
 };
 
@@ -146,7 +152,7 @@ console.log("");
 
 // ── Start ─────────────────────────────────────────────────
 
-sniffer.start().catch((err) => {
+sniffer.start().catch((err: Error) => {
   console.error(`Failed to start sniffer: ${err.message}`);
   process.exit(1);
 });
@@ -166,3 +172,6 @@ process.on("SIGTERM", () => {
   bridge.destroy();
   process.exit(0);
 });
+}
+
+main();
