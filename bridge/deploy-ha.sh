@@ -40,7 +40,7 @@ fi
 echo "=== Copying config data to $DATA_DEST ==="
 mkdir -p "$DATA_DEST"
 
-cp -v "$PROJECT_ROOT/config/ccx-bridge.json"     "$DATA_DEST/ccx-bridge.json"
+cp -v "$PROJECT_ROOT/config/ccx-bridge.yaml"     "$DATA_DEST/ccx-bridge.yaml"
 cp -v "$PROJECT_ROOT/data/preset-zones.json"      "$DATA_DEST/preset-zones.json"
 cp -v "$PROJECT_ROOT/data/leap-10.0.0.1.json"   "$DATA_DEST/leap-10.0.0.1.json"
 cp -v "$PROJECT_ROOT/data/ccx-device-map.json"     "$DATA_DEST/ccx-device-map.json"

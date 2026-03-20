@@ -1,0 +1,24 @@
+# CCX-WiZ Bridge Configuration
+#
+# Each pairing maps a Lutron CCX zone to one or more WiZ bulb IPs.
+# wiz: can be a single IP string or a list of IPs for multi-bulb zones.
+
+pairings:
+  - name: Living Room Lamp
+    zoneId: 1234
+    wiz: 10.0.0.50
+    warmDimming: true
+    warmDimCurve: default
+
+  - name: Kitchen Pendants
+    zoneId: 5678
+    wiz:
+      - 10.0.0.51
+      - 10.0.0.52
+      - 10.0.0.53
+
+defaults:
+  wizPort: 38899
+  warmDimming: false
+  warmDimCurve: default  # default, halogen, finire2700, finire3000
+  wizDimScaling: true    # scale Lutron 1-100% → WiZ 10-100%

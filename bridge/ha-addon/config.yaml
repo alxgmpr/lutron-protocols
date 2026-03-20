@@ -1,6 +1,6 @@
 name: CCX-WiZ Bridge
 description: Lutron Thread → WiZ smart bulb bridge via nRF 802.15.4 sniffer
-version: 0.1.0
+version: 0.1.1
 slug: ccx-bridge
 arch:
   - aarch64
@@ -14,11 +14,21 @@ map:
   - share:rw
 environment:
   CCX_DATA_DIR: /config/ccx-bridge
-  CCX_CONFIG_PATH: /config/ccx-bridge/ccx-bridge.json
+  CCX_CONFIG_PATH: /config/ccx-bridge/ccx-bridge.yaml
   SNIFFER_DEVICE: /dev/ttyACM0
 options:
   thread_channel: 25
   thread_master_key: ""
+  warm_dimming: true
+  warm_dim_curve: default
+  wiz_dim_scaling: true
+  wiz_port: 38899
+  sniffer_device: /dev/ttyACM0
 schema:
-  thread_channel: int
+  thread_channel: "int(11,26)"
   thread_master_key: password
+  warm_dimming: "bool"
+  warm_dim_curve: "list(default|halogen|finire2700|finire3000)"
+  wiz_dim_scaling: "bool"
+  wiz_port: "port"
+  sniffer_device: "str"

@@ -11,6 +11,7 @@ import { EventEmitter } from "events";
 import { createSocket, type Socket } from "dgram";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import YAML from "yaml";
 import {
   getPresetInfo,
   getZoneName,
@@ -393,11 +394,27 @@ export function loadBridgeConfig(configPath: string): {
     throw new Error(`Config not found: ${configPath}`);
   }
 
-  const raw: BridgeConfigFile = JSON.parse(readFileSync(configPath, "utf-8"));
-  const wizDimScaling = raw.defaults?.wizDimScaling ?? true;
-  const defaultPort = raw.defaults?.wizPort ?? 38899;
-  const defaultWarmDim = raw.defaults?.warmDimming ?? false;
-  const defaultCurve = raw.defaults?.warmDimCurve ?? "default";
+  const text = readFileSync(configPath, "utf-8");
+  const raw: BridgeConfigFile = configPath.endsWith(".yaml") || configPath.endsWith(".yml")
+    ? YAML.parse(text)
+    : JSON.parse(text);
+
+  // Environment overrides (from HA add-on options UI) take precedence over JSON defaults
+  const env = process.env;
+  const wizDimScaling =
+    env.BRIDGE_WIZ_DIM_SCALING !== undefined
+      ? env.BRIDGE_WIZ_DIM_SCALING === "true"
+      : (raw.defaults?.wizDimScaling ?? true);
+  const defaultPort =
+    env.BRIDGE_WIZ_PORT !== undefined
+      ? parseInt(env.BRIDGE_WIZ_PORT, 10)
+      : (raw.defaults?.wizPort ?? 38899);
+  const defaultWarmDim =
+    env.BRIDGE_WARM_DIMMING !== undefined
+      ? env.BRIDGE_WARM_DIMMING === "true"
+      : (raw.defaults?.warmDimming ?? false);
+  const defaultCurve =
+    env.BRIDGE_WARM_DIM_CURVE ?? raw.defaults?.warmDimCurve ?? "default";
   const defaultMin = raw.defaults?.warmDimMin;
   const defaultMax = raw.defaults?.warmDimMax;
 

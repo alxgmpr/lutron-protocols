@@ -10,7 +10,7 @@
  * Designed to run in Docker on a Raspberry Pi with the nRF dongle attached.
  *
  * Config:
- *   /config/ccx-bridge.json   — zone→WiZ pairings
+ *   /config/ccx-bridge.yaml   — zone→WiZ pairings
  *   /config/preset-zones.json — scene preset data
  *   /config/leap-*.json       — LEAP dump data (zone names, device map)
  *
@@ -19,7 +19,7 @@
  *   THREAD_CHANNEL    — 802.15.4 channel (default: from LEAP data)
  *   THREAD_MASTER_KEY — Thread master key hex (default: from LEAP data)
  *   CCX_DATA_DIR      — path to LEAP/device data (default: /config)
- *   CCX_CONFIG_PATH   — path to ccx-bridge.json (default: /config/ccx-bridge.json)
+ *   CCX_CONFIG_PATH   — path to ccx-bridge.yaml (default: /config/ccx-bridge.yaml)
  */
 
 import { existsSync, readFileSync } from "fs";
@@ -30,10 +30,23 @@ const HA_OPTIONS = "/data/options.json";
 if (existsSync(HA_OPTIONS)) {
   try {
     const opts = JSON.parse(readFileSync(HA_OPTIONS, "utf8"));
-    if (opts.thread_channel && !process.env.THREAD_CHANNEL)
-      process.env.THREAD_CHANNEL = String(opts.thread_channel);
-    if (opts.thread_master_key && !process.env.THREAD_MASTER_KEY)
-      process.env.THREAD_MASTER_KEY = opts.thread_master_key;
+    const envMap: Record<string, string> = {
+      thread_channel: "THREAD_CHANNEL",
+      thread_master_key: "THREAD_MASTER_KEY",
+      warm_dimming: "BRIDGE_WARM_DIMMING",
+      warm_dim_curve: "BRIDGE_WARM_DIM_CURVE",
+      wiz_dim_scaling: "BRIDGE_WIZ_DIM_SCALING",
+      wiz_port: "BRIDGE_WIZ_PORT",
+      sniffer_device: "SNIFFER_DEVICE",
+    };
+    for (const [optKey, envKey] of Object.entries(envMap)) {
+      if (
+        opts[optKey] !== undefined &&
+        opts[optKey] !== "" &&
+        !process.env[envKey]
+      )
+        process.env[envKey] = String(opts[optKey]);
+    }
   } catch {}
 }
 
@@ -60,7 +73,7 @@ async function main() {
   // ── Config resolution ─────────────────────────────────────
 
   const configPath =
-    process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.json");
+    process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.yaml");
   const snifferDevice = process.env.SNIFFER_DEVICE ?? detectSnifferPort();
   const channel = process.env.THREAD_CHANNEL
     ? parseInt(process.env.THREAD_CHANNEL, 10)

@@ -18,6 +18,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { networkInterfaces } from "os";
 import { join } from "path";
 import * as readline from "readline";
+import YAML from "yaml";
 import { getAllZonesWithControlType, getZoneName } from "../ccx/config";
 import { WARM_DIM_CURVES } from "../lib/warm-dim";
 
@@ -32,7 +33,7 @@ const hasFlag = (name: string) => args.includes(name);
 
 const projectRoot = join(import.meta.dirname ?? __dirname, "..");
 const configPath =
-  getArg("--config") ?? join(projectRoot, "config", "ccx-bridge.json");
+  getArg("--config") ?? join(projectRoot, "config", "ccx-bridge.yaml");
 const noDiscover = hasFlag("--no-discover");
 
 // ── Config interfaces (same shape as ccx-bridge.ts) ──────
@@ -649,7 +650,7 @@ async function main() {
     },
   };
 
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+  writeFileSync(configPath, YAML.stringify(config));
   console.log(`\nWrote ${configPath}`);
   console.log("Start the bridge: npx tsx tools/ccx-bridge.ts");
 

@@ -70,7 +70,7 @@ const configPath =
     (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
     "..",
     "config",
-    "ccx-bridge.json",
+    "ccx-bridge.yaml",
   );
 const zoneArgs = getAllArgs("--zone");
 const verbose = hasFlag("--verbose") || hasFlag("-v");

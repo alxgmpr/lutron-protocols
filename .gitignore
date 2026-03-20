@@ -13,9 +13,9 @@ ENV/
 # Data directory (captures, projects, certs)
 data/
 
-# Config (local overrides — template committed as *.example.json)
+# Config (local overrides — templates committed as *.example.yaml)
 config/*
-!config/*.example.json
+!config/*.example.yaml
 
 # ESPHome build artifacts
 rf/esphome/.esphome/

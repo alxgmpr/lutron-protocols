@@ -13,5 +13,5 @@ services:
       - THREAD_MASTER_KEY=${THREAD_MASTER_KEY}
       - SNIFFER_DEVICE=${SNIFFER_DEVICE:-/dev/ttyACM0}
       - CCX_DATA_DIR=/config
-      - CCX_CONFIG_PATH=/config/ccx-bridge.json
+      - CCX_CONFIG_PATH=/config/ccx-bridge.yaml
     restart: unless-stopped
