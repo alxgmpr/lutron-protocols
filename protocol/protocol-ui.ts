@@ -13,6 +13,7 @@
 export type {
   FieldDef,
   FieldFormat,
+  QSDeviceClassEntry,
   Sequence,
   SequenceStep,
 } from "./cca.protocol";
@@ -22,10 +23,13 @@ export {
   Button,
   ButtonNames,
   CRC,
+  ccaClassFromQSDeviceClass,
   DeviceClass,
   DeviceClassNames,
   FRAMING,
   getPacketLength,
+  getQSDeviceClass,
+  getQSDeviceClassByHex,
   isButtonPacket,
   isPacketCategory,
   LENGTHS,
@@ -33,7 +37,9 @@ export {
   PacketFields,
   PacketType,
   PacketTypeInfo,
+  QSDeviceClassTypes,
   RF,
+  RF_BANDS,
   SEQUENCE,
   Sequences,
   TIMING,
@@ -48,6 +54,7 @@ import {
   PacketFields,
   PacketTypeInfo,
 } from "./cca.protocol";
+import type { DeviceFingerprint } from "./dsl";
 
 // ============================================================================
 // CONSTANTS
@@ -310,6 +317,87 @@ export function parseFieldValue(
   }
 
   return { raw, decoded };
+}
+
+// ============================================================================
+// CATEGORY HELPERS
+// ============================================================================
+
+// ============================================================================
+// DEVICE FINGERPRINTING
+// ============================================================================
+
+export interface DeviceFingerprintResult {
+  key: string | null;
+  name: string;
+  category: string;
+  matchedBytes: number;
+  totalBytes: number;
+  models?: string[];
+}
+
+/**
+ * Identify a device model from pairing packet byte patterns.
+ *
+ * Scores all fingerprint candidates against the packet data and returns
+ * the best match. Tiebreaks on specificity (most total bytes in pattern).
+ */
+export function fingerprintDevice(
+  data: Uint8Array | number[],
+): DeviceFingerprintResult {
+  const identified = identifyPacket(data);
+  const fingerprints = CCA.deviceFingerprints;
+
+  let bestKey: string | null = null;
+  let bestFp: DeviceFingerprint | null = null;
+  let bestMatched = 0;
+  let bestTotal = 0;
+
+  for (const [key, fp] of Object.entries(fingerprints)) {
+    if (!fp.packetTypes.includes(identified.typeName)) continue;
+
+    const total = Object.keys(fp.bytes).length;
+    let matched = 0;
+    for (const [offsetStr, expected] of Object.entries(fp.bytes)) {
+      const offset = Number(offsetStr);
+      if (offset < data.length && data[offset] === expected) {
+        matched++;
+      }
+    }
+
+    // Must match ALL bytes in the pattern
+    if (matched < total) continue;
+
+    // Prefer more specific (more bytes matched), tiebreak on total specificity
+    if (
+      matched > bestMatched ||
+      (matched === bestMatched && total > bestTotal)
+    ) {
+      bestKey = key;
+      bestFp = fp;
+      bestMatched = matched;
+      bestTotal = total;
+    }
+  }
+
+  if (bestFp) {
+    return {
+      key: bestKey,
+      name: bestFp.name,
+      category: bestFp.category,
+      matchedBytes: bestMatched,
+      totalBytes: bestTotal,
+      models: bestFp.models,
+    };
+  }
+
+  return {
+    key: null,
+    name: "Unknown",
+    category: "unknown",
+    matchedBytes: 0,
+    totalBytes: 0,
+  };
 }
 
 // ============================================================================

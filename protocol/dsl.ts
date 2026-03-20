@@ -86,6 +86,15 @@ export interface PairingPreset {
   bytes: Record<number, number>;
 }
 
+/** Device fingerprint for identifying specific device models from pairing packet byte patterns */
+export interface DeviceFingerprint {
+  name: string; // e.g. "4-btn movie Pico (PJ2-4B-XXX-L21)"
+  category: string; // pico, dimmer, switch, fan, shade, sensor, etc.
+  packetTypes: string[]; // which packet types this applies to
+  bytes: Record<number, number>; // byte offset → expected value
+  models?: string[]; // Lutron model numbers
+}
+
 /** Top-level CCA protocol definition */
 export interface CCAProtocolDef {
   enums: Record<string, EnumDef>;
@@ -93,6 +102,7 @@ export interface CCAProtocolDef {
   packetTypes: Record<string, PacketTypeDef>;
   sequences: Record<string, Sequence>;
   pairingPresets: Record<string, PairingPreset>;
+  deviceFingerprints: Record<string, DeviceFingerprint>;
 }
 
 // ============================================================================

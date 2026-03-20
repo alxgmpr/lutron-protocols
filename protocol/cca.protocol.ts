@@ -11,6 +11,7 @@
 import {
   type CCAProtocolDef,
   constantGroup,
+  type DeviceFingerprint,
   enumDef,
   type FieldDef,
   field,
@@ -73,12 +74,34 @@ const deviceClassEnum = enumDef(
   "Device class codes (byte 28 in pairing)",
   "DEVCLASS_",
   {
-    DIMMER: { value: 0x04 },
-    SWITCH: { value: 0x05 },
-    FAN: { value: 0x06 },
-    SHADE: { value: 0x0a },
-    KEYPAD: { value: 0x0b },
-    SENSOR: { value: 0x0d, description: "IREYE / daylight / occupancy sensor" },
+    DIMMER: {
+      value: 0x04,
+      description:
+        "Wall, tabletop, plug-in, ELV, CL, GrafikT, Viking/PRO, InLine, European",
+    },
+    SWITCH: {
+      value: 0x05,
+      description: "Wall, 2-wire, plug-in, GrafikT, InLine, outdoor",
+    },
+    FAN: {
+      value: 0x06,
+      description: "Maestro fan speed control, InLine fan control",
+    },
+    SHADE: {
+      value: 0x0a,
+      description:
+        "Sivoia QS roller/venetian/cellular/softsheer, Triathlon, battery-powered",
+    },
+    KEYPAD: {
+      value: 0x0b,
+      description:
+        "Pico (2B/3BRL/4B), seeTouch wall/tabletop, hybrid, GrafikT hybrid",
+    },
+    SENSOR: {
+      value: 0x0d,
+      description:
+        "Daylight (LRF-DCRB), occupancy/vacancy (LRF-OCRB/VCRB), shadow, temperature",
+    },
   },
 );
 
@@ -1031,6 +1054,120 @@ const pairingPresets: Record<string, PairingPreset> = {
 };
 
 // ============================================================================
+// DEVICE FINGERPRINTS — byte-pattern matching for device identification
+//
+// Scored matching: each fingerprint specifies byte offset → expected value.
+// The matcher scores all candidates and picks the most specific match.
+// Class-level fallbacks (just byte 28) ensure every device gets a broad label.
+//
+// Key bytes in pairing packets:
+//   7  = format byte         28 = device_class (0x04=DIMMER, 0x05=SWITCH, etc.)
+//   10 = component type      20 = device_type (in B0 packets)
+//   30 = button group type   38 = engraving discriminator (picos)
+// ============================================================================
+
+const deviceFingerprints: Record<string, DeviceFingerprint> = {
+  // --- PICOS (B8/B9/BA/BB) ---
+  // Byte patterns from validated pairingPresets (real captures).
+  // Key discriminators: byte 30 (button group), byte 38 (engraving).
+  // Byte 28 (device_class) is NOT reliable in pico self-broadcasts.
+  "pico-5btn": {
+    name: "5-btn Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x03, 37: 0x02, 38: 0x06 },
+    models: ["PJ2-5B"],
+  },
+  "pico-2btn": {
+    name: "2-btn Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x03, 37: 0x01, 38: 0x01 },
+    models: ["PJ2-2B"],
+  },
+  "pico-2btn-home": {
+    name: "2-btn home/away Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x03, 37: 0x02, 38: 0x23 },
+  },
+  "pico-4btn-rl": {
+    name: "4-btn raise/lower Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x02, 37: 0x02, 38: 0x21 },
+    models: ["PJ2-4B-XX-L01"],
+  },
+  "pico-4btn-cooking": {
+    name: "4-btn cooking Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x04, 37: 0x02, 38: 0x25 },
+    models: ["PJ2-4B-XXX-L21"],
+  },
+  "pico-4btn-movie": {
+    name: "4-btn movie Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x04, 37: 0x02, 38: 0x26 },
+    models: ["PJ2-4B-XXX-L21"],
+  },
+  "pico-4btn-relax": {
+    name: "4-btn relax Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x04, 37: 0x02, 38: 0x27 },
+    models: ["PJ2-4B-XXX-L21"],
+  },
+  "pico-4btn-custom": {
+    name: "4-btn custom Pico",
+    category: "pico",
+    packetTypes: ["PAIR_B8", "PAIR_B9", "PAIR_BA", "PAIR_BB"],
+    bytes: { 30: 0x04, 37: 0x02, 38: 0x28 },
+    models: ["PJ2-4B-XXX-L21"],
+  },
+
+  // --- DIMMERS / SWITCHES / FANS (B0) ---
+  "dimmer-b0": {
+    name: "Wall Dimmer",
+    category: "dimmer",
+    packetTypes: ["PAIR_B0"],
+    bytes: { 20: 0x04 },
+    models: ["RRD-6D", "RRD-10D"],
+  },
+  "switch-b0": {
+    name: "Wall Switch",
+    category: "switch",
+    packetTypes: ["PAIR_B0"],
+    bytes: { 20: 0x05 },
+    models: ["RRD-8S"],
+  },
+  "fan-b0": {
+    name: "Fan Controller",
+    category: "fan",
+    packetTypes: ["PAIR_B0"],
+    bytes: { 20: 0x06 },
+    models: ["RRD-2ANF"],
+  },
+
+  // --- SENSORS (BA) ---
+  "sensor-daylight": {
+    name: "Daylight Sensor",
+    category: "sensor",
+    packetTypes: ["PAIR_BA"],
+    bytes: { 7: 0x17, 28: 0x0d },
+    models: ["LRF-DCRB"],
+  },
+  "sensor-occupancy": {
+    name: "Occupancy Sensor",
+    category: "sensor",
+    packetTypes: ["PAIR_BA"],
+    bytes: { 28: 0x0d },
+    models: ["LRF2-XX"],
+  },
+};
+
+// ============================================================================
 // PROTOCOL DEFINITION
 // ============================================================================
 
@@ -1112,6 +1249,7 @@ export const CCA: CCAProtocolDef = {
   },
   sequences,
   pairingPresets,
+  deviceFingerprints,
 };
 
 // ============================================================================
@@ -1272,3 +1410,742 @@ export function isPacketCategory(typeCode: number, category: string): boolean {
 export function nextSequence(seq: number): number {
   return (seq + SEQUENCE.INCREMENT) % SEQUENCE.WRAP;
 }
+
+// ============================================================================
+// QS DEVICE CLASS TYPES (from Designer SQLMODELINFO.MDF → LSTQSDEVICECLASSTYPE)
+//
+// The QSDEVICECLASSTYPEID is a 4-byte structured value exposed by LEAP as
+// DeviceClass.HexadecimalEncoding and stored in Designer's TBLCONTROLSTATIONDEVICEINFO.
+// Structure: [category][subtype][variant][version]
+//
+// Category byte → CCA device class mapping:
+//   0x01 → 0x0B (KEYPAD)     0x03 → 0x0A (SHADE)
+//   0x04 → 0x04/05/06 (output: DIMMER/SWITCH/FAN by subtype)
+//   0x06 → 0x0D (SENSOR)     0x08 → processor (no CCA class)
+//
+// Only CCA-link devices are included (link types RadioRA 2 / HW Quantum).
+// Sunnata/Darter devices (HRST/RRST/ARST) are CCX only — NOT in this table.
+// ============================================================================
+
+export interface QSDeviceClassEntry {
+  /** QSDEVICECLASSTYPEID from Designer DB / LEAP HexadecimalEncoding */
+  id: number;
+  /** Human-readable name from Designer */
+  name: string;
+  /** CCA device class byte (byte 28 in pairing), null if not applicable */
+  ccaClass: number | null;
+  /** Device category for grouping */
+  category:
+    | "dimmer"
+    | "switch"
+    | "fan"
+    | "shade"
+    | "keypad"
+    | "sensor"
+    | "repeater"
+    | "module"
+    | "processor"
+    | "other";
+  /** Example model numbers (representative, not exhaustive) */
+  models: string[];
+}
+
+/**
+ * QS Device Class Type lookup table.
+ * Keyed by QSDEVICECLASSTYPEID (matches LEAP DeviceClass.HexadecimalEncoding as decimal).
+ *
+ * Source: Designer DB SQLMODELINFO.MDF, validated against LEAP API + CCA packet captures.
+ */
+export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
+  // --- DIMMERS (CCA 0x04) ---
+  0x04010101: {
+    id: 0x04010101,
+    name: "RadioRA 2 Wall Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-6D", "RRD-10D", "RRD-6ND", "RRD-10ND"],
+  },
+  0x04020101: {
+    id: 0x04020101,
+    name: "RadioRA 2 Wall ELV Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-6NE"],
+  },
+  0x04080101: {
+    id: 0x04080101,
+    name: "RadioRA 2 Table Top Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-3LD"],
+  },
+  0x040c0101: {
+    id: 0x040c0101,
+    name: "RadioRA 2 Fluorescent Wall Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-F6AN-DV"],
+  },
+  0x04140101: {
+    id: 0x04140101,
+    name: "RadioRA 2 Plug-In Cord Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RR-3PD-1"],
+  },
+  0x041e0101: {
+    id: 0x041e0101,
+    name: "HWQS 2Wire Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-6D", "HQRD-6D"],
+  },
+  0x04200101: {
+    id: 0x04200101,
+    name: "HWQS Tabletop Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQR-3LD"],
+  },
+  0x04210101: {
+    id: 0x04210101,
+    name: "HWQS Fluorescent Wall Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-F6AN-DV"],
+  },
+  0x04230101: {
+    id: 0x04230101,
+    name: "HWQS Neutral Optional Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-6NE", "HQRD-6NE"],
+  },
+  0x04280101: {
+    id: 0x04280101,
+    name: "RadioRA 2 Wall Phase Adaptive Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-6NA"],
+  },
+  0x042c0101: {
+    id: 0x042c0101,
+    name: "HWQS Wall Phase Adaptive Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-6NA", "HQRD-6NA"],
+  },
+  0x042e0101: {
+    id: 0x042e0101,
+    name: "Wired Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: [],
+  },
+  0x042f0101: {
+    id: 0x042f0101,
+    name: "Wired ELV Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: [],
+  },
+  0x04340101: {
+    id: 0x04340101,
+    name: "CL Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-6CL"],
+  },
+  0x04350101: {
+    id: 0x04350101,
+    name: "Maestro CL Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-6CL", "HQRD-6CL"],
+  },
+  0x04380101: {
+    id: 0x04380101,
+    name: "RadioRA2 GrafikT Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRT-G25LW"],
+  },
+  0x04390101: {
+    id: 0x04390101,
+    name: "HWQS GrafikT Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRT-G25LW"],
+  },
+  0x043d0101: {
+    id: 0x043d0101,
+    name: "RA2 Grafik T ELV Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRT-G5NEW"],
+  },
+  0x043e0101: {
+    id: 0x043e0101,
+    name: "Grafik T ELV Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRT-G5NEW"],
+  },
+  0x04490101: {
+    id: 0x04490101,
+    name: "In Line Dimmer in RA3",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRK-R25NE-240"],
+  },
+  0x044a0101: {
+    id: 0x044a0101,
+    name: "In Line Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRK-R25NE-240"],
+  },
+  0x04510101: {
+    id: 0x04510101,
+    name: "RadioRA2 Viking Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRD-PRO"],
+  },
+  0x04520101: {
+    id: 0x04520101,
+    name: "HWQS Viking Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRA-PRO", "HQRD-PRO"],
+  },
+  0x04570101: {
+    id: 0x04570101,
+    name: "RA3 European Plug In Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RRK-P20-240F-XX"],
+  },
+  0x04580101: {
+    id: 0x04580101,
+    name: "HWQS European Plug-in Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQRK-P20-240G-XX"],
+  },
+  0x04690101: {
+    id: 0x04690101,
+    name: "RA3 InLineDimmer UK",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RR3K-R25NE-240"],
+  },
+  0x046c0101: {
+    id: 0x046c0101,
+    name: "RA3 European Plug In Lamp Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["RR3K-P20-240G-TXX"],
+  },
+  0x04220101: {
+    id: 0x04220101,
+    name: "HWQS PID Triac",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQR-3PD-1"],
+  },
+
+  // --- SWITCHES (CCA 0x05) ---
+  0x04050101: {
+    id: 0x04050101,
+    name: "RadioRA 2 Wall Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RRD-8ANS"],
+  },
+  0x040a0101: {
+    id: 0x040a0101,
+    name: "RadioRA 2 2-Wire Wall Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RRD-8S-DV"],
+  },
+  0x04150101: {
+    id: 0x04150101,
+    name: "RadioRA 2 Plug-In Cord Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RR-15APS-1"],
+  },
+  0x041f0101: {
+    id: 0x041f0101,
+    name: "HWQS Neutral Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQRA-8ANS", "HQRD-8ANS"],
+  },
+  0x04200201: {
+    id: 0x04200201,
+    name: "HWQS 2Wire Wall Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQRA-8S-DV", "HQRD-8S-DV"],
+  },
+  0x04240101: {
+    id: 0x04240101,
+    name: "HWQS PID Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQR-15APS-1"],
+  },
+  0x04300101: {
+    id: 0x04300101,
+    name: "Wired Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: [],
+  },
+  0x043a0101: {
+    id: 0x043a0101,
+    name: "RadioRA2 GrafikT Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RRT-G5ANSW"],
+  },
+  0x043b0101: {
+    id: 0x043b0101,
+    name: "HWQS GrafikT Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQRT-G5ANSW"],
+  },
+  0x044b0101: {
+    id: 0x044b0101,
+    name: "RA2 InLineSwitch UK",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RRK-R6ANS-240"],
+  },
+  0x044c0101: {
+    id: 0x044c0101,
+    name: "In Line Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQRK-R6ANS-240"],
+  },
+  0x046a0101: {
+    id: 0x046a0101,
+    name: "RA3 InLineSwitch UK",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RR3K-R6ANS-240"],
+  },
+  0x04600101: {
+    id: 0x04600101,
+    name: "Ra Outdoor Plugin Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["RR-15OUT"],
+  },
+  0x04610101: {
+    id: 0x04610101,
+    name: "HW Outdoor Plugin Switch",
+    ccaClass: 0x05,
+    category: "switch",
+    models: ["HQR-15OUT"],
+  },
+
+  // --- FANS (CCA 0x06) ---
+  0x04070101: {
+    id: 0x04070101,
+    name: "RadioRA 2 Fan Speed Control",
+    ccaClass: 0x06,
+    category: "fan",
+    models: ["RRD-2ANF"],
+  },
+  0x04310101: {
+    id: 0x04310101,
+    name: "Wired Fan Speed Controller",
+    ccaClass: 0x06,
+    category: "fan",
+    models: [],
+  },
+  0x04320101: {
+    id: 0x04320101,
+    name: "Fan Speed Controller",
+    ccaClass: 0x06,
+    category: "fan",
+    models: [],
+  },
+  0x046b0101: {
+    id: 0x046b0101,
+    name: "Inline Fan Control for RA3",
+    ccaClass: 0x06,
+    category: "fan",
+    models: ["RR3K-RNFSQ-240"],
+  },
+  0x04680101: {
+    id: 0x04680101,
+    name: "Inline Fan Control",
+    ccaClass: 0x06,
+    category: "fan",
+    models: ["HQRK-RNFSQ-240"],
+  },
+
+  // --- SHADES (CCA 0x0A) ---
+  0x03000002: {
+    id: 0x03000002,
+    name: "Triathlon Horizontal Sheer",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: [],
+  },
+  0x03020101: {
+    id: 0x03020101,
+    name: "QS Wireless Shade",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: ["QSYDQ-Sxxx"],
+  },
+  0x03030101: {
+    id: 0x03030101,
+    name: "QS Wireless Venetian Blind",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: ["QSYB4-SL30T10"],
+  },
+  0x03040101: {
+    id: 0x03040101,
+    name: "QS Wireless Cellular Shade",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: ["CSA-SYQ-XXX"],
+  },
+  0x03060101: {
+    id: 0x03060101,
+    name: "Battery Powered Roller Shade",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: ["QSFRQ-S2A13-XX"],
+  },
+  0x030a0101: {
+    id: 0x030a0101,
+    name: "RF Soft Sheer",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: ["QSYWQ-SxxAxx"],
+  },
+  0x030d0101: {
+    id: 0x030d0101,
+    name: "Triathlon Roman Shade",
+    ccaClass: 0x0a,
+    category: "shade",
+    models: [],
+  },
+
+  // --- KEYPADS (CCA 0x0B) ---
+  0x01070101: {
+    id: 0x01070101,
+    name: "PICO seeTouch Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["PJ2-4B-XXX-L01", "PJ2-3BRL-XXX-L01", "PJ2-2B-XXX-L01"],
+  },
+  0x01030101: {
+    id: 0x01030101,
+    name: "RadioRA 2 Wall Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["RRD-W6BRL", "RRD-W7B", "RRD-W3BRL"],
+  },
+  0x01040101: {
+    id: 0x01040101,
+    name: "RadioRA 2 Table Top Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["RR-T10RL", "RR-T15RL", "RR-T5RL"],
+  },
+  0x01060101: {
+    id: 0x01060101,
+    name: "RadioRA 2 Hybrid Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["RRD-H6BRL", "RRD-H5BRL", "RRD-HN6BRL"],
+  },
+  0x01100101: {
+    id: 0x01100101,
+    name: "HWQS Wall Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["HQRA-W6BRL", "HQRD-W7B"],
+  },
+  0x01110101: {
+    id: 0x01110101,
+    name: "HWQS Tabletop Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["HQR-T10CRL-XX", "HQR-T15CRL-XX"],
+  },
+  0x01120101: {
+    id: 0x01120101,
+    name: "HWQS Hybrid Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["HQRA-H6BRL", "HQRD-HN6BRL"],
+  },
+  0x01220101: {
+    id: 0x01220101,
+    name: "RA2 Grafik T Hybrid Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["RRT-GH6B"],
+  },
+  0x01230101: {
+    id: 0x01230101,
+    name: "HWQS Grafik T Hybrid Keypad",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["HQRT-GH6B"],
+  },
+  0x01250101: {
+    id: 0x01250101,
+    name: "Pico Firecrest",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["PJ2-P2B-XXX"],
+  },
+  0x01150001: {
+    id: 0x01150001,
+    name: "4 Shade Control",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["CS-YJ-4GC"],
+  },
+  0x1c010101: {
+    id: 0x1c010101,
+    name: "LinePoweredPico2B",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["PJL-2B-XXX-L01"],
+  },
+  0x1c020101: {
+    id: 0x1c020101,
+    name: "LinePoweredPico2BRL",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["PJL-2BRL-XXX-L01"],
+  },
+  0x1c030101: {
+    id: 0x1c030101,
+    name: "LinePoweredPico3BRL",
+    ccaClass: 0x0b,
+    category: "keypad",
+    models: ["PJL-3BRL-XXX-L01"],
+  },
+
+  // --- SENSORS (CCA 0x0D) ---
+  0x06110101: {
+    id: 0x06110101,
+    name: "Wireless Daylight Sensor",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["LRF2-DCRB", "LRF3-DCRB", "LRF7-DCRB"],
+  },
+  0x06080101: {
+    id: 0x06080101,
+    name: "RadioRA 2 Occupancy Sensor",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["LRF2-OCRB-P", "LRF2-VCRB-P", "LRF7-OKLB-P"],
+  },
+  0x0b030101: {
+    id: 0x0b030101,
+    name: "Wireless Temperature Sensor",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["LRF2-TWRB"],
+  },
+  0x0b020101: {
+    id: 0x0b020101,
+    name: "seeTemp Keypad",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["LRA-WST-F", "LRD-WST-F"],
+  },
+  0x0b040101: {
+    id: 0x0b040101,
+    name: "seeTemp Celsius",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["LRA-WST-C", "LRD-WST-C"],
+  },
+  0x18020101: {
+    id: 0x18020101,
+    name: "WLCU / Occupancy Transmitter",
+    ccaClass: 0x0d,
+    category: "sensor",
+    models: ["RMJS-OT-DV"],
+  },
+
+  // --- REPEATERS (no CCA device class — they own the link) ---
+  0x05020101: {
+    id: 0x05020101,
+    name: "RadioRA 2 Auxiliary Repeater",
+    ccaClass: null,
+    category: "repeater",
+    models: ["RR-AUX-REP"],
+  },
+  0x05030101: {
+    id: 0x05030101,
+    name: "Wireless Aux Repeater",
+    ccaClass: null,
+    category: "repeater",
+    models: ["L-REPPRO-BL"],
+  },
+
+  // --- MODULES (RF CCO, 0-10V, power packs — CCA linked but no device class in pairing) ---
+  0x16060101: {
+    id: 0x16060101,
+    name: "RF 0-10V Module",
+    ccaClass: null,
+    category: "module",
+    models: ["LMJ-5T-DV-B"],
+  },
+  0x16070101: {
+    id: 0x16070101,
+    name: "RF CCO Module",
+    ccaClass: null,
+    category: "module",
+    models: ["LMJ-CCO1-24-B"],
+  },
+  0x16020101: {
+    id: 0x16020101,
+    name: "Power Pack Relay Module 434",
+    ccaClass: null,
+    category: "module",
+    models: ["LMJ-16R-DV-B"],
+  },
+  0x16030101: {
+    id: 0x16030101,
+    name: "Power Pack Relay Module 868",
+    ccaClass: null,
+    category: "module",
+    models: ["LMK-16R-DV-B"],
+  },
+  0x16050101: {
+    id: 0x16050101,
+    name: "Power Pack Relay Module 434 Limited",
+    ccaClass: null,
+    category: "module",
+    models: ["LMQ-16R-DV-B"],
+  },
+  0x06050101: {
+    id: 0x06050101,
+    name: "RadioRA 2 VCRX",
+    ccaClass: null,
+    category: "module",
+    models: ["RR-VCRX"],
+  },
+
+  // --- GRAFIK Eye / Wallbox Power Modules ---
+  0x02010101: {
+    id: 0x02010101,
+    name: "QS GRAFIK Eye",
+    ccaClass: null,
+    category: "other",
+    models: ["QSGRJ-6P"],
+  },
+  0x02040101: {
+    id: 0x02040101,
+    name: "Wallbox Power Module",
+    ccaClass: null,
+    category: "other",
+    models: ["LQRJ-WPM-6P"],
+  },
+  0x02050101: {
+    id: 0x02050101,
+    name: "Wallbox Power Module Eco",
+    ccaClass: null,
+    category: "other",
+    models: ["QSGRK-WPM-6E"],
+  },
+  0x02060101: {
+    id: 0x02060101,
+    name: "Wallbox Power Module Dali",
+    ccaClass: null,
+    category: "other",
+    models: ["LQRK-WPM-6D"],
+  },
+
+  // --- HVAC / Thermostat ---
+  0x0b010101: {
+    id: 0x0b010101,
+    name: "HVAC Controller",
+    ccaClass: null,
+    category: "other",
+    models: ["LR-HVAC-1"],
+  },
+  0x0b050101: {
+    id: 0x0b050101,
+    name: "Honeywell Thermostat",
+    ccaClass: null,
+    category: "other",
+    models: ["LR-HWLV-HVAC"],
+  },
+};
+
+/** Lookup QS Device Class by ID (supports both decimal and hex input) */
+export function getQSDeviceClass(id: number): QSDeviceClassEntry | undefined {
+  return QSDeviceClassTypes[id];
+}
+
+/**
+ * Lookup QS Device Class by LEAP HexadecimalEncoding string.
+ * Matches on first 2 bytes (category + subtype), ignoring variant/version differences.
+ */
+export function getQSDeviceClassByHex(
+  hex: string,
+): QSDeviceClassEntry | undefined {
+  const id = parseInt(hex, 16);
+  // Try exact match first
+  if (QSDeviceClassTypes[id]) return QSDeviceClassTypes[id];
+  // Fall back to matching first 2 bytes (category + subtype)
+  const prefix = id & 0xffff0000;
+  for (const entry of Object.values(QSDeviceClassTypes)) {
+    if ((entry.id & 0xffff0000) === prefix) return entry;
+  }
+  return undefined;
+}
+
+/**
+ * Get CCA device class byte from a QSDEVICECLASSTYPEID.
+ * Uses the category byte (high byte) for fast lookup when no exact match exists.
+ */
+export function ccaClassFromQSDeviceClass(id: number): number | null {
+  const entry = QSDeviceClassTypes[id];
+  if (entry) return entry.ccaClass;
+  // Fallback: derive from category byte
+  const category = (id >> 24) & 0xff;
+  switch (category) {
+    case 0x01:
+      return 0x0b; // keypad
+    case 0x03:
+      return 0x0a; // shade
+    case 0x04:
+      return null; // output — need subtype to distinguish dimmer/switch/fan
+    case 0x06:
+      return 0x0d; // sensor
+    default:
+      return null;
+  }
+}
+
+/** RF frequency band bitmask values (from Designer RFFREQUENCY field) */
+export const RF_BANDS = {
+  AMERICAS_434: 1,
+  EUROPE_868: 4,
+  BAND_8: 8,
+  BAND_16: 16,
+  BAND_32: 32,
+  BAND_128: 128,
+} as const;
