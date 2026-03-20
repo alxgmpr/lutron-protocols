@@ -301,15 +301,17 @@ All packets are **53 bytes** (51 data + 2 CRC) with 0x00 padding.
 | 4-button Scene (Relax) | B8/BA | 0x27 |
 | 2-button ON/OFF | B9/BB | 0x01 |
 
-### Sensor Pairing (Daylight / Occupancy)
+### CCA Transfer / Device Programming
 
-Sensors use PAIR_BA with format 0x17. Device type 0x0D (IREYE) identifies sensor devices.
+CCA activation mode is a **global transfer** — not device-specific pairing. The processor broadcasts the **complete CCA device table** to all devices on the channel. This is the CCA equivalent of CCX CoAP programming during Designer transfer.
 
-**Sensor pairing announcement (PAIR_BA format 0x17):**
+**Sensor announcement (PAIR_BA format 0x17):**
+
+Sensors announce themselves with PAIR_BA before transfer begins. Device type 0x0D (IREYE) identifies sensor devices.
 
 | Byte | Value | Notes |
 |------|-------|-------|
-| 0 | 0xBA | Bridge-only pairing |
+| 0 | 0xBA | Bridge-only announcement |
 | 2-5 | serial | Device ID (BE) |
 | 7 | 0x17 | Sensor-specific format |
 | 9-13 | FF×5 | Broadcast |
@@ -319,15 +321,24 @@ Sensors use PAIR_BA with format 0x17. Device type 0x0D (IREYE) identifies sensor
 | 20-23 | serial | Repeat 2 |
 | 28 | 0x0D | Device type repeat |
 
-**Key differences from pico/dimmer pairing:**
+**Config packet structure (A5/A6/A7/0x85):**
 
-1. **Sensor handshake uses C5 (type+4), not C2 (type+1).** Bridge sends C1, sensor echoes as C5 with identical challenge data. This confirms sensors are briefly bidirectional during pairing (RX window opens in pairing mode).
+Config packets contain the full device table as a packed serial list:
+- Each entry: `[4-byte serial BE] [0x80 separator]`, last entry uses `[0xA0]` as end-of-list
+- 6 config rounds per pass, format byte = `(round << 4) | page_type`
+- Main series: page_type=5 → formats 0x05, 0x15, 0x25, 0x35, 0x45, 0x55
+- Zone binding series: page_type=2 → formats 0x02, 0x12, 0x22
+- 3 complete passes for redundancy
+- Split across rounds is by packet capacity, NOT by device type
 
-2. **Config uses extended types A5/A6/A7/0x85** with format bytes incrementing by 0x10 (0x05, 0x15, 0x25, 0x35, 0x45, 0x55). Three passes for redundancy.
+**Handshake:**
 
-3. **Final handshake commit** is the same as dimmers: all 6 types (C1→C7→CD→D3→D9→DF) blasted at ~75ms intervals.
+- Sensor echo uses C5 (type+4), not C2 (type+1) like dimmers
+- Final commit: all 6 types (C1→C7→CD→D3→D9→DF) blasted at ~75ms
 
-4. **TX burst count is programmed during pairing.** Unpaired sensor sends minimal packets; paired sensor sends 12+ per burst for reliability at range.
+**Post-transfer effects on sensors:**
+
+Unpaired daylight sensor sends minimal OWT bursts; after transfer, burst count increases to 12+. The transfer likely programs channel assignment and TX redundancy parameters into the sensor's non-volatile memory.
 
 ## 8. Device Configuration
 
