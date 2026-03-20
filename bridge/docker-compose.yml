@@ -1,0 +1,17 @@
+services:
+  ccx-bridge:
+    build:
+      context: ..
+      dockerfile: bridge/Dockerfile
+    network_mode: host
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    volumes:
+      - ./config:/config:ro
+    environment:
+      - THREAD_CHANNEL=${THREAD_CHANNEL:-25}
+      - THREAD_MASTER_KEY=${THREAD_MASTER_KEY}
+      - SNIFFER_DEVICE=${SNIFFER_DEVICE:-/dev/ttyACM0}
+      - CCX_DATA_DIR=/config
+      - CCX_CONFIG_PATH=/config/ccx-bridge.json
+    restart: unless-stopped

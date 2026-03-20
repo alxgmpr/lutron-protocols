@@ -2,6 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.4.0/schema.json",
   "files": {
     "includes": [
+      "bridge/**/*.ts",
       "cli/**/*.ts",
       "tools/**/*.ts",
       "ccx/**/*.ts",

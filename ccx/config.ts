@@ -18,11 +18,19 @@ function base64ToHex(base64: string, separator = ""): string {
   return hex.replace(/(.{2})(?!$)/g, `$1${separator}`);
 }
 
-function loadLeapFromDisk(): LeapDumpData | null {
-  const dataDir = join(
-    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
-    "../data",
+/** Resolve data directory: CCX_DATA_DIR env var, or ../data relative to this file */
+export function resolveDataDir(): string {
+  return (
+    process.env.CCX_DATA_DIR ??
+    join(
+      (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
+      "../data",
+    )
   );
+}
+
+function loadLeapFromDisk(): LeapDumpData | null {
+  const dataDir = resolveDataDir();
   if (!existsSync(dataDir)) return null;
 
   const files = readdirSync(dataDir)
@@ -87,10 +95,7 @@ interface DeviceMapData {
 }
 
 function loadDeviceMap(): DeviceMapData | null {
-  const mapFile = join(
-    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
-    "../data/ccx-device-map.json",
-  );
+  const mapFile = join(resolveDataDir(), "ccx-device-map.json");
   if (!existsSync(mapFile)) return null;
   try {
     return JSON.parse(readFileSync(mapFile, "utf-8"));
@@ -202,10 +207,7 @@ interface PresetZoneEntry {
 }
 
 function loadPresetZones(): Map<number, string> | null {
-  const presetFile = join(
-    (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
-    "../data/preset-zones.json",
-  );
+  const presetFile = join(resolveDataDir(), "preset-zones.json");
   if (!existsSync(presetFile)) return null;
   try {
     const data: Record<string, PresetZoneEntry> = JSON.parse(
