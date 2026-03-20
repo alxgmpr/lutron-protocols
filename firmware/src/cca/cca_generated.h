@@ -43,6 +43,7 @@ static const uint8_t PKT_PAIRING_BB = 0xBB;
 static const uint8_t PKT_PAIR_RESP_C0 = 0xC0;
 static const uint8_t PKT_HS_C1 = 0xC1;
 static const uint8_t PKT_HS_C2 = 0xC2;
+static const uint8_t PKT_HS_C5 = 0xC5;
 static const uint8_t PKT_HS_C7 = 0xC7;
 static const uint8_t PKT_HS_C8 = 0xC8;
 static const uint8_t PKT_HS_CD = 0xCD;
@@ -209,6 +210,7 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xC0: return "PAIR_RESP_C0";
     case 0xC1: return "HS_C1";
     case 0xC2: return "HS_C2";
+    case 0xC5: return "HS_C5";
     case 0xC7: return "HS_C7";
     case 0xC8: return "HS_C8";
     case 0xCD: return "HS_CD";
@@ -278,6 +280,7 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xC0:
     case 0xC1:
     case 0xC2:
+    case 0xC5:
     case 0xC7:
     case 0xC8:
     case 0xCD:

@@ -71,10 +71,7 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 | Type | Name | Size | Description |
 |------|------|------|-------------|
 | 0x81-0x83 | LEVEL | 24 | Level command or dimmer state report |
-| 0x88 | BTN_PRESS_A | 24 | Button press, group A |
-| 0x89 | BTN_RELEASE_A | 24 | Button release, group A |
-| 0x8A | BTN_PRESS_B | 24 | Button press, group B |
-| 0x8B | BTN_RELEASE_B | 24 | Button release, group B |
+| 0x88-0x8B | BTN / SENSOR | 24 | Button press/release (fmt 0x04/0x0E) or sensor level (fmt 0x0B) / test (fmt 0x09) |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
 | 0xA1-0xA3 | CONFIG | 53 | Configuration commands (53 bytes with 0x00 padding + CRC) |
 | 0xB0/0xB2 | DEVICE_ANNOUNCE | 53 | Device announcement during bridge pairing |
@@ -82,7 +79,7 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 | 0xB9 | PAIR_BEACON | 53 | Direct-pair capable / Vive beacon |
 | 0xBA | PAIR_ACCEPT | 53 | Bridge-only pairing (pico) / Vive accept |
 | 0xBB | PAIR_DIRECT | 53 | Direct-pair capable |
-| 0xC1-0xE0 | HANDSHAKE | 24 | Bridge pairing handshake (challenge-response) |
+| 0xC1-0xE0 | HANDSHAKE | 24 | Bridge pairing handshake (dimmer=C1+6n, bridge=C2+6n, sensor echo=C5) |
 
 ### Size Rules
 
@@ -303,6 +300,34 @@ All packets are **53 bytes** (51 data + 2 CRC) with 0x00 padding.
 | 4-button R/L | B9/BB | 0x21 |
 | 4-button Scene (Relax) | B8/BA | 0x27 |
 | 2-button ON/OFF | B9/BB | 0x01 |
+
+### Sensor Pairing (Daylight / Occupancy)
+
+Sensors use PAIR_BA with format 0x17. Device type 0x0D (IREYE) identifies sensor devices.
+
+**Sensor pairing announcement (PAIR_BA format 0x17):**
+
+| Byte | Value | Notes |
+|------|-------|-------|
+| 0 | 0xBA | Bridge-only pairing |
+| 2-5 | serial | Device ID (BE) |
+| 7 | 0x17 | Sensor-specific format |
+| 9-13 | FF×5 | Broadcast |
+| 14 | 0x0D | Device type = IREYE (sensor) |
+| 15 | 0x05 | Capabilities |
+| 16-19 | serial | Repeat 1 |
+| 20-23 | serial | Repeat 2 |
+| 28 | 0x0D | Device type repeat |
+
+**Key differences from pico/dimmer pairing:**
+
+1. **Sensor handshake uses C5 (type+4), not C2 (type+1).** Bridge sends C1, sensor echoes as C5 with identical challenge data. This confirms sensors are briefly bidirectional during pairing (RX window opens in pairing mode).
+
+2. **Config uses extended types A5/A6/A7/0x85** with format bytes incrementing by 0x10 (0x05, 0x15, 0x25, 0x35, 0x45, 0x55). Three passes for redundancy.
+
+3. **Final handshake commit** is the same as dimmers: all 6 types (C1→C7→CD→D3→D9→DF) blasted at ~75ms intervals.
+
+4. **TX burst count is programmed during pairing.** Unpaired sensor sends minimal packets; paired sensor sends 12+ per burst for reliability at range.
 
 ## 8. Device Configuration
 

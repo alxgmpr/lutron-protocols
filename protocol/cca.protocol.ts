@@ -78,6 +78,7 @@ const deviceClassEnum = enumDef(
     FAN: { value: 0x06 },
     SHADE: { value: 0x0a },
     KEYPAD: { value: 0x0b },
+    SENSOR: { value: 0x0d, description: "IREYE / daylight / occupancy sensor" },
   },
 );
 
@@ -631,7 +632,8 @@ const PAIR_B9 = packetTypeFrom(PAIR_B8, {
 
 const PAIR_BA = packetTypeFrom(PAIR_B8, {
   value: 0xba,
-  description: "Bridge-only pairing (pico) / Vive accept",
+  description:
+    "Bridge-only pairing (pico/sensor) / Vive accept. Sensors use format 0x17 with device_type 0x0D (IREYE)",
 });
 
 const PAIR_BB = packetTypeFrom(PAIR_B8, {
@@ -649,9 +651,14 @@ const PAIR_RESP_C0 = packetType(
 );
 
 // Handshake rounds — 6 rounds, dimmer=odd, bridge=even, increment by 6
+// Sensor handshake uses C5 (type+4) instead of C2 (type+1)
 const HS_C1 = packetTypeFrom(PAIR_RESP_C0, {
   value: 0xc1,
-  description: "Handshake round 1 (dimmer)",
+  description: "Handshake round 1 (dimmer/bridge→sensor)",
+});
+const HS_C5 = packetTypeFrom(PAIR_RESP_C0, {
+  value: 0xc5,
+  description: "Handshake sensor echo (sensor→bridge, type=C1+4)",
 });
 const HS_C2 = packetTypeFrom(PAIR_RESP_C0, {
   value: 0xc2,
@@ -1017,6 +1024,7 @@ export const CCA: CCAProtocolDef = {
     PAIR_BB,
     PAIR_RESP_C0,
     HS_C1,
+    HS_C5,
     HS_C2,
     HS_C7,
     HS_C8,
