@@ -150,6 +150,7 @@ function generateCCAHeader(): string {
     "qsState",
     "qsPreset",
     "qsPadding",
+    "qsSensor",
   ] as const;
   for (const groupName of qsGroups) {
     const group = CCA.constantGroups[groupName];

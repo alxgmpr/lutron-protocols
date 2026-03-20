@@ -60,6 +60,7 @@ const categoryEnum = enumDef(
   {
     BUTTON: { value: -1, description: "Button press/release from Pico" },
     STATE: { value: -1, description: "Dimmer/switch state reports" },
+    SENSOR: { value: -1, description: "Sensor readings (daylight, occupancy)" },
     BEACON: { value: -1, description: "Pairing beacons" },
     PAIRING: { value: -1, description: "Pairing announcements" },
     CONFIG: { value: -1, description: "Device configuration" },
@@ -254,6 +255,31 @@ const qsPadding = constantGroup("QsPadding", "Padding", "QS_", {
   PADDING: { value: 0x00 },
 });
 
+const qsSensor = constantGroup(
+  "QsSensor",
+  "Sensor constants (OWT daylight/occupancy sensors)",
+  "QS_SENSOR_",
+  {
+    COMPONENT_DAYLIGHT: {
+      value: 0xd5,
+      description: "Daylight sensor component type (byte 14)",
+    },
+    TEST_BUTTON: {
+      value: 0x11,
+      description: "Test button ID (byte 15 in format 0x09)",
+    },
+    LUX_MAX_RAW: {
+      value: 0x07fe,
+      description: "Raw 16-bit max (0x07FE = 1600 lux, FE-not-FF pattern)",
+    },
+    LUX_MAX: {
+      value: 1600,
+      description: "Maximum sensor range in lux",
+    },
+  },
+  "uint16_t",
+);
+
 // ============================================================================
 // RF / CRC / FRAMING / TIMING / SEQUENCE / LENGTHS
 // ============================================================================
@@ -385,6 +411,12 @@ const stateFormatDisc: Record<number, string> = {
   0x1c: "FADE_CONFIG",
 };
 
+/** Format discrimination for button packet types (0x88-0x8B) — sensor OWT formats */
+const buttonFormatDisc: Record<number, string> = {
+  0x09: "SENSOR_TEST",
+  0x0b: "SENSOR_LEVEL",
+};
+
 /** Format discrimination for long packet types (0xA1-0xA3) */
 const longFormatDisc: Record<number, string> = {
   0x11: "LED_CONFIG",
@@ -408,22 +440,28 @@ const BTN_SHORT_A = packetType(
   "Button short format, group A",
   "big",
   btnFields,
-  { ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+  {
+    ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"],
+    formatDiscrimination: buttonFormatDisc,
+  },
 );
 
 const BTN_LONG_A = packetTypeFrom(BTN_SHORT_A, {
   value: 0x89,
   description: "Button long format, group A",
+  formatDiscrimination: buttonFormatDisc,
 });
 
 const BTN_SHORT_B = packetTypeFrom(BTN_SHORT_A, {
   value: 0x8a,
   description: "Button short format, group B",
+  formatDiscrimination: buttonFormatDisc,
 });
 
 const BTN_LONG_B = packetTypeFrom(BTN_SHORT_A, {
   value: 0x8b,
   description: "Button long format, group B",
+  formatDiscrimination: buttonFormatDisc,
 });
 
 const STATE_RPT_81 = packetType(
@@ -767,6 +805,54 @@ const ZONE_ASSIGN = packetType(
   { isVirtual: true },
 );
 
+// Sensor virtual types (format-discriminated from button type bytes)
+const sensorLevelFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0B = sensor level"),
+  field("sensor_frame", 8, 1, "hex", "0x00=normal, 0x03=calibration"),
+  field("device_repeat", 9, 4, "device_id_be"),
+  field("component", 14, 1, "hex", "0xD5=daylight sensor"),
+  field("lux_reading", 16, 2, "lux_16bit", "Light level (0-1600 lux)"),
+  field("flags", 18, 1, "hex", "0x03=first reading after test"),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_LEVEL = packetType(
+  0xfa,
+  24,
+  "SENSOR",
+  "Daylight sensor light level (format 0x0B)",
+  "big",
+  sensorLevelFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+const sensorTestFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x09 = sensor test button"),
+  field("device_repeat", 9, 4, "device_id_be"),
+  field("component", 14, 1, "hex", "0xD5=daylight sensor"),
+  field("button_id", 15, 1, "hex", "0x11=test button"),
+  field("action", 16, 1, "action", "0x01=press, 0x00=release"),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_TEST = packetType(
+  0xfb,
+  24,
+  "SENSOR",
+  "Sensor test button press/release (format 0x09)",
+  "big",
+  sensorTestFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
 // ============================================================================
 // SEQUENCES
 // ============================================================================
@@ -812,6 +898,12 @@ const sequences: Record<string, Sequence> = {
     name: "unpair",
     description: "Unpair device from bridge",
     steps: [{ packetType: "UNPAIR", count: 20, intervalMs: 60 }],
+  },
+  sensor_reading: {
+    name: "sensor_reading",
+    description:
+      "Daylight sensor light level burst (cycles type byte each burst)",
+    steps: [{ packetType: "SENSOR_LEVEL", count: 12, intervalMs: 75 }],
   },
 };
 
@@ -895,6 +987,7 @@ export const CCA: CCAProtocolDef = {
     qsState,
     qsPreset,
     qsPadding,
+    qsSensor,
     rf: rfGroup,
     crc: crcGroup,
     framing: framingGroup,
@@ -945,6 +1038,8 @@ export const CCA: CCAProtocolDef = {
     SCENE_CONFIG,
     FADE_CONFIG,
     ZONE_ASSIGN,
+    SENSOR_LEVEL,
+    SENSOR_TEST,
   },
   sequences,
   pairingPresets,

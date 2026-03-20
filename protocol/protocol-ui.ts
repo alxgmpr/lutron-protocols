@@ -199,6 +199,18 @@ export function parseLevel16bit(bytes: string[]): string {
 }
 
 /**
+ * Parse a 16-bit big-endian lux reading (0x0000-0x07FE = 0-1600 lux).
+ * Max 0x07FE (not 0x0800) — same FE-not-FF pattern as level encoding.
+ */
+export function parseLux16bit(bytes: string[]): string {
+  if (bytes.length < 2) return "";
+  const raw = parseInt(bytes[0] + bytes[1], 16);
+  if (raw === 0) return "0 lux";
+  const lux = (raw * 1600) / 0x07fe;
+  return `${Math.round(lux)} lux`;
+}
+
+/**
  * Get button name from code.
  */
 export function getButtonName(code: number): string {
@@ -266,6 +278,11 @@ export function parseFieldValue(
         decoded = parseLevel16bit(fieldBytes);
       }
       break;
+    case "lux_16bit":
+      if (fieldBytes.length >= 2) {
+        decoded = parseLux16bit(fieldBytes);
+      }
+      break;
     case "button":
       if (fieldBytes.length >= 1) {
         decoded = getButtonName(parseInt(fieldBytes[0], 16));
@@ -308,9 +325,11 @@ export function getCategoryColor(category: string): string {
     PAIRING: "#9C27B0",
     CONFIG: "#00BCD4",
     HANDSHAKE: "#E91E63",
+    SENSOR: "#FFC107",
     // Lowercase variants for backwards compatibility
     button: "#4CAF50",
     state: "#2196F3",
+    sensor: "#FFC107",
     beacon: "#FF9800",
     pairing: "#9C27B0",
     config: "#00BCD4",

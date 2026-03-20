@@ -18,6 +18,7 @@ export type FieldFormat =
   | "device_id_be"
   | "level_byte"
   | "level_16bit"
+  | "lux_16bit"
   | "button"
   | "action";
 

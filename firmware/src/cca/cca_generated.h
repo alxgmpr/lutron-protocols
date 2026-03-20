@@ -63,6 +63,8 @@ static const uint8_t PKT_TRIM_CONFIG = 0xF6;
 static const uint8_t PKT_SCENE_CONFIG = 0xF7;
 static const uint8_t PKT_FADE_CONFIG = 0xF8;
 static const uint8_t PKT_ZONE_ASSIGN = 0xF9;
+static const uint8_t PKT_SENSOR_LEVEL = 0xFA;
+static const uint8_t PKT_SENSOR_TEST = 0xFB;
 
 // Button codes
 static const uint8_t BTN_ON = 0x02;
@@ -170,6 +172,12 @@ static const uint8_t QS_PRESET_BASE = 0x1E;
 // Padding
 static const uint8_t QS_PADDING = 0x00;
 
+// Sensor constants (OWT daylight/occupancy sensors)
+static const uint16_t QS_SENSOR_COMPONENT_DAYLIGHT = 0x00D5;  /* Daylight sensor component type (byte 14) */
+static const uint16_t QS_SENSOR_TEST_BUTTON = 0x0011;  /* Test button ID (byte 15 in format 0x09) */
+static const uint16_t QS_SENSOR_LUX_MAX_RAW = 0x07FE;  /* Raw 16-bit max (0x07FE = 1600 lux, FE-not-FF pattern) */
+static const uint16_t QS_SENSOR_LUX_MAX = 0x0640;  /* Maximum sensor range in lux */
+
 #ifdef __cplusplus
 }
 #endif
@@ -221,6 +229,8 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xF7: return "SCENE_CONFIG";
     case 0xF8: return "FADE_CONFIG";
     case 0xF9: return "ZONE_ASSIGN";
+    case 0xFA: return "SENSOR_LEVEL";
+    case 0xFB: return "SENSOR_TEST";
     default: return "UNKNOWN";
   }
 }
@@ -278,6 +288,8 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xDA:
     case 0xDF:
     case 0xE0:
+    case 0xFA:
+    case 0xFB:
       return true;
     default:
       return false;

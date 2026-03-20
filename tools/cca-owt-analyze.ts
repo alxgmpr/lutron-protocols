@@ -2,7 +2,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, resolve } from "path";
-import { identifyPacket } from "../protocol/protocol-ui";
+import { identifyPacket, parseLux16bit } from "../protocol/protocol-ui";
 
 interface CaptureRow {
   timestamp: string;
@@ -187,6 +187,39 @@ function summarizeVariablePositions(packets: MatchedPacket[]): string[] {
   return lines;
 }
 
+/** Decode sensor-specific payload for format 0x0B (light level) and 0x09 (test) */
+function decodeSensorPayload(bytes: number[]): string | null {
+  if (bytes.length < 22) return null;
+  const fmt = bytes[7];
+  if (fmt === 0x0b) {
+    const luxHi = bytes[16].toString(16).toUpperCase().padStart(2, "0");
+    const luxLo = bytes[17].toString(16).toUpperCase().padStart(2, "0");
+    const lux = parseLux16bit([luxHi, luxLo]);
+    const frame = bytes[8];
+    const flags = bytes[18];
+    const parts = [lux];
+    if (frame === 0x03) parts.push("calibration");
+    if (flags === 0x03) parts.push("post-test");
+    return parts.join(" ");
+  }
+  if (fmt === 0x09) {
+    const btnId = bytes[15];
+    const action = bytes[16];
+    const btnName =
+      btnId === 0x11
+        ? "TEST"
+        : `0x${btnId.toString(16).toUpperCase().padStart(2, "0")}`;
+    const actName =
+      action === 0x01
+        ? "PRESS"
+        : action === 0x00
+          ? "RELEASE"
+          : `0x${action.toString(16).toUpperCase().padStart(2, "0")}`;
+    return `${btnName} ${actName}`;
+  }
+  return null;
+}
+
 function buildGroups(packets: MatchedPacket[]): GroupSummary[] {
   const groups = new Map<string, GroupSummary>();
 
@@ -316,9 +349,26 @@ function main() {
   groups.forEach((group, index) => {
     const variableLines = summarizeVariablePositions(group.packets);
     const sample = group.packets[0];
+    const sensorInfo = decodeSensorPayload(sample.bytes);
     console.log(
       `${index + 1}. ${group.direction} ${group.typeName} len=${group.length} fmt=${formatByte(group.formatByte)} count=${group.packets.length} intervals=${summarizeIntervals(group.packets)}`,
     );
+    if (sensorInfo) {
+      console.log(`   decoded: ${sensorInfo}`);
+      // Show lux range for sensor level groups
+      if (sample.bytes[7] === 0x0b) {
+        const luxValues = group.packets
+          .map((p) => {
+            const h = p.bytes[16].toString(16).toUpperCase().padStart(2, "0");
+            const l = p.bytes[17].toString(16).toUpperCase().padStart(2, "0");
+            return parseLux16bit([h, l]);
+          })
+          .filter((v, i, a) => a.indexOf(v) === i);
+        if (luxValues.length > 1) {
+          console.log(`   lux range: ${luxValues.join(", ")}`);
+        }
+      }
+    }
     console.log(
       `   serial offsets: BE ${formatOffsets(sample.matchOffsetsBe)} | LE ${formatOffsets(sample.matchOffsetsLe)}`,
     );
@@ -336,8 +386,10 @@ function main() {
       ? pkt.timestamp.slice(11, 23)
       : pkt.timestamp;
     const dev = pkt.deviceId || headerDeviceId(pkt.bytes) || "--";
+    const sensor = decodeSensorPayload(pkt.bytes);
+    const sensorSuffix = sensor ? ` [${sensor}]` : "";
     console.log(
-      `${time} ${pkt.direction.toUpperCase()} ${pkt.typeName.padEnd(12)} fmt=${formatByte(pkt.formatByte)} rssi=${pkt.rssi} dev=${dev} raw=${pkt.rawHex}`,
+      `${time} ${pkt.direction.toUpperCase()} ${pkt.typeName.padEnd(14)} fmt=${formatByte(pkt.formatByte)} rssi=${pkt.rssi} dev=${dev}${sensorSuffix}`,
     );
   }
 }
