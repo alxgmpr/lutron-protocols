@@ -1,6 +1,6 @@
 name: CCX-WiZ Bridge
 description: Lutron Thread → WiZ smart bulb bridge via nRF 802.15.4 sniffer
-version: 0.1.1
+version: 0.2.0
 slug: ccx-bridge
 arch:
   - aarch64
@@ -11,24 +11,61 @@ devices:
   - /dev/ttyACM0
 map:
   - config:rw
-  - share:rw
 environment:
   CCX_DATA_DIR: /config/ccx-bridge
-  CCX_CONFIG_PATH: /config/ccx-bridge/ccx-bridge.yaml
-  SNIFFER_DEVICE: /dev/ttyACM0
 options:
   thread_channel: 25
   thread_master_key: ""
+  sniffer_device: /dev/ttyACM0
   warm_dimming: true
   warm_dim_curve: default
   wiz_dim_scaling: true
   wiz_port: 38899
-  sniffer_device: /dev/ttyACM0
+  pairings:
+    - zone_id: 5147
+      name: ""
+      wiz_ips:
+        - "10.1.7.28"
+      warm_dimming: true
+    - zone_id: 5331
+      name: ""
+      wiz_ips:
+        - "10.1.7.20"
+      warm_dimming: true
+    - zone_id: 5306
+      name: ""
+      wiz_ips:
+        - "10.1.7.105"
+      warm_dimming: true
+    - zone_id: 4999
+      name: ""
+      wiz_ips:
+        - "10.1.7.104"
+      warm_dimming: true
+    - zone_id: 5251
+      name: ""
+      wiz_ips:
+        - "10.1.7.2"
+        - "10.1.7.77"
+        - "10.1.7.58"
+      warm_dimming: true
+    - zone_id: 5278
+      name: ""
+      wiz_ips:
+        - "10.1.7.107"
+        - "10.1.7.42"
+      warm_dimming: true
 schema:
   thread_channel: "int(11,26)"
   thread_master_key: password
-  warm_dimming: "bool"
+  sniffer_device: str
+  warm_dimming: bool
   warm_dim_curve: "list(default|halogen|finire2700|finire3000)"
-  wiz_dim_scaling: "bool"
-  wiz_port: "port"
-  sniffer_device: "str"
+  wiz_dim_scaling: bool
+  wiz_port: port
+  pairings:
+    - zone_id: int
+      name: "str?"
+      wiz_ips:
+        - str
+      warm_dimming: "bool?"

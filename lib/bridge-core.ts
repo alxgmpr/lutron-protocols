@@ -385,7 +385,50 @@ export class BridgeCore extends EventEmitter {
 
 // ── Config loading helpers ────────────────────────────────
 
-/** Load bridge config file and build WizPairing array */
+/** Shared: resolve defaults and build WizPairing[] from raw pairings */
+function buildPairings(
+  rawPairings: Array<{
+    zoneId: number;
+    wiz?: string | string[];
+    wizIps?: string[];
+    name?: string;
+    wizPort?: number;
+    warmDimming?: boolean;
+    warmDimCurve?: string;
+    warmDimMin?: number;
+    warmDimMax?: number;
+  }>,
+  defaults: {
+    wizPort: number;
+    warmDimming: boolean;
+    warmDimCurve: string;
+    warmDimMin?: number;
+    warmDimMax?: number;
+  },
+): WizPairing[] {
+  return rawPairings.map((p) => {
+    const warmDimming = p.warmDimming ?? defaults.warmDimming;
+    let warmDimTable: number[] | null = null;
+    if (warmDimming) {
+      const curveName = p.warmDimCurve ?? defaults.warmDimCurve;
+      const curve = getWarmDimCurve(curveName);
+      const min = p.warmDimMin ?? defaults.warmDimMin;
+      const max = p.warmDimMax ?? defaults.warmDimMax;
+      warmDimTable = generateWarmDimTable(curve, min, max);
+    }
+    const wizIps = p.wizIps ?? (Array.isArray(p.wiz) ? p.wiz : [p.wiz!]);
+    const zoneName = getZoneName(p.zoneId) ?? `Zone ${p.zoneId}`;
+    return {
+      name: p.name || zoneName,
+      zoneId: p.zoneId,
+      wizIps,
+      wizPort: p.wizPort ?? defaults.wizPort,
+      warmDimTable,
+    };
+  });
+}
+
+/** Load bridge config from a YAML or JSON file */
 export function loadBridgeConfig(configPath: string): {
   pairings: WizPairing[];
   wizDimScaling: boolean;
@@ -395,51 +438,54 @@ export function loadBridgeConfig(configPath: string): {
   }
 
   const text = readFileSync(configPath, "utf-8");
-  const raw: BridgeConfigFile = configPath.endsWith(".yaml") || configPath.endsWith(".yml")
-    ? YAML.parse(text)
-    : JSON.parse(text);
+  const raw: BridgeConfigFile =
+    configPath.endsWith(".yaml") || configPath.endsWith(".yml")
+      ? YAML.parse(text)
+      : JSON.parse(text);
 
-  // Environment overrides (from HA add-on options UI) take precedence over JSON defaults
-  const env = process.env;
-  const wizDimScaling =
-    env.BRIDGE_WIZ_DIM_SCALING !== undefined
-      ? env.BRIDGE_WIZ_DIM_SCALING === "true"
-      : (raw.defaults?.wizDimScaling ?? true);
-  const defaultPort =
-    env.BRIDGE_WIZ_PORT !== undefined
-      ? parseInt(env.BRIDGE_WIZ_PORT, 10)
-      : (raw.defaults?.wizPort ?? 38899);
-  const defaultWarmDim =
-    env.BRIDGE_WARM_DIMMING !== undefined
-      ? env.BRIDGE_WARM_DIMMING === "true"
-      : (raw.defaults?.warmDimming ?? false);
-  const defaultCurve =
-    env.BRIDGE_WARM_DIM_CURVE ?? raw.defaults?.warmDimCurve ?? "default";
-  const defaultMin = raw.defaults?.warmDimMin;
-  const defaultMax = raw.defaults?.warmDimMax;
+  return {
+    pairings: buildPairings(raw.pairings, {
+      wizPort: raw.defaults?.wizPort ?? 38899,
+      warmDimming: raw.defaults?.warmDimming ?? false,
+      warmDimCurve: raw.defaults?.warmDimCurve ?? "default",
+      warmDimMin: raw.defaults?.warmDimMin,
+      warmDimMax: raw.defaults?.warmDimMax,
+    }),
+    wizDimScaling: raw.defaults?.wizDimScaling ?? true,
+  };
+}
 
-  const pairings = raw.pairings.map((p) => {
-    const warmDimming = p.warmDimming ?? defaultWarmDim;
-    let warmDimTable: number[] | null = null;
-    if (warmDimming) {
-      const curveName = p.warmDimCurve ?? defaultCurve;
-      const curve = getWarmDimCurve(curveName);
-      const min = p.warmDimMin ?? defaultMin;
-      const max = p.warmDimMax ?? defaultMax;
-      warmDimTable = generateWarmDimTable(curve, min, max);
-    }
-    const wizIps = Array.isArray(p.wiz) ? p.wiz : [p.wiz];
-    const zoneName = getZoneName(p.zoneId) ?? `Zone ${p.zoneId}`;
-    return {
-      name: p.name ?? zoneName,
-      zoneId: p.zoneId,
-      wizIps,
-      wizPort: p.wizPort ?? defaultPort,
-      warmDimTable,
-    };
-  });
+/** Load bridge config from HA add-on /data/options.json */
+export function loadBridgeConfigFromOptions(opts: {
+  pairings?: Array<{
+    zone_id: number;
+    name?: string;
+    wiz_ips: string[];
+    warm_dimming?: boolean;
+  }>;
+  warm_dimming?: boolean;
+  warm_dim_curve?: string;
+  wiz_dim_scaling?: boolean;
+  wiz_port?: number;
+}): {
+  pairings: WizPairing[];
+  wizDimScaling: boolean;
+} {
+  const rawPairings = (opts.pairings ?? []).map((p) => ({
+    zoneId: p.zone_id,
+    name: p.name,
+    wizIps: p.wiz_ips,
+    warmDimming: p.warm_dimming,
+  }));
 
-  return { pairings, wizDimScaling };
+  return {
+    pairings: buildPairings(rawPairings, {
+      wizPort: opts.wiz_port ?? 38899,
+      warmDimming: opts.warm_dimming ?? false,
+      warmDimCurve: opts.warm_dim_curve ?? "default",
+    }),
+    wizDimScaling: opts.wiz_dim_scaling ?? true,
+  };
 }
 
 /** Load preset-zones.json into a Map */

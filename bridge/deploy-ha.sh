@@ -1,16 +1,11 @@
 #!/bin/bash
 # Deploy CCX-WiZ Bridge to Home Assistant as a local add-on via SMB
 #
-# Usage: ./bridge/deploy-ha.sh [smb-mount-point]
-#   Default mount point: /Volumes/config (HA config share)
+# Usage: ./bridge/deploy-ha.sh [config-mount] [addons-mount]
 #
 # Prerequisites:
 #   Mount HA SMB shares:
 #     open smb://10.0.0.4   (then mount "config" and "addons")
-#   Or from CLI:
-#     mkdir -p /Volumes/config /Volumes/addons
-#     mount_smbfs //user:pass@10.0.0.4/config /Volumes/config
-#     mount_smbfs //user:pass@10.0.0.4/addons /Volumes/addons
 
 set -euo pipefail
 
@@ -35,12 +30,12 @@ if [ ! -d "$ADDONS_MOUNT" ]; then
   exit 1
 fi
 
-# ── Copy config/data files ───────────────────────────────
+# ── Copy LEAP/preset data files ──────────────────────────
+# (Pairings + settings are configured in HA add-on UI, not here)
 
-echo "=== Copying config data to $DATA_DEST ==="
+echo "=== Copying LEAP data to $DATA_DEST ==="
 mkdir -p "$DATA_DEST"
 
-cp -v "$PROJECT_ROOT/config/ccx-bridge.yaml"     "$DATA_DEST/ccx-bridge.yaml"
 cp -v "$PROJECT_ROOT/data/preset-zones.json"      "$DATA_DEST/preset-zones.json"
 cp -v "$PROJECT_ROOT/data/leap-10.0.0.1.json"   "$DATA_DEST/leap-10.0.0.1.json"
 cp -v "$PROJECT_ROOT/data/ccx-device-map.json"     "$DATA_DEST/ccx-device-map.json"
@@ -87,11 +82,11 @@ cp "$PROJECT_ROOT/tools/leap-client.ts" "$ADDON_DEST/tools/leap-client.ts"
 echo ""
 echo "=== Deployment complete ==="
 echo ""
-echo "Config data:  $DATA_DEST"
-echo "Add-on:       $ADDON_DEST"
+echo "Add-on:     $ADDON_DEST"
+echo "LEAP data:  $DATA_DEST"
 echo ""
 echo "Next steps:"
 echo "  1. HA UI → Settings → Add-ons → ⋮ → Check for updates"
 echo "  2. Find 'CCX-WiZ Bridge' under Local add-ons → Install"
-echo "  3. Configuration tab → set Thread channel & master key"
+echo "  3. Configuration tab → set ALL settings (pairings, Thread creds, etc.)"
 echo "  4. Start the add-on, check Logs tab"

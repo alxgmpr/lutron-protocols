@@ -40,11 +40,14 @@ export interface SerialSnifferEvents {
   closed: () => void;
 }
 
+const WATCHDOG_TIMEOUT_MS = 30_000;
+
 export class SerialSniffer extends EventEmitter {
   private port: SerialPort | null = null;
   private parser: ReadlineParser | null = null;
   private opts: Required<SerialSnifferOptions>;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
   constructor(opts: SerialSnifferOptions) {
@@ -69,6 +72,7 @@ export class SerialSniffer extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.stopWatchdog();
     if (this.port?.isOpen) {
       this.port.close();
     }
@@ -139,6 +143,7 @@ export class SerialSniffer extends EventEmitter {
             port.write(`channel ${this.opts.channel}\r\n`, () => {
               port.write("receive\r\n", () => {
                 port.drain(() => {
+                  this.startWatchdog();
                   this.emit("ready");
                   onReady();
                 });
@@ -150,12 +155,38 @@ export class SerialSniffer extends EventEmitter {
     });
   }
 
+  private startWatchdog(): void {
+    this.stopWatchdog();
+    this.watchdogTimer = setTimeout(() => {
+      if (this.stopped) return;
+      this.emit("error", new Error("Watchdog: no data for 30s, reconnecting"));
+      if (this.port?.isOpen) {
+        this.port.close(); // triggers 'close' → scheduleReconnect
+      } else {
+        this.scheduleReconnect();
+      }
+    }, WATCHDOG_TIMEOUT_MS);
+  }
+
+  private stopWatchdog(): void {
+    if (this.watchdogTimer) {
+      clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+  }
+
+  private kickWatchdog(): void {
+    if (!this.stopped) this.startWatchdog();
+  }
+
   private handleLine(line: string): void {
     // Format: "\x1b[Jreceived: <hex> power: <rssi> lqi: <lqi> time: <ts>"
     // Strip ANSI escape sequences and \r before matching
     const clean = line.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "").replace(/\r/g, "");
     const match = clean.match(/received:\s+([0-9a-fA-F]+)\s+power:/);
     if (!match) return;
+
+    this.kickWatchdog();
 
     const hex = match[1];
     const raw = Buffer.from(hex, "hex");

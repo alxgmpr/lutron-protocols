@@ -7,64 +7,60 @@
  * decrypts and decodes CCX CBOR messages, and forwards level/scene/button
  * commands to WiZ smart bulbs over UDP.
  *
- * Designed to run in Docker on a Raspberry Pi with the nRF dongle attached.
+ * Config sources (in priority order):
+ *   1. HA add-on options: /data/options.json (all config in HA UI)
+ *   2. YAML file: CCX_CONFIG_PATH or /config/ccx-bridge.yaml
+ *   3. Environment variables for individual overrides
  *
- * Config:
- *   /config/ccx-bridge.yaml   — zone→WiZ pairings
- *   /config/preset-zones.json — scene preset data
- *   /config/leap-*.json       — LEAP dump data (zone names, device map)
- *
- * Environment:
- *   SNIFFER_DEVICE    — serial port (default: /dev/ttyACM0)
- *   THREAD_CHANNEL    — 802.15.4 channel (default: from LEAP data)
- *   THREAD_MASTER_KEY — Thread master key hex (default: from LEAP data)
- *   CCX_DATA_DIR      — path to LEAP/device data (default: /config)
- *   CCX_CONFIG_PATH   — path to ccx-bridge.yaml (default: /config/ccx-bridge.yaml)
+ * Data files (LEAP dumps, preset-zones):
+ *   CCX_DATA_DIR (default: /config for container, ../data for local dev)
  */
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
-// HA add-on: read /data/options.json and apply as env var fallbacks
-const HA_OPTIONS = "/data/options.json";
-if (existsSync(HA_OPTIONS)) {
+// ── Load HA options.json if present ──────────────────────
+
+interface HAOptions {
+  thread_channel?: number;
+  thread_master_key?: string;
+  sniffer_device?: string;
+  warm_dimming?: boolean;
+  warm_dim_curve?: string;
+  wiz_dim_scaling?: boolean;
+  wiz_port?: number;
+  pairings?: Array<{
+    zone_id: number;
+    name?: string;
+    wiz_ips: string[];
+    warm_dimming?: boolean;
+  }>;
+}
+
+let haOptions: HAOptions | null = null;
+const HA_OPTIONS_PATH = "/data/options.json";
+if (existsSync(HA_OPTIONS_PATH)) {
   try {
-    const opts = JSON.parse(readFileSync(HA_OPTIONS, "utf8"));
-    const envMap: Record<string, string> = {
-      thread_channel: "THREAD_CHANNEL",
-      thread_master_key: "THREAD_MASTER_KEY",
-      warm_dimming: "BRIDGE_WARM_DIMMING",
-      warm_dim_curve: "BRIDGE_WARM_DIM_CURVE",
-      wiz_dim_scaling: "BRIDGE_WIZ_DIM_SCALING",
-      wiz_port: "BRIDGE_WIZ_PORT",
-      sniffer_device: "SNIFFER_DEVICE",
-    };
-    for (const [optKey, envKey] of Object.entries(envMap)) {
-      if (
-        opts[optKey] !== undefined &&
-        opts[optKey] !== "" &&
-        !process.env[envKey]
-      )
-        process.env[envKey] = String(opts[optKey]);
-    }
+    haOptions = JSON.parse(readFileSync(HA_OPTIONS_PATH, "utf8"));
   } catch {}
 }
 
 // Set CCX_DATA_DIR BEFORE importing ccx/config (which loads LEAP data at import time).
-// Must happen before dynamic import() since ESM hoists static imports.
 const configDir = process.env.CCX_DATA_DIR ?? "/config";
 if (!process.env.CCX_DATA_DIR && existsSync(configDir)) {
   process.env.CCX_DATA_DIR = configDir;
 }
 
 async function main() {
-  // Dynamic imports — ccx/config reads CCX_DATA_DIR at module load time
   const { CCX_CONFIG, getAllDevices, resolveDataDir } = await import(
     "../ccx/config"
   );
-  const { BridgeCore, loadBridgeConfig, loadPresetZones } = await import(
-    "../lib/bridge-core"
-  );
+  const {
+    BridgeCore,
+    loadBridgeConfig,
+    loadBridgeConfigFromOptions,
+    loadPresetZones,
+  } = await import("../lib/bridge-core");
   const { FramePipeline } = await import("../lib/frame-pipeline");
   const { SerialSniffer, detectSnifferPort } = await import(
     "../lib/serial-sniffer"
@@ -72,13 +68,17 @@ async function main() {
 
   // ── Config resolution ─────────────────────────────────────
 
-  const configPath =
-    process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.yaml");
-  const snifferDevice = process.env.SNIFFER_DEVICE ?? detectSnifferPort();
+  const snifferDevice =
+    process.env.SNIFFER_DEVICE ??
+    haOptions?.sniffer_device ??
+    detectSnifferPort();
   const channel = process.env.THREAD_CHANNEL
     ? parseInt(process.env.THREAD_CHANNEL, 10)
-    : CCX_CONFIG.channel;
-  const masterKey = process.env.THREAD_MASTER_KEY ?? CCX_CONFIG.masterKey;
+    : (haOptions?.thread_channel ?? CCX_CONFIG.channel);
+  const masterKey =
+    process.env.THREAD_MASTER_KEY ??
+    haOptions?.thread_master_key ??
+    CCX_CONFIG.masterKey;
 
   if (!masterKey) {
     console.error(
@@ -95,7 +95,13 @@ async function main() {
 
   // ── Load config ───────────────────────────────────────────
 
-  const { pairings, wizDimScaling } = loadBridgeConfig(configPath);
+  const { pairings, wizDimScaling } =
+    haOptions?.pairings && haOptions.pairings.length > 0
+      ? loadBridgeConfigFromOptions(haOptions)
+      : loadBridgeConfig(
+          process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.yaml"),
+        );
+
   const dataDir = resolveDataDir();
   const presetZones = loadPresetZones(dataDir);
 
@@ -147,8 +153,12 @@ async function main() {
 
   // ── Startup banner ────────────────────────────────────────
 
+  const configSource = haOptions?.pairings?.length
+    ? "HA options"
+    : "config file";
   console.log("CCX→WiZ Bridge (serial sniffer)");
   console.log("================================");
+  console.log(`Config:  ${configSource}`);
   console.log(`Sniffer: ${snifferDevice}`);
   console.log(`Channel: ${channel}`);
   console.log(`Decrypt: enabled (key: ${masterKey.slice(0, 8)}...)`);
