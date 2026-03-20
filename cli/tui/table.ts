@@ -126,13 +126,13 @@ export function getPacketLayout(
     proto: 1,
     dir: 2,
     seq: 4,
-    type: 16,
-    device: 20,
+    type: 12,
+    device: 24,
     action: 12,
     state: MIN_PACKET_STATE_WIDTH,
     raw: 0,
     delta: 8,
-    slot: 12,
+    slot: 10,
   };
 
   // Column count: fixed columns + state + (raw if shown)

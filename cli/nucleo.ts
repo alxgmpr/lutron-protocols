@@ -34,7 +34,11 @@ import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
 import { DeviceClassNames } from "../protocol/cca.protocol";
-import { identifyPacket, parseFieldValue } from "../protocol/protocol-ui";
+import {
+  fingerprintDevice,
+  identifyPacket,
+  parseFieldValue,
+} from "../protocol/protocol-ui";
 import { LineEditor } from "./tui/line-editor";
 import { type IScreen, Screen } from "./tui/screen";
 import {
@@ -609,15 +613,28 @@ function displayCcaPacket(
   } else if (category === "PAIRING") {
     actionText = "PAIR";
     actionColor = MAGENTA;
-    // Translate device_class — read raw byte since hex format doesn't auto-decode
-    const dcField = identified.fields.find((f) => f.name === "device_class");
-    if (dcField && data.length > dcField.offset) {
-      const code = data[dcField.offset];
-      const name =
-        DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
-      stateParts.push(`class=${name}`);
+    // Format byte identifies what kind of pairing data this carries
+    const fmtByte = data.length > 7 ? data[7] : -1;
+    // Device fingerprint — most specific identification
+    const fp = fingerprintDevice(data);
+    if (fp.key) {
+      stateParts.push(fp.name);
+    } else {
+      // Fall back to device_class when no fingerprint matched
+      const dcField = identified.fields.find((f) => f.name === "device_class");
+      if (dcField && data.length > dcField.offset) {
+        const code = data[dcField.offset];
+        if (code > 0) {
+          const name =
+            DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
+          stateParts.push(`class=${name}`);
+        }
+      }
     }
     fieldValues.delete("device_class");
+    if (fmtByte >= 0) {
+      stateParts.push(`fmt=${fmtByte.toString(16).padStart(2, "0")}`);
+    }
   } else if (category === "HANDSHAKE") {
     actionText = "HS";
     actionColor = RED;
