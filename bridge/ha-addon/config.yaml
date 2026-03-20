@@ -1,0 +1,24 @@
+name: CCX-WiZ Bridge
+description: Lutron Thread → WiZ smart bulb bridge via nRF 802.15.4 sniffer
+version: 0.1.0
+slug: ccx-bridge
+arch:
+  - aarch64
+  - amd64
+init: false
+host_network: true
+devices:
+  - /dev/ttyACM0
+map:
+  - config:rw
+  - share:rw
+environment:
+  CCX_DATA_DIR: /config/ccx-bridge
+  CCX_CONFIG_PATH: /config/ccx-bridge/ccx-bridge.json
+  SNIFFER_DEVICE: /dev/ttyACM0
+options:
+  thread_channel: 25
+  thread_master_key: ""
+schema:
+  thread_channel: int
+  thread_master_key: password

@@ -22,8 +22,20 @@
  *   CCX_CONFIG_PATH   — path to ccx-bridge.json (default: /config/ccx-bridge.json)
  */
 
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+
+// HA add-on: read /data/options.json and apply as env var fallbacks
+const HA_OPTIONS = "/data/options.json";
+if (existsSync(HA_OPTIONS)) {
+  try {
+    const opts = JSON.parse(readFileSync(HA_OPTIONS, "utf8"));
+    if (opts.thread_channel && !process.env.THREAD_CHANNEL)
+      process.env.THREAD_CHANNEL = String(opts.thread_channel);
+    if (opts.thread_master_key && !process.env.THREAD_MASTER_KEY)
+      process.env.THREAD_MASTER_KEY = opts.thread_master_key;
+  } catch {}
+}
 
 // Set CCX_DATA_DIR BEFORE importing ccx/config (which loads LEAP data at import time).
 // Must happen before dynamic import() since ESM hoists static imports.
@@ -48,130 +60,130 @@ async function main() {
   // ── Config resolution ─────────────────────────────────────
 
   const configPath =
-  process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.json");
-const snifferDevice = process.env.SNIFFER_DEVICE ?? detectSnifferPort();
-const channel = process.env.THREAD_CHANNEL
-  ? parseInt(process.env.THREAD_CHANNEL, 10)
-  : CCX_CONFIG.channel;
-const masterKey = process.env.THREAD_MASTER_KEY ?? CCX_CONFIG.masterKey;
+    process.env.CCX_CONFIG_PATH ?? join(configDir, "ccx-bridge.json");
+  const snifferDevice = process.env.SNIFFER_DEVICE ?? detectSnifferPort();
+  const channel = process.env.THREAD_CHANNEL
+    ? parseInt(process.env.THREAD_CHANNEL, 10)
+    : CCX_CONFIG.channel;
+  const masterKey = process.env.THREAD_MASTER_KEY ?? CCX_CONFIG.masterKey;
 
-if (!masterKey) {
-  console.error(
-    "Error: No Thread master key. Set THREAD_MASTER_KEY or provide LEAP data.",
-  );
-  process.exit(1);
-}
-if (!channel) {
-  console.error(
-    "Error: No Thread channel. Set THREAD_CHANNEL or provide LEAP data.",
-  );
-  process.exit(1);
-}
+  if (!masterKey) {
+    console.error(
+      "Error: No Thread master key. Set THREAD_MASTER_KEY or provide LEAP data.",
+    );
+    process.exit(1);
+  }
+  if (!channel) {
+    console.error(
+      "Error: No Thread channel. Set THREAD_CHANNEL or provide LEAP data.",
+    );
+    process.exit(1);
+  }
 
-// ── Load config ───────────────────────────────────────────
+  // ── Load config ───────────────────────────────────────────
 
-const { pairings, wizDimScaling } = loadBridgeConfig(configPath);
-const dataDir = resolveDataDir();
-const presetZones = loadPresetZones(dataDir);
+  const { pairings, wizDimScaling } = loadBridgeConfig(configPath);
+  const dataDir = resolveDataDir();
+  const presetZones = loadPresetZones(dataDir);
 
-const watchedZones = new Set<number>();
-for (const p of pairings) watchedZones.add(p.zoneId);
+  const watchedZones = new Set<number>();
+  for (const p of pairings) watchedZones.add(p.zoneId);
 
-// ── Build pipeline ────────────────────────────────────────
+  // ── Build pipeline ────────────────────────────────────────
 
-const devices = getAllDevices().map((d: any) => ({
-  serial: d.serial,
-  eui64: d.eui64,
-}));
+  const devices = getAllDevices().map((d: any) => ({
+    serial: d.serial,
+    eui64: d.eui64,
+  }));
 
-const sniffer = new SerialSniffer({ port: snifferDevice, channel });
-const pipeline = new FramePipeline({ masterKey, knownDevices: devices });
-const bridge = new BridgeCore({
-  pairings,
-  presetZones,
-  watchedZones,
-  wizDimScaling,
-});
+  const sniffer = new SerialSniffer({ port: snifferDevice, channel });
+  const pipeline = new FramePipeline({ masterKey, knownDevices: devices });
+  const bridge = new BridgeCore({
+    pairings,
+    presetZones,
+    watchedZones,
+    wizDimScaling,
+  });
 
-// ── Wire everything together ──────────────────────────────
+  // ── Wire everything together ──────────────────────────────
 
-pipeline.onAddressLearned = (shortAddr: number, eui64: string) => {
-  console.log(`  [addr] learned 0x${shortAddr.toString(16)} → ${eui64}`);
-};
+  pipeline.onAddressLearned = (shortAddr: number, eui64: string) => {
+    console.log(`  [addr] learned 0x${shortAddr.toString(16)} → ${eui64}`);
+  };
 
-bridge.on("log", (msg: string) => {
-  console.log(msg);
-});
+  bridge.on("log", (msg: string) => {
+    console.log(msg);
+  });
 
-sniffer.on("frame", (frame: Buffer) => {
-  const pkt = pipeline.process(frame);
-  if (pkt) bridge.handlePacket(pkt);
-});
+  sniffer.on("frame", (frame: Buffer) => {
+    const pkt = pipeline.process(frame);
+    if (pkt) bridge.handlePacket(pkt);
+  });
 
-sniffer.on("error", (err: Error) => {
-  console.error(`[sniffer] ${err.message}`);
-});
+  sniffer.on("error", (err: Error) => {
+    console.error(`[sniffer] ${err.message}`);
+  });
 
-sniffer.on("closed", () => {
-  console.log("[sniffer] Port closed, will reconnect...");
-});
+  sniffer.on("closed", () => {
+    console.log("[sniffer] Port closed, will reconnect...");
+  });
 
-sniffer.on("ready", () => {
-  console.log("Listening... (Ctrl+C to stop)\n");
-});
+  sniffer.on("ready", () => {
+    console.log("Listening... (Ctrl+C to stop)\n");
+  });
 
-// ── Startup banner ────────────────────────────────────────
+  // ── Startup banner ────────────────────────────────────────
 
-console.log("CCX→WiZ Bridge (serial sniffer)");
-console.log("================================");
-console.log(`Sniffer: ${snifferDevice}`);
-console.log(`Channel: ${channel}`);
-console.log(`Decrypt: enabled (key: ${masterKey.slice(0, 8)}...)`);
-console.log(`Address table: ${pipeline.addressCount} EUI-64s pre-loaded`);
+  console.log("CCX→WiZ Bridge (serial sniffer)");
+  console.log("================================");
+  console.log(`Sniffer: ${snifferDevice}`);
+  console.log(`Channel: ${channel}`);
+  console.log(`Decrypt: enabled (key: ${masterKey.slice(0, 8)}...)`);
+  console.log(`Address table: ${pipeline.addressCount} EUI-64s pre-loaded`);
 
-if (pairings.length > 0) {
-  console.log(`Pairings:`);
-  for (const p of pairings) {
-    const ips = p.wizIps.join(", ");
-    if (p.warmDimTable) {
-      console.log(
-        `  ${p.name} (zone ${p.zoneId}) → ${ips} (warm dim: ${p.warmDimTable[0]}→${p.warmDimTable[100]}K)`,
-      );
-    } else {
-      console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}`);
+  if (pairings.length > 0) {
+    console.log(`Pairings:`);
+    for (const p of pairings) {
+      const ips = p.wizIps.join(", ");
+      if (p.warmDimTable) {
+        console.log(
+          `  ${p.name} (zone ${p.zoneId}) → ${ips} (warm dim: ${p.warmDimTable[0]}→${p.warmDimTable[100]}K)`,
+        );
+      } else {
+        console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}`);
+      }
     }
   }
-}
 
-if (presetZones.size > 0) {
-  console.log(
-    `Scenes: ${presetZones.size} presets loaded from preset-zones.json`,
-  );
-}
-console.log("");
+  if (presetZones.size > 0) {
+    console.log(
+      `Scenes: ${presetZones.size} presets loaded from preset-zones.json`,
+    );
+  }
+  console.log("");
 
-// ── Start ─────────────────────────────────────────────────
+  // ── Start ─────────────────────────────────────────────────
 
-sniffer.start().catch((err: Error) => {
-  console.error(`Failed to start sniffer: ${err.message}`);
-  process.exit(1);
-});
+  sniffer.start().catch((err: Error) => {
+    console.error(`Failed to start sniffer: ${err.message}`);
+    process.exit(1);
+  });
 
-process.on("SIGINT", () => {
-  console.log("\nStopping...");
-  sniffer.stop();
-  console.log(
-    `\n${bridge.packetCount} packets seen, ${bridge.matchCount} level commands forwarded.`,
-  );
-  bridge.destroy();
-  process.exit(0);
-});
+  process.on("SIGINT", () => {
+    console.log("\nStopping...");
+    sniffer.stop();
+    console.log(
+      `\n${bridge.packetCount} packets seen, ${bridge.matchCount} level commands forwarded.`,
+    );
+    bridge.destroy();
+    process.exit(0);
+  });
 
-process.on("SIGTERM", () => {
-  sniffer.stop();
-  bridge.destroy();
-  process.exit(0);
-});
+  process.on("SIGTERM", () => {
+    sniffer.stop();
+    bridge.destroy();
+    process.exit(0);
+  });
 }
 
 main();
