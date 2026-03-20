@@ -22,7 +22,7 @@
 
 import { spawn } from "child_process";
 import { createSocket } from "dgram";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import {
   CCX_CONFIG,
@@ -586,6 +586,11 @@ function detectSnifferDevice(): string {
   for (const path of candidates) {
     if (existsSync(path)) return path;
   }
+  // Fall back to scanning /dev for any usbmodem device
+  try {
+    const entries = readdirSync("/dev").filter(e => e.startsWith("cu.usbmodem")).sort();
+    if (entries.length > 0) return `/dev/${entries[0]}`;
+  } catch {}
   return "/dev/cu.usbmodem201401";
 }
 
@@ -687,9 +692,14 @@ function main() {
     ? `udp.port == ${CCX_CONFIG.udpPort} or (wpan.security == 1 and wpan.frame_type == 1)`
     : `udp.port == ${CCX_CONFIG.udpPort}`;
 
+  // Build extcap preference key from device path (e.g. /dev/cu.usbmodem201401 → _dev_cu_usbmodem201401)
+  const extcapKey = iface.replace(/\//g, "_").replace(/\./g, "_");
+
   const tsharkArgs = [
     "-i",
     iface,
+    "-o", `extcap.${extcapKey}.channel:${CCX_CONFIG.channel}`,
+    "-o", `extcap.${extcapKey}.metadata:ieee802154-tap`,
     "-l", // line-buffered
     "-Y",
     displayFilter,
