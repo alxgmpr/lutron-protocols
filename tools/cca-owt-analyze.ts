@@ -189,18 +189,37 @@ function summarizeVariablePositions(packets: MatchedPacket[]): string[] {
 
 /** Decode sensor-specific payload for format 0x0B (light level) and 0x09 (test) */
 function decodeSensorPayload(bytes: number[]): string | null {
-  if (bytes.length < 22) return null;
+  if (bytes.length < 19) return null;
   const fmt = bytes[7];
   if (fmt === 0x0b) {
-    const luxHi = bytes[16].toString(16).toUpperCase().padStart(2, "0");
-    const luxLo = bytes[17].toString(16).toUpperCase().padStart(2, "0");
-    const lux = parseLux16bit([luxHi, luxLo]);
     const frame = bytes[8];
-    const flags = bytes[18];
+    const subtype = bytes[10];
+    // Occupancy sensor: frame=0x03, subtype=0x04
+    if (frame === 0x03 && subtype === 0x04) {
+      const event = bytes[11];
+      return event === 0x01
+        ? "OCCUPIED"
+        : `occupancy event=0x${event.toString(16).padStart(2, "0")}`;
+    }
+    // Daylight sensor: frame=0x00 (normal reading) or 0x03 with subtype=0x01 (calibration)
+    const luxHi =
+      bytes[16]?.toString(16).toUpperCase().padStart(2, "0") ?? "00";
+    const luxLo =
+      bytes[17]?.toString(16).toUpperCase().padStart(2, "0") ?? "00";
+    const lux = parseLux16bit([luxHi, luxLo]);
+    const flags = bytes[18] ?? 0;
     const parts = [lux];
     if (frame === 0x03) parts.push("calibration");
     if (flags === 0x03) parts.push("post-test");
     return parts.join(" ");
+  }
+  if (fmt === 0x0c) {
+    const subtype = bytes[8];
+    if (subtype === 0x04) {
+      const timeout = bytes[18] ?? 0;
+      return `VACANT (timeout param=0x${timeout.toString(16).padStart(2, "0")})`;
+    }
+    return null; // Don't decode non-sensor 0x0C packets
   }
   if (fmt === 0x09) {
     const btnId = bytes[15];

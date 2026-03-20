@@ -66,6 +66,7 @@ static const uint8_t PKT_FADE_CONFIG = 0xF8;
 static const uint8_t PKT_ZONE_ASSIGN = 0xF9;
 static const uint8_t PKT_SENSOR_LEVEL = 0xFA;
 static const uint8_t PKT_SENSOR_TEST = 0xFB;
+static const uint8_t PKT_SENSOR_VACANT = 0xFC;
 
 // Button codes
 static const uint8_t BTN_ON = 0x02;
@@ -233,6 +234,7 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xF9: return "ZONE_ASSIGN";
     case 0xFA: return "SENSOR_LEVEL";
     case 0xFB: return "SENSOR_TEST";
+    case 0xFC: return "SENSOR_VACANT";
     default: return "UNKNOWN";
   }
 }
@@ -293,6 +295,7 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xE0:
     case 0xFA:
     case 0xFB:
+    case 0xFC:
       return true;
     default:
       return false;

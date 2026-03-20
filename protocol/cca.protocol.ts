@@ -416,6 +416,7 @@ const stateFormatDisc: Record<number, string> = {
 const buttonFormatDisc: Record<number, string> = {
   0x09: "SENSOR_TEST",
   0x0b: "SENSOR_LEVEL",
+  0x0c: "SENSOR_VACANT",
 };
 
 /** Format discrimination for long packet types (0xA1-0xA3) */
@@ -813,16 +814,47 @@ const ZONE_ASSIGN = packetType(
 );
 
 // Sensor virtual types (format-discriminated from button type bytes)
+//
+// Format 0x0B is shared by daylight and occupancy sensors. Byte 8 (sensor_frame)
+// and byte 10 (sensor_subtype) distinguish them:
+//   Daylight: frame=0x00, subtype at byte 10 is part of serial repeat (offset 9)
+//   Occupancy: frame=0x03, subtype=0x04 at byte 10, serial at offset 12
+// The field defs below cover the daylight case (frame=0x00). The occupancy
+// case (frame=0x03) has the serial at offset 12 and subtype/event at 10-11.
 const sensorLevelFields: FieldDef[] = [
   field("type", 0, 1, "hex"),
   field("sequence", 1, 1, "decimal"),
   field("device_id", 2, 4, "device_id_be"),
   field("protocol", 6, 1, "hex"),
-  field("format", 7, 1, "hex", "0x0B = sensor level"),
-  field("sensor_frame", 8, 1, "hex", "0x00=normal, 0x03=calibration"),
-  field("device_repeat", 9, 4, "device_id_be"),
-  field("component", 14, 1, "hex", "0xD5=daylight sensor"),
-  field("lux_reading", 16, 2, "lux_16bit", "Light level (0-1600 lux)"),
+  field(
+    "format",
+    7,
+    1,
+    "hex",
+    "0x0B = sensor event (daylight level or occupancy)",
+  ),
+  field(
+    "sensor_frame",
+    8,
+    1,
+    "hex",
+    "0x00=daylight normal, 0x03=occupancy or calibration",
+  ),
+  field(
+    "sensor_subtype",
+    10,
+    1,
+    "hex",
+    "0x01=daylight, 0x04=occupancy (only when frame=0x03)",
+  ),
+  field("component", 14, 1, "hex", "0xD5=daylight sensor component"),
+  field(
+    "lux_reading",
+    16,
+    2,
+    "lux_16bit",
+    "Light level 0-1600 lux (daylight only)",
+  ),
   field("flags", 18, 1, "hex", "0x03=first reading after test"),
   field("crc", 22, 2, "hex"),
 ];
@@ -831,7 +863,7 @@ const SENSOR_LEVEL = packetType(
   0xfa,
   24,
   "SENSOR",
-  "Daylight sensor light level (format 0x0B)",
+  "Sensor event: daylight level or occupancy detected (format 0x0B)",
   "big",
   sensorLevelFields,
   { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
@@ -857,6 +889,34 @@ const SENSOR_TEST = packetType(
   "Sensor test button press/release (format 0x09)",
   "big",
   sensorTestFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+const sensorVacantFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0C = vacancy event"),
+  field("sensor_subtype", 8, 1, "hex", "0x04=occupancy sensor"),
+  field("device_repeat", 13, 4, "device_id_be"),
+  field(
+    "timeout_param",
+    18,
+    1,
+    "hex",
+    "Possibly programmed timeout (0x47=71 observed)",
+  ),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_VACANT = packetType(
+  0xfc,
+  24,
+  "SENSOR",
+  "Occupancy sensor vacancy event (format 0x0C)",
+  "big",
+  sensorVacantFields,
   { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
 );
 
@@ -1048,6 +1108,7 @@ export const CCA: CCAProtocolDef = {
     ZONE_ASSIGN,
     SENSOR_LEVEL,
     SENSOR_TEST,
+    SENSOR_VACANT,
   },
   sequences,
   pairingPresets,
