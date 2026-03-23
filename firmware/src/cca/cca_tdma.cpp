@@ -445,8 +445,14 @@ static bool fire_job(CcaTdmaJob* job, uint32_t now_ms)
         return false;
     }
 
-    /* Schedule next retransmit at our slot in the next frame */
-    job->next_fire_ms = next_slot_time(job->slot, now_ms);
+    /* Schedule next retransmit one frame period after the PREVIOUS scheduled
+     * fire time, not from now_ms. This keeps 75ms spacing regardless of TX
+     * duration (~5ms). If we've drifted too far, fall back to now_ms. */
+    uint32_t next = job->next_fire_ms + frame_.period_ms;
+    if ((int32_t)(next - now_ms) < 2 || (int32_t)(next - now_ms) > (int32_t)frame_.period_ms) {
+        next = next_slot_time(job->slot, now_ms);
+    }
+    job->next_fire_ms = next;
     return true;
 }
 

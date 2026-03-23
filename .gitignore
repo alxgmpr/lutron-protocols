@@ -97,3 +97,4 @@ tmp/
 
 # Firmware secrets (Thread network config)
 firmware/src/ccx/thread_config.h
+Drivers/

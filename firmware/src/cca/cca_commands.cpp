@@ -220,11 +220,11 @@ static void exec_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t leve
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Zone ID in little-endian */
-        packet[2] = zone_id & 0xFF;
-        packet[3] = (zone_id >> 8) & 0xFF;
-        packet[4] = (zone_id >> 16) & 0xFF;
-        packet[5] = (zone_id >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (zone_id >> 24) & 0xFF;
+        packet[3] = (zone_id >> 16) & 0xFF;
+        packet[4] = (zone_id >> 8) & 0xFF;
+        packet[5] = zone_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_LEVEL;
@@ -292,11 +292,11 @@ static void exec_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8_t fa
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Source: bridge zone ID (little-endian) */
-        packet[2] = zone_id & 0xFF;
-        packet[3] = (zone_id >> 8) & 0xFF;
-        packet[4] = (zone_id >> 16) & 0xFF;
-        packet[5] = (zone_id >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (zone_id >> 24) & 0xFF;
+        packet[3] = (zone_id >> 16) & 0xFF;
+        packet[4] = (zone_id >> 8) & 0xFF;
+        packet[5] = zone_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_LEVEL;
@@ -358,11 +358,11 @@ static void exec_pico_level(uint32_t device_id, uint8_t level_pct)
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Device ID in little-endian */
-        packet[2] = device_id & 0xFF;
-        packet[3] = (device_id >> 8) & 0xFF;
-        packet[4] = (device_id >> 16) & 0xFF;
-        packet[5] = (device_id >> 24) & 0xFF;
+        /* Device ID (source) in big-endian */
+        packet[2] = (device_id >> 24) & 0xFF;
+        packet[3] = (device_id >> 16) & 0xFF;
+        packet[4] = (device_id >> 8) & 0xFF;
+        packet[5] = device_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_LEVEL;
@@ -421,11 +421,11 @@ static void exec_state_report(uint32_t device_id, uint8_t level_pct)
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Device ID in little-endian */
-        packet[2] = device_id & 0xFF;
-        packet[3] = (device_id >> 8) & 0xFF;
-        packet[4] = (device_id >> 16) & 0xFF;
-        packet[5] = (device_id >> 24) & 0xFF;
+        /* Device ID (source) in big-endian */
+        packet[2] = (device_id >> 24) & 0xFF;
+        packet[3] = (device_id >> 16) & 0xFF;
+        packet[4] = (device_id >> 8) & 0xFF;
+        packet[5] = device_id & 0xFF;
 
         packet[6] = 0x00;
         packet[7] = QS_FMT_STATE;
@@ -525,11 +525,11 @@ static void exec_unpair(uint32_t zone_id, uint32_t target_id)
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Zone ID little-endian */
-        packet[2] = zone_id & 0xFF;
-        packet[3] = (zone_id >> 8) & 0xFF;
-        packet[4] = (zone_id >> 16) & 0xFF;
-        packet[5] = (zone_id >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (zone_id >> 24) & 0xFF;
+        packet[3] = (zone_id >> 16) & 0xFF;
+        packet[4] = (zone_id >> 8) & 0xFF;
+        packet[5] = zone_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_CTRL;   /* format 0x09: device control / prepare */
@@ -559,11 +559,11 @@ static void exec_unpair(uint32_t zone_id, uint32_t target_id)
             packet[0] = 0x81 + (rep % 3);
             packet[1] = seq;
 
-            /* Zone ID little-endian */
-            packet[2] = zone_id & 0xFF;
-            packet[3] = (zone_id >> 8) & 0xFF;
-            packet[4] = (zone_id >> 16) & 0xFF;
-            packet[5] = (zone_id >> 24) & 0xFF;
+            /* Source ID (zone/subnet) in big-endian */
+            packet[2] = (zone_id >> 24) & 0xFF;
+            packet[3] = (zone_id >> 16) & 0xFF;
+            packet[4] = (zone_id >> 8) & 0xFF;
+            packet[5] = zone_id & 0xFF;
 
             packet[6] = QS_PROTO_RADIO_TX;
             packet[7] = QS_FMT_BEACON;  /* format 0x0C: unpair */
@@ -634,11 +634,11 @@ static void exec_led_config(uint32_t zone_id, uint32_t target_id, uint8_t led_mo
         packet[0] = 0xA1 + (rep % 3);
         packet[1] = seq;
 
-        /* Zone ID little-endian */
-        packet[2] = active_zone & 0xFF;
-        packet[3] = (active_zone >> 8) & 0xFF;
-        packet[4] = (active_zone >> 16) & 0xFF;
-        packet[5] = (active_zone >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (active_zone >> 24) & 0xFF;
+        packet[3] = (active_zone >> 16) & 0xFF;
+        packet[4] = (active_zone >> 8) & 0xFF;
+        packet[5] = active_zone & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_LED;
@@ -691,11 +691,11 @@ static void exec_fade_config(uint32_t zone_id, uint32_t target_id, uint16_t fade
         packet[0] = 0xA1 + (rep % 3);
         packet[1] = seq;
 
-        /* Zone ID little-endian */
-        packet[2] = active_zone & 0xFF;
-        packet[3] = (active_zone >> 8) & 0xFF;
-        packet[4] = (active_zone >> 16) & 0xFF;
-        packet[5] = (active_zone >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (active_zone >> 24) & 0xFF;
+        packet[3] = (active_zone >> 16) & 0xFF;
+        packet[4] = (active_zone >> 8) & 0xFF;
+        packet[5] = active_zone & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_FADE;
@@ -755,11 +755,11 @@ static void exec_trim_config(uint32_t zone_id, uint32_t target_id, uint8_t high_
 
         uint32_t active_zone = (rep == 0) ? zone_id : (zone_id + 2);
 
-        /* Zone ID little-endian */
-        packet[2] = active_zone & 0xFF;
-        packet[3] = (active_zone >> 8) & 0xFF;
-        packet[4] = (active_zone >> 16) & 0xFF;
-        packet[5] = (active_zone >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (active_zone >> 24) & 0xFF;
+        packet[3] = (active_zone >> 16) & 0xFF;
+        packet[4] = (active_zone >> 8) & 0xFF;
+        packet[5] = active_zone & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_TRIM;
@@ -807,11 +807,11 @@ static void exec_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t phas
 
         uint32_t active_zone = (rep == 0) ? zone_id : (zone_id + 2);
 
-        /* Zone ID little-endian */
-        packet[2] = active_zone & 0xFF;
-        packet[3] = (active_zone >> 8) & 0xFF;
-        packet[4] = (active_zone >> 16) & 0xFF;
-        packet[5] = (active_zone >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (active_zone >> 24) & 0xFF;
+        packet[3] = (active_zone >> 16) & 0xFF;
+        packet[4] = (active_zone >> 8) & 0xFF;
+        packet[5] = active_zone & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_TRIM;  /* trim/phase share same format */
@@ -1207,11 +1207,11 @@ static void exec_raw_cmd(uint32_t zone_id, uint32_t target_id, uint8_t format,
         packet[0] = type_base + (rep % 3);
         packet[1] = seq;
 
-        /* Zone/source ID little-endian */
-        packet[2] = zone_id & 0xFF;
-        packet[3] = (zone_id >> 8) & 0xFF;
-        packet[4] = (zone_id >> 16) & 0xFF;
-        packet[5] = (zone_id >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (zone_id >> 24) & 0xFF;
+        packet[3] = (zone_id >> 16) & 0xFF;
+        packet[4] = (zone_id >> 8) & 0xFF;
+        packet[5] = zone_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = format;
@@ -1271,11 +1271,11 @@ static void exec_scene_execute(uint32_t zone_id, uint32_t target_id, uint8_t lev
         packet[0] = 0x81 + (rep % 3);
         packet[1] = seq;
 
-        /* Zone ID little-endian */
-        packet[2] = zone_id & 0xFF;
-        packet[3] = (zone_id >> 8) & 0xFF;
-        packet[4] = (zone_id >> 16) & 0xFF;
-        packet[5] = (zone_id >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (zone_id >> 24) & 0xFF;
+        packet[3] = (zone_id >> 16) & 0xFF;
+        packet[4] = (zone_id >> 8) & 0xFF;
+        packet[5] = zone_id & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_LEVEL;       /* 0x0E — same as bridge level */
@@ -1333,11 +1333,11 @@ static void exec_dim_config(uint32_t zone_id, uint32_t target_id,
 
         uint32_t active_zone = (rep == 0) ? zone_id : (zone_id + 2);
 
-        /* Zone ID little-endian */
-        packet[2] = active_zone & 0xFF;
-        packet[3] = (active_zone >> 8) & 0xFF;
-        packet[4] = (active_zone >> 16) & 0xFF;
-        packet[5] = (active_zone >> 24) & 0xFF;
+        /* Source ID (zone/subnet) in big-endian */
+        packet[2] = (active_zone >> 24) & 0xFF;
+        packet[3] = (active_zone >> 16) & 0xFF;
+        packet[4] = (active_zone >> 8) & 0xFF;
+        packet[5] = active_zone & 0xFF;
 
         packet[6] = QS_PROTO_RADIO_TX;
         packet[7] = QS_FMT_DIM_CAP;  /* 0x13 — dimming capability format */

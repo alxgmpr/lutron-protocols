@@ -53,7 +53,7 @@ inline void cca_write_id_le(uint8_t* dst, uint32_t id)
  * Build SET_LEVEL packet (format 0x0E, 22 bytes)
  *
  * Matches exec_bridge_level layout from cca_commands.cpp.
- * Source ID in little-endian (bytes 2-5), target in big-endian (bytes 9-12).
+ * Source ID in big-endian (bytes 2-5), target in big-endian (bytes 9-12).
  * ----------------------------------------------------------------------- */
 inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t target_id,
                                    uint8_t addr_mode, uint16_t level16, uint8_t fade_qs,
@@ -64,8 +64,8 @@ inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t tar
     pkt[0] = type_byte;       /* 0x81/82/83 (rotated by TDMA engine if type_rotate=1) */
     /* pkt[1] = seq — set by TDMA engine */
 
-    /* Source ID (zone/bridge) in little-endian */
-    cca_write_id_le(pkt + 2, source_id);
+    /* Source ID (zone/subnet) in big-endian */
+    cca_write_id_be(pkt + 2, source_id);
 
     pkt[6] = QS_PROTO_RADIO_TX;
     pkt[7] = QS_FMT_LEVEL;
@@ -183,7 +183,7 @@ inline size_t cca_build_beacon(uint8_t* pkt, uint32_t zone_id, uint8_t type_byte
 
     pkt[0] = type_byte;       /* PKT_BEACON_91/92/93 */
     /* pkt[1] = seq */
-    cca_write_id_le(pkt + 2, zone_id);
+    cca_write_id_be(pkt + 2, zone_id);
 
     pkt[6] = QS_PROTO_RADIO_TX;
     pkt[7] = QS_FMT_BEACON;
