@@ -145,6 +145,7 @@ set(APP_SOURCES
     src/net/stream.cpp
     src/cca/cc1101.c
     src/cca/cca_task.cpp
+    src/cca/cca_tdma.cpp
     src/cca/cca_commands.cpp
     src/cca/cca_pairing.cpp
     src/ccx/ccx_task.cpp

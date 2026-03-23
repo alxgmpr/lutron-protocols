@@ -336,7 +336,7 @@ void cc1101_init(void)
     cc1101_strobe(CC1101_SIDLE);
     HAL_Delay(1);
 
-    /* Frequency: 433.603 MHz — tuned to our local network */
+    /* Frequency: 433.602844 MHz */
     cc1101_write_register(CC1101_FREQ2, 0x10);
     cc1101_write_register(CC1101_FREQ1, 0xAD);
     cc1101_write_register(CC1101_FREQ0, 0x52);
@@ -360,8 +360,7 @@ void cc1101_init(void)
     cc1101_write_register(CC1101_CHANNR, 0x00);
 
     /* Frequency synthesizer */
-    /* === Lutron RE change #3: IF=380kHz for better image rejection === */
-    cc1101_write_register(CC1101_FSCTRL1, 0x0F);
+    cc1101_write_register(CC1101_FSCTRL1, 0x06);
     cc1101_write_register(CC1101_FSCTRL0, 0x00);
 
     /* Auto-calibration on IDLE→RX/TX, stay in RX after RX */
@@ -371,7 +370,7 @@ void cc1101_init(void)
     /* AGC */
     cc1101_write_register(CC1101_AGCCTRL2, 0x43);
     cc1101_write_register(CC1101_AGCCTRL1, 0x40);
-    cc1101_write_register(CC1101_AGCCTRL0, 0xFF);
+    cc1101_write_register(CC1101_AGCCTRL0, 0x91);
 
     /* Frequency offset compensation & bit sync */
     cc1101_write_register(CC1101_FOCCFG, 0x16);
@@ -386,15 +385,6 @@ void cc1101_init(void)
     cc1101_write_register(CC1101_FSCAL2, 0x2A);
     cc1101_write_register(CC1101_FSCAL1, 0x00);
     cc1101_write_register(CC1101_FSCAL0, 0x1F);
-
-    /* === Lutron RE change #1: Improved RX sensitivity (TEST2=0xAC) === */
-    cc1101_write_register(CC1101_TEST2, 0xAC);
-
-    /* === Lutron RE change #2: AGC max hysteresis (AGCCTRL0=0xFF) === */
-    /* Holds gain longer, reduces gain hunting on bursty CCA signals */
-
-    /* === Lutron RE change #4: RX terminate on weak signal === */
-    cc1101_write_register(CC1101_MCSM2, 0x74);
 
     /* GDO0/2: sync word detect (0x06) — mirror both for flexible wiring */
     cc1101_write_register(CC1101_IOCFG2, 0x06);
@@ -449,7 +439,7 @@ void cc1101_start_rx(void)
     cc1101_write_register(CC1101_PKTCTRL1, 0x00);
     cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
 
-    /* FIFO threshold (CLOSE_IN_RX=3 breaks our packet-mode RX — keep original) */
+    /* FIFO threshold */
     cc1101_write_register(CC1101_FIFOTHR, 0x07);
 
     /* GDO0: sync word detect (assert) / end of packet (deassert) */

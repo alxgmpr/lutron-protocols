@@ -161,6 +161,7 @@ interface CcaSlotIndicator {
   status: "LEARN" | "TRACK" | "LOCK";
   confidencePct: number;
   dSeq?: number;
+  dtMs?: number;
   errMs?: number;
   missedPackets?: number;
 }
@@ -432,7 +433,7 @@ function updateCcaSlotTracker(
     missedPackets = sampleDSeq / stride - 1;
   }
 
-  return { status, confidencePct, dSeq: sampleDSeq, errMs, missedPackets };
+  return { status, confidencePct, dSeq: sampleDSeq, dtMs: dtMs > 0 && dtMs <= CCA_SLOT_MAX_DT_MS ? dtMs : undefined, errMs, missedPackets };
 }
 
 // ============================================================================
@@ -651,23 +652,29 @@ function displayCcaPacket(
   }
 
   const slot = updateCcaSlotTracker(data, isTx, radioTs);
-  const deltaText = deltaMs > 0 ? `+${deltaMs}ms` : "";
-  let slotText = "";
+  const tdmaSlot = seq & 7;
+
+  // Per-device delta from slot tracker (falls back to global delta)
+  let deltaText = "";
+  if (slot?.dtMs !== undefined && slot.dtMs > 0) {
+    deltaText = `+${slot.dtMs}ms`;
+  } else if (deltaMs > 0) {
+    deltaText = `+${deltaMs}ms`;
+  }
+
+  // SLOT column: slot#, status, stride, error
+  let slotText = `s${tdmaSlot}`;
   let slotColor = WHITE;
   if (slot) {
     slotColor =
       slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
-    const slotLabel = lockDetails
-      ? `${slot.status}${slot.confidencePct}%`
-      : slot.status;
-    const slotParts: string[] = [slotLabel];
-    if (slot.dSeq && slot.dSeq > 0) slotParts.push(`d${slot.dSeq}`);
-    if (lockDetails) {
-      const errPart =
-        slot.errMs !== undefined
-          ? `e${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms`
-          : "e?";
-      slotParts.push(errPart);
+    const slotParts: string[] = [`s${tdmaSlot}`];
+    if (slot.status !== "LEARN") {
+      slotParts.push(lockDetails ? `${slot.status}${slot.confidencePct}%` : slot.status);
+    }
+    if (slot.dSeq && slot.dSeq > 0) slotParts.push(`Δ${slot.dSeq}`);
+    if (lockDetails && slot.errMs !== undefined) {
+      slotParts.push(`${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms`);
     }
     if (slot.missedPackets && slot.missedPackets > 0) {
       slotParts.push(`${RED}miss:${slot.missedPackets}${RESET}`);
@@ -686,7 +693,7 @@ function displayCcaPacket(
     protoColor: CYAN,
     direction,
     dirColor,
-    seq: `#${seq}`,
+    seq: `#${seq.toString(16).toUpperCase().padStart(2, "0")}`,
     type: typeName,
     typeColor,
     device: deviceText,

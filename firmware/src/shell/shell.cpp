@@ -25,6 +25,7 @@
 #include "cc1101.h"
 #include "cca_task.h"
 #include "cca_commands.h"
+#include "cca_tdma.h"
 #include "cca_types.h"
 #include "ccx_task.h"
 #include "ccx_msg.h"
@@ -1053,6 +1054,54 @@ static void cmd_cca_tune(const char* arg)
     }
 
     cmd_cca_tune_print_usage();
+}
+
+/* -----------------------------------------------------------------------
+ * TDMA commands
+ * ----------------------------------------------------------------------- */
+static void cmd_tdma(const char* arg)
+{
+    if (strcmp(arg, "status") == 0 || arg[0] == '\0') {
+        CcaTdmaFrameState st;
+        cca_tdma_get_state(&st);
+        printf("TDMA Frame Sync\r\n");
+        printf("  anchor:     %lu ms\r\n", (unsigned long)st.anchor_ms);
+        printf("  period:     %lu ms (%u slots, mask=0x%02X)\r\n",
+               (unsigned long)st.period_ms, st.slot_count, st.slot_mask);
+        printf("  confidence: %u%%\r\n", st.confidence);
+        printf("  our slot:   %u\r\n", st.our_slot);
+        printf("  occupied:   %u/%u slots\r\n", st.occupied_count, st.slot_count);
+        printf("  devices:    %lu tracked\r\n", (unsigned long)st.total_devices);
+        printf("  jobs:       %u active\r\n", st.active_jobs);
+        printf("  paused:     %s\r\n", cca_tdma_is_paused() ? "yes" : "no");
+    }
+    else if (strcmp(arg, "slots") == 0) {
+        CcaTdmaDeviceInfo devs[32];
+        size_t count = cca_tdma_get_devices(devs, 32);
+        if (count == 0) {
+            printf("No tracked devices\r\n");
+            return;
+        }
+        printf("%-10s %-4s %-6s %-8s %-6s %-8s\r\n",
+               "DeviceID", "Slot", "Stride", "Conf", "Samp", "Age(ms)");
+        uint32_t now = HAL_GetTick();
+        for (size_t i = 0; i < count; i++) {
+            CcaTdmaDeviceInfo& d = devs[i];
+            char dev_id[9];
+            snprintf(dev_id, sizeof(dev_id), "%08lX", (unsigned long)d.device_id);
+            uint32_t age = now - d.last_rx_ms;
+            printf("%-10s %-4u %-6u %-7u%% %-6u %-8lu\r\n",
+                   dev_id, d.slot, d.dominant_stride, d.confidence, d.samples,
+                   (unsigned long)age);
+        }
+    }
+    else if (strcmp(arg, "reset") == 0) {
+        cca_tdma_reset();
+        printf("TDMA state reset\r\n");
+    }
+    else {
+        printf("Usage: tdma [status|slots|reset]\r\n");
+    }
 }
 
 static void cmd_cca(const char* arg)
@@ -2931,6 +2980,12 @@ void shell_execute(const char* line)
     }
     else if (strncmp(line, "tx ", 3) == 0) {
         cmd_tx(line + 3);
+    }
+    else if (strcmp(line, "tdma") == 0) {
+        cmd_tdma("");
+    }
+    else if (strncmp(line, "tdma ", 5) == 0) {
+        cmd_tdma(line + 5);
     }
     else if (strcmp(line, "cca") == 0) {
         cmd_cca("");

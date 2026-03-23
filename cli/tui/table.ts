@@ -132,7 +132,7 @@ export function getPacketLayout(
     state: MIN_PACKET_STATE_WIDTH,
     raw: 0,
     delta: 8,
-    slot: 10,
+    slot: 14,
   };
 
   // Column count: fixed columns + state + (raw if shown)
@@ -243,7 +243,7 @@ export function renderHeader(layout: PacketLayout): [string, string] {
     headerCells.push(clipCell("RAW", layout.raw, "right"));
   }
   headerCells.push(clipCell("DELTA", layout.delta, "right"));
-  headerCells.push(clipCell("SLOT", layout.slot));
+  headerCells.push(clipCell("TDMA", layout.slot));
   const labels = `${DIM}${headerCells.join(" ")}${RESET}`;
   const separator = `${DIM}${"─".repeat(layout.totalWidth)}${RESET}`;
   return [labels, separator];
