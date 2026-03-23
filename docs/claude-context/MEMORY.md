@@ -8,6 +8,7 @@
 - **Migrate from Bun to Node.js** — Bun lacks AES-128-CCM and other ciphers; use `npx tsx` for new tools — see `memory/feedback-bun-node.md`
 - **NEVER suggest LEAP subscriptions/polling for bridge** — bridge decodes Thread traffic, period — see `memory/feedback-no-leap-subscribe.md`
 - **Sunnata/Darter devices are ALWAYS CCX, never CCA** — only older devices (HQR, PJ2, RRD, LRF2) use CCA — see `memory/feedback-sunnata-is-ccx.md`
+- **ONE UDP client to Nucleo at a time** — multiple connections cause packet loss; never run capture + CLI simultaneously — see `memory/feedback-single-udp-client.md`
 
 ## CCA Protocol — See `docs/cca-protocol-notes.md`
 - Vive pairing, bridge pairing, dimming, set-level, fade, config (LED/fade/trim/scene/phase)
@@ -79,6 +80,11 @@
 - RA3 LEAP: `/photosensor`, `/sensor`, `/daylightinggainsettings` all "not supported" — Caseta DOES expose gain settings
 - ESN telnet: `AREAENTEREXITDAYLIGHTING`, `FASTDAYLIGHTING` commands exist but untested
 - Open question: firmware gated behind commercial license, or just needs DB population + transfer?
+
+## GLAB-9: Cross-Pairing Caseta→RA3 — See `memory/project-glab9-dvrf-fingerprint-patch.md`
+- DVRF-6L announce packet has QSDeviceClassTypeID `0x04630201` at bytes 20-23
+- Patched SQLMODELINFO: added LSTQSDEVICECLASSTYPE entry + changed RRD-6CL device info
+- Resets on Designer restart (SQLMODELINFO rebuilds from MSIX)
 
 ## Designer DB & Project Injection — See `docs/infrastructure-notes.md`
 - `memory/designer-model-validation.md`, `memory/designer-file-format.md`, `memory/hw-project-injection.md`
