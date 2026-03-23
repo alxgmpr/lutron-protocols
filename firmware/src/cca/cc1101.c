@@ -389,6 +389,9 @@ void cc1101_init(void)
     cc1101_write_register(CC1101_FSCAL1, 0x00);
     cc1101_write_register(CC1101_FSCAL0, 0x1F);
 
+    /* Improved RX sensitivity mode (from Lutron QSM RE, CC1101 datasheet DN505) */
+    cc1101_write_register(CC1101_TEST2, 0xAC);
+
     /* GDO0/2: sync word detect (0x06) — mirror both for flexible wiring */
     cc1101_write_register(CC1101_IOCFG2, 0x06);
     cc1101_write_register(CC1101_IOCFG0, 0x06);
