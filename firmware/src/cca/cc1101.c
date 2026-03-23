@@ -363,8 +363,11 @@ void cc1101_init(void)
     cc1101_write_register(CC1101_FSCTRL1, 0x06);
     cc1101_write_register(CC1101_FSCTRL0, 0x00);
 
-    /* Auto-calibration on IDLE→RX/TX, stay in RX after RX */
-    cc1101_write_register(CC1101_MCSM1, 0x03);
+    /* MCSM1=0x0F: CCA_MODE=00 (always), RXOFF=11 (stay in RX), TXOFF=11 (→RX).
+     * Stay-in-RX eliminates ~1-2ms dead time per packet (no IDLE→CAL→SRX cycle).
+     * The radio immediately starts listening for the next sync word after receiving
+     * PKTLEN bytes.  We just reset the accumulator — no SPI restart needed. */
+    cc1101_write_register(CC1101_MCSM1, 0x0F);
     cc1101_write_register(CC1101_MCSM0, 0x18);
 
     /* AGC */
@@ -407,6 +410,14 @@ static void restart_rx(void)
     accum_len_ = 0;
     accum_active_ = false;
     cc1101_strobe(CC1101_SRX);
+}
+
+/* Fast restart: with RXOFF=stay-in-RX, the radio is already listening.
+ * Just reset the accumulator for the next packet — no SPI needed. */
+static void restart_rx_fast(void)
+{
+    accum_len_ = 0;
+    accum_active_ = false;
 }
 
 /* -----------------------------------------------------------------------
@@ -515,13 +526,15 @@ bool cc1101_check_rx(void)
     /* 3. Nothing accumulated yet — idle, return */
     if (!accum_active_) return false;
 
-    /* 4. Full packet received — deliver to decoder */
+    /* 4. Full packet received — deliver to decoder.
+     * With RXOFF=stay-in-RX, radio is already listening for next sync.
+     * Use fast restart (accumulator reset only, no SPI). */
     if (accum_len_ >= RX_PKT_LEN) {
         peek_hit_count_++;
         if (rx_callback_) {
             rx_callback_(accum_, accum_len_, accum_rssi_, accum_start_ms_);
         }
-        restart_rx();
+        restart_rx_fast();
         return true;
     }
 
