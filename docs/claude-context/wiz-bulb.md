@@ -12,7 +12,7 @@ Wiz bulb at **10.0.0.50** bridged to Lutron CCX zone 5147 (Hallway Table Lamp).
 - `setEffect` with `preview`/`pulse` works over UDP (temporary state, turns off first before transitioning)
 - `setUserConfig` (fadeIn/fadeOut) only works via MQTT, not UDP
 - Min dimming: 10% (values below accepted but visually clamp to 10%)
-- Config: `data/virtual-device.json`, bridge: `tools/ccx-bridge.ts`, test: `tools/wiz-test.ts`
+- Config: `data/virtual-device.json`, bridge: `bridge/main.ts`, test: `tools/wiz-test.ts`
 
 ## Dimming Scale
 - Bridge scales Lutron 1-100% → Wiz 10-100% linearly: `wiz = 10 + (lutron/100) * 90`

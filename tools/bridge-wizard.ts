@@ -652,7 +652,7 @@ async function main() {
 
   writeFileSync(configPath, YAML.stringify(config));
   console.log(`\nWrote ${configPath}`);
-  console.log("Start the bridge: npx tsx tools/ccx-bridge.ts");
+  console.log("Start the bridge: npx tsx bridge/main.ts --serial");
 
   rl.close();
 }

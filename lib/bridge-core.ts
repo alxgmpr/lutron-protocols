@@ -4,7 +4,7 @@
  * Handles: deduplication, zone matching, scene/preset resolution,
  * dim ramping, WiZ UDP dispatch, and RGBWC color control.
  *
- * Extracted from tools/ccx-bridge.ts for reuse in Docker container entry point.
+ * Extracted for reuse across bridge entry points (bridge/main.ts).
  */
 
 import { EventEmitter } from "events";

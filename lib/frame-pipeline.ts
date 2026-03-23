@@ -1,7 +1,7 @@
 /**
  * Frame Pipeline — Raw 802.15.4 frames → CCXPacket
  *
- * Consolidates the decrypt-and-decode logic from ccx-bridge.ts into a
+ * Consolidates the decrypt-and-decode logic into a
  * reusable module. Handles:
  *   1. Parse 802.15.4 MAC header
  *   2. Derive Thread MAC key from master key + key sequence
