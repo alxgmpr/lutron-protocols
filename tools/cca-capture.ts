@@ -32,11 +32,7 @@ const hasFlag = (name: string) => args.includes(name);
 const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? "10.0.0.3";
 const showRaw = hasFlag("--raw");
 const sessionName =
-  args.find(
-    (a) =>
-      !a.startsWith("--") &&
-      a !== getArg("--host"),
-  ) || "capture";
+  args.find((a) => !a.startsWith("--") && a !== getArg("--host")) || "capture";
 
 // Stream protocol constants
 const UDP_PORT = 9433;
@@ -59,7 +55,10 @@ const RED = "\x1b[31m";
 const WHITE = "\x1b[37m";
 
 // Output file setup
-const CAPTURES_DIR = join(new URL(".", import.meta.url).pathname, "../captures/cca-sessions");
+const CAPTURES_DIR = join(
+  new URL(".", import.meta.url).pathname,
+  "../captures/cca-sessions",
+);
 mkdirSync(CAPTURES_DIR, { recursive: true });
 const ts = new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-");
 const safeName = sessionName.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -125,11 +124,7 @@ function handleCcaPacket(data: Buffer, flags: number, _radioTs: number) {
     let deviceId = "";
     const fieldParts: string[] = [];
     for (const field of identified.fields) {
-      if (
-        field.name === "type" ||
-        field.name === "seq" ||
-        field.name === "crc"
-      )
+      if (field.name === "type" || field.name === "seq" || field.name === "crc")
         continue;
       const parsed = parseFieldValue(
         hexBytes,
@@ -243,7 +238,9 @@ sock.on("error", (err: Error) => {
 });
 
 sock.bind(() => {
-  console.log(`${YELLOW}Connecting to Nucleo at ${host}:${UDP_PORT}...${RESET}`);
+  console.log(
+    `${YELLOW}Connecting to Nucleo at ${host}:${UDP_PORT}...${RESET}`,
+  );
 
   // Register with stream server
   sock.send(buildCmd(CMD_KEEPALIVE), 0, 2, UDP_PORT, host);
@@ -260,7 +257,10 @@ sock.bind(() => {
 // Interactive command input — only when stdin is a TTY
 if (process.stdin.isTTY) {
   import("readline").then(({ createInterface }) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     rl.on("line", (line: string) => {
       const trimmed = line.trim();
       if (!trimmed) return;

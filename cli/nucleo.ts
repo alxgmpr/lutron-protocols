@@ -433,7 +433,14 @@ function updateCcaSlotTracker(
     missedPackets = sampleDSeq / stride - 1;
   }
 
-  return { status, confidencePct, dSeq: sampleDSeq, dtMs: dtMs > 0 && dtMs <= CCA_SLOT_MAX_DT_MS ? dtMs : undefined, errMs, missedPackets };
+  return {
+    status,
+    confidencePct,
+    dSeq: sampleDSeq,
+    dtMs: dtMs > 0 && dtMs <= CCA_SLOT_MAX_DT_MS ? dtMs : undefined,
+    errMs,
+    missedPackets,
+  };
 }
 
 // ============================================================================
@@ -670,7 +677,9 @@ function displayCcaPacket(
       slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
     const slotParts: string[] = [`s${tdmaSlot}`];
     if (slot.status !== "LEARN") {
-      slotParts.push(lockDetails ? `${slot.status}${slot.confidencePct}%` : slot.status);
+      slotParts.push(
+        lockDetails ? `${slot.status}${slot.confidencePct}%` : slot.status,
+      );
     }
     if (slot.dSeq && slot.dSeq > 0) slotParts.push(`Δ${slot.dSeq}`);
     if (lockDetails && slot.errMs !== undefined) {

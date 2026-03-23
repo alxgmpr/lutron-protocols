@@ -19,31 +19,27 @@ async function main() {
 
   if (cmd === "enter") {
     console.log(`Entering addressing mode on link ${LINK_ID}...`);
-    const resp = await conn.send(
-      "UpdateRequest",
-      `/link/${LINK_ID}/status`,
-      { LinkStatus: { OperatingModes: ["Association"] } }
-    );
+    const resp = await conn.send("UpdateRequest", `/link/${LINK_ID}/status`, {
+      LinkStatus: { OperatingModes: ["Association"] },
+    });
     console.log("Response:", JSON.stringify(resp, null, 2));
-
   } else if (cmd === "exit") {
     console.log(`Exiting addressing mode on link ${LINK_ID}...`);
-    const resp = await conn.send(
-      "UpdateRequest",
-      `/link/${LINK_ID}/status`,
-      { LinkStatus: { OperatingModes: ["Normal"] } }
-    );
+    const resp = await conn.send("UpdateRequest", `/link/${LINK_ID}/status`, {
+      LinkStatus: { OperatingModes: ["Normal"] },
+    });
     console.log("Response:", JSON.stringify(resp, null, 2));
-
   } else if (cmd === "activate") {
-    const serialNumber = parseInt(args[1]);
-    const deviceId = parseInt(args[2]);
+    const serialNumber = parseInt(args[1], 10);
+    const deviceId = parseInt(args[2], 10);
     const hexEncoding = args[3];
     if (!serialNumber || !deviceId || !hexEncoding) {
       console.error("Usage: activate <serial_dec> <device_id> <hex_encoding>");
       process.exit(1);
     }
-    console.log(`Activating device ${deviceId} with serial ${serialNumber} (0x${serialNumber.toString(16)}) class ${hexEncoding}...`);
+    console.log(
+      `Activating device ${deviceId} with serial ${serialNumber} (0x${serialNumber.toString(16)}) class ${hexEncoding}...`,
+    );
     const resp = await conn.send(
       "CreateRequest",
       `/device/${deviceId}/commandprocessor`,
@@ -54,16 +50,15 @@ async function main() {
             SerialNumber: serialNumber,
             DeviceClassParameters: {
               DeviceClass: {
-                HexadecimalEncoding: hexEncoding
+                HexadecimalEncoding: hexEncoding,
               },
-              Action: "Overwrite"
-            }
-          }
-        }
-      }
+              Action: "Overwrite",
+            },
+          },
+        },
+      },
     );
     console.log("Response:", JSON.stringify(resp, null, 2));
-
   } else {
     console.log("Commands: enter, exit, activate <serial> <device_id> <hex>");
   }

@@ -8,12 +8,14 @@
 import { LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
-const targetSerial = parseInt(args[0]);
-const deviceId = parseInt(args[1]);
+const targetSerial = parseInt(args[0], 10);
+const deviceId = parseInt(args[1], 10);
 const hexEncoding = args[2] || "4350101";
 
 if (!targetSerial || !deviceId) {
-  console.error("Usage: npx tsx tools/leap-auto-activate.ts <serial_dec> <device_id> [hex_encoding]");
+  console.error(
+    "Usage: npx tsx tools/leap-auto-activate.ts <serial_dec> <device_id> [hex_encoding]",
+  );
   process.exit(1);
 }
 
@@ -26,12 +28,16 @@ async function main() {
     const heard = msg?.Body?.DeviceStatus?.DeviceHeard;
     if (!heard) return;
 
-    console.log(`Device heard: serial=${heard.SerialNumber} class=${heard.DeviceClass?.HexadecimalEncoding} mechanism=${heard.DiscoveryMechanism}`);
+    console.log(
+      `Device heard: serial=${heard.SerialNumber} class=${heard.DeviceClass?.HexadecimalEncoding} mechanism=${heard.DiscoveryMechanism}`,
+    );
 
     if (heard.SerialNumber === targetSerial && !activated) {
       activated = true;
-      console.log(`\nTarget device detected! Waiting 2s then sending AddressDevice...`);
-      await new Promise(r => setTimeout(r, 2000));
+      console.log(
+        `\nTarget device detected! Waiting 2s then sending AddressDevice...`,
+      );
+      await new Promise((r) => setTimeout(r, 2000));
 
       try {
         const resp = await conn.send(
@@ -44,13 +50,13 @@ async function main() {
                 SerialNumber: targetSerial,
                 DeviceClassParameters: {
                   DeviceClass: {
-                    HexadecimalEncoding: hexEncoding
+                    HexadecimalEncoding: hexEncoding,
                   },
-                  Action: "Overwrite"
-                }
-              }
-            }
-          }
+                  Action: "Overwrite",
+                },
+              },
+            },
+          },
         );
         console.log("Activate response:", JSON.stringify(resp, null, 2));
       } catch (err: any) {
@@ -68,7 +74,9 @@ async function main() {
   // Subscribe to device heard
   const subResp = await conn.subscribe("/device/status/deviceheard");
   console.log(`Subscribed (${subResp?.Header?.StatusCode})`);
-  console.log(`\nWaiting for serial ${targetSerial} (0x${targetSerial.toString(16)})...`);
+  console.log(
+    `\nWaiting for serial ${targetSerial} (0x${targetSerial.toString(16)})...`,
+  );
   console.log("Press the DVRF-6L button now!\n");
 }
 
