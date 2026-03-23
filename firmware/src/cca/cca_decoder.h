@@ -93,6 +93,36 @@ class CcaDecoder {
                 }
             }
 
+            /* Position-tracked 8N1 decoder — handles clock drift */
+            {
+                uint8_t tracked[MAX_DECODE_LEN];
+                uint8_t tracked_errors = 0;
+                uint8_t tracked_err_pos[2] = {};
+                size_t  tracked_len = n81_decode_stream_tracked(
+                    fifo_data, len, static_cast<size_t>(data_start),
+                    MAX_DECODE_LEN, tracked, &tracked_errors, tracked_err_pos, 2);
+                if (tracked_len >= 10 && tracked_len > best_decoded_len) {
+                    int match = cca_check_crc_at_lengths(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS);
+                    if (match > 0) {
+                        return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
+                    }
+                    if (tracked_errors > 0 && tracked_errors <= 2) {
+                        match = cca_recover_n81_errors(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS,
+                                                        tracked_err_pos, tracked_errors);
+                        if (match > 0) {
+                            return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
+                        }
+                    }
+                    if (tracked_len > best_decoded_len ||
+                        (tracked_len == best_decoded_len && tracked_errors < best_errors)) {
+                        memcpy(best_decoded, tracked, tracked_len);
+                        best_decoded_len = tracked_len;
+                        best_errors = tracked_errors;
+                        memcpy(best_err_pos, tracked_err_pos, sizeof(best_err_pos));
+                    }
+                }
+            }
+
             if (!have_dimmer_ack && decoded_len >= 5 && decoded[0] == 0x0B) {
                 if (try_parse_dimmer_ack(decoded, decoded_len, dimmer_ack)) {
                     have_dimmer_ack = true;
@@ -203,6 +233,29 @@ class CcaDecoder {
                 match = cca_recover_n81_errors(tolerant, tolerant_len, CCA_LENGTHS, N_CCA_LENGTHS, err_pos, errors);
                 if (match > 0) {
                     return parse_bytes_at_length(tolerant, static_cast<size_t>(match), errors, packet);
+                }
+            }
+        }
+
+        /* Position-tracked 8N1 decoder — handles clock drift that
+         * fixed-stride misses.  Matches Lutron QSM FUN_9068 approach. */
+        {
+            uint8_t tracked[MAX_DECODE_LEN];
+            uint8_t tracked_errors = 0;
+            uint8_t tracked_err_pos[2] = {};
+            size_t  tracked_len = n81_decode_stream_tracked(fifo_data, len, data_start, MAX_DECODE_LEN,
+                                                             tracked, &tracked_errors, tracked_err_pos, 2);
+            if (tracked_len >= 10) {
+                int match = cca_check_crc_at_lengths(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS);
+                if (match > 0) {
+                    return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
+                }
+                if (tracked_errors > 0 && tracked_errors <= 2) {
+                    match = cca_recover_n81_errors(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS,
+                                                    tracked_err_pos, tracked_errors);
+                    if (match > 0) {
+                        return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
+                    }
                 }
             }
         }

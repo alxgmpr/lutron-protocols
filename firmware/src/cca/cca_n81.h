@@ -99,7 +99,76 @@ inline size_t n81_decode_stream_tolerant(const uint8_t* bits, size_t bits_len, s
     return count;
 }
 
-// Write a single N81 byte to bitstream at given offset
+// Decode 8N1 bytes with position tracking (matches Lutron QSM FUN_9068).
+// Instead of fixed 10-bit stride, searches for start bit within a small
+// window per byte.  Handles clock drift that fixed-stride misses.
+// Returns number of decoded bytes.  Sets *errors to count of framing errors.
+inline size_t n81_decode_stream_tracked(const uint8_t* bits, size_t bits_len, size_t bit_offset, size_t max_bytes,
+                                        uint8_t* output, uint8_t* errors, uint8_t* err_pos = nullptr,
+                                        size_t err_pos_max = 0)
+{
+    size_t total_bits = bits_len * 8;
+    size_t pos = bit_offset;
+    size_t count = 0;
+    *errors = 0;
+    uint8_t consecutive_errors = 0;
+
+    while (count < max_bytes && pos + 10 <= total_bits) {
+        // Search for start bit (0) within a ±3 bit window.
+        // 8N1 stop bit is 1, so after a good byte at pos, the next start
+        // bit should be at pos+10.  Clock drift may shift it ±1-2 bits.
+        size_t search_end = pos + 4;
+        if (search_end + 10 > total_bits) search_end = total_bits - 10;
+        bool found_start = false;
+
+        for (size_t s = pos; s <= search_end; s++) {
+            if (!n81_get_bit(bits, bits_len, s)) {
+                // Found a 0 (start bit) — try strict decode
+                uint8_t b;
+                if (n81_decode_byte(bits, bits_len, s, &b)) {
+                    output[count++] = b;
+                    pos = s + 10;
+                    found_start = true;
+                    consecutive_errors = 0;
+                    break;
+                }
+                // Start bit found but framing invalid — extract data bits anyway.
+                // The CRC will catch real corruption; framing errors are often
+                // recoverable when only the stop bit is wrong.
+                b = 0;
+                for (int i = 0; i < 8; i++) {
+                    if (n81_get_bit(bits, bits_len, s + 1 + (size_t)i))
+                        b |= (1 << i);
+                }
+                if (err_pos && *errors < err_pos_max) {
+                    err_pos[*errors] = static_cast<uint8_t>(count);
+                }
+                output[count++] = b;
+                if (*errors < 255) (*errors)++;
+                consecutive_errors++;
+                pos = s + 10;
+                found_start = true;
+                break;
+            }
+        }
+
+        if (!found_start) {
+            // No start bit in window — emit placeholder, advance
+            if (err_pos && *errors < err_pos_max) {
+                err_pos[*errors] = static_cast<uint8_t>(count);
+            }
+            output[count++] = 0xCC;
+            if (*errors < 255) (*errors)++;
+            consecutive_errors++;
+            pos += 10;
+        }
+
+        if (consecutive_errors >= 3) break;
+    }
+    return count;
+}
+
+// Write a single 8N1 byte to bitstream at given offset
 inline void n81_write_byte(uint8_t* bits, size_t bits_len, size_t bit_offset, uint8_t byte_val)
 {
     n81_set_bit(bits, bits_len, bit_offset, false);
