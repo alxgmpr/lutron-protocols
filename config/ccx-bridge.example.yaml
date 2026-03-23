@@ -2,13 +2,17 @@
 #
 # Each pairing maps a Lutron CCX zone to one or more WiZ bulb IPs.
 # wiz: can be a single IP string or a list of IPs for multi-bulb zones.
+#
+# CCT/dimming is handled via raw RGBWC channel control:
+#   - Native CCT (CBOR key 6) → interpolate bulb CCT table → RGBWC channels
+#   - Warm dim mode (CBOR key 5=5) → B-spline CCT computation → RGBWC channels
+#   - Standard dimming (no CCT keys) → brightness only (10% floor applies)
+# Raw channel control bypasses the WiZ 10% dimming floor.
 
 pairings:
   - name: Living Room Lamp
     zoneId: 1234
     wiz: 10.0.0.50
-    warmDimming: true
-    warmDimCurve: default
 
   - name: Kitchen Pendants
     zoneId: 5678
@@ -19,6 +23,3 @@ pairings:
 
 defaults:
   wizPort: 38899
-  warmDimming: false
-  warmDimCurve: default  # default, halogen, finire2700, finire3000
-  wizDimScaling: true    # scale Lutron 1-100% → WiZ 10-100%

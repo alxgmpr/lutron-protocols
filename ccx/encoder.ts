@@ -73,15 +73,28 @@ export interface LevelControlOpts {
   sequence: number;
   zoneType?: number; // default 16
   fade?: number; // command key 3 — quarter-seconds (1 = 0.25s instant)
-  delay?: number; // command key 4 — experimental, possibly quarter-seconds
+  delay?: number; // command key 4 — quarter-seconds
+  cct?: number; // command key 6 — color temperature in Kelvin
+  warmDimMode?: number; // command key 5 — warm dim mode flag (5 = enabled)
 }
 
 /** Encode a LEVEL_CONTROL command */
 export function encodeLevelControl(opts: LevelControlOpts): Buffer {
-  const { zoneId, level, sequence, zoneType = 16, fade = 1, delay } = opts;
-  // Structure: [0, { 0: {0: level, 3: fade, 4?: delay}, 1: [16, zoneId], 5: seq }]
+  const {
+    zoneId,
+    level,
+    sequence,
+    zoneType = 16,
+    fade = 1,
+    delay,
+    cct,
+    warmDimMode,
+  } = opts;
+  // Structure: [0, { 0: {0: level, 3: fade, 4?: delay, 5?: warmDimMode, 6?: cct}, 1: [16, zoneId], 5: seq }]
   const cmd: Record<number, unknown> = { 0: level, 3: fade };
   if (delay !== undefined) cmd[4] = delay;
+  if (warmDimMode !== undefined) cmd[5] = warmDimMode;
+  if (cct !== undefined) cmd[6] = cct;
   const body: Record<number, unknown> = {
     [BodyKey.COMMAND]: cmd,
     [BodyKey.ZONE]: [zoneType, zoneId],

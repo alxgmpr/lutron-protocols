@@ -24,6 +24,8 @@ export interface CCXLevelControl extends CCXMessageBase {
   zoneId: number; // Internal Lutron zone ID
   fade: number; // Quarter-seconds (1 = 0.25s instant)
   delay: number; // Quarter-seconds (0 = no delay)
+  cct?: number; // Color temperature in Kelvin (key 6), present for explicit CCT
+  warmDimMode?: number; // Warm dim mode flag (key 5 = 5), fixture computes CCT internally
 }
 
 /** Physical button / scene press */

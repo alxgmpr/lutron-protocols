@@ -2,7 +2,7 @@
  * Bridge Core — Transport-agnostic CCX→WiZ bridge logic
  *
  * Handles: deduplication, zone matching, scene/preset resolution,
- * dim ramping, WiZ UDP dispatch, and warm dimming.
+ * dim ramping, WiZ UDP dispatch, and RGBWC color control.
  *
  * Extracted from tools/ccx-bridge.ts for reuse in Docker container entry point.
  */
@@ -19,7 +19,8 @@ import {
 } from "../ccx/config";
 import { formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
-import { generateWarmDimTable, getWarmDimCurve } from "./warm-dim";
+import { evalWarmDimCurve, getWarmDimCurve } from "./warm-dim";
+import { cctToRgbwc, rgbwcToPilotParams } from "./wiz-color";
 
 // ── Config types ──────────────────────────────────────────
 
@@ -28,21 +29,12 @@ export interface PairingConfig {
   wiz: string | string[];
   name?: string;
   wizPort?: number;
-  warmDimming?: boolean;
-  warmDimCurve?: string;
-  warmDimMin?: number;
-  warmDimMax?: number;
 }
 
 export interface BridgeConfigFile {
   pairings: PairingConfig[];
   defaults?: {
     wizPort?: number;
-    warmDimming?: boolean;
-    warmDimCurve?: string;
-    warmDimMin?: number;
-    warmDimMax?: number;
-    wizDimScaling?: boolean;
   };
 }
 
@@ -51,7 +43,6 @@ export interface WizPairing {
   zoneId: number;
   wizIps: string[];
   wizPort: number;
-  warmDimTable: number[] | null;
 }
 
 export interface PresetZoneEntry {
@@ -66,8 +57,6 @@ export interface BridgeCoreOptions {
   presetZones: Map<number, PresetZoneEntry>;
   /** Zone IDs to watch (empty = all) */
   watchedZones: Set<number>;
-  /** Enable WiZ dimming scaling: Lutron 1-100% → WiZ 10-100% (default: true) */
-  wizDimScaling?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────
@@ -83,14 +72,14 @@ export class BridgeCore extends EventEmitter {
   private pairingsByZone = new Map<number, WizPairing>();
   private presetZones: Map<number, PresetZoneEntry>;
   private watchedZones: Set<number>;
-  private wizDimScaling: boolean;
   private wizSocket: Socket | null;
 
   // Dedup state
   private recentCommands = new Map<string, number>();
 
-  // Ramp state
+  // Zone state
   private zoneLevel = new Map<number, number>();
+  private zoneCct = new Map<number, number>(); // last-known CCT per zone
   private activeRamps = new Map<
     number,
     {
@@ -110,8 +99,6 @@ export class BridgeCore extends EventEmitter {
     this.pairings = opts.pairings;
     this.presetZones = opts.presetZones;
     this.watchedZones = opts.watchedZones;
-    this.wizDimScaling = opts.wizDimScaling ?? true;
-
     for (const p of this.pairings) {
       this.pairingsByZone.set(p.zoneId, p);
     }
@@ -133,11 +120,18 @@ export class BridgeCore extends EventEmitter {
 
     // Handle LEVEL_CONTROL (processor → devices, multicast)
     if (pkt.parsed.type === "LEVEL_CONTROL") {
-      const { zoneId, sequence, levelPercent, fade } = pkt.parsed;
+      const { zoneId, sequence, levelPercent, fade, cct, warmDimMode } =
+        pkt.parsed;
       if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
       if (this.isDuplicate(`lc:${zoneId}:${sequence}`)) return;
       this.matchCount++;
-      this.dispatch(zoneId, levelPercent, "LEVEL", fade);
+      // Resolve CCT: native CCT (key 6) > warm dim computation (key 5=5) > none
+      let resolvedCct = cct;
+      if (resolvedCct == null && warmDimMode != null && levelPercent > 0) {
+        const curve = getWarmDimCurve("default");
+        resolvedCct = evalWarmDimCurve(curve, levelPercent);
+      }
+      this.dispatch(zoneId, levelPercent, "LEVEL", fade, resolvedCct);
       return;
     }
 
@@ -246,34 +240,32 @@ export class BridgeCore extends EventEmitter {
 
   // ── WiZ UDP output ────────────────────────────────────
 
-  private lutronToWizDimming(lutronPercent: number): number {
-    if (!this.wizDimScaling) return Math.round(lutronPercent);
-    return Math.round(10 + (lutronPercent / 100) * 90);
-  }
-
-  private async sendWiz(pairing: WizPairing, levelPercent: number) {
+  private async sendWiz(
+    pairing: WizPairing,
+    levelPercent: number,
+    nativeCct?: number,
+  ) {
     if (!this.wizSocket) return;
-    const isOff = levelPercent <= 0;
-    const wizDim = this.lutronToWizDimming(levelPercent);
 
-    let payload: string;
-    let cctInfo = "";
-    if (isOff) {
-      payload = JSON.stringify({ method: "setPilot", params: { state: false } });
+    let params: Record<string, number | boolean>;
+    let logStr: string;
+
+    if (levelPercent <= 0) {
+      params = { state: false };
+      logStr = "OFF";
     } else {
-      const params: Record<string, any> = { state: true, dimming: wizDim };
-      if (pairing.warmDimTable) {
-        const cct = pairing.warmDimTable[Math.round(levelPercent)];
-        params.temp = cct;
-        cctInfo = ` ${cct}K`;
-      }
-      payload = JSON.stringify({ method: "setPilot", params });
+      // Always use RGBWC for full 0-100% range (bypasses WiZ 10% floor)
+      // Default to 2700K when no CCT specified
+      const cct = nativeCct ?? 2700;
+      const channels = cctToRgbwc(cct, levelPercent);
+      params = rgbwcToPilotParams(channels);
+      const cctStr = nativeCct != null ? `${nativeCct}K` : "2700K(default)";
+      logStr = `${Math.round(levelPercent)}% ${cctStr} [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
     }
 
-    const buf = Buffer.from(payload);
-    const levelStr = isOff
-      ? "OFF"
-      : `${Math.round(levelPercent)}%→wiz${wizDim}%${cctInfo}`;
+    const buf = Buffer.from(
+      JSON.stringify({ method: "setPilot", params }),
+    );
 
     await Promise.all(
       pairing.wizIps.map(
@@ -283,7 +275,7 @@ export class BridgeCore extends EventEmitter {
               if (err) {
                 this.emit("log", `  [wiz] Error → ${ip}: ${err.message}`);
               } else {
-                this.emit("log", `  [wiz] → ${pairing.name} (${ip}) ${levelStr}`);
+                this.emit("log", `  [wiz] → ${pairing.name} (${ip}) ${logStr}`);
               }
               resolve();
             });
@@ -299,8 +291,13 @@ export class BridgeCore extends EventEmitter {
     levelPercent: number,
     source: string,
     fade = 1,
+    nativeCct?: number,
   ) {
     this.zoneLevel.set(zoneId, levelPercent);
+    // Track last-known CCT — reuse when brightness changes without CCT
+    if (nativeCct != null) this.zoneCct.set(zoneId, nativeCct);
+    const cct = nativeCct ?? this.zoneCct.get(zoneId);
+
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
     const time = new Date().toISOString().slice(11, 23);
     const fadeSec = fade / 4;
@@ -312,7 +309,7 @@ export class BridgeCore extends EventEmitter {
     );
 
     const pairing = this.pairingsByZone.get(zoneId);
-    if (pairing) await this.sendWiz(pairing, levelPercent);
+    if (pairing) await this.sendWiz(pairing, levelPercent, cct);
   }
 
   // ── Dim Ramp ──────────────────────────────────────────
@@ -393,29 +390,10 @@ function buildPairings(
     wizIps?: string[];
     name?: string;
     wizPort?: number;
-    warmDimming?: boolean;
-    warmDimCurve?: string;
-    warmDimMin?: number;
-    warmDimMax?: number;
   }>,
-  defaults: {
-    wizPort: number;
-    warmDimming: boolean;
-    warmDimCurve: string;
-    warmDimMin?: number;
-    warmDimMax?: number;
-  },
+  defaults: { wizPort: number },
 ): WizPairing[] {
   return rawPairings.map((p) => {
-    const warmDimming = p.warmDimming ?? defaults.warmDimming;
-    let warmDimTable: number[] | null = null;
-    if (warmDimming) {
-      const curveName = p.warmDimCurve ?? defaults.warmDimCurve;
-      const curve = getWarmDimCurve(curveName);
-      const min = p.warmDimMin ?? defaults.warmDimMin;
-      const max = p.warmDimMax ?? defaults.warmDimMax;
-      warmDimTable = generateWarmDimTable(curve, min, max);
-    }
     const wizIps = p.wizIps ?? (Array.isArray(p.wiz) ? p.wiz : [p.wiz!]);
     const zoneName = getZoneName(p.zoneId) ?? `Zone ${p.zoneId}`;
     return {
@@ -423,7 +401,6 @@ function buildPairings(
       zoneId: p.zoneId,
       wizIps,
       wizPort: p.wizPort ?? defaults.wizPort,
-      warmDimTable,
     };
   });
 }
@@ -431,7 +408,6 @@ function buildPairings(
 /** Load bridge config from a YAML or JSON file */
 export function loadBridgeConfig(configPath: string): {
   pairings: WizPairing[];
-  wizDimScaling: boolean;
 } {
   if (!existsSync(configPath)) {
     throw new Error(`Config not found: ${configPath}`);
@@ -446,12 +422,7 @@ export function loadBridgeConfig(configPath: string): {
   return {
     pairings: buildPairings(raw.pairings, {
       wizPort: raw.defaults?.wizPort ?? 38899,
-      warmDimming: raw.defaults?.warmDimming ?? false,
-      warmDimCurve: raw.defaults?.warmDimCurve ?? "default",
-      warmDimMin: raw.defaults?.warmDimMin,
-      warmDimMax: raw.defaults?.warmDimMax,
     }),
-    wizDimScaling: raw.defaults?.wizDimScaling ?? true,
   };
 }
 
@@ -461,30 +432,21 @@ export function loadBridgeConfigFromOptions(opts: {
     zone_id: number;
     name?: string;
     wiz_ips: string[];
-    warm_dimming?: boolean;
   }>;
-  warm_dimming?: boolean;
-  warm_dim_curve?: string;
-  wiz_dim_scaling?: boolean;
   wiz_port?: number;
 }): {
   pairings: WizPairing[];
-  wizDimScaling: boolean;
 } {
   const rawPairings = (opts.pairings ?? []).map((p) => ({
     zoneId: p.zone_id,
     name: p.name,
     wizIps: p.wiz_ips,
-    warmDimming: p.warm_dimming,
   }));
 
   return {
     pairings: buildPairings(rawPairings, {
       wizPort: opts.wiz_port ?? 38899,
-      warmDimming: opts.warm_dimming ?? false,
-      warmDimCurve: opts.warm_dim_curve ?? "default",
     }),
-    wizDimScaling: opts.wiz_dim_scaling ?? true,
   };
 }
 

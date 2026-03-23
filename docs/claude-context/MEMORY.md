@@ -71,6 +71,15 @@
 ## IPL Protocol (Designer) — See `docs/infrastructure-notes.md`, `memory/ipl-protocol.md`
 - TLS:8902, binary framing with zlib JSON
 
+## Daylighting System — See `memory/daylighting-system.md`
+- Two systems: **Hyperion** (shade/facade, supported) vs **light-level** (dimmer control, scaffolded but NOT activated)
+- LRF2-DCRB paired in Office, serial 13100184 — sends SENSOR_LEVEL packets, processor ignores them
+- Designer auto-creates daylightable (ZoneID+1), DaylightingGroup (AreaID+1), setpoints (400 lux @ 100%) for every zone/area
+- Missing: `tblDaylightingRegion` (sensor→area binding), `tblGainGroup` (per-zone calibration), `DaylightingType` still 0
+- RA3 LEAP: `/photosensor`, `/sensor`, `/daylightinggainsettings` all "not supported" — Caseta DOES expose gain settings
+- ESN telnet: `AREAENTEREXITDAYLIGHTING`, `FASTDAYLIGHTING` commands exist but untested
+- Open question: firmware gated behind commercial license, or just needs DB population + transfer?
+
 ## Designer DB & Project Injection — See `docs/infrastructure-notes.md`
 - `memory/designer-model-validation.md`, `memory/designer-file-format.md`, `memory/hw-project-injection.md`
 - Live DB + save trick works for both CCX and CCA devices
@@ -96,13 +105,15 @@
 - Debug lock almost certainly enabled; MG12 has no Secure Element (plaintext if bypassed)
 - BLE used for commissioning — sniff with nRF52840 dongle + nRF Sniffer for BLE
 
-## Wiz Bulb — See `memory/wiz-bulb.md`
+## Wiz Bulb — See `memory/wiz-bulb.md`, `memory/wiz-rgbwc-dimming.md`
 - 10.0.0.50, MAC a0b1c2d3e4f7, ESP24_SHRGB_01 fw 1.36.1
 - Bridged to Lutron CCX zone 5147 (Hallway Table Lamp)
 - UDP:38899 JSON protocol; setPilot=instant, setUserConfig(fade)=MQTT only
 - Config: `data/virtual-device.json`, test: `tools/wiz-test.ts`
-- **Dim scaling**: `wizDimScaling: false` in bridge config disables 10% floor mapping — see `memory/wiz-dim-scaling.md`
 - Ramp rate: 21.053%/sec (4.75s full range, 19 quarter-seconds) — wall-clock model, matches Lutron within 1%
+- **RGBWC sub-10% dimming**: raw channel values 2-255 bypass `dimming` 10% floor; value 1 turns off (rounding)
+- **All bulbs identical hardware**: BP5758D driver, same 14-point CCT table, curr [28,28,28,48,48]
+- **WiZ project**: `/Volumes/Secondary/wiz` — firmware RE, UDP CLI, MQTT intercept, protocol docs
 
 ## Network Topology
 - Designer VM: `ssh alex@192.168.64.4` (key auth, UTM Shared Network/NAT)

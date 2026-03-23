@@ -95,6 +95,8 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
   const level = (inner[0] ?? 0) as number;
   const fade = (inner[3] ?? 1) as number;
   const delay = (inner[4] ?? 0) as number;
+  const warmDimMode = inner[5] as number | undefined;
+  const cct = inner[6] as number | undefined;
   const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
   const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
 
@@ -104,7 +106,7 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     BodyKey.ZONE,
     BodyKey.SEQUENCE,
   ]);
-  const consumedInner = new Set([0, 3, 4]);
+  const consumedInner = new Set([0, 3, 4, 5, 6]);
 
   return {
     type: "LEVEL_CONTROL",
@@ -114,6 +116,8 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     zoneId: zone[1] ?? 0,
     fade,
     delay,
+    cct,
+    warmDimMode,
     sequence,
     rawBody: body,
     unknownKeys:
@@ -579,9 +583,11 @@ export function formatMessage(msg: CCXMessage): string {
       const fadeSec = msg.fade / 4;
       const fadeStr = fadeSec !== 0.25 ? `, fade=${fadeSec}s` : "";
       const delayStr = msg.delay > 0 ? `, delay=${msg.delay / 4}s` : "";
+      const cctStr = msg.cct != null ? `, cct=${msg.cct}K` : "";
+      const warmDimStr = msg.warmDimMode != null ? ", warm_dim" : "";
       const zoneName = getZoneName(msg.zoneId);
       const zoneAnnotation = zoneName ? ` [${zoneName}]` : "";
-      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${zoneAnnotation}${fadeStr}${delayStr}, seq=${msg.sequence})`;
+      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${zoneAnnotation}${fadeStr}${delayStr}${cctStr}${warmDimStr}, seq=${msg.sequence})`;
     }
     case "BUTTON_PRESS": {
       const idHex = Array.from(msg.deviceId)

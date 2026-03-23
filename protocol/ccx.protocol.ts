@@ -60,6 +60,23 @@ const LEVEL_CONTROL = messageType(
         optional: true,
         description: "Delay before fade starts",
       },
+      {
+        key: 5,
+        name: "warm_dim_mode",
+        type: "uint8",
+        optional: true,
+        description:
+          "Warm dim mode flag (5 = enabled). Fixture computes CCT from its built-in curve.",
+      },
+      {
+        key: 6,
+        name: "cct",
+        type: "uint16",
+        unit: "kelvin",
+        optional: true,
+        description:
+          "Color temperature in Kelvin (e.g. 1800-5500). Present for explicit CCT control, absent when warm dim mode is active.",
+      },
     ],
   },
 );

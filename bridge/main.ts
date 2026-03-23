@@ -25,15 +25,11 @@ interface HAOptions {
   thread_channel?: number;
   thread_master_key?: string;
   sniffer_device?: string;
-  warm_dimming?: boolean;
-  warm_dim_curve?: string;
-  wiz_dim_scaling?: boolean;
   wiz_port?: number;
   pairings?: Array<{
     zone_id: number;
     name?: string;
     wiz_ips: string[];
-    warm_dimming?: boolean;
   }>;
 }
 
@@ -95,7 +91,7 @@ async function main() {
 
   // ── Load config ───────────────────────────────────────────
 
-  const { pairings, wizDimScaling } =
+  const { pairings } =
     haOptions?.pairings && haOptions.pairings.length > 0
       ? loadBridgeConfigFromOptions(haOptions)
       : loadBridgeConfig(
@@ -121,7 +117,6 @@ async function main() {
     pairings,
     presetZones,
     watchedZones,
-    wizDimScaling,
   });
 
   // ── Wire everything together ──────────────────────────────
@@ -168,14 +163,9 @@ async function main() {
     console.log(`Pairings:`);
     for (const p of pairings) {
       const ips = p.wizIps.join(", ");
-      if (p.warmDimTable) {
-        console.log(
-          `  ${p.name} (zone ${p.zoneId}) → ${ips} (warm dim: ${p.warmDimTable[0]}→${p.warmDimTable[100]}K)`,
-        );
-      } else {
-        console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}`);
-      }
+      console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}`);
     }
+    console.log(`CCT: native (key 6) or warm dim (key 5=5 → B-spline)`);
   }
 
   if (presetZones.size > 0) {

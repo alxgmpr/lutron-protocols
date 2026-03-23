@@ -126,7 +126,10 @@ function buildTsharkArgs(): string[] {
     // Live capture — interface is the serial device path
     const iface = ifaceName ?? detectSnifferInterface();
     tsharkArgs.push("-i", iface);
-    // Channel is configured in Wireshark preferences (default saved from GUI)
+    // Pass channel to nRF extcap plugin via preference override
+    // The preference key encodes the interface path with underscores
+    const prefIface = iface.replace(/\//g, "_").replace(/\./g, "_");
+    tsharkArgs.push("-o", `extcap.${prefIface}.channel:${channel}`);
     if (duration) {
       tsharkArgs.push("-a", `duration:${duration}`);
     }

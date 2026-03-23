@@ -161,28 +161,23 @@ test("dedup window rejects duplicates within 2s", () => {
   assert.equal(isDuplicate("lc:5147:43"), false); // different sequence
 });
 
-// ── Bridge core: WiZ dim scaling ─────────────────────────
+// ── Bridge core: WiZ RGBWC color control ─────────────────
 
-test("lutronToWizDimming: scales 1-100% to 10-100%", () => {
-  function lutronToWizDimming(pct: number, scaling = true): number {
-    if (!scaling) return Math.round(pct);
-    return Math.round(10 + (pct / 100) * 90);
-  }
-
-  assert.equal(lutronToWizDimming(0), 10); // floor
-  assert.equal(lutronToWizDimming(100), 100); // ceiling
-  assert.equal(lutronToWizDimming(50), 55); // midpoint
-  assert.equal(lutronToWizDimming(1), 11); // near-minimum
+test("cctToRgbwc: 2700K at 50% scales channels correctly", () => {
+  const { cctToRgbwc } = require("../lib/wiz-color");
+  const ch = cctToRgbwc(2700, 50);
+  // r=35 at 50% → 18, w=255 at 50% → 128
+  assert.equal(ch.r, 18);
+  assert.equal(ch.w, 128);
+  assert.equal(ch.b, 0); // inactive stays 0
 });
 
-test("lutronToWizDimming: disabled returns raw percent", () => {
-  function lutronToWizDimming(pct: number, scaling = true): number {
-    if (!scaling) return Math.round(pct);
-    return Math.round(10 + (pct / 100) * 90);
-  }
-
-  assert.equal(lutronToWizDimming(50, false), 50);
-  assert.equal(lutronToWizDimming(1, false), 1);
+test("cctToRgbwc: 1% brightness floors active channels at 2", () => {
+  const { cctToRgbwc } = require("../lib/wiz-color");
+  const ch = cctToRgbwc(2700, 1);
+  assert.ok(ch.r >= 2, "active channel should be >= 2");
+  assert.ok(ch.w >= 2, "active channel should be >= 2");
+  assert.equal(ch.b, 0); // inactive stays 0
 });
 
 // ── Config: env var overrides ────────────────────────────
