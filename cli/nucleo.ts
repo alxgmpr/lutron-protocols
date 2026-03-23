@@ -341,10 +341,22 @@ function emitPacketRow(row: PacketRow): void {
   // Emit verbose detail line if present
   if (row.verboseLine) {
     const detailRow: PacketRow = {
-      ts: "", proto: "", protoColor: "", direction: "", dirColor: "",
-      seq: "", opcode: "", typeAction: "", typeActionColor: "",
-      device: "", state: "", raw: "", delta: "", slot: "",
-      isDetail: true, verboseLine: row.verboseLine,
+      ts: "",
+      proto: "",
+      protoColor: "",
+      direction: "",
+      dirColor: "",
+      seq: "",
+      opcode: "",
+      typeAction: "",
+      typeActionColor: "",
+      device: "",
+      state: "",
+      raw: "",
+      delta: "",
+      slot: "",
+      isDetail: true,
+      verboseLine: row.verboseLine,
     };
     const detailRendered = renderRow(detailRow, layout);
     packetTable.addRow(detailRow, detailRendered);
@@ -583,7 +595,12 @@ function displayCcaPacket(
 
   // Fields whose values are self-evident (strip labels in compact mode)
   const STRIP_LABELS = new Set([
-    "level", "slider_level", "fade", "delay", "format", "fmt",
+    "level",
+    "slider_level",
+    "fade",
+    "delay",
+    "format",
+    "fmt",
   ]);
 
   let typeActionText = "";

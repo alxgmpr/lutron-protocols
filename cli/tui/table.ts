@@ -227,7 +227,9 @@ export function getPacketLayout(
 /** Compute the indentation width to align with the typeAction column. */
 export function getDetailIndent(layout: PacketLayout): number {
   // TIME + P + D + S + OP + 5 separators
-  return layout.time + layout.proto + layout.dir + layout.seq + layout.opcode + 5;
+  return (
+    layout.time + layout.proto + layout.dir + layout.seq + layout.opcode + 5
+  );
 }
 
 // ============================================================================
@@ -266,7 +268,11 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
     colorCell(clipCell(row.direction, layout.dir, "center"), row.dirColor),
     clipCell(row.seq, layout.seq, "right"),
     clipCell(row.opcode, layout.opcode),
-    colorCell(clipCell(row.typeAction, layout.typeAction), row.typeActionColor, true),
+    colorCell(
+      clipCell(row.typeAction, layout.typeAction),
+      row.typeActionColor,
+      true,
+    ),
     colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
     clipCell(row.state, layout.state),
   ];
