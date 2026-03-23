@@ -37,14 +37,15 @@ const RING_BUFFER_SIZE = 5000;
 // ============================================================================
 export interface PacketLayout {
   showRaw: boolean;
+  showVerbose: boolean;
   totalWidth: number;
   time: number;
   proto: number;
   dir: number;
   seq: number;
-  type: number;
+  opcode: number;
+  typeAction: number;
   device: number;
-  action: number;
   state: number;
   raw: number;
   delta: number;
@@ -58,17 +59,18 @@ export interface PacketRow {
   direction: string;
   dirColor: string;
   seq: string;
-  type: string;
-  typeColor: string;
+  opcode: string;
+  typeAction: string;
+  typeActionColor: string;
   device: string;
   deviceColor?: string;
-  action: string;
-  actionColor?: string;
   state: string;
   raw: string;
   delta: string;
   slot: string;
   slotColor?: string;
+  isDetail?: boolean;
+  verboseLine?: string;
 }
 
 // ============================================================================
@@ -112,6 +114,7 @@ export function colorCell(text: string, color: string, bold = false): string {
 export function getPacketLayout(
   showRaw: boolean,
   termWidth?: number,
+  showVerbose?: boolean,
 ): PacketLayout {
   const width =
     termWidth ??
@@ -121,14 +124,15 @@ export function getPacketLayout(
 
   const layout: PacketLayout = {
     showRaw,
+    showVerbose: showVerbose ?? false,
     totalWidth: 0,
     time: 12,
     proto: 1,
     dir: 2,
-    seq: 4,
-    type: 12,
+    seq: 3,
+    opcode: 2,
+    typeAction: 20,
     device: 24,
-    action: 12,
     state: MIN_PACKET_STATE_WIDTH,
     raw: 0,
     delta: 8,
@@ -136,7 +140,7 @@ export function getPacketLayout(
   };
 
   // Column count: fixed columns + state + (raw if shown)
-  const columns = showRaw ? 11 : 10;
+  const columns = showRaw ? 10 : 9;
   const spaces = columns - 1;
 
   // Sum of all fixed-width columns (everything except state and raw)
@@ -145,9 +149,9 @@ export function getPacketLayout(
     layout.proto +
     layout.dir +
     layout.seq +
-    layout.type +
+    layout.opcode +
+    layout.typeAction +
     layout.device +
-    layout.action +
     layout.delta +
     layout.slot;
 
@@ -178,13 +182,8 @@ export function getPacketLayout(
       available++;
       continue;
     }
-    if (layout.action > 8) {
-      layout.action--;
-      available++;
-      continue;
-    }
-    if (layout.type > 10) {
-      layout.type--;
+    if (layout.typeAction > 12) {
+      layout.typeAction--;
       available++;
       continue;
     }
@@ -213,8 +212,8 @@ export function getPacketLayout(
     layout.proto +
     layout.dir +
     layout.seq +
-    layout.type +
-    layout.action +
+    layout.opcode +
+    layout.typeAction +
     layout.device +
     layout.state +
     layout.raw +
@@ -223,6 +222,12 @@ export function getPacketLayout(
     spaces;
 
   return layout;
+}
+
+/** Compute the indentation width to align with the typeAction column. */
+export function getDetailIndent(layout: PacketLayout): number {
+  // TIME + P + D + S + OP + 5 separators
+  return layout.time + layout.proto + layout.dir + layout.seq + layout.opcode + 5;
 }
 
 // ============================================================================
@@ -234,9 +239,9 @@ export function renderHeader(layout: PacketLayout): [string, string] {
     clipCell("P", layout.proto, "center"),
     clipCell("D", layout.dir, "center"),
     clipCell("S", layout.seq, "right"),
-    clipCell("TYPE", layout.type),
+    clipCell("OP", layout.opcode),
+    clipCell("TYPE", layout.typeAction),
     clipCell("DEVICE", layout.device),
-    clipCell("ACTION", layout.action),
     clipCell("STATE", layout.state),
   ];
   if (layout.showRaw) {
@@ -250,14 +255,19 @@ export function renderHeader(layout: PacketLayout): [string, string] {
 }
 
 export function renderRow(row: PacketRow, layout: PacketLayout): string {
+  if (row.isDetail) {
+    if (!layout.showVerbose || !row.verboseLine) return "";
+    const indent = getDetailIndent(layout);
+    return " ".repeat(indent) + `${DIM}${row.verboseLine}${RESET}`;
+  }
   const cells: string[] = [
     clipCell(row.ts, layout.time),
     colorCell(clipCell(row.proto, layout.proto, "center"), row.protoColor),
     colorCell(clipCell(row.direction, layout.dir, "center"), row.dirColor),
     clipCell(row.seq, layout.seq, "right"),
-    colorCell(clipCell(row.type, layout.type), row.typeColor, true),
+    clipCell(row.opcode, layout.opcode),
+    colorCell(clipCell(row.typeAction, layout.typeAction), row.typeActionColor, true),
     colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
-    colorCell(clipCell(row.action, layout.action), row.actionColor ?? WHITE),
     clipCell(row.state, layout.state),
   ];
   if (layout.showRaw) {
@@ -325,14 +335,14 @@ export class PacketTable {
           ? i
           : (this.head - this._count + i + RING_BUFFER_SIZE) % RING_BUFFER_SIZE;
       const line = this.rendered[bufIdx];
-      if (line !== null) lines.push(line);
+      if (line !== null && line !== "") lines.push(line);
     }
     return lines;
   }
 
   /** Re-render all stored rows with a new layout (e.g. on resize). */
-  rerender(showRaw: boolean, termWidth: number): void {
-    const layout = getPacketLayout(showRaw, termWidth);
+  rerender(showRaw: boolean, termWidth: number, showVerbose?: boolean): void {
+    const layout = getPacketLayout(showRaw, termWidth, showVerbose);
     for (let i = 0; i < this._count; i++) {
       const bufIdx =
         this._count < RING_BUFFER_SIZE

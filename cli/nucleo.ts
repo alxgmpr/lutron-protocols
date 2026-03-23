@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node --import tsx
 
 /**
  * Nucleo CLI — interactive UDP shell for Nucleo H723ZG
@@ -7,8 +7,8 @@
  * an interactive shell mirroring the on-device commands, plus live packet
  * display using the protocol decoders from protocol/.
  *
- * Usage: bun cli/nucleo.ts <host>
- *        NUCLEO_HOST=10.0.0.3 bun cli/nucleo.ts
+ * Usage: npx tsx cli/nucleo.ts <host>
+ *        NUCLEO_HOST=10.0.0.3 npx tsx cli/nucleo.ts
  */
 
 import { createSocket, type Socket } from "dgram";
@@ -20,7 +20,8 @@ import {
   readFileSync,
   writeFileSync,
 } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import {
   getDeviceBySerial,
   getPresetInfo,
@@ -62,10 +63,11 @@ import {
 // ============================================================================
 // Constants
 // ============================================================================
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const UDP_PORT = 9433;
 const KEEPALIVE_MS = 5000;
 const CONNECTION_TIMEOUT_MS = 12000; // no datagram for 12s → disconnected
-const CAPTURES_DIR = join(import.meta.dir, "../captures/cca-sessions");
+const CAPTURES_DIR = join(__dirname, "../captures/cca-sessions");
 const STATUS_BLOB_MIN_SIZE = 48;
 const STATUS_BLOB_V2_SIZE = 112;
 
@@ -135,7 +137,8 @@ let host = process.env.NUCLEO_HOST || "";
 }
 let udpSocket: Socket;
 let quiet = false;
-let raw = false;
+let raw = true;
+let verbose = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval>;
 let lastCcaRadioTs = 0; // for CCA inter-packet delta
@@ -302,7 +305,7 @@ let ccxRxCount = 0;
 let ccxTxCount = 0;
 
 function updateColumnHeaders(): void {
-  const layout = getPacketLayout(raw, screen.width);
+  const layout = getPacketLayout(raw, screen.width, verbose);
   const [labels, separator] = renderHeader(layout);
   screen.setColumnHeaders(labels, separator);
 }
@@ -310,7 +313,8 @@ function updateColumnHeaders(): void {
 function updateStatusBar(): void {
   const parts: string[] = [];
   if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
-  if (raw) parts.push(`${CYAN}[raw]${RESET}`);
+  if (!raw) parts.push(`${CYAN}[raw off]${RESET}`);
+  if (verbose) parts.push(`${GREEN}[verbose]${RESET}`);
   if (lockDetails) parts.push(`${GREEN}[lock]${RESET}`);
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
@@ -328,18 +332,32 @@ function updateHeader(): void {
 }
 
 function emitPacketRow(row: PacketRow): void {
-  const layout = getPacketLayout(raw, screen.width);
+  const layout = getPacketLayout(raw, screen.width, verbose);
   const rendered = renderRow(row, layout);
   packetTable.addRow(row, rendered);
   if (packetTable.isLive()) {
     screen.appendLine(rendered);
+  }
+  // Emit verbose detail line if present
+  if (row.verboseLine) {
+    const detailRow: PacketRow = {
+      ts: "", proto: "", protoColor: "", direction: "", dirColor: "",
+      seq: "", opcode: "", typeAction: "", typeActionColor: "",
+      device: "", state: "", raw: "", delta: "", slot: "",
+      isDetail: true, verboseLine: row.verboseLine,
+    };
+    const detailRendered = renderRow(detailRow, layout);
+    packetTable.addRow(detailRow, detailRendered);
+    if (packetTable.isLive() && detailRendered) {
+      screen.appendLine(detailRendered);
+    }
   }
 }
 
 function fullRedraw(): void {
   updateHeader();
   updateColumnHeaders();
-  packetTable.rerender(raw, screen.width);
+  packetTable.rerender(raw, screen.width, verbose);
   const lines = packetTable.getVisibleLines(screen.tableHeight);
   screen.redrawTable(lines);
   updateStatusBar();
@@ -533,10 +551,10 @@ function displayCcaPacket(
 
   let deviceText = "";
   let deviceColor = WHITE;
-  const takeDevice = (fieldName: string, label: string): boolean => {
+  const takeDevice = (fieldName: string): boolean => {
     const val = fieldValues.get(fieldName);
     if (!val || deviceText) return false;
-    let text = `${label}:${val}`;
+    let text = val;
     const serial = parseInt(val, 16);
     if (serial > 0) {
       const name = getSerialName(serial);
@@ -547,13 +565,13 @@ function displayCcaPacket(
     fieldValues.delete(fieldName);
     return true;
   };
-  takeDevice("device_id", "dev") ||
-    takeDevice("source_id", "src") ||
-    takeDevice("load_id", "load") ||
-    takeDevice("hardware_id", "hw") ||
-    takeDevice("target_id", "target");
+  takeDevice("device_id") ||
+    takeDevice("source_id") ||
+    takeDevice("load_id") ||
+    takeDevice("hardware_id") ||
+    takeDevice("target_id");
   if (!deviceText && fallbackDeviceId) {
-    let text = `dev:${fallbackDeviceId}`;
+    let text = fallbackDeviceId;
     const serial = parseInt(fallbackDeviceId, 16);
     if (serial > 0) {
       const name = getSerialName(serial);
@@ -563,72 +581,71 @@ function displayCcaPacket(
     deviceColor = YELLOW;
   }
 
-  let actionText = "";
-  let actionColor = WHITE;
+  // Fields whose values are self-evident (strip labels in compact mode)
+  const STRIP_LABELS = new Set([
+    "level", "slider_level", "fade", "delay", "format", "fmt",
+  ]);
+
+  let typeActionText = "";
+  let typeActionColor = WHITE;
   const stateParts: string[] = [];
+  const verboseParts: string[] = [];
 
   fieldValues.delete("sequence");
   if (category === "BUTTON") {
     let btn = fieldValues.get("button") || "";
-    const act = fieldValues.get("action") || "";
+    // Action byte (offset 11): 0x00=PRESS, 0x01=RELEASE (authoritative)
+    // Type groups A/B alternate between successive presses for double-tap detection
+    const actByte = data.length > 11 ? data[11] : 0;
+    const pressRelease = actByte === 0x00 ? "PRESS" : "RELEASE";
     // Enhance 4-button pico display using format byte + cmd_class (byte 17)
-    // cmd_class 0x42 = dim (RAISE/LOWER), 0x40 = scene/preset
-    // Action byte means "has payload" not "press/release" — don't display it
-    // when we have command semantics; the packet type name already says press/release
     const fmtByte = data.length > 7 ? data[7] : 0;
     const cmdClass = data.length > 17 ? data[17] : 0x00;
     const cmdParam = data.length > 19 ? data[19] : 0x00;
-    let hasCmd = false;
     if ((fmtByte === 0x0e || fmtByte === 0x0c) && cmdClass === 0x42) {
-      // Dim command or dim stop — resolve SCENE3/SCENE2 to RAISE/LOWER
       btn = cmdParam === 0x01 || cmdParam === 0x03 ? "RAISE" : "LOWER";
-      hasCmd = true;
     } else if (fmtByte === 0x0e && cmdClass === 0x40) {
-      // Scene/preset — keep button name, drop confusing action byte
-      hasCmd = true;
+      // Scene/preset — keep button name
     }
-    if (hasCmd) {
-      // Show action qualifier: action byte 0x00 = start/press, 0x01 = stop/release
-      const actByte = data.length > 11 ? data[11] : 0;
-      actionText = actByte === 0x00 ? `${btn} PRESS` : btn;
-    } else {
-      // 5-button pico or short 4-button tap — use action as-is
-      const btnAct = `${btn}${btn && act ? " " : ""}${act}`.trim();
-      actionText = btnAct;
-    }
-    actionColor = GREEN;
+    const btnLabel = btn || "BTN";
+    typeActionText = `${btnLabel} ${pressRelease}`;
+    typeActionColor = GREEN;
     fieldValues.delete("button");
     fieldValues.delete("action");
   } else if (category === "STATE" || category === "CONFIG") {
-    actionText = category === "STATE" ? "REPORT" : "CONFIG";
-    actionColor = BLUE;
-    // Level as percentage
+    // For CONFIG with virtual type name, use it; otherwise REPORT/CONFIG
+    if (category === "CONFIG" && identified.isVirtual) {
+      typeActionText = typeName;
+    } else {
+      typeActionText = category === "STATE" ? "REPORT" : "CONFIG";
+    }
+    typeActionColor = BLUE;
     const level = fieldValues.get("level");
     const sliderLevel = fieldValues.get("slider_level");
     if (level) {
       stateParts.push(level);
+      verboseParts.push(`level:${level}`);
       fieldValues.delete("level");
     }
-    // Show slider_level when it differs from level (e.g. light off but slider at position)
     if (sliderLevel && sliderLevel !== level) {
-      stateParts.push(`slider=${sliderLevel}`);
+      stateParts.push(sliderLevel);
+      verboseParts.push(`slider:${sliderLevel}`);
     }
     fieldValues.delete("slider_level");
-    // Format byte as fmt=XX (read raw since hex format doesn't decode)
     if (data.length > 7) {
-      stateParts.push(`fmt=${data[7].toString(16).padStart(2, "0")}`);
+      const fmt = data[7].toString(16).padStart(2, "0");
+      stateParts.push(fmt);
+      verboseParts.push(`fmt=${fmt}`);
     }
   } else if (category === "PAIRING") {
-    actionText = "PAIR";
-    actionColor = MAGENTA;
-    // Format byte identifies what kind of pairing data this carries
+    typeActionText = "PAIR";
+    typeActionColor = MAGENTA;
     const fmtByte = data.length > 7 ? data[7] : -1;
-    // Device fingerprint — most specific identification
     const fp = fingerprintDevice(data);
     if (fp.key) {
       stateParts.push(fp.name);
+      verboseParts.push(fp.name);
     } else {
-      // Fall back to device_class when no fingerprint matched
       const dcField = identified.fields.find((f) => f.name === "device_class");
       if (dcField && data.length > dcField.offset) {
         const code = data[dcField.offset];
@@ -636,26 +653,35 @@ function displayCcaPacket(
           const name =
             DeviceClassNames[code] || `0x${code.toString(16).padStart(2, "0")}`;
           stateParts.push(`class=${name}`);
+          verboseParts.push(`class=${name}`);
         }
       }
     }
     fieldValues.delete("device_class");
     if (fmtByte >= 0) {
-      stateParts.push(`fmt=${fmtByte.toString(16).padStart(2, "0")}`);
+      const fmt = fmtByte.toString(16).padStart(2, "0");
+      stateParts.push(fmt);
+      verboseParts.push(`fmt=${fmt}`);
     }
   } else if (category === "HANDSHAKE") {
-    actionText = "HS";
-    actionColor = RED;
+    typeActionText = "HS";
+    typeActionColor = RED;
     stateParts.push(identified.description);
+    verboseParts.push(identified.description);
   } else if (category === "BEACON") {
-    actionText = "BEACON";
-    actionColor = YELLOW;
+    typeActionText = "BEACON";
+    typeActionColor = YELLOW;
   }
 
   // Remaining fields
   for (const [name, val] of fieldValues) {
-    if (name === "format") continue; // already handled or not needed
-    stateParts.push(`${name}=${val}`);
+    if (name === "format") continue;
+    if (STRIP_LABELS.has(name)) {
+      stateParts.push(val);
+    } else {
+      stateParts.push(`${name}=${val}`);
+    }
+    verboseParts.push(`${name}=${val}`);
   }
 
   const slot = updateCcaSlotTracker(data, isTx, radioTs);
@@ -691,29 +717,30 @@ function displayCcaPacket(
     slotText = slotParts.join(" ");
   }
 
-  if (!actionText && stateParts.length === 0) {
+  if (!typeActionText && stateParts.length === 0) {
     // Unknown/unparsed packets: state falls back to raw bytes.
     stateParts.push(rawHex);
   }
 
+  const opcode = data[0].toString(16).padStart(2, "0");
   emitPacketRow({
     ts,
     proto: "A",
     protoColor: CYAN,
     direction,
     dirColor,
-    seq: `#${seq.toString(16).toUpperCase().padStart(2, "0")}`,
-    type: typeName,
-    typeColor,
+    seq: seq.toString(),
+    opcode,
+    typeAction: typeActionText || typeName,
+    typeActionColor: typeActionText ? typeActionColor : typeColor,
     device: deviceText,
     deviceColor,
-    action: actionText,
-    actionColor,
     state: stateParts.join("  "),
     raw: raw ? rawHex : "",
     delta: deltaText,
     slot: slotText,
     slotColor,
+    verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
   });
 
   // CSV recording
@@ -940,13 +967,17 @@ function displayCcxPacket(
     let deviceText = "";
     if ("deviceId" in msg) {
       const devId = (msg as { deviceId: number }).deviceId;
-      deviceText = `dev:${devId.toString(16).toUpperCase().padStart(8, "0")}`;
+      deviceText = devId.toString(16).toUpperCase().padStart(8, "0");
     } else if ("deviceSerial" in msg) {
       const serial = (msg as { deviceSerial: number }).deviceSerial;
       const name = getSerialName(serial);
-      deviceText = name ? `serial:${serial} "${name}"` : `serial:${serial}`;
+      deviceText = name ? `${serial} "${name}"` : `${serial}`;
     }
-    const actionText = msg.type.replaceAll("_", " ");
+
+    // Strip obvious labels for compact display
+    const compactParts = parts.map((p) =>
+      p.replace(/^(level|fade|delay|step)=/, ""),
+    );
 
     emitPacketRow({
       ts,
@@ -954,17 +985,17 @@ function displayCcxPacket(
       protoColor: YELLOW,
       direction,
       dirColor,
-      seq: seq ? `#${seq}` : "",
-      type: typeName,
-      typeColor,
+      seq: seq ? seq.toString() : "",
+      opcode: data.length > 0 ? data[0].toString(16).padStart(2, "0") : "",
+      typeAction: typeName,
+      typeActionColor: typeColor,
       device: deviceText,
       deviceColor: CYAN,
-      action: actionText,
-      actionColor: typeColor,
-      state: parts.join("  "),
+      state: compactParts.join("  "),
       raw: raw ? rawHex : "",
       delta: deltaStr,
       slot: "",
+      verboseLine: parts.length > 0 ? parts.join("  ") : undefined,
     });
   } else {
     // Fallback: raw hex (always show)
@@ -978,11 +1009,10 @@ function displayCcxPacket(
       direction,
       dirColor,
       seq: "",
-      type: "RAW",
-      typeColor: WHITE,
+      opcode: data.length > 0 ? data[0].toString(16).padStart(2, "0") : "",
+      typeAction: "RAW",
+      typeActionColor: WHITE,
       device: "",
-      action: "RAW",
-      actionColor: WHITE,
       state: raw ? "" : rawHex,
       raw: raw ? rawHex : "",
       delta: deltaStr,
@@ -1206,7 +1236,8 @@ function showHelp() {
     `${BOLD}CLI Commands${RESET} ${DIM}(local — not forwarded to STM32)${RESET}`,
     `  ${GREEN}status${RESET}            Query Nucleo status (overlay)`,
     `  ${GREEN}quiet${RESET}             Toggle packet display on/off`,
-    `  ${GREEN}raw${RESET}               Toggle raw hex column`,
+    `  ${GREEN}raw${RESET}               Toggle raw hex column (on by default)`,
+    `  ${GREEN}verbose${RESET}           Toggle verbose detail lines below packets`,
     `  ${GREEN}lock${RESET} [on|off]     Toggle slot detail fields (confidence/dSeq/error)`,
     `  ${GREEN}slot${RESET} [reset]      Toggle slot tracking on/off, or reset tracker`,
     `  ${GREEN}record${RESET} [name]     Start CSV recording to captures/cca-sessions/`,
@@ -1292,8 +1323,15 @@ function handleCommand(line: string) {
 
     case "raw":
       raw = !raw;
-      updateColumnHeaders();
+      fullRedraw();
       screen.appendLine(`Raw hex display: ${raw ? "on" : "off"}`);
+      updateStatusBar();
+      return;
+
+    case "verbose":
+      verbose = !verbose;
+      fullRedraw();
+      screen.appendLine(`Verbose display: ${verbose ? "on" : "off"}`);
       updateStatusBar();
       return;
 
@@ -1413,7 +1451,7 @@ if (!host) {
 
 /** Load saved LEAP data from data/leap-*.json, merging all files */
 function loadSavedLeapData(): boolean {
-  const dataDir = join(import.meta.dir, "../data");
+  const dataDir = join(__dirname, "../data");
   if (!existsSync(dataDir)) return false;
 
   const files = readdirSync(dataDir).filter(
@@ -1470,7 +1508,7 @@ async function startup() {
       leap.close();
 
       const dumpData = buildDumpData(LEAP_HOST, result);
-      const dataDir = join(import.meta.dir, "../data");
+      const dataDir = join(__dirname, "../data");
       mkdirSync(dataDir, { recursive: true });
       const filePath = join(dataDir, `leap-${LEAP_HOST}.json`);
       writeFileSync(filePath, JSON.stringify(dumpData, null, 2) + "\n");
@@ -1551,6 +1589,7 @@ async function startup() {
     "stop",
     "quiet",
     "raw",
+    "verbose",
     "lock",
     "slot",
     "help",
