@@ -56,7 +56,8 @@ struct CcaTxItem {
  * Private state
  * ----------------------------------------------------------------------- */
 static TaskHandle_t  cca_task_handle = NULL;
-static QueueHandle_t cca_tx_queue = NULL;
+static QueueHandle_t cca_tx_queue = NULL;          /* TDMA-scheduled TX */
+static QueueHandle_t cca_tx_immediate_queue = NULL; /* bypass TDMA (pairing) */
 static CcaDecoder    decoder;
 static uint32_t      rx_count = 0;
 static uint32_t      tx_count = 0;
@@ -364,14 +365,27 @@ static void cca_task_func(void* param)
             }
         }
 
-        /* Process TX queue (non-blocking) */
+        /* Process TDMA-scheduled TX queue — submit to TDMA engine */
         while (xQueueReceive(cca_tx_queue, &tx_item, 0) == pdTRUE) {
-            printf("[cca] TX %u bytes\r\n", (unsigned)tx_item.len);
+            CcaTdmaTxRequest req = {};
+            memcpy(req.packet, tx_item.data, tx_item.len);
+            req.packet_len = (uint8_t)tx_item.len;
+            req.retries = CCA_TDMA_RETRIES_NORMAL;
+            /* State reports (0x81-0x83) rotate type byte across retransmits */
+            req.type_rotate = (tx_item.data[0] >= 0x81 && tx_item.data[0] <= 0x83) ? 1 : 0;
+            req.priority = 0;
+            CcaTdmaJob* job = cca_tdma_submit(&req);
+            if (job) {
+                tx_count++;
+            } else {
+                printf("[cca] TDMA queue full, TX dropped\r\n");
+            }
+        }
 
-            /* Stop RX for TX */
+        /* Process immediate TX queue — bypasses TDMA (used by pairing) */
+        while (xQueueReceive(cca_tx_immediate_queue, &tx_item, 0) == pdTRUE) {
             cc1101_stop_rx();
 
-            /* Encode: append CRC, then N81 encode with preamble */
             uint8_t with_crc[CCA_TX_MAX_LEN + 2];
             cca_append_crc(tx_item.data, tx_item.len, with_crc);
 
@@ -385,12 +399,8 @@ static void cca_task_func(void* param)
                     tx_count++;
                     stream_send_cca_packet(tx_item.data, tx_item.len, 0, true, HAL_GetTick());
                 }
-                else {
-                    printf("[cca] TX failed\r\n");
-                }
             }
 
-            /* Restart RX */
             cc1101_start_rx();
         }
 
@@ -413,6 +423,7 @@ static void cca_task_func(void* param)
 void cca_task_start(void)
 {
     cca_tx_queue = xQueueCreate(CCA_TX_QUEUE_LEN, sizeof(CcaTxItem));
+    cca_tx_immediate_queue = xQueueCreate(CCA_TX_QUEUE_LEN, sizeof(CcaTxItem));
     cca_cmd_queue_init();
 
     xTaskCreate(cca_task_func, "CCA", CCA_TASK_STACK_SIZE, NULL, CCA_TASK_PRIORITY, &cca_task_handle);
@@ -427,6 +438,17 @@ bool cca_tx_enqueue(const uint8_t* packet, size_t len)
     item.len = len;
 
     return xQueueSend(cca_tx_queue, &item, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool cca_tx_enqueue_immediate(const uint8_t* packet, size_t len)
+{
+    if (cca_tx_immediate_queue == NULL || len == 0 || len > CCA_TX_MAX_LEN) return false;
+
+    CcaTxItem item;
+    memcpy(item.data, packet, len);
+    item.len = len;
+
+    return xQueueSend(cca_tx_immediate_queue, &item, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
 uint32_t cca_rx_count(void)

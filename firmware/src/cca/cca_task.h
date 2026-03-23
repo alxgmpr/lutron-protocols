@@ -12,8 +12,13 @@ extern "C" {
 /** Start the CCA FreeRTOS task (CC1101 RX/TX loop) */
 void cca_task_start(void);
 
-/** Enqueue a raw CCA packet for transmission. Thread-safe. */
+/** Enqueue a raw CCA packet for TDMA-scheduled transmission. Thread-safe.
+ *  The TDMA engine manages slot timing, sequence numbers, and retransmission. */
 bool cca_tx_enqueue(const uint8_t* packet, size_t len);
+
+/** Enqueue a raw CCA packet for immediate transmission (bypasses TDMA).
+ *  Used by pairing engine which manages its own timing. Thread-safe. */
+bool cca_tx_enqueue_immediate(const uint8_t* packet, size_t len);
 
 /** Get RX packet count */
 uint32_t cca_rx_count(void);

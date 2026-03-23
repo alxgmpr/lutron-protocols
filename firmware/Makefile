@@ -41,6 +41,7 @@ test:
 	    -I src/cca -I src/ccx \
 	    tests/test_main.cpp tests/test_crc.cpp tests/test_n81.cpp \
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
+	    tests/test_tdma.cpp tests/test_encoder.cpp \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    -o $(BUILD_DIR)/test_runner && ./$(BUILD_DIR)/test_runner
 
