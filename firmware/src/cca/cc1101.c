@@ -336,10 +336,10 @@ void cc1101_init(void)
     cc1101_strobe(CC1101_SIDLE);
     HAL_Delay(1);
 
-    /* Frequency: 433.602844 MHz */
+    /* Frequency: 433.470 MHz — matches Lutron production firmware (0x10AC03) */
     cc1101_write_register(CC1101_FREQ2, 0x10);
-    cc1101_write_register(CC1101_FREQ1, 0xAD);
-    cc1101_write_register(CC1101_FREQ0, 0x52);
+    cc1101_write_register(CC1101_FREQ1, 0xAC);
+    cc1101_write_register(CC1101_FREQ0, 0x03);
 
     /* Modem: 2-FSK, 19200 baud, ~25kHz deviation */
     cc1101_write_register(CC1101_MDMCFG4, 0x5B);
