@@ -10,6 +10,7 @@
  * These are pure math tests — no hardware stubs needed.
  */
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
