@@ -97,7 +97,12 @@ static void exec_button(uint32_t device_id, uint8_t button)
     uint8_t release_type = type_alternate_ ? PKT_BTN_SHORT_A : PKT_BTN_SHORT_B;
     type_alternate_ = !type_alternate_;
 
-    bool    is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
+    /* Dimming commands: map 5-btn codes to 4-btn codes for the actual packet.
+     * 'raise' (BTN_RAISE=0x05) → packet byte 0x09, 'lower' (BTN_LOWER=0x06) → 0x0A.
+     * From real 4-btn RL Pico capture: raise sends 0x09, lower sends 0x0A. */
+    bool is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
+    if (button == BTN_RAISE) button = 0x09;  /* 4-btn raise */
+    if (button == BTN_LOWER) button = 0x0A;  /* 4-btn lower */
     uint8_t seq = 0x00;
 
     printf("[cca] CMD button dev=%08X btn=%s press=0x%02X release=0x%02X\r\n",
@@ -132,7 +137,8 @@ static void exec_button(uint32_t device_id, uint8_t button)
             packet[16] = 0x00;
             packet[17] = QS_CLASS_DIM;
             packet[18] = QS_TYPE_HOLD;
-            packet[19] = (button == BTN_RAISE) ? 0x03 : 0x02;
+            /* Direction: 0x03=raise, 0x02=lower (from real Pico capture) */
+            packet[19] = (button == BTN_RAISE || button == BTN_SCENE3) ? 0x03 : 0x02;
         }
         else {
             packet[7] = QS_FMT_TAP;
@@ -172,19 +178,21 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[15] = device_id & 0xFF;
         packet[16] = 0x00;
 
-        if (button == BTN_RAISE) {
+        if (button == BTN_RAISE || button == BTN_SCENE3) {
+            /* From real Pico capture: 42 02 01 00 D9 */
             packet[17] = QS_CLASS_DIM;
             packet[18] = QS_TYPE_EXECUTE;
-            packet[19] = 0x01;
+            packet[19] = 0x01;  /* direction: raise */
             packet[20] = 0x00;
-            packet[21] = 0x16;
+            packet[21] = 0xD9;
         }
-        else if (button == BTN_LOWER) {
+        else if (button == BTN_LOWER || button == BTN_SCENE2) {
+            /* From real Pico capture: 42 02 00 00 CA */
             packet[17] = QS_CLASS_DIM;
             packet[18] = QS_TYPE_EXECUTE;
-            packet[19] = 0x00;
+            packet[19] = 0x00;  /* direction: lower */
             packet[20] = 0x00;
-            packet[21] = 0x43;
+            packet[21] = 0xCA;
         }
         else {
             packet[17] = QS_CLASS_LEVEL;
