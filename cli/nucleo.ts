@@ -545,6 +545,7 @@ function displayCcaPacket(
       field.offset,
       field.size,
       field.format,
+      field.name,
     );
     if (decoded) {
       fieldValues.set(field.name, decoded);

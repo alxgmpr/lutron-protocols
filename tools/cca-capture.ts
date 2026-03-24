@@ -131,6 +131,7 @@ function handleCcaPacket(data: Buffer, flags: number, _radioTs: number) {
         field.offset,
         field.size,
         field.format,
+        field.name,
       );
       const val = parsed.decoded ?? parsed.raw;
       if (

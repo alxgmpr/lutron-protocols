@@ -188,6 +188,7 @@ function parseCcaPacket(
       field.offset,
       field.size,
       field.format,
+      field.name,
     );
     if (decoded) fields[field.name] = decoded;
     else if (raw !== "-") fields[field.name] = raw;
