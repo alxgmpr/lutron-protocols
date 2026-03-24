@@ -115,43 +115,33 @@ LAN8742A PHY is hard-wired on the Nucleo board via RMII. Just plug in an RJ45 ca
 
 ## nRF52840 NCP Firmware
 
-Source: `~/lutron-tools/src/ot-nrf528xx/` (OpenThread NCP for nRF52840)
+Build script: `tools/nrf-ncp/build.sh` — clones OpenThread ot-nrf528xx, applies the
+Nucleo UART patch (`tools/nrf-ncp/nucleo-uart.patch`), builds, and packages a DFU zip.
 
 ### Key Configuration (transport-config.h)
 
-Modified defaults in `src/nrf52840/transport-config.h`:
+Patch modifies `src/nrf52840/transport-config.h` defaults for Nucleo wiring:
 ```c
-#define UART_HWFC_ENABLED 0           // disabled (was 1)
+#define UART_HWFC_ENABLED 0           // disabled (was 1 — CTS/RTS not wired)
 #define UART_BAUDRATE NRF_UARTE_BAUDRATE_460800  // (was 115200)
-#define UART_PIN_TX 20                // P0.20 (was 6 — LED1!)
-#define UART_PIN_RX 24                // P0.24 (was 8 — LED2!)
+#define UART_PIN_TX 20                // P0.20 (was 6 — LED1 on PCA10059!)
+#define UART_PIN_RX 24                // P0.24 (was 8 — LED2 on PCA10059!)
 ```
 
 ### Build & Flash
 
 ```bash
-# Build (requires arm-none-eabi-gcc on PATH)
-export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
-cd ~/lutron-tools/src/ot-nrf528xx
-cmake -B build -GNinja \
-  -DCMAKE_TOOLCHAIN_FILE=src/nrf52840/arm-none-eabi.cmake \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DOT_APP_NCP=ON -DOT_APP_CLI=OFF -DOT_APP_RCP=OFF \
-  -DOT_BOOTLOADER=USB -DNRF_PLATFORM=nrf52840 -DOT_PLATFORM=external
-ninja -C build ot-ncp-ftd
+# Build NCP firmware (clones repo, applies patch, produces DFU zip)
+tools/nrf-ncp/build.sh
+# Output: build/ot-ncp-ftd-nucleo.zip
 
-# Convert to HEX + package for DFU
-arm-none-eabi-objcopy -O ihex build/bin/ot-ncp-ftd /tmp/ot-ncp-ftd-uart.hex
-nrfutil nrf5sdk-tools pkg generate \
-  --hw-version 52 --sd-req 0x00 \
-  --application /tmp/ot-ncp-ftd-uart.hex \
-  --application-version 7 \
-  /tmp/ot-ncp-ftd-uart-dfu.zip
-
-# Flash (put dongle in DFU mode: press side button)
+# Flash via USB DFU (put dongle in DFU mode: press side button)
 nrfutil nrf5sdk-tools dfu usb-serial \
-  --package /tmp/ot-ncp-ftd-uart-dfu.zip \
+  --package build/ot-ncp-ftd-nucleo.zip \
   --port /dev/cu.usbmodemXXXXX
+
+# Or flash via Nucleo TCP stream
+bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd-nucleo.bin --host $NUCLEO_HOST
 ```
 
 ### Verified NCP Info
