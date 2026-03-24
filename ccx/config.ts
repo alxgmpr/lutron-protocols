@@ -184,6 +184,12 @@ export function getSerialName(serial: number): string | undefined {
   return data?.serials[serial]?.name;
 }
 
+/** Look up a device's area by serial number (zone proxy for CCA packets without zone_id) */
+export function getSerialArea(serial: number): string | undefined {
+  const data = getLeapData();
+  return data?.serials[serial]?.area;
+}
+
 /** Look up a preset by ID (extracted from CCX BUTTON_PRESS device_id bytes 0-1) */
 export function getPresetInfo(
   presetId: number,

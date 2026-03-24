@@ -147,7 +147,6 @@ let lastDatagramTime = 0; // wall-clock ms of last received datagram
 let connected = false;
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
-let lockDetails = false;
 
 interface CcaSlotFlowState {
   key: string;
@@ -315,7 +314,6 @@ function updateStatusBar(): void {
   if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
   if (!raw) parts.push(`${CYAN}[raw off]${RESET}`);
   if (verbose) parts.push(`${GREEN}[verbose]${RESET}`);
-  if (lockDetails) parts.push(`${GREEN}[lock]${RESET}`);
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
   if (!packetTable.isLive()) parts.push(`${YELLOW}[scroll]${RESET}`);
@@ -346,15 +344,16 @@ function emitPacketRow(row: PacketRow): void {
       protoColor: "",
       direction: "",
       dirColor: "",
+      rssi: "",
       seq: "",
       opcode: "",
       typeAction: "",
       typeActionColor: "",
       device: "",
+      zone: "",
       state: "",
       raw: "",
       delta: "",
-      slot: "",
       isDetail: true,
       verboseLine: row.verboseLine,
     };
@@ -524,6 +523,7 @@ function displayCcaPacket(
     "pico_frame",
     "cmd_class",
     "cmd_param",
+    "link_addr",
   ]);
 
   // Fields that are only useful when decoded (skip raw hex noise)
@@ -534,7 +534,6 @@ function displayCcaPacket(
     "pair_flag",
     "btn_scheme",
     "device_type",
-    "zone_id",
   ]);
 
   // Collect parsed field values
@@ -561,18 +560,15 @@ function displayCcaPacket(
           .join("")
       : "";
 
+  // Device column: MAC-only (8 hex chars)
   let deviceText = "";
   let deviceColor = WHITE;
+  let deviceSerial = 0; // for LEAP zone lookup
   const takeDevice = (fieldName: string): boolean => {
     const val = fieldValues.get(fieldName);
     if (!val || deviceText) return false;
-    let text = val;
-    const serial = parseInt(val, 16);
-    if (serial > 0) {
-      const name = getSerialName(serial);
-      if (name) text += ` "${name}"`;
-    }
-    deviceText = text;
+    deviceText = val;
+    deviceSerial = parseInt(val, 16);
     deviceColor = YELLOW;
     fieldValues.delete(fieldName);
     return true;
@@ -582,15 +578,39 @@ function displayCcaPacket(
     takeDevice("load_id") ||
     takeDevice("hardware_id") ||
     takeDevice("target_id");
-  if (!deviceText && fallbackDeviceId) {
-    let text = fallbackDeviceId;
-    const serial = parseInt(fallbackDeviceId, 16);
-    if (serial > 0) {
-      const name = getSerialName(serial);
-      if (name) text += ` "${name}"`;
-    }
-    deviceText = text;
+  // Fallback to raw bytes 2-5 only if packet doesn't have QS address fields
+  const hasQsAddress = identified.fields.some((f) => f.name === "subnet");
+  if (!deviceText && !hasQsAddress && fallbackDeviceId) {
+    deviceText = fallbackDeviceId;
+    deviceSerial = parseInt(fallbackDeviceId, 16);
     deviceColor = YELLOW;
+  }
+
+  // Zone column: from packet fields only (no LEAP enrichment in compact mode)
+  let zoneText = "";
+  let zoneColor = WHITE;
+  // State reports (0x80-0x83): bytes 3-4 = subnet, byte 5 = zone
+  const packetSubnet = fieldValues.get("subnet");
+  const packetZone = fieldValues.get("zone");
+  if (packetSubnet || packetZone) {
+    const parts: string[] = [];
+    if (packetSubnet) {
+      parts.push(packetSubnet.replace(/\s/g, ""));
+      fieldValues.delete("subnet");
+    }
+    if (packetZone) {
+      parts.push(packetZone);
+      fieldValues.delete("zone");
+    }
+    zoneText = parts.join("/");
+    zoneColor = CYAN;
+  }
+  // Packet-level zone_id (PAIR_B0 etc)
+  const packetZoneId = fieldValues.get("zone_id");
+  if (!zoneText && packetZoneId) {
+    zoneText = packetZoneId.replace(/\s/g, "");
+    zoneColor = CYAN;
+    fieldValues.delete("zone_id");
   }
 
   // Fields whose values are self-evident (strip labels in compact mode)
@@ -701,10 +721,8 @@ function displayCcaPacket(
     verboseParts.push(`${name}=${val}`);
   }
 
+  // Delta from slot tracker or global
   const slot = updateCcaSlotTracker(data, isTx, radioTs);
-  const tdmaSlot = seq & 7;
-
-  // Per-device delta from slot tracker (falls back to global delta)
   let deltaText = "";
   if (slot?.dtMs !== undefined && slot.dtMs > 0) {
     deltaText = `+${slot.dtMs}ms`;
@@ -712,33 +730,12 @@ function displayCcaPacket(
     deltaText = `+${deltaMs}ms`;
   }
 
-  // SLOT column: slot#, status, stride, error
-  let slotText = `s${tdmaSlot}`;
-  let slotColor = WHITE;
-  if (slot) {
-    slotColor =
-      slot.status === "LOCK" ? GREEN : slot.status === "TRACK" ? YELLOW : WHITE;
-    const slotParts: string[] = [`s${tdmaSlot}`];
-    if (slot.status !== "LEARN") {
-      slotParts.push(
-        lockDetails ? `${slot.status}${slot.confidencePct}%` : slot.status,
-      );
-    }
-    if (slot.dSeq && slot.dSeq > 0) slotParts.push(`Δ${slot.dSeq}`);
-    if (lockDetails && slot.errMs !== undefined) {
-      slotParts.push(`${slot.errMs >= 0 ? "+" : ""}${slot.errMs.toFixed(1)}ms`);
-    }
-    if (slot.missedPackets && slot.missedPackets > 0) {
-      slotParts.push(`${RED}miss:${slot.missedPackets}${RESET}`);
-    }
-    slotText = slotParts.join(" ");
-  }
-
   if (!typeActionText && stateParts.length === 0) {
     // Unknown/unparsed packets: state falls back to raw bytes.
     stateParts.push(rawHex);
   }
 
+  const rssiText = rssi < 0 ? `${rssi}` : "";
   const opcode = data[0].toString(16).padStart(2, "0");
   emitPacketRow({
     ts,
@@ -746,17 +743,18 @@ function displayCcaPacket(
     protoColor: CYAN,
     direction,
     dirColor,
+    rssi: rssiText,
     seq: seq.toString(),
     opcode,
     typeAction: typeActionText || typeName,
     typeActionColor: typeActionText ? typeActionColor : typeColor,
     device: deviceText,
     deviceColor,
+    zone: zoneText,
+    zoneColor,
     state: stateParts.join("  "),
     raw: raw ? rawHex : "",
     delta: deltaText,
-    slot: slotText,
-    slotColor,
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
   });
 
@@ -987,8 +985,17 @@ function displayCcxPacket(
       deviceText = devId.toString(16).toUpperCase().padStart(8, "0");
     } else if ("deviceSerial" in msg) {
       const serial = (msg as { deviceSerial: number }).deviceSerial;
-      const name = getSerialName(serial);
-      deviceText = name ? `${serial} "${name}"` : `${serial}`;
+      deviceText = serial.toString(16).toUpperCase().padStart(8, "0");
+    }
+
+    // Zone from CCX message
+    let zoneText = "";
+    let zoneColor = WHITE;
+    if ("zoneId" in msg && (msg as { zoneId: number }).zoneId) {
+      const zId = (msg as { zoneId: number }).zoneId;
+      const zoneName = getZoneName(zId);
+      zoneText = zoneName ?? `z${zId}`;
+      zoneColor = CYAN;
     }
 
     // Strip obvious labels for compact display
@@ -1002,16 +1009,18 @@ function displayCcxPacket(
       protoColor: YELLOW,
       direction,
       dirColor,
+      rssi: "",
       seq: seq ? seq.toString() : "",
       opcode: data.length > 0 ? data[0].toString(16).padStart(2, "0") : "",
       typeAction: typeName,
       typeActionColor: typeColor,
       device: deviceText,
       deviceColor: CYAN,
+      zone: zoneText,
+      zoneColor,
       state: compactParts.join("  "),
       raw: raw ? rawHex : "",
       delta: deltaStr,
-      slot: "",
       verboseLine: parts.length > 0 ? parts.join("  ") : undefined,
     });
   } else {
@@ -1025,15 +1034,16 @@ function displayCcxPacket(
       protoColor: YELLOW,
       direction,
       dirColor,
+      rssi: "",
       seq: "",
       opcode: data.length > 0 ? data[0].toString(16).padStart(2, "0") : "",
       typeAction: "RAW",
       typeActionColor: WHITE,
       device: "",
+      zone: "",
       state: raw ? "" : rawHex,
       raw: raw ? rawHex : "",
       delta: deltaStr,
-      slot: "",
     });
   }
 
@@ -1255,7 +1265,6 @@ function showHelp() {
     `  ${GREEN}quiet${RESET}             Toggle packet display on/off`,
     `  ${GREEN}raw${RESET}               Toggle raw hex column (on by default)`,
     `  ${GREEN}verbose${RESET}           Toggle verbose detail lines below packets`,
-    `  ${GREEN}lock${RESET} [on|off]     Toggle slot detail fields (confidence/dSeq/error)`,
     `  ${GREEN}slot${RESET} [reset]      Toggle slot tracking on/off, or reset tracker`,
     `  ${GREEN}record${RESET} [name]     Start CSV recording to captures/cca-sessions/`,
     `  ${GREEN}stop${RESET}              Stop recording`,
@@ -1351,16 +1360,6 @@ function handleCommand(line: string) {
       screen.appendLine(`Verbose display: ${verbose ? "on" : "off"}`);
       updateStatusBar();
       return;
-
-    case "lock": {
-      const mode = (args[1] || "").toLowerCase();
-      if (mode === "on") lockDetails = true;
-      else if (mode === "off") lockDetails = false;
-      else lockDetails = !lockDetails;
-      screen.appendLine(`Lock details: ${lockDetails ? "on" : "off"}`);
-      updateStatusBar();
-      return;
-    }
 
     case "slot":
       if ((args[1] || "").toLowerCase() === "reset") {
@@ -1607,7 +1606,6 @@ async function startup() {
     "quiet",
     "raw",
     "verbose",
-    "lock",
     "slot",
     "help",
     "quit",

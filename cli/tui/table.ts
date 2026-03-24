@@ -27,7 +27,6 @@ export const WHITE = "\x1b[37m";
 const MIN_PACKET_STATE_WIDTH = 10;
 const MIN_PACKET_RAW_WIDTH = 24;
 const MIN_PACKET_DELTA_WIDTH = 6;
-const MIN_PACKET_SLOT_WIDTH = 6;
 const MIN_PACKET_SEQ_WIDTH = 3;
 
 const RING_BUFFER_SIZE = 5000;
@@ -42,14 +41,15 @@ export interface PacketLayout {
   time: number;
   proto: number;
   dir: number;
+  rssi: number;
   seq: number;
   opcode: number;
   typeAction: number;
   device: number;
+  zone: number;
   state: number;
   raw: number;
   delta: number;
-  slot: number;
 }
 
 export interface PacketRow {
@@ -58,17 +58,18 @@ export interface PacketRow {
   protoColor: string;
   direction: string;
   dirColor: string;
+  rssi: string;
   seq: string;
   opcode: string;
   typeAction: string;
   typeActionColor: string;
   device: string;
   deviceColor?: string;
+  zone: string;
+  zoneColor?: string;
   state: string;
   raw: string;
   delta: string;
-  slot: string;
-  slotColor?: string;
   isDetail?: boolean;
   verboseLine?: string;
 }
@@ -129,18 +130,19 @@ export function getPacketLayout(
     time: 12,
     proto: 1,
     dir: 2,
+    rssi: 4,
     seq: 3,
     opcode: 2,
     typeAction: 20,
-    device: 24,
+    device: 8,
+    zone: 14,
     state: MIN_PACKET_STATE_WIDTH,
     raw: 0,
     delta: 8,
-    slot: 14,
   };
 
   // Column count: fixed columns + state + (raw if shown)
-  const columns = showRaw ? 10 : 9;
+  const columns = showRaw ? 11 : 10;
   const spaces = columns - 1;
 
   // Sum of all fixed-width columns (everything except state and raw)
@@ -148,12 +150,13 @@ export function getPacketLayout(
     layout.time +
     layout.proto +
     layout.dir +
+    layout.rssi +
     layout.seq +
     layout.opcode +
     layout.typeAction +
     layout.device +
-    layout.delta +
-    layout.slot;
+    layout.zone +
+    layout.delta;
 
   let available = width - fixed - spaces;
 
@@ -162,8 +165,8 @@ export function getPacketLayout(
     ? MIN_PACKET_STATE_WIDTH + MIN_PACKET_RAW_WIDTH
     : MIN_PACKET_STATE_WIDTH;
   while (available < minFlex) {
-    if (layout.slot > MIN_PACKET_SLOT_WIDTH) {
-      layout.slot--;
+    if (layout.zone > 6) {
+      layout.zone--;
       available++;
       continue;
     }
@@ -174,11 +177,6 @@ export function getPacketLayout(
     }
     if (layout.seq > MIN_PACKET_SEQ_WIDTH) {
       layout.seq--;
-      available++;
-      continue;
-    }
-    if (layout.device > 10) {
-      layout.device--;
       available++;
       continue;
     }
@@ -211,14 +209,15 @@ export function getPacketLayout(
     layout.time +
     layout.proto +
     layout.dir +
+    layout.rssi +
     layout.seq +
     layout.opcode +
     layout.typeAction +
     layout.device +
+    layout.zone +
     layout.state +
     layout.raw +
     layout.delta +
-    layout.slot +
     spaces;
 
   return layout;
@@ -226,9 +225,15 @@ export function getPacketLayout(
 
 /** Compute the indentation width to align with the typeAction column. */
 export function getDetailIndent(layout: PacketLayout): number {
-  // TIME + P + D + S + OP + 5 separators
+  // TIME + P + D + dBm + S + OP + 6 separators
   return (
-    layout.time + layout.proto + layout.dir + layout.seq + layout.opcode + 5
+    layout.time +
+    layout.proto +
+    layout.dir +
+    layout.rssi +
+    layout.seq +
+    layout.opcode +
+    6
   );
 }
 
@@ -240,17 +245,18 @@ export function renderHeader(layout: PacketLayout): [string, string] {
     clipCell("TIME", layout.time),
     clipCell("P", layout.proto, "center"),
     clipCell("D", layout.dir, "center"),
+    clipCell("dBm", layout.rssi, "right"),
     clipCell("S", layout.seq, "right"),
     clipCell("OP", layout.opcode),
     clipCell("TYPE", layout.typeAction),
     clipCell("DEVICE", layout.device),
+    clipCell("ZONE", layout.zone),
     clipCell("STATE", layout.state),
   ];
   if (layout.showRaw) {
     headerCells.push(clipCell("RAW", layout.raw, "right"));
   }
   headerCells.push(clipCell("DELTA", layout.delta, "right"));
-  headerCells.push(clipCell("TDMA", layout.slot));
   const labels = `${DIM}${headerCells.join(" ")}${RESET}`;
   const separator = `${DIM}${"─".repeat(layout.totalWidth)}${RESET}`;
   return [labels, separator];
@@ -266,6 +272,7 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
     clipCell(row.ts, layout.time),
     colorCell(clipCell(row.proto, layout.proto, "center"), row.protoColor),
     colorCell(clipCell(row.direction, layout.dir, "center"), row.dirColor),
+    colorCell(clipCell(row.rssi, layout.rssi, "right"), row.rssi ? DIM : ""),
     clipCell(row.seq, layout.seq, "right"),
     clipCell(row.opcode, layout.opcode),
     colorCell(
@@ -274,15 +281,13 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
       true,
     ),
     colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
+    colorCell(clipCell(row.zone, layout.zone), row.zoneColor ?? WHITE),
     clipCell(row.state, layout.state),
   ];
   if (layout.showRaw) {
     cells.push(clipCell(row.raw, layout.raw, "right"));
   }
   cells.push(clipCell(row.delta, layout.delta, "right"));
-  cells.push(
-    colorCell(clipCell(row.slot, layout.slot), row.slotColor ?? WHITE),
-  );
 
   return cells.join(" ");
 }

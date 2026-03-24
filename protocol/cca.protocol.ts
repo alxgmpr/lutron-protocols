@@ -384,7 +384,9 @@ const btnFields: FieldDef[] = [
 const stateRptFields: FieldDef[] = [
   field("type", 0, 1, "hex"),
   field("sequence", 1, 1, "decimal"),
-  field("device_id", 2, 4, "device_id"),
+  field("link_addr", 2, 1, "hex", "QS link address (alternates with TDMA)"),
+  field("subnet", 3, 2, "hex", "Subnet address (big-endian, e.g. 82D7)"),
+  field("zone", 5, 1, "hex", "Zone/integration ID (bit 7 = component)"),
   field("protocol", 6, 1, "hex"),
   field("format", 7, 1, "hex", "0x08 = periodic state report"),
   field("level", 11, 1, "level_byte", "Light output level (0x00=off)"),
@@ -521,8 +523,10 @@ const STATE_80 = packetType(
   [
     field("type", 0, 1, "hex"),
     field("sequence", 1, 1, "decimal"),
-    field("zone_id", 3, 2, "hex"),
-    field("protocol", 5, 1, "hex"),
+    field("link_addr", 2, 1, "hex", "QS link address"),
+    field("subnet", 3, 2, "hex", "Subnet address (big-endian)"),
+    field("zone", 5, 1, "hex", "Zone/integration ID"),
+    field("protocol", 6, 1, "hex"),
     field("crc", 22, 2, "hex"),
   ],
   {
