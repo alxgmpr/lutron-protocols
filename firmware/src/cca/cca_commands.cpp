@@ -146,7 +146,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 2) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < 2) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     /* Gap between PRESS and RELEASE — real Pico has ~75ms (one frame) */
@@ -212,7 +212,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     cc1101_start_rx();
@@ -417,7 +417,7 @@ static void exec_pico_level(uint32_t device_id, uint8_t level_pct)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 7) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < 7) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     cc1101_start_rx();
@@ -1064,7 +1064,7 @@ static void exec_save_fav(uint32_t device_id)
 
         transmit_one(packet, 22);
         seq += 6;
-        vTaskDelay(pdMS_TO_TICKS(63));
+        vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     /* --- Phase 2: LONG format (10 packets) --- */
@@ -1100,7 +1100,7 @@ static void exec_save_fav(uint32_t device_id)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 9) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < 9) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     cc1101_start_rx();
@@ -1263,7 +1263,7 @@ static void exec_raw_cmd(uint32_t zone_id, uint32_t target_id, uint8_t format,
 
         transmit_one(packet, data_len);
         seq = (seq + 5 + (rep % 2)) & 0xFF;
-        if (rep < repeat - 1) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < repeat - 1) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     cc1101_start_rx();
@@ -1393,7 +1393,7 @@ static void exec_dim_config(uint32_t zone_id, uint32_t target_id,
 
         transmit_one(packet, 51);
         seq = (seq + 1) & 0xFF;
-        if (rep < 4) vTaskDelay(pdMS_TO_TICKS(63));
+        if (rep < 4) vTaskDelay(pdMS_TO_TICKS(65));
     }
 
     cc1101_start_rx();
