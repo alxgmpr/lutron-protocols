@@ -54,6 +54,11 @@ static const uint8_t PKT_HS_D9 = 0xD9;
 static const uint8_t PKT_HS_DA = 0xDA;
 static const uint8_t PKT_HS_DF = 0xDF;
 static const uint8_t PKT_HS_E0 = 0xE0;
+static const uint8_t PKT_DEVICE_CTRL = 0xE0;
+static const uint8_t PKT_DIM_STEP = 0xE1;
+static const uint8_t PKT_DIM_STOP = 0xE2;
+static const uint8_t PKT_PICO_HOLD = 0xE3;
+static const uint8_t PKT_PICO_EXTENDED = 0xE4;
 static const uint8_t PKT_UNPAIR = 0xF0;
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;
 static const uint8_t PKT_LED_CONFIG = 0xF2;
@@ -67,6 +72,7 @@ static const uint8_t PKT_ZONE_ASSIGN = 0xF9;
 static const uint8_t PKT_SENSOR_LEVEL = 0xFA;
 static const uint8_t PKT_SENSOR_TEST = 0xFB;
 static const uint8_t PKT_SENSOR_VACANT = 0xFC;
+static const uint8_t PKT_PICO_RESET = 0xFD;
 
 // Button codes
 static const uint8_t BTN_ON = 0x02;
@@ -222,6 +228,11 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xDA: return "HS_DA";
     case 0xDF: return "HS_DF";
     case 0xE0: return "HS_E0";
+    case 0xE0: return "DEVICE_CTRL";
+    case 0xE1: return "DIM_STEP";
+    case 0xE2: return "DIM_STOP";
+    case 0xE3: return "PICO_HOLD";
+    case 0xE4: return "PICO_EXTENDED";
     case 0xF0: return "UNPAIR";
     case 0xF1: return "UNPAIR_PREP";
     case 0xF2: return "LED_CONFIG";
@@ -235,6 +246,7 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xFA: return "SENSOR_LEVEL";
     case 0xFB: return "SENSOR_TEST";
     case 0xFC: return "SENSOR_VACANT";
+    case 0xFD: return "PICO_RESET";
     default: return "UNKNOWN";
   }
 }
@@ -293,9 +305,14 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xDA:
     case 0xDF:
     case 0xE0:
+    case 0xE0:
+    case 0xE1:
+    case 0xE3:
+    case 0xE4:
     case 0xFA:
     case 0xFB:
     case 0xFC:
+    case 0xFD:
       return true;
     default:
       return false;
