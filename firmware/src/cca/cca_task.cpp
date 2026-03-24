@@ -14,6 +14,7 @@
 #include "cca_task.h"
 #include "cca_commands.h"
 #include "cca_tdma.h"
+#include "cca_timer.h"
 #include "cc1101.h"
 #include "cca_decoder.h"
 #include "cca_encoder.h"
@@ -304,6 +305,7 @@ static void cca_task_func(void* param)
         return;
     }
 
+    cca_timer_init();
     cc1101_set_rx_callback(on_rx_packet);
     cc1101_start_rx();
     reset_isr_latency_stats();

@@ -14,6 +14,7 @@
 #include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
+#include "cca_timer.h"
 #include "cca_types.h"
 #include "cc1101.h"
 #include "stream.h"
@@ -103,7 +104,8 @@ static void exec_button(uint32_t device_id, uint8_t button)
     bool is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
     if (button == BTN_RAISE) button = 0x09;  /* 4-btn raise */
     if (button == BTN_LOWER) button = 0x0A;  /* 4-btn lower */
-    uint8_t seq = 0x00;
+    uint8_t  seq = 0x00;
+    uint32_t next_fire = 0;
 
     printf("[cca] CMD button dev=%08X btn=%s press=0x%02X release=0x%02X\r\n",
            (unsigned)device_id, cca_button_name(button), press_type, release_type);
@@ -144,13 +146,21 @@ static void exec_button(uint32_t device_id, uint8_t button)
             packet[7] = QS_FMT_TAP;
         }
 
+        if (rep == 0) {
+            /* Capture timer tick BEFORE first TX for precise scheduling */
+            next_fire = cca_timer_ticks();
+        }
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 2) vTaskDelay(pdMS_TO_TICKS(65));
+        if (rep < 1) {
+            next_fire += CCA_FRAME_TICKS;  /* +75ms exactly */
+            cca_timer_wait_until(next_fire);
+        }
     }
 
-    /* Gap between PRESS and RELEASE — real Pico has ~75ms (one frame) */
-    vTaskDelay(pdMS_TO_TICKS(75));
+    /* Gap between PRESS and RELEASE — exactly one frame (75ms from last PRESS) */
+    next_fire += CCA_FRAME_TICKS;
+    cca_timer_wait_until(next_fire);
 
     /* --- Phase 2: RELEASE — SHORT type, format 0x0E, ~12 packets --- */
     seq = 0x00;
@@ -210,9 +220,15 @@ static void exec_button(uint32_t device_id, uint8_t button)
             packet[21] = 0x00;
         }
 
+        if (rep == 0) {
+            next_fire = cca_timer_ticks();
+        }
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(65));
+        if (rep < 11) {
+            next_fire += CCA_FRAME_TICKS;  /* +75ms exactly */
+            cca_timer_wait_until(next_fire);
+        }
     }
 
     cc1101_start_rx();

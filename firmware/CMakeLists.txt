@@ -144,6 +144,7 @@ set(APP_SOURCES
     src/net/eth.c
     src/net/stream.cpp
     src/cca/cc1101.c
+    src/cca/cca_timer.c
     src/cca/cca_task.cpp
     src/cca/cca_tdma.cpp
     src/cca/cca_commands.cpp
