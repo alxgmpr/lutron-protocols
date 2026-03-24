@@ -80,26 +80,38 @@ static bool transmit_one(const uint8_t* packet, size_t len)
 }
 
 /* -----------------------------------------------------------------------
- * Button press — 6 short + 10 long packets
+ * Button press — matched to real Pico capture (08692D70 PJ2-4B-XXX-L01).
+ *
+ * Real Pico pattern:
+ *   Phase 1 (PRESS):   type=LONG  fmt=0x04 act=PRESS    3 pairs (6 pkts)
+ *   Phase 2 (RELEASE): type=SHORT fmt=0x0E act=RELEASE   ~12 pkts
+ *
+ * PRESS packets come in PAIRS (seq N, N+1) per slot.
+ * A/B group alternates between button presses (LONG_A/SHORT_B, then LONG_B/SHORT_A).
  * ----------------------------------------------------------------------- */
 static void exec_button(uint32_t device_id, uint8_t button)
 {
     uint8_t packet[24];
-    uint8_t type_base = type_alternate_ ? PKT_BTN_SHORT_B : PKT_BTN_SHORT_A;
+    /* Within a press: PRESS=LONG, RELEASE=SHORT. A/B alternates between presses. */
+    uint8_t press_type   = type_alternate_ ? PKT_BTN_LONG_B  : PKT_BTN_LONG_A;
+    uint8_t release_type = type_alternate_ ? PKT_BTN_SHORT_A : PKT_BTN_SHORT_B;
     type_alternate_ = !type_alternate_;
 
     bool    is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
     uint8_t seq = 0x00;
 
-    printf("[cca] CMD button dev=%08X btn=%s\r\n", (unsigned)device_id, cca_button_name(button));
+    printf("[cca] CMD button dev=%08X btn=%s press=0x%02X release=0x%02X\r\n",
+           (unsigned)device_id, cca_button_name(button), press_type, release_type);
 
     cc1101_stop_rx();
 
-    /* --- Phase 1: SHORT format (6 packets) --- */
-    for (int rep = 0; rep < 6; rep++) {
+    /* --- Phase 1: PRESS — LONG type, format 0x04, 2 packets, stride 6 ---
+     * Real Pico sends exactly 2 PRESS packets (seq 0x00, 0x06) then
+     * switches to RELEASE. The processor echoes each at seq+1. */
+    for (int rep = 0; rep < 2; rep++) {
         memset(packet, 0x00, sizeof(packet));
 
-        packet[0] = type_base;
+        packet[0] = press_type;
         packet[1] = seq;
         packet[2] = (device_id >> 24) & 0xFF;
         packet[3] = (device_id >> 16) & 0xFF;
@@ -112,7 +124,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[11] = ACTION_PRESS;
 
         if (is_dimming) {
-            packet[7] = QS_FMT_BEACON;  /* 0x0C — dim start uses beacon format */
+            packet[7] = QS_FMT_BEACON;
             packet[12] = (device_id >> 24) & 0xFF;
             packet[13] = (device_id >> 16) & 0xFF;
             packet[14] = (device_id >> 8) & 0xFF;
@@ -128,16 +140,19 @@ static void exec_button(uint32_t device_id, uint8_t button)
 
         transmit_one(packet, 22);
         seq += 6;
-        vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < 2) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
-    /* --- Phase 2: LONG format (10 packets) --- */
+    /* Gap between PRESS and RELEASE — real Pico has ~75ms (one frame) */
+    vTaskDelay(pdMS_TO_TICKS(75));
+
+    /* --- Phase 2: RELEASE — SHORT type, format 0x0E, ~12 packets --- */
     seq = 0x00;
 
-    for (int rep = 0; rep < 10; rep++) {
+    for (int rep = 0; rep < 12; rep++) {
         memset(packet, 0x00, sizeof(packet));
 
-        packet[0] = type_base | 0x01; /* long format */
+        packet[0] = release_type;
         packet[1] = seq;
         packet[2] = (device_id >> 24) & 0xFF;
         packet[3] = (device_id >> 16) & 0xFF;
@@ -150,7 +165,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
         packet[10] = button;
         packet[11] = ACTION_RELEASE;
 
-        /* Second device ID instance (pico embeds object_id twice) */
+        /* Second device ID instance */
         packet[12] = (device_id >> 24) & 0xFF;
         packet[13] = (device_id >> 16) & 0xFF;
         packet[14] = (device_id >> 8) & 0xFF;
@@ -160,28 +175,36 @@ static void exec_button(uint32_t device_id, uint8_t button)
         if (button == BTN_RAISE) {
             packet[17] = QS_CLASS_DIM;
             packet[18] = QS_TYPE_EXECUTE;
-            packet[19] = 0x01;  /* direction: raise */
+            packet[19] = 0x01;
             packet[20] = 0x00;
             packet[21] = 0x16;
         }
         else if (button == BTN_LOWER) {
             packet[17] = QS_CLASS_DIM;
             packet[18] = QS_TYPE_EXECUTE;
-            packet[19] = 0x00;  /* direction: lower */
+            packet[19] = 0x00;
             packet[20] = 0x00;
             packet[21] = 0x43;
         }
         else {
             packet[17] = QS_CLASS_LEVEL;
             packet[18] = QS_TYPE_HOLD;
-            packet[19] = QS_PRESET_BASE + button;
+            /* Preset byte from real Pico capture:
+             * ON(0x08)→0x20, OFF(0x0B)→0x21, mapped as 0x20 + button_index.
+             * For 4-btn RL: SCENE4(0x08)=idx0, SCENE3(0x09)=idx1, SCENE2(0x0A)=idx2, SCENE1(0x0B)=idx3
+             * For 5-btn:    ON(0x02)=idx0, FAV(0x03)=idx1, OFF(0x04)=idx2 */
+            if (button >= 0x08 && button <= 0x0B) {
+                packet[19] = 0x20 + (button - 0x08); /* 4-btn: 0x20-0x23 */
+            } else {
+                packet[19] = 0x20 + (button - 0x02); /* 5-btn: 0x20-0x22 */
+            }
             packet[20] = 0x00;
             packet[21] = 0x00;
         }
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 9) vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < 11) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     cc1101_start_rx();
@@ -386,7 +409,7 @@ static void exec_pico_level(uint32_t device_id, uint8_t level_pct)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 7) vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < 7) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     cc1101_start_rx();
@@ -1033,7 +1056,7 @@ static void exec_save_fav(uint32_t device_id)
 
         transmit_one(packet, 22);
         seq += 6;
-        vTaskDelay(pdMS_TO_TICKS(70));
+        vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     /* --- Phase 2: LONG format (10 packets) --- */
@@ -1069,7 +1092,7 @@ static void exec_save_fav(uint32_t device_id)
 
         transmit_one(packet, 22);
         seq += 6;
-        if (rep < 9) vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < 9) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     cc1101_start_rx();
@@ -1232,7 +1255,7 @@ static void exec_raw_cmd(uint32_t zone_id, uint32_t target_id, uint8_t format,
 
         transmit_one(packet, data_len);
         seq = (seq + 5 + (rep % 2)) & 0xFF;
-        if (rep < repeat - 1) vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < repeat - 1) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     cc1101_start_rx();
@@ -1362,7 +1385,7 @@ static void exec_dim_config(uint32_t zone_id, uint32_t target_id,
 
         transmit_one(packet, 51);
         seq = (seq + 1) & 0xFF;
-        if (rep < 4) vTaskDelay(pdMS_TO_TICKS(70));
+        if (rep < 4) vTaskDelay(pdMS_TO_TICKS(63));
     }
 
     cc1101_start_rx();
