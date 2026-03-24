@@ -48,6 +48,19 @@ export interface ConstantGroup {
   values: Record<string, { value: number; description?: string }>;
 }
 
+/**
+ * A format discrimination rule: either a simple virtual type name,
+ * or an array of predicate-guarded candidates tried in order.
+ *
+ * Simple: `0x0e: "SET_LEVEL"` — format byte alone decides.
+ * Predicate: `0x0c: [{ name: "PICO_RESET", match: { 9: 0xff } }, { name: "SENSOR_VACANT" }]`
+ *   — first entry whose `match` bytes all agree with the packet wins;
+ *     a trailing entry with no `match` acts as the default fallback.
+ */
+export type FormatRule =
+  | string
+  | { name: string; match?: Record<number, number> }[];
+
 /** CCA packet type definition */
 export interface PacketTypeDef {
   value: number;
@@ -60,8 +73,8 @@ export interface PacketTypeDef {
   fields: FieldDef[];
   /** C constant name override (default: PKT_{name}) */
   cName?: string;
-  /** Format byte → virtual type name for multi-purpose packet types */
-  formatDiscrimination?: Record<number, string>;
+  /** Format byte → virtual type name (or predicate chain) for multi-purpose packet types */
+  formatDiscrimination?: Record<number, FormatRule>;
 }
 
 /** Transmission sequence step */
@@ -184,7 +197,7 @@ export function packetType(
     isVirtual?: boolean;
     ecosystems?: string[];
     cName?: string;
-    formatDiscrimination?: Record<number, string>;
+    formatDiscrimination?: Record<number, FormatRule>;
   },
 ): PacketTypeDef {
   return {

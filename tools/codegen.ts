@@ -95,6 +95,8 @@ function generateCCAHeader(): string {
   const sortedPkts = Object.entries(CCA.packetTypes).sort(
     ([, a], [, b]) => a.value - b.value,
   );
+  // Virtual types reuse type bytes — exclude from switch statements to avoid duplicate cases
+  const nonVirtualPkts = sortedPkts.filter(([, p]) => !p.isVirtual);
   for (const [name, pkt] of sortedPkts) {
     const cName = getCName(name, pkt);
     out += "static const uint8_t " + cName + " = " + hex(pkt.value) + ";\n";
@@ -178,7 +180,7 @@ function generateCCAHeader(): string {
   // Inline C++ functions
   out +=
     "// Get human-readable packet type name\ninline const char *cca_packet_type_name(uint8_t type_byte) {\n  switch (type_byte) {\n";
-  for (const [name, pkt] of sortedPkts) {
+  for (const [name, pkt] of nonVirtualPkts) {
     out += "    case " + hex(pkt.value) + ': return "' + name + '";\n';
   }
   out += '    default: return "UNKNOWN";\n  }\n}\n\n';
@@ -207,7 +209,7 @@ function generateCCAHeader(): string {
 
   out +=
     "// Check if type byte uses big-endian device ID\ninline bool cca_uses_be_device_id(uint8_t type_byte) {\n  switch (type_byte) {\n";
-  for (const [, pkt] of sortedPkts) {
+  for (const [, pkt] of nonVirtualPkts) {
     if (pkt.deviceIdEndian === "big") {
       out += "    case " + hex(pkt.value) + ":\n";
     }

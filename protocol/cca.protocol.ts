@@ -14,6 +14,7 @@ import {
   type DeviceFingerprint,
   enumDef,
   type FieldDef,
+  type FormatRule,
   field,
   type PairingPreset,
   packetType,
@@ -424,10 +425,28 @@ const pairRespFields: FieldDef[] = [
 // FORMAT DISCRIMINATION RULES
 // ============================================================================
 
-/** Format discrimination for short packet types (0x80-0x83) */
-const stateFormatDisc: Record<number, string> = {
-  0x09: "UNPAIR_PREP",
-  0x0c: "UNPAIR",
+/** Format discrimination for short packet types (0x80-0x83).
+ *  Formats 0x09 and 0x0C are multi-purpose — predicates disambiguate. */
+const stateFormatDisc: Record<number, FormatRule> = {
+  0x09: [
+    // Unpair prep: broadcast at bytes 9-13
+    {
+      name: "UNPAIR_PREP",
+      match: { 9: 0xff, 10: 0xff, 11: 0xff, 12: 0xff, 13: 0xff },
+    },
+    // Device control: target device at bytes 9-12 (identify, query, hold-start)
+    { name: "DEVICE_CTRL" },
+  ],
+  0x0b: "DIM_STEP",
+  0x0c: [
+    // Unpair: broadcast at bytes 9-13 + target device at bytes 16-19
+    {
+      name: "UNPAIR",
+      match: { 9: 0xff, 10: 0xff, 11: 0xff, 12: 0xff, 13: 0xff },
+    },
+    // Dim stop / beacon with target device
+    { name: "DIM_STOP" },
+  ],
   0x0e: "SET_LEVEL",
   0x12: "ZONE_BIND",
   0x13: "DIM_CONFIG",
@@ -437,15 +456,37 @@ const stateFormatDisc: Record<number, string> = {
   0x1c: "FADE_CONFIG",
 };
 
-/** Format discrimination for button packet types (0x88-0x8B) — sensor OWT formats */
-const buttonFormatDisc: Record<number, string> = {
-  0x09: "SENSOR_TEST",
-  0x0b: "SENSOR_LEVEL",
-  0x0c: "SENSOR_VACANT",
+/** Format discrimination for button packet types (0x88-0x8B).
+ *  Sensors, pico resets, dim holds, and extended commands share these type bytes. */
+const buttonFormatDisc: Record<number, FormatRule> = {
+  0x09: [
+    // Sensor test: sensor component 0xD5 at byte 14
+    { name: "SENSOR_TEST", match: { 14: 0xd5 } },
+    // Device control on button types (hold-start, etc.) — fallback
+    { name: "DEVICE_CTRL" },
+  ],
+  0x0b: [
+    // Sensor level: daylight sensor frame=0x00 or occupancy frame=0x03 at byte 8
+    // Dim step: zone byte at 12, addr_mode at 13, cmd_class at 14
+    { name: "SENSOR_LEVEL", match: { 14: 0xd5 } },
+    { name: "DIM_STEP" },
+  ],
+  0x0c: [
+    // Pico reset: broadcast at bytes 9-13 (FF FF FF FF FF)
+    {
+      name: "PICO_RESET",
+      match: { 9: 0xff, 10: 0xff, 11: 0xff, 12: 0xff, 13: 0xff },
+    },
+    // Pico dim hold: pico_frame=0x03 at byte 8
+    { name: "PICO_HOLD", match: { 8: 0x03 } },
+    // Sensor vacancy: fallback for OWT occupancy sensors
+    { name: "SENSOR_VACANT" },
+  ],
+  0x0e: "PICO_EXTENDED",
 };
 
 /** Format discrimination for long packet types (0xA1-0xA3) */
-const longFormatDisc: Record<number, string> = {
+const longFormatDisc: Record<number, FormatRule> = {
   0x11: "LED_CONFIG",
   0x12: "ZONE_BIND",
   0x13: "DIM_CONFIG",
@@ -947,6 +988,187 @@ const SENSOR_VACANT = packetType(
   { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
 );
 
+const picoResetFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0C = beacon/unpair/reset"),
+  field("broadcast", 9, 5, "hex", "FF FF FF FF FF"),
+  field("device_repeat", 16, 4, "device_id_be"),
+  field("crc", 22, 2, "hex"),
+];
+
+const PICO_RESET = packetType(
+  0xfd,
+  24,
+  "BUTTON",
+  "Pico reset/unpair broadcast (format 0x0C on button type bytes)",
+  "big",
+  picoResetFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// --- Device control (format 0x09) on state or button types ---
+// Used for: identify (class 0x01), query (class 0x03), hold-start (class 0x42)
+const deviceCtrlFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("source_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x09 = device control (9-byte payload)"),
+  field("flags", 8, 1, "hex", "0x00=normal"),
+  field("target_id", 9, 4, "device_id_be"),
+  field(
+    "addr_mode",
+    13,
+    1,
+    "hex",
+    "0xFE=component, 0xEF=group, 0xFF=broadcast",
+  ),
+  field(
+    "cmd_class",
+    14,
+    1,
+    "hex",
+    "0x01=device, 0x03=select, 0x42=dim, 0x05=button",
+  ),
+  field("cmd_type", 15, 1, "hex", "0x00=hold, 0x02=execute, 0x22=identify"),
+  field("cmd_param", 16, 1, "hex", "Direction or mode parameter"),
+  field("crc", 22, 2, "hex"),
+];
+
+const DEVICE_CTRL = packetType(
+  0xe0,
+  24,
+  "STATE",
+  "Device control: identify, query, or hold-start (format 0x09)",
+  "big",
+  deviceCtrlFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// --- Dim step (format 0x0B) on state or button types ---
+const dimStepFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("source_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0B = dim step (11-byte payload)"),
+  field("flags", 8, 1, "hex"),
+  field("target_id", 9, 4, "device_id_be"),
+  field("addr_mode", 13, 1, "hex", "0xFE=component, 0xEF=group"),
+  field("cmd_class", 14, 1, "hex", "0x42=dim"),
+  field("cmd_type", 15, 1, "hex", "0x02=step/execute"),
+  field("direction", 16, 1, "hex", "0x03=raise, 0x02=lower"),
+  field("crc", 22, 2, "hex"),
+];
+
+const DIM_STEP = packetType(
+  0xe1,
+  24,
+  "STATE",
+  "Dim raise/lower step (format 0x0B)",
+  "big",
+  dimStepFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// --- Dim stop (format 0x0C) on state types, non-broadcast ---
+const dimStopFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("source_id", 2, 4, "device_id"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0C = beacon/dim-stop (12-byte payload)"),
+  field("target_id", 9, 4, "device_id_be"),
+  field("crc", 22, 2, "hex"),
+];
+
+const DIM_STOP = packetType(
+  0xe2,
+  24,
+  "STATE",
+  "Dim stop / beacon with target (format 0x0C, non-broadcast)",
+  "little",
+  dimStopFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// --- Pico hold (format 0x0C) on button types with pico_frame=0x03 ---
+// Dimming press: raise/lower button with embedded cmd_class=0x42
+const picoHoldFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0C = beacon/hold"),
+  field("pico_frame", 8, 1, "hex", "0x03 for pico"),
+  field("button", 10, 1, "button"),
+  field("action", 11, 1, "action"),
+  field("device_repeat", 12, 4, "device_id_be"),
+  field("cmd_class", 17, 1, "hex", "0x42=dim"),
+  field("cmd_type", 18, 1, "hex", "0x00=hold"),
+  field(
+    "direction",
+    19,
+    1,
+    "hex",
+    "0x03=raise, 0x02=lower (from real Pico capture)",
+  ),
+  field("crc", 22, 2, "hex"),
+];
+
+const PICO_HOLD = packetType(
+  0xe3,
+  24,
+  "BUTTON",
+  "Pico dim hold-start: raise/lower press (format 0x0C, pico_frame=0x03)",
+  "big",
+  picoHoldFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// --- Pico extended (format 0x0E) on button types ---
+// Release phase: embedded device ID + cmd_class + level/preset
+const picoExtendedFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0E = extended command (14-byte payload)"),
+  field("pico_frame", 8, 1, "hex", "0x03 for pico"),
+  field("button", 10, 1, "button"),
+  field("action", 11, 1, "action"),
+  field("device_repeat", 12, 4, "device_id_be"),
+  field(
+    "cmd_class",
+    17,
+    1,
+    "hex",
+    "0x40=scene/level, 0x42=dim (raise/lower/stop)",
+  ),
+  field("cmd_type", 18, 1, "hex", "0x00=hold, 0x02=execute"),
+  field(
+    "cmd_param",
+    19,
+    1,
+    "hex",
+    "Preset ID (0x20=top) or dim direction (0x03=raise, 0x02=lower)",
+  ),
+  field("crc", 22, 2, "hex"),
+];
+
+const PICO_EXTENDED = packetType(
+  0xe4,
+  24,
+  "BUTTON",
+  "Pico extended command: release with level/preset/dim (format 0x0E)",
+  "big",
+  picoExtendedFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
 // ============================================================================
 // SEQUENCES
 // ============================================================================
@@ -1250,6 +1472,12 @@ export const CCA: CCAProtocolDef = {
     SENSOR_LEVEL,
     SENSOR_TEST,
     SENSOR_VACANT,
+    PICO_RESET,
+    DEVICE_CTRL,
+    DIM_STEP,
+    DIM_STOP,
+    PICO_HOLD,
+    PICO_EXTENDED,
   },
   sequences,
   pairingPresets,

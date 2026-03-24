@@ -54,7 +54,7 @@ import {
   PacketFields,
   PacketTypeInfo,
 } from "./cca.protocol";
-import type { DeviceFingerprint } from "./dsl";
+import type { DeviceFingerprint, FormatRule } from "./dsl";
 
 // ============================================================================
 // CONSTANTS
@@ -63,15 +63,43 @@ import type { DeviceFingerprint } from "./dsl";
 /** Broadcast address pattern (5 bytes of 0xFF) */
 export const BROADCAST_PATTERN = [0xff, 0xff, 0xff, 0xff, 0xff] as const;
 
+/**
+ * Field name → (byte value → label) lookup, built from CCA constant groups.
+ * Maps protocol field names to their known constant values so the CLI can
+ * display e.g. cmd_class=DIM instead of cmd_class=42.
+ */
+const FIELD_LABELS: Record<string, Record<number, string>> = (() => {
+  const map: Record<string, Record<number, string>> = {};
+  const add = (fieldName: string, groupName: string) => {
+    const group = CCA.constantGroups[groupName];
+    if (!group) return;
+    map[fieldName] = {};
+    for (const [key, { value }] of Object.entries(group.values)) {
+      map[fieldName][value] = key;
+    }
+  };
+  add("cmd_class", "qsClass");
+  add("cmd_type", "qsType");
+  add("addr_mode", "qsAddr");
+  add("component", "qsComp");
+  add("component_type", "qsComp");
+  add("pico_frame", "qsPico");
+  add("direction", "qsType"); // reuse — 0x02/0x03 overlap, but add specific overrides below
+  // Direction has its own semantics (not from a constant group)
+  map["direction"] = { 0x03: "RAISE", 0x02: "LOWER" };
+  return map;
+})();
+
 // ============================================================================
 // FORMAT DISCRIMINATION — built from packet type definitions
 // ============================================================================
 
 /**
- * Build virtual type lookup: { typeByte: { formatByte: virtualTypeName } }
+ * Build virtual type lookup: { typeByte: { formatByte: FormatRule } }
  * Reads formatDiscrimination from each packet type definition.
+ * FormatRule is either a string (simple) or a predicate chain (array).
  */
-const VIRTUAL_TYPE_MAP: Record<number, Record<number, string>> = {};
+const VIRTUAL_TYPE_MAP: Record<number, Record<number, FormatRule>> = {};
 for (const [, pkt] of Object.entries(CCA.packetTypes)) {
   if (pkt.formatDiscrimination) {
     VIRTUAL_TYPE_MAP[pkt.value] = pkt.formatDiscrimination;
@@ -98,6 +126,29 @@ export interface IdentifiedPacket {
 }
 
 /**
+ * Resolve a format discrimination rule against packet data.
+ * Simple string rules return immediately. Predicate chains try each
+ * candidate's `match` bytes against the packet; first full match wins.
+ * A trailing candidate with no `match` acts as the default fallback.
+ */
+function resolveFormatRule(
+  rule: FormatRule | undefined,
+  data: Uint8Array | number[],
+): string | undefined {
+  if (rule === undefined) return undefined;
+  if (typeof rule === "string") return rule;
+  // Predicate chain — try each candidate in order
+  for (const candidate of rule) {
+    if (!candidate.match) return candidate.name; // default fallback
+    const allMatch = Object.entries(candidate.match).every(
+      ([off, expected]) => data[Number(off)] === expected,
+    );
+    if (allMatch) return candidate.name;
+  }
+  return undefined;
+}
+
+/**
  * Multi-signal packet identification.
  *
  * Uses type byte as primary signal, then checks format byte for
@@ -121,7 +172,8 @@ export function identifyPacket(data: Uint8Array | number[]): IdentifiedPacket {
   // Check for virtual type reclassification
   const virtualRules = VIRTUAL_TYPE_MAP[typeByte];
   if (virtualRules && formatByte !== undefined) {
-    const virtualName = virtualRules[formatByte];
+    const rule = virtualRules[formatByte];
+    const virtualName = resolveFormatRule(rule, data);
     if (virtualName) {
       // Look up the virtual type's info from protocol definitions
       const virtualInfo = Object.values(PacketTypeInfo).find(
@@ -248,12 +300,15 @@ export function isBroadcast(bytes: string[], offset: number): boolean {
 /**
  * Parse a field value based on its format.
  * Returns raw hex and optional decoded human-readable value.
+ * When fieldName is provided, hex fields are resolved against known
+ * constant groups (cmd_class, cmd_type, addr_mode, etc.).
  */
 export function parseFieldValue(
   bytes: string[],
   offset: number,
   size: number,
   format: FieldFormat,
+  fieldName?: string,
 ): { raw: string; decoded: string | null } {
   const fieldBytes = bytes.slice(offset, offset + size);
   const raw = fieldBytes.join(" ");
@@ -312,6 +367,14 @@ export function parseFieldValue(
         fieldBytes.every((b) => b.toUpperCase() === "FF")
       ) {
         decoded = "BROADCAST";
+      }
+      // Resolve single-byte hex fields against known constant labels
+      else if (fieldName && fieldBytes.length === 1) {
+        const labels = FIELD_LABELS[fieldName];
+        if (labels) {
+          const label = labels[parseInt(fieldBytes[0], 16)];
+          if (label) decoded = label;
+        }
       }
       break;
   }

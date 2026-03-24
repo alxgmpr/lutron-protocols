@@ -228,25 +228,6 @@ inline const char *cca_packet_type_name(uint8_t type_byte) {
     case 0xDA: return "HS_DA";
     case 0xDF: return "HS_DF";
     case 0xE0: return "HS_E0";
-    case 0xE0: return "DEVICE_CTRL";
-    case 0xE1: return "DIM_STEP";
-    case 0xE2: return "DIM_STOP";
-    case 0xE3: return "PICO_HOLD";
-    case 0xE4: return "PICO_EXTENDED";
-    case 0xF0: return "UNPAIR";
-    case 0xF1: return "UNPAIR_PREP";
-    case 0xF2: return "LED_CONFIG";
-    case 0xF3: return "ZONE_BIND";
-    case 0xF4: return "DIM_CONFIG";
-    case 0xF5: return "FUNC_MAP";
-    case 0xF6: return "TRIM_CONFIG";
-    case 0xF7: return "SCENE_CONFIG";
-    case 0xF8: return "FADE_CONFIG";
-    case 0xF9: return "ZONE_ASSIGN";
-    case 0xFA: return "SENSOR_LEVEL";
-    case 0xFB: return "SENSOR_TEST";
-    case 0xFC: return "SENSOR_VACANT";
-    case 0xFD: return "PICO_RESET";
     default: return "UNKNOWN";
   }
 }
@@ -305,14 +286,6 @@ inline bool cca_uses_be_device_id(uint8_t type_byte) {
     case 0xDA:
     case 0xDF:
     case 0xE0:
-    case 0xE0:
-    case 0xE1:
-    case 0xE3:
-    case 0xE4:
-    case 0xFA:
-    case 0xFB:
-    case 0xFC:
-    case 0xFD:
       return true;
     default:
       return false;
