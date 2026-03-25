@@ -35,6 +35,7 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_RAW       = 0x14,  /* Universal raw packet builder */
     CCA_CMD_SCENE_EXEC = 0x15, /* Scene execute (format 0x0C) */
     CCA_CMD_DIM_CONFIG = 0x16, /* Dimming config (format 0x13) */
+    CCA_CMD_ANNOUNCE   = 0x17, /* Spoofed B0 device announce */
 };
 
 /* -----------------------------------------------------------------------

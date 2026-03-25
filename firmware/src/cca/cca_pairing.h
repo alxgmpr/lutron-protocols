@@ -16,7 +16,8 @@ struct DecodedPacket;
 typedef void (*cca_rx_hook_t)(const DecodedPacket* pkt);
 
 /* Execute a pairing command (CCA_CMD_PICO_PAIR, CCA_CMD_BRIDGE_PAIR,
- * or CCA_CMD_VIVE_PAIR). Called from cca_cmd_execute() in CCA task context. */
+ * CCA_CMD_VIVE_PAIR, or CCA_CMD_ANNOUNCE). Called from cca_cmd_execute()
+ * in CCA task context. */
 void cca_pairing_execute(const CcaCmdItem* item);
 
 #ifdef __cplusplus

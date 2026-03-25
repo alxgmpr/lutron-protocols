@@ -1484,6 +1484,7 @@ void cca_cmd_execute(const CcaCmdItem* item)
     case CCA_CMD_PICO_PAIR:
     case CCA_CMD_BRIDGE_PAIR:
     case CCA_CMD_VIVE_PAIR:
+    case CCA_CMD_ANNOUNCE:
         /* Handled by cca_pairing module */
         cca_pairing_execute(item);
         break;

@@ -822,6 +822,98 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
 }
 
 /* -----------------------------------------------------------------------
+ * Spoofed B0 device announce — emits fake dimmer announce packets so the
+ * processor "hears" a device with an arbitrary serial + device class.
+ *
+ * B0 packet layout (51 data bytes + 2 CRC, from real captures):
+ *   [0]     0xB0          type
+ *   [1]     sequence      increments per packet
+ *   [2]     flags         0xA0 first pkt, 0xA1 thereafter
+ *   [3-4]   subnet        big-endian (e.g. 0x82D7)
+ *   [5]     0x7F          pair flag
+ *   [6]     0x21          QS_PROTO_RADIO_TX
+ *   [7]     0x13          format (dimmer announce)
+ *   [8]     0x00          flags
+ *   [9-13]  0xFF x 5      broadcast
+ *   [14]    0x08          subcmd
+ *   [15]    0x05          capabilities
+ *   [16-19] serial        big-endian hardware ID
+ *   [20-23] device class  QSDeviceClassTypeID (4 bytes)
+ *   [24]    0xFF          unknown constant
+ *   [25-26] 0x00 0x00     padding
+ *   [27-50] 0xCC          padding
+ * ----------------------------------------------------------------------- */
+static void exec_announce(uint32_t serial, uint32_t device_class,
+                          uint16_t subnet, uint8_t duration_sec)
+{
+    if (duration_sec == 0) duration_sec = 15;
+
+    printf("[cca] CMD announce serial=%08X class=%08X subnet=%04X dur=%us\r\n",
+           (unsigned)serial, (unsigned)device_class, subnet, duration_sec);
+
+    cc1101_stop_rx();
+
+    uint8_t  packet[51];
+    uint8_t  seq = 0x00;
+    bool     first = true;
+    uint32_t start = HAL_GetTick();
+    uint32_t count = 0;
+
+    while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
+        memset(packet, 0xCC, sizeof(packet));
+
+        packet[0] = 0xB0;
+        packet[1] = seq;
+        packet[2] = first ? 0xA0 : 0xA1;
+        packet[3] = (subnet >> 8) & 0xFF;
+        packet[4] = subnet & 0xFF;
+        packet[5] = 0x7F;
+        packet[6] = QS_PROTO_RADIO_TX;
+        packet[7] = 0x13;
+        packet[8] = 0x00;
+
+        /* broadcast */
+        packet[9]  = 0xFF;
+        packet[10] = 0xFF;
+        packet[11] = 0xFF;
+        packet[12] = 0xFF;
+        packet[13] = 0xFF;
+
+        packet[14] = 0x08;
+        packet[15] = 0x05;
+
+        /* serial (big-endian) */
+        packet[16] = (serial >> 24) & 0xFF;
+        packet[17] = (serial >> 16) & 0xFF;
+        packet[18] = (serial >> 8)  & 0xFF;
+        packet[19] = serial & 0xFF;
+
+        /* device class (4 bytes) */
+        packet[20] = (device_class >> 24) & 0xFF;
+        packet[21] = (device_class >> 16) & 0xFF;
+        packet[22] = (device_class >> 8)  & 0xFF;
+        packet[23] = device_class & 0xFF;
+
+        packet[24] = 0xFF;
+        packet[25] = 0x00;
+        packet[26] = 0x00;
+        /* [27-50] already 0xCC from memset */
+
+        transmit_one(packet, 51);
+        count++;
+
+        first = false;
+        seq = (seq + 6) & 0xFF;
+        if (seq >= 0x48) seq = 0x01;
+
+        vTaskDelay(pdMS_TO_TICKS(75));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD announce complete (%lu pkts)\r\n", (unsigned long)count);
+}
+
+/* -----------------------------------------------------------------------
  * Public dispatcher — called from cca_cmd_execute()
  * ----------------------------------------------------------------------- */
 void cca_pairing_execute(const CcaCmdItem* item)
@@ -835,6 +927,12 @@ void cca_pairing_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_VIVE_PAIR:
         exec_vive_pair(item->device_id, item->zone_byte, item->duration_sec);
+        break;
+    case CCA_CMD_ANNOUNCE:
+        exec_announce(item->device_id,
+                      item->target_id,   /* device class packed as uint32 */
+                      (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
+                      item->duration_sec);
         break;
     default:
         printf("[cca] Unknown pairing command: 0x%02X\r\n", item->cmd);

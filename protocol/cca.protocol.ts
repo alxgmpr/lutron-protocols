@@ -1704,15 +1704,15 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["RRD-6NE"],
   },
-  0x04080101: {
-    id: 0x04080101,
+  0x040c0101: {
+    id: 0x040c0101,
     name: "RadioRA 2 Table Top Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RRD-3LD"],
   },
-  0x040c0101: {
-    id: 0x040c0101,
+  0x040f0101: {
+    id: 0x040f0101,
     name: "RadioRA 2 Fluorescent Wall Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
@@ -1725,36 +1725,43 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["RR-3PD-1"],
   },
-  0x041e0101: {
-    id: 0x041e0101,
+  0x041f0101: {
+    id: 0x041f0101,
     name: "HWQS 2Wire Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRA-6D", "HQRD-6D"],
   },
-  0x04200101: {
-    id: 0x04200101,
+  0x04220101: {
+    id: 0x04220101,
     name: "HWQS Tabletop Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQR-3LD"],
   },
-  0x04210101: {
-    id: 0x04210101,
+  0x04230101: {
+    id: 0x04230101,
     name: "HWQS Fluorescent Wall Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRA-F6AN-DV"],
   },
-  0x04230101: {
-    id: 0x04230101,
+  0x04240101: {
+    id: 0x04240101,
+    name: "HWQS PID Triac",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["HQR-3PD-1"],
+  },
+  0x04260101: {
+    id: 0x04260101,
     name: "HWQS Neutral Optional Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRA-6NE", "HQRD-6NE"],
   },
-  0x04280101: {
-    id: 0x04280101,
+  0x042a0101: {
+    id: 0x042a0101,
     name: "RadioRA 2 Wall Phase Adaptive Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
@@ -1767,48 +1774,49 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["HQRA-6NA", "HQRD-6NA"],
   },
-  0x042e0101: {
-    id: 0x042e0101,
+  0x042d0101: {
+    id: 0x042d0101,
     name: "Wired Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: [],
   },
-  0x042f0101: {
-    id: 0x042f0101,
+  0x042e0101: {
+    id: 0x042e0101,
     name: "Wired ELV Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: [],
   },
-  0x04340101: {
-    id: 0x04340101,
+  0x04350101: {
+    id: 0x04350101,
     name: "CL Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RRD-6CL"],
   },
-  0x04350101: {
-    id: 0x04350101,
+  0x04360101: {
+    id: 0x04360101,
     name: "Maestro CL Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRA-6CL", "HQRD-6CL"],
   },
-  0x04380101: {
-    id: 0x04380101,
+  0x04390101: {
+    id: 0x04390101,
     name: "RadioRA2 GrafikT Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RRT-G25LW"],
   },
-  0x04390101: {
-    id: 0x04390101,
+  0x043a0101: {
+    id: 0x043a0101,
     name: "HWQS GrafikT Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRT-G25LW"],
   },
+  // NOTE: DB has 0x043D0101 for both this and HWQS GrafikT Switch — likely DB error
   0x043d0101: {
     id: 0x043d0101,
     name: "RA2 Grafik T ELV Dimmer",
@@ -1823,29 +1831,29 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["HQRT-G5NEW"],
   },
-  0x04490101: {
-    id: 0x04490101,
+  0x044c0101: {
+    id: 0x044c0101,
     name: "In Line Dimmer in RA3",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RRK-R25NE-240"],
   },
-  0x044a0101: {
-    id: 0x044a0101,
+  0x044d0101: {
+    id: 0x044d0101,
     name: "In Line Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["HQRK-R25NE-240"],
   },
-  0x04510101: {
-    id: 0x04510101,
+  0x04520101: {
+    id: 0x04520101,
     name: "RadioRA2 Viking Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RRD-PRO"],
   },
-  0x04520101: {
-    id: 0x04520101,
+  0x04530101: {
+    id: 0x04530101,
     name: "HWQS Viking Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
@@ -1865,6 +1873,13 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["HQRK-P20-240G-XX"],
   },
+  0x04630201: {
+    id: 0x04630201,
+    name: "Caseta Diva Smart Dimmer",
+    ccaClass: 0x04,
+    category: "dimmer",
+    models: ["DVRF-6L"],
+  },
   0x04690101: {
     id: 0x04690101,
     name: "RA3 InLineDimmer UK",
@@ -1872,19 +1887,12 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["RR3K-R25NE-240"],
   },
-  0x046c0101: {
-    id: 0x046c0101,
+  0x046d0101: {
+    id: 0x046d0101,
     name: "RA3 European Plug In Lamp Dimmer",
     ccaClass: 0x04,
     category: "dimmer",
     models: ["RR3K-P20-240G-TXX"],
-  },
-  0x04220101: {
-    id: 0x04220101,
-    name: "HWQS PID Triac",
-    ccaClass: 0x04,
-    category: "dimmer",
-    models: ["HQR-3PD-1"],
   },
 
   // --- SWITCHES (CCA 0x05) ---
@@ -1895,8 +1903,8 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "switch",
     models: ["RRD-8ANS"],
   },
-  0x040a0101: {
-    id: 0x040a0101,
+  0x040e0101: {
+    id: 0x040e0101,
     name: "RadioRA 2 2-Wire Wall Switch",
     ccaClass: 0x05,
     category: "switch",
@@ -1909,57 +1917,57 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "switch",
     models: ["RR-15APS-1"],
   },
-  0x041f0101: {
-    id: 0x041f0101,
+  0x04200101: {
+    id: 0x04200101,
     name: "HWQS Neutral Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["HQRA-8ANS", "HQRD-8ANS"],
   },
-  0x04200201: {
-    id: 0x04200201,
+  0x04210101: {
+    id: 0x04210101,
     name: "HWQS 2Wire Wall Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["HQRA-8S-DV", "HQRD-8S-DV"],
   },
-  0x04240101: {
-    id: 0x04240101,
+  0x04250101: {
+    id: 0x04250101,
     name: "HWQS PID Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["HQR-15APS-1"],
   },
-  0x04300101: {
-    id: 0x04300101,
+  0x042f0101: {
+    id: 0x042f0101,
     name: "Wired Switch",
     ccaClass: 0x05,
     category: "switch",
     models: [],
   },
-  0x043a0101: {
-    id: 0x043a0101,
+  0x043c0101: {
+    id: 0x043c0101,
     name: "RadioRA2 GrafikT Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["RRT-G5ANSW"],
   },
-  0x043b0101: {
-    id: 0x043b0101,
+  0x043d0101: {
+    id: 0x043d0101,
     name: "HWQS GrafikT Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["HQRT-G5ANSW"],
   },
-  0x044b0101: {
-    id: 0x044b0101,
+  0x044e0101: {
+    id: 0x044e0101,
     name: "RA2 InLineSwitch UK",
     ccaClass: 0x05,
     category: "switch",
     models: ["RRK-R6ANS-240"],
   },
-  0x044c0101: {
-    id: 0x044c0101,
+  0x044f0101: {
+    id: 0x044f0101,
     name: "In Line Switch",
     ccaClass: 0x05,
     category: "switch",
@@ -1972,15 +1980,15 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "switch",
     models: ["RR3K-R6ANS-240"],
   },
-  0x04600101: {
-    id: 0x04600101,
+  0x04610101: {
+    id: 0x04610101,
     name: "Ra Outdoor Plugin Switch",
     ccaClass: 0x05,
     category: "switch",
     models: ["RR-15OUT"],
   },
-  0x04610101: {
-    id: 0x04610101,
+  0x04620101: {
+    id: 0x04620101,
     name: "HW Outdoor Plugin Switch",
     ccaClass: 0x05,
     category: "switch",
@@ -1995,26 +2003,26 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "fan",
     models: ["RRD-2ANF"],
   },
-  0x04310101: {
-    id: 0x04310101,
+  0x04300101: {
+    id: 0x04300101,
     name: "Wired Fan Speed Controller",
     ccaClass: 0x06,
     category: "fan",
     models: [],
   },
-  0x04320101: {
-    id: 0x04320101,
+  0x04310101: {
+    id: 0x04310101,
     name: "Fan Speed Controller",
     ccaClass: 0x06,
     category: "fan",
     models: [],
   },
-  0x046b0101: {
-    id: 0x046b0101,
-    name: "Inline Fan Control for RA3",
+  0x04670101: {
+    id: 0x04670101,
+    name: "Sunnata Fan Control",
     ccaClass: 0x06,
     category: "fan",
-    models: ["RR3K-RNFSQ-240"],
+    models: [],
   },
   0x04680101: {
     id: 0x04680101,
@@ -2022,6 +2030,13 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     ccaClass: 0x06,
     category: "fan",
     models: ["HQRK-RNFSQ-240"],
+  },
+  0x046c0101: {
+    id: 0x046c0101,
+    name: "Inline Fan Control for RA3",
+    ccaClass: 0x06,
+    category: "fan",
+    models: ["RR3K-RNFSQ-240"],
   },
 
   // --- SHADES (CCA 0x0A) ---

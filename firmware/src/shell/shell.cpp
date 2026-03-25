@@ -1630,6 +1630,41 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca announce <serial_hex> <class_hex_4byte> <subnet_hex> [duration_sec]
+     * Emits spoofed B0 device announce packets with the given serial and class. */
+    if (strncmp(arg, "announce ", 8) == 0) {
+        char*    p;
+        uint32_t serial = (uint32_t)strtoul(arg + 8, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca announce <serial_hex> <class_hex> <subnet_hex> [duration_sec]\r\n");
+            return;
+        }
+        uint32_t dev_class = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca announce <serial_hex> <class_hex> <subnet_hex> [duration_sec]\r\n");
+            return;
+        }
+        uint16_t subnet = (uint16_t)strtoul(p + 1, &p, 16);
+        uint8_t  dur = 15;
+        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_ANNOUNCE;
+        item.device_id = serial;
+        item.target_id = dev_class;
+        item.raw_payload[0] = (subnet >> 8) & 0xFF;
+        item.raw_payload[1] = subnet & 0xFF;
+        item.duration_sec = dur;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Announce queued (serial=%08X class=%08X subnet=%04X dur=%us)\r\n",
+                   (unsigned)serial, (unsigned)dev_class, subnet, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca raw <zone_hex> <target_hex> <format_hex> <payload_hex_bytes...>
      * Payload starts at byte 13 (first byte is typically addr_mode: FE/EF/FF).
      * Bytes 0-12 are auto-built: [type][seq][zone:4 LE][0x21][fmt][0x00][target:4 BE] */
@@ -1796,6 +1831,7 @@ static void cmd_cca(const char* arg)
     printf("  cca vive-pair <hub> <zone> [dur]      — Vive pairing\r\n");
     printf("  cca pair pico <dev> [type] [dur]      — pico pairing\r\n");
     printf("  cca pair bridge <id> <target> <zone> [dur] — bridge pairing\r\n");
+    printf("  cca announce <serial> <class> <subnet> [dur] — spoofed B0 announce\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
     printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");
