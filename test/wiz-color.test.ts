@@ -4,6 +4,8 @@ import {
   cctToRgbwc,
   cctToPilotParams,
   xyToRgbwc,
+  xyToCct,
+  planckianDistance,
   rgbwcToPilotParams,
 } from "../lib/wiz-color";
 
@@ -125,6 +127,42 @@ describe("cctToPilotParams", () => {
   });
 });
 
+describe("xyToCct", () => {
+  it("maps D65 white to ~6500K", () => {
+    const cct = xyToCct(0.3127, 0.329);
+    assert.ok(cct > 6000 && cct <= 6500, `cct=${cct} should be ~6500K`);
+  });
+
+  it("maps warm white to ~2700K", () => {
+    // Planckian locus at 2700K: roughly x=0.460 y=0.411
+    const cct = xyToCct(0.46, 0.411);
+    assert.ok(cct > 2500 && cct < 3000, `cct=${cct} should be ~2700K`);
+  });
+
+  it("clamps result to 1500-6500K range", () => {
+    // Very cool xy → McCamy's returns >6500 → clamped
+    const cool = xyToCct(0.25, 0.25);
+    assert.equal(cool, 6500);
+    // Any result is always within range
+    const warm = xyToCct(0.46, 0.411);
+    assert.ok(warm >= 1500 && warm <= 6500, `cct=${warm} should be in range`);
+  });
+});
+
+describe("planckianDistance", () => {
+  it("returns near-zero for Planckian locus points", () => {
+    // 4000K locus point: x=0.3805 y=0.3768
+    const dist = planckianDistance(0.3805, 0.3768);
+    assert.ok(dist < 0.005, `dist=${dist} should be near 0 for on-locus point`);
+  });
+
+  it("returns large distance for saturated colors", () => {
+    // Deep green: x=0.3064 y=0.6561
+    const dist = planckianDistance(0.3064, 0.6561);
+    assert.ok(dist > 0.1, `dist=${dist} should be large for saturated green`);
+  });
+});
+
 describe("xyToRgbwc", () => {
   it("returns all zeros at 0% brightness", () => {
     const ch = xyToRgbwc(0.3127, 0.329, 0);
@@ -141,32 +179,34 @@ describe("xyToRgbwc", () => {
     assert.equal(ch.g, 0);
   });
 
-  it("never uses white channels (color mode is RGB only)", () => {
+  it("uses white LEDs for near-white chromaticities", () => {
+    // D65 white is on the Planckian locus → should use W/C channels
     const ch = xyToRgbwc(0.3127, 0.329, 100);
-    assert.equal(ch.w, 0);
-    assert.equal(ch.c, 0);
+    assert.ok(ch.w > 0 || ch.c > 0, `w=${ch.w} c=${ch.c} — should use white LEDs for D65`);
   });
 
-  it("maps D65 white to balanced RGB", () => {
-    const ch = xyToRgbwc(0.3127, 0.329, 100);
-    // D65 should produce roughly equal R, G, B
-    assert.ok(ch.r > 200, `r=${ch.r} should be high`);
-    assert.ok(ch.g > 200, `g=${ch.g} should be high`);
-    assert.ok(ch.b > 200, `b=${ch.b} should be high`);
+  it("uses warm white for Planckian locus at 2700K", () => {
+    // Near 2700K on the locus
+    const ch = xyToRgbwc(0.46, 0.411, 100);
+    assert.ok(ch.w > 100, `w=${ch.w} should be high for warm white`);
   });
 
-  it("maps pure green (CIE) to dominant green channel", () => {
+  it("maps pure green (CIE) to dominant green channel with no white", () => {
     // x=0.3064 y=0.6561 — captured from Ketra, deep in green region
     const ch = xyToRgbwc(0.3064, 0.6561, 100);
     assert.equal(ch.g, 255);
     assert.ok(ch.r < ch.g, `r=${ch.r} should be less than g=${ch.g}`);
     assert.ok(ch.b < ch.g, `b=${ch.b} should be less than g=${ch.g}`);
+    assert.equal(ch.w, 0);
+    assert.equal(ch.c, 0);
   });
 
   it("maps blue region to dominant blue channel", () => {
     // x=0.2282 y=0.1949 — captured from Ketra, blue/violet region
     const ch = xyToRgbwc(0.2282, 0.1949, 100);
     assert.equal(ch.b, 255);
+    assert.equal(ch.w, 0);
+    assert.equal(ch.c, 0);
   });
 
   it("maps red region to dominant red channel", () => {
@@ -176,18 +216,25 @@ describe("xyToRgbwc", () => {
     assert.ok(ch.r > ch.g, `r=${ch.r} should be greater than g=${ch.g}`);
   });
 
-  it("scales by brightness", () => {
+  it("scales by brightness for saturated colors", () => {
+    // Green — far from locus, pure RGB
+    const full = xyToRgbwc(0.3064, 0.6561, 100);
+    const half = xyToRgbwc(0.3064, 0.6561, 50);
+    assert.ok(half.g < full.g, `half.g=${half.g} should be less than full.g=${full.g}`);
+  });
+
+  it("scales by brightness for near-white", () => {
     const full = xyToRgbwc(0.3127, 0.329, 100);
     const half = xyToRgbwc(0.3127, 0.329, 50);
-    assert.ok(half.r < full.r, `half.r=${half.r} should be less than full.r=${full.r}`);
-    assert.ok(half.r > 100 && half.r < 140, `half.r=${half.r} should be ~128`);
+    // At least one channel should be lower at half brightness
+    const fullMax = Math.max(full.r, full.g, full.b, full.w, full.c);
+    const halfMax = Math.max(half.r, half.g, half.b, half.w, half.c);
+    assert.ok(halfMax < fullMax, `halfMax=${halfMax} should be less than fullMax=${fullMax}`);
   });
 
   it("floors active channels at 2 for very low brightness", () => {
-    const ch = xyToRgbwc(0.3127, 0.329, 1);
-    // All RGB channels active for white → should be floored at 2
-    assert.ok(ch.r >= 2, `r=${ch.r} should be >= 2`);
+    const ch = xyToRgbwc(0.3064, 0.6561, 1);
+    // Green channel active → should be floored at 2
     assert.ok(ch.g >= 2, `g=${ch.g} should be >= 2`);
-    assert.ok(ch.b >= 2, `b=${ch.b} should be >= 2`);
   });
 });

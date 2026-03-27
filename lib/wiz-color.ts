@@ -55,6 +55,31 @@ const XYZ_TO_SRGB = [
 ] as const;
 
 /**
+ * Planckian locus reference points in CIE xy for distance measurement.
+ * Used to determine how "white" an xy chromaticity is — points near the
+ * locus should use dedicated white LEDs (W/C) instead of RGB mixing.
+ * [CCT in Kelvin, x, y]
+ */
+const PLANCKIAN_LOCUS: [number, number, number][] = [
+  [1500, 0.5857, 0.3931],
+  [2000, 0.5267, 0.4133],
+  [2500, 0.4770, 0.4137],
+  [3000, 0.4369, 0.4041],
+  [3500, 0.4053, 0.3907],
+  [4000, 0.3805, 0.3768],
+  [4500, 0.3608, 0.3636],
+  [5000, 0.3451, 0.3516],
+  [5500, 0.3325, 0.3411],
+  [6000, 0.3221, 0.3318],
+  [6500, 0.3135, 0.3237],
+];
+
+/** Distance threshold below which xy is treated as pure white (CCT mode) */
+const PLANCKIAN_NEAR = 0.01;
+/** Distance threshold above which xy is treated as pure color (RGB mode) */
+const PLANCKIAN_FAR = 0.05;
+
+/**
  * Convert CCT (Kelvin) + brightness (0-100%) to raw RGBWC channel values.
  *
  * Linearly interpolates the CCT table for the target temperature, then
@@ -148,10 +173,45 @@ export function rgbwcToPilotParams(
 }
 
 /**
+ * Estimate correlated color temperature from CIE xy using McCamy's approximation.
+ * Accurate within ~2% for chromaticities near the Planckian locus.
+ * Returns Kelvin, clamped to 1500-6500 (the bulb's usable range).
+ */
+export function xyToCct(x: number, y: number): number {
+  const n = (x - 0.332) / (0.1858 - y);
+  const cct = 449 * n * n * n + 3525 * n * n + 6823.3 * n + 5520.33;
+  return Math.max(1500, Math.min(6500, cct));
+}
+
+/**
+ * Compute Euclidean distance from a CIE xy point to the nearest point
+ * on the Planckian locus (interpolated from reference table).
+ * Small distance = near-white, large distance = saturated color.
+ */
+export function planckianDistance(x: number, y: number): number {
+  let minDist = Infinity;
+  for (let i = 0; i < PLANCKIAN_LOCUS.length - 1; i++) {
+    const [, ax, ay] = PLANCKIAN_LOCUS[i];
+    const [, bx, by] = PLANCKIAN_LOCUS[i + 1];
+    // Project (x,y) onto line segment [a, b], clamp t to [0,1]
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq)) : 0;
+    const px = ax + t * dx;
+    const py = ay + t * dy;
+    const dist = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
+    if (dist < minDist) minDist = dist;
+  }
+  return minDist;
+}
+
+/**
  * Convert CIE 1931 xy chromaticity + brightness to raw RGBWC channel values.
  *
- * Uses xy → XYZ → linear sRGB conversion, then maps to the bulb's 5-channel
- * RGBWC output. White channels are not used for color mode — only RGB LEDs.
+ * Near the Planckian locus (white region), uses the CCT table with dedicated
+ * warm/cold white LEDs for high-quality whites. Far from the locus (saturated
+ * colors), uses RGB LEDs. Blends smoothly between the two modes.
  *
  * @param x CIE x (0-1 range, raw protocol value / 10000)
  * @param y CIE y (0-1 range, raw protocol value / 10000)
@@ -166,6 +226,37 @@ export function xyToRgbwc(
   if (brightnessPercent <= 0 || y <= 0)
     return { r: 0, g: 0, b: 0, w: 0, c: 0 };
 
+  const dist = planckianDistance(x, y);
+
+  // Near the Planckian locus → use CCT pathway (white LEDs)
+  if (dist <= PLANCKIAN_NEAR) {
+    return cctToRgbwc(xyToCct(x, y), brightnessPercent);
+  }
+
+  // Compute RGB channels from xy
+  const rgb = xyToRgb(x, y, brightnessPercent);
+
+  // Far from locus → pure RGB
+  if (dist >= PLANCKIAN_FAR) return rgb;
+
+  // Blend zone: mix CCT (white) and RGB channels
+  const blend = (dist - PLANCKIAN_NEAR) / (PLANCKIAN_FAR - PLANCKIAN_NEAR);
+  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent);
+  return {
+    r: Math.round(white.r * (1 - blend) + rgb.r * blend),
+    g: Math.round(white.g * (1 - blend) + rgb.g * blend),
+    b: Math.round(white.b * (1 - blend) + rgb.b * blend),
+    w: Math.round(white.w * (1 - blend)),
+    c: Math.round(white.c * (1 - blend)),
+  };
+}
+
+/** Pure RGB conversion from CIE xy (no white channel blending) */
+function xyToRgb(
+  x: number,
+  y: number,
+  brightnessPercent: number,
+): RgbwcChannels {
   // CIE xy → XYZ (normalized to Y = 1)
   const X = x / y;
   const Y = 1;
@@ -174,14 +265,9 @@ export function xyToRgbwc(
   // XYZ → linear sRGB
   const dot = (row: readonly [number, number, number]) =>
     row[0] * X + row[1] * Y + row[2] * Z;
-  let lr = dot(XYZ_TO_SRGB[0]);
-  let lg = dot(XYZ_TO_SRGB[1]);
-  let lb = dot(XYZ_TO_SRGB[2]);
-
-  // Clamp negatives (out-of-gamut colors)
-  lr = Math.max(0, lr);
-  lg = Math.max(0, lg);
-  lb = Math.max(0, lb);
+  let lr = Math.max(0, dot(XYZ_TO_SRGB[0]));
+  let lg = Math.max(0, dot(XYZ_TO_SRGB[1]));
+  let lb = Math.max(0, dot(XYZ_TO_SRGB[2]));
 
   // Normalize so the max channel = 255, then scale by brightness
   const maxCh = Math.max(lr, lg, lb);
