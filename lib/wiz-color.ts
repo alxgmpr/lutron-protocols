@@ -76,8 +76,12 @@ const PLANCKIAN_LOCUS: [number, number, number][] = [
 
 /** Distance threshold below which xy is treated as pure white (CCT mode) */
 const PLANCKIAN_NEAR = 0.01;
-/** Distance threshold above which xy is treated as pure color (RGB mode) */
-const PLANCKIAN_FAR = 0.05;
+/**
+ * Distance threshold at which xy is treated as fully saturated (RGB only).
+ * The gamut boundary is ~0.15-0.30 from the locus depending on hue.
+ * 0.15 covers the pastel region where white+tint looks better than pure RGB.
+ */
+const PLANCKIAN_FAR = 0.15;
 
 /**
  * Convert CCT (Kelvin) + brightness (0-100%) to raw RGBWC channel values.
@@ -233,21 +237,24 @@ export function xyToRgbwc(
     return cctToRgbwc(xyToCct(x, y), brightnessPercent);
   }
 
-  // Compute RGB channels from xy
-  const rgb = xyToRgb(x, y, brightnessPercent);
-
   // Far from locus → pure RGB
-  if (dist >= PLANCKIAN_FAR) return rgb;
+  if (dist >= PLANCKIAN_FAR) {
+    return xyToRgb(x, y, brightnessPercent);
+  }
 
-  // Blend zone: mix CCT (white) and RGB channels
-  const blend = (dist - PLANCKIAN_NEAR) / (PLANCKIAN_FAR - PLANCKIAN_NEAR);
-  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent);
+  // Blend zone: decompose brightness into white + color components.
+  // Instead of blending channel values (which creates muddy colors because
+  // normalized RGB overwhelms the white), we split the brightness budget:
+  // white LEDs carry the desaturated portion, RGB LEDs carry the color accent.
+  const sat = (dist - PLANCKIAN_NEAR) / (PLANCKIAN_FAR - PLANCKIAN_NEAR);
+  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent * (1 - sat));
+  const color = xyToRgb(x, y, brightnessPercent * sat);
   return {
-    r: Math.round(white.r * (1 - blend) + rgb.r * blend),
-    g: Math.round(white.g * (1 - blend) + rgb.g * blend),
-    b: Math.round(white.b * (1 - blend) + rgb.b * blend),
-    w: Math.round(white.w * (1 - blend)),
-    c: Math.round(white.c * (1 - blend)),
+    r: Math.min(255, white.r + color.r),
+    g: Math.min(255, white.g + color.g),
+    b: Math.min(255, white.b + color.b),
+    w: white.w,
+    c: white.c,
   };
 }
 
