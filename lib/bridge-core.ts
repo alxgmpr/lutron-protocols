@@ -20,7 +20,7 @@ import {
 import { formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 import { evalWarmDimCurve, getWarmDimCurve } from "./warm-dim";
-import { cctToRgbwc, rgbwcToPilotParams } from "./wiz-color";
+import { cctToRgbwc, xyToRgbwc, rgbwcToPilotParams } from "./wiz-color";
 
 // ── Config types ──────────────────────────────────────────
 
@@ -62,6 +62,7 @@ export interface BridgeCoreOptions {
 // ── Constants ─────────────────────────────────────────────
 
 const DEDUP_WINDOW_MS = 2000;
+const FADE_STEP_MS = 250; // matches WiZ fadeIn=250ms and Lutron quarter-second resolution
 const RAMP_INTERVAL_MS = 100;
 const RAMP_RATE_PCT_PER_SEC = 100 / 4.75; // 4.75s full range (19 quarter-seconds)
 
@@ -80,6 +81,7 @@ export class BridgeCore extends EventEmitter {
   // Zone state
   private zoneLevel = new Map<number, number>();
   private zoneCct = new Map<number, number>(); // last-known CCT per zone
+  private zoneColorXy = new Map<number, [number, number]>(); // last-known CIE xy per zone
   private activeRamps = new Map<
     number,
     {
@@ -87,6 +89,14 @@ export class BridgeCore extends EventEmitter {
       direction: "raise" | "lower";
       startLevel: number;
       startTime: number;
+    }
+  >();
+  private activeFades = new Map<
+    number,
+    {
+      timer: ReturnType<typeof setInterval>;
+      totalSteps: number;
+      step: number;
     }
   >();
 
@@ -120,8 +130,15 @@ export class BridgeCore extends EventEmitter {
 
     // Handle LEVEL_CONTROL (processor → devices, multicast)
     if (pkt.parsed.type === "LEVEL_CONTROL") {
-      const { zoneId, sequence, levelPercent, fade, cct, warmDimMode } =
-        pkt.parsed;
+      const {
+        zoneId,
+        sequence,
+        levelPercent,
+        fade,
+        cct,
+        warmDimMode,
+        colorXy,
+      } = pkt.parsed;
       if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
       if (this.isDuplicate(`lc:${zoneId}:${sequence}`)) return;
       this.matchCount++;
@@ -131,7 +148,7 @@ export class BridgeCore extends EventEmitter {
         const curve = getWarmDimCurve("default");
         resolvedCct = evalWarmDimCurve(curve, levelPercent);
       }
-      this.dispatch(zoneId, levelPercent, "LEVEL", fade, resolvedCct);
+      this.dispatch(zoneId, levelPercent, "LEVEL", fade, resolvedCct, colorXy);
       return;
     }
 
@@ -213,10 +230,13 @@ export class BridgeCore extends EventEmitter {
     }
   }
 
-  /** Clean up: close socket and clear ramp timers */
+  /** Clean up: close socket and clear ramp/fade timers */
   destroy(): void {
     for (const [zoneId] of this.activeRamps) {
       this.stopRamp(zoneId);
+    }
+    for (const [zoneId] of this.activeFades) {
+      this.stopFade(zoneId);
     }
     this.wizSocket?.close();
     this.wizSocket = null;
@@ -244,6 +264,7 @@ export class BridgeCore extends EventEmitter {
     pairing: WizPairing,
     levelPercent: number,
     nativeCct?: number,
+    colorXy?: [number, number],
   ) {
     if (!this.wizSocket) return;
 
@@ -253,9 +274,15 @@ export class BridgeCore extends EventEmitter {
     if (levelPercent <= 0) {
       params = { state: false };
       logStr = "OFF";
+    } else if (colorXy) {
+      // CIE xy color mode — use RGB channels only
+      const x = colorXy[0] / 10000;
+      const y = colorXy[1] / 10000;
+      const channels = xyToRgbwc(x, y, levelPercent);
+      params = rgbwcToPilotParams(channels);
+      logStr = `${Math.round(levelPercent)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b}]`;
     } else {
-      // Always use RGBWC for full 0-100% range (bypasses WiZ 10% floor)
-      // Default to 2700K when no CCT specified
+      // CCT mode — use RGBWC for full 0-100% range (bypasses WiZ 10% floor)
       const cct = nativeCct ?? 2700;
       const channels = cctToRgbwc(cct, levelPercent);
       params = rgbwcToPilotParams(channels);
@@ -292,24 +319,41 @@ export class BridgeCore extends EventEmitter {
     source: string,
     fade = 1,
     nativeCct?: number,
+    colorXy?: [number, number],
   ) {
-    this.zoneLevel.set(zoneId, levelPercent);
+    // Cancel any in-progress ramp or fade for this zone
+    this.cancelZoneActivity(zoneId);
+
     // Track last-known CCT — reuse when brightness changes without CCT
     if (nativeCct != null) this.zoneCct.set(zoneId, nativeCct);
+    // Color mode clears CCT tracking (they're mutually exclusive)
+    if (colorXy) this.zoneColorXy.set(zoneId, colorXy);
+    else if (nativeCct != null) this.zoneColorXy.delete(zoneId);
+
     const cct = nativeCct ?? this.zoneCct.get(zoneId);
 
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
     const time = new Date().toISOString().slice(11, 23);
     const fadeSec = fade / 4;
     const fadeStr = fadeSec !== 0.25 ? ` fade=${fadeSec}s` : "";
+    const colorStr = colorXy
+      ? ` xy=(${(colorXy[0] / 10000).toFixed(4)},${(colorXy[1] / 10000).toFixed(4)})`
+      : "";
 
     this.emit(
       "log",
-      `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}`,
+      `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}${colorStr}`,
     );
 
-    const pairing = this.pairingsByZone.get(zoneId);
-    if (pairing) await this.sendWiz(pairing, levelPercent, cct);
+    if (fade > 1) {
+      // Stepped fade: N steps at 250ms intervals (1 qs = 1 step)
+      this.startFade(zoneId, levelPercent, cct, fade, colorXy);
+    } else {
+      // Instant: single setPilot, bulb's 250ms fadeIn handles it
+      this.zoneLevel.set(zoneId, levelPercent);
+      const pairing = this.pairingsByZone.get(zoneId);
+      if (pairing) await this.sendWiz(pairing, levelPercent, cct, colorXy);
+    }
   }
 
   // ── Dim Ramp ──────────────────────────────────────────
@@ -325,7 +369,7 @@ export class BridgeCore extends EventEmitter {
   }
 
   private startRamp(zoneId: number, direction: "raise" | "lower") {
-    this.stopRamp(zoneId);
+    this.cancelZoneActivity(zoneId);
     const startLevel = this.zoneLevel.get(zoneId) ?? 50;
     const startTime = Date.now();
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
@@ -376,6 +420,76 @@ export class BridgeCore extends EventEmitter {
         "log",
         `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
       );
+    }
+  }
+
+  // ── Fade Stepping ───────────────────────────────────────
+
+  private cancelZoneActivity(zoneId: number): void {
+    this.stopRamp(zoneId);
+    this.stopFade(zoneId);
+  }
+
+  private startFade(
+    zoneId: number,
+    endLevel: number,
+    endCct: number | undefined,
+    fadeQs: number,
+    colorXy?: [number, number],
+  ): void {
+    const startLevel = this.zoneLevel.get(zoneId) ?? 0;
+    const startCct = this.zoneCct.get(zoneId);
+    const totalSteps = fadeQs;
+    let step = 0;
+
+    const pairing = this.pairingsByZone.get(zoneId);
+    if (!pairing) return;
+
+    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+    const time = new Date().toISOString().slice(11, 23);
+    this.emit(
+      "log",
+      `${time} ** FADE ${zoneName} (zone=${zoneId}) ${startLevel.toFixed(0)}%→${endLevel.toFixed(0)}% steps=${totalSteps} (${(totalSteps * 0.25).toFixed(2)}s)`,
+    );
+
+    const sendStep = () => {
+      step++;
+      const t = step >= totalSteps ? 1 : step / totalSteps;
+      const level =
+        step >= totalSteps
+          ? endLevel
+          : startLevel + t * (endLevel - startLevel);
+      const cct =
+        startCct != null && endCct != null
+          ? step >= totalSteps
+            ? endCct
+            : Math.round(startCct + t * (endCct - startCct))
+          : endCct ?? startCct;
+
+      this.zoneLevel.set(zoneId, level);
+      if (cct != null) this.zoneCct.set(zoneId, cct);
+      // Color xy is fixed for the duration of the fade (only brightness ramps)
+      this.sendWiz(pairing, level, cct, colorXy);
+
+      if (step >= totalSteps) {
+        this.stopFade(zoneId);
+      }
+    };
+
+    // First step immediately, then interval for the rest
+    sendStep();
+
+    if (totalSteps > 1) {
+      const timer = setInterval(sendStep, FADE_STEP_MS);
+      this.activeFades.set(zoneId, { timer, totalSteps, step });
+    }
+  }
+
+  private stopFade(zoneId: number): void {
+    const fade = this.activeFades.get(zoneId);
+    if (fade) {
+      clearInterval(fade.timer);
+      this.activeFades.delete(zoneId);
     }
   }
 }

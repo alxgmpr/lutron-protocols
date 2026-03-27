@@ -93,6 +93,12 @@ function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
 function parseLevelControl(body: CCXBody): CCXLevelControl {
   const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
   const level = (inner[0] ?? 0) as number;
+  const rawColorXy = inner[1] as number[] | undefined;
+  const colorXy =
+    Array.isArray(rawColorXy) && rawColorXy.length === 2
+      ? (rawColorXy as [number, number])
+      : undefined;
+  const vibrancy = inner[2] as number | undefined;
   const fade = (inner[3] ?? 1) as number;
   const delay = (inner[4] ?? 0) as number;
   const warmDimMode = inner[5] as number | undefined;
@@ -106,7 +112,7 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     BodyKey.ZONE,
     BodyKey.SEQUENCE,
   ]);
-  const consumedInner = new Set([0, 3, 4, 5, 6]);
+  const consumedInner = new Set([0, 1, 2, 3, 4, 5, 6]);
 
   return {
     type: "LEVEL_CONTROL",
@@ -114,6 +120,8 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
     levelPercent: levelToPercent(level),
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
+    colorXy,
+    vibrancy,
     fade,
     delay,
     cct,
@@ -583,11 +591,15 @@ export function formatMessage(msg: CCXMessage): string {
       const fadeSec = msg.fade / 4;
       const fadeStr = fadeSec !== 0.25 ? `, fade=${fadeSec}s` : "";
       const delayStr = msg.delay > 0 ? `, delay=${msg.delay / 4}s` : "";
+      const colorXyStr = msg.colorXy
+        ? `, xy=(${(msg.colorXy[0] / 10000).toFixed(4)},${(msg.colorXy[1] / 10000).toFixed(4)})`
+        : "";
+      const vibrancyStr = msg.vibrancy != null ? `, vib=${msg.vibrancy}%` : "";
       const cctStr = msg.cct != null ? `, cct=${msg.cct}K` : "";
       const warmDimStr = msg.warmDimMode != null ? ", warm_dim" : "";
       const zoneName = getZoneName(msg.zoneId);
       const zoneAnnotation = zoneName ? ` [${zoneName}]` : "";
-      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${zoneAnnotation}${fadeStr}${delayStr}${cctStr}${warmDimStr}, seq=${msg.sequence})`;
+      return `LEVEL_CONTROL(${state}, level=0x${msg.level.toString(16).padStart(4, "0")}, zone=${msg.zoneId}${zoneAnnotation}${fadeStr}${delayStr}${colorXyStr}${vibrancyStr}${cctStr}${warmDimStr}, seq=${msg.sequence})`;
     }
     case "BUTTON_PRESS": {
       const idHex = Array.from(msg.deviceId)

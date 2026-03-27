@@ -46,6 +46,22 @@ const LEVEL_CONTROL = messageType(
         description: "Level value (0x0000-0xFEFF)",
       },
       {
+        key: 1,
+        name: "color_xy",
+        type: "array",
+        optional: true,
+        description:
+          "CIE 1931 xy chromaticity as [x*10000, y*10000]. Present for Ketra color control, absent for CCT/warm-dim modes.",
+      },
+      {
+        key: 2,
+        name: "vibrancy",
+        type: "uint8",
+        optional: true,
+        description:
+          "Ketra vibrancy (0-100). Tunes spectral distribution of white light for enhanced color rendering.",
+      },
+      {
         key: 3,
         name: "fade",
         type: "uint16",

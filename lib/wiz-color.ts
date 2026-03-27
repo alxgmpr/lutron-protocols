@@ -45,6 +45,16 @@ const DEFAULT_CCT_TABLE: CctPoint[] = [
 const MIN_CHANNEL = 2;
 
 /**
+ * XYZ → linear sRGB conversion matrix (D65 illuminant, IEC 61966-2-1).
+ * Each row converts [X, Y, Z] to one sRGB channel.
+ */
+const XYZ_TO_SRGB = [
+  [3.2404542, -1.5371385, -0.4985314], // R
+  [-0.969266, 1.8760108, 0.041556], // G
+  [0.0556434, -0.2040259, 1.0572252], // B
+] as const;
+
+/**
  * Convert CCT (Kelvin) + brightness (0-100%) to raw RGBWC channel values.
  *
  * Linearly interpolates the CCT table for the target temperature, then
@@ -133,6 +143,58 @@ export function rgbwcToPilotParams(
     b: channels.b,
     w: channels.w,
     c: channels.c,
+    dimming: 100,
+  };
+}
+
+/**
+ * Convert CIE 1931 xy chromaticity + brightness to raw RGBWC channel values.
+ *
+ * Uses xy → XYZ → linear sRGB conversion, then maps to the bulb's 5-channel
+ * RGBWC output. White channels are not used for color mode — only RGB LEDs.
+ *
+ * @param x CIE x (0-1 range, raw protocol value / 10000)
+ * @param y CIE y (0-1 range, raw protocol value / 10000)
+ * @param brightnessPercent Brightness 0-100
+ * @returns RGBWC channel values (each 0-255)
+ */
+export function xyToRgbwc(
+  x: number,
+  y: number,
+  brightnessPercent: number,
+): RgbwcChannels {
+  if (brightnessPercent <= 0 || y <= 0)
+    return { r: 0, g: 0, b: 0, w: 0, c: 0 };
+
+  // CIE xy → XYZ (normalized to Y = 1)
+  const X = x / y;
+  const Y = 1;
+  const Z = (1 - x - y) / y;
+
+  // XYZ → linear sRGB
+  const dot = (row: readonly [number, number, number]) =>
+    row[0] * X + row[1] * Y + row[2] * Z;
+  let lr = dot(XYZ_TO_SRGB[0]);
+  let lg = dot(XYZ_TO_SRGB[1]);
+  let lb = dot(XYZ_TO_SRGB[2]);
+
+  // Clamp negatives (out-of-gamut colors)
+  lr = Math.max(0, lr);
+  lg = Math.max(0, lg);
+  lb = Math.max(0, lb);
+
+  // Normalize so the max channel = 255, then scale by brightness
+  const maxCh = Math.max(lr, lg, lb);
+  if (maxCh <= 0) return { r: 0, g: 0, b: 0, w: 0, c: 0 };
+
+  const scale = (brightnessPercent / 100) * (255 / maxCh);
+
+  return {
+    r: scaleChannel(lr * scale, 1),
+    g: scaleChannel(lg * scale, 1),
+    b: scaleChannel(lb * scale, 1),
+    w: 0,
+    c: 0,
   };
 }
 
