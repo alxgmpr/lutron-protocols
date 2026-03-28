@@ -1,10 +1,10 @@
 /**
  * Bridge Core — Transport-agnostic CCX→WiZ bridge logic
  *
- * Handles: deduplication, zone matching, scene/preset resolution,
- * dim ramping, WiZ UDP dispatch, and RGBWC color control.
+ * Unified zone state model with a single tick loop (50ms / 20 Hz).
+ * No per-zone timers, no echo suppression, wall-clock fade interpolation.
  *
- * Extracted for reuse across bridge entry points (bridge/main.ts).
+ * See docs/bridge-state-spec.md for the governing spec.
  */
 
 import { EventEmitter } from "events";
@@ -41,6 +41,7 @@ export interface BridgeConfigFile {
   pairings: PairingConfig[];
   defaults?: {
     wizPort?: number;
+    warmDimCurve?: string;
   };
 }
 
@@ -49,11 +50,14 @@ export interface WizPairing {
   zoneId: number;
   wizIps: string[];
   wizPort: number;
+  /** Warm dim curve name (from warm-dim.ts). When set, the bridge evaluates
+   *  brightness→CCT on every level change that lacks explicit CCT. */
+  warmDimCurve?: string;
 }
 
 export interface PresetZoneEntry {
   name: string;
-  zones: Record<string, { level: number; fade?: number }>;
+  zones: Record<string, { level: number; fade?: number; warmDimCurve?: string }>;
 }
 
 export interface BridgeCoreOptions {
@@ -69,12 +73,54 @@ export interface BridgeCoreOptions {
   deviceSerials?: Map<number, number>;
 }
 
+// ── Internal types ───────────────────────────────────────
+
+type ZoneActivity =
+  | { type: "idle" }
+  | {
+      type: "fading";
+      startLevel: number;
+      targetLevel: number;
+      startCct: number | null;
+      targetCct: number | null;
+      colorXy: [number, number] | null;
+      startTime: number;
+      durationMs: number;
+    }
+  | {
+      type: "ramping";
+      direction: "raise" | "lower";
+      startLevel: number;
+      startTime: number;
+    };
+
+interface ZoneState {
+  level: number;
+  colorMode: "cct" | "xy";
+  cct: number | null;
+  colorXy: [number, number] | null;
+  activity: ZoneActivity;
+  dirty: boolean;
+  reportAt: number; // 0 = no report pending, >0 = timestamp when report should fire
+}
+
+interface WizCommand {
+  ips: string[];
+  port: number;
+  level: number;
+  colorMode: "cct" | "xy" | "off";
+  cct: number | null;
+  colorXy: [number, number] | null;
+  cctTable: CctPoint[] | undefined;
+  zoneName: string;
+}
+
 // ── Constants ─────────────────────────────────────────────
 
-const DEDUP_WINDOW_MS = 2000;
-const FADE_STEP_MS = 250; // matches WiZ fadeIn=250ms and Lutron quarter-second resolution
-const RAMP_INTERVAL_MS = 100;
+const TICK_MS = 50; // 20 Hz tick loop
+const DEDUP_WINDOW_MS = 200; // Thread retransmissions arrive within ~170ms
 const RAMP_RATE_PCT_PER_SEC = 100 / 4.75; // 4.75s full range (19 quarter-seconds)
+const REPORT_DELAY_MS = 2000; // delay DEVICE_REPORT after activity settles (real devices wait seconds)
 
 // ── BridgeCore ────────────────────────────────────────────
 
@@ -85,39 +131,23 @@ export class BridgeCore extends EventEmitter {
   private watchedZones: Set<number>;
   private wizSocket: Socket | null;
 
-  // Dedup state
-  private recentCommands = new Map<string, number>();
+  // Unified zone state
+  private zones = new Map<number, ZoneState>();
 
-  // Zone state
-  private zoneLevel = new Map<number, number>();
-  private zoneCct = new Map<number, number>(); // last-known CCT per zone
-  private zoneColorXy = new Map<number, [number, number]>(); // last-known CIE xy per zone
-  private activeRamps = new Map<
-    number,
-    {
-      timer: ReturnType<typeof setInterval>;
-      direction: "raise" | "lower";
-      startLevel: number;
-      startTime: number;
-    }
-  >();
-  private activeFades = new Map<
-    number,
-    {
-      timer: ReturnType<typeof setInterval>;
-      totalSteps: number;
-      step: number;
-    }
-  >();
+  // Dedup
+  private dedup = new Map<string, number>();
 
   // Per-bulb calibration (fetched from each WiZ bulb on startup)
-  private cctTables = new Map<string, CctPoint[]>(); // IP → CCT table
+  private cctTables = new Map<string, CctPoint[]>();
 
   // Nucleo state reporting (Thread TX via UDP:9433)
   private nucleoSocket: Socket | null = null;
   private nucleoHost: string | null = null;
-  private serialByZone = new Map<number, number>(); // zoneId → synthetic serial
+  private serialByZone = new Map<number, number>();
   private reportSeq = 0;
+
+  // Tick loop
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
 
   // Stats
   packetCount = 0;
@@ -142,7 +172,36 @@ export class BridgeCore extends EventEmitter {
         this.serialByZone = opts.deviceSerials;
       }
     }
+
+    // Start tick loop
+    this.tickTimer = setInterval(() => this.tick(), TICK_MS);
   }
+
+  // ── Zone state ──────────────────────────────────────────
+
+  private getZone(zoneId: number): ZoneState {
+    let z = this.zones.get(zoneId);
+    if (!z) {
+      z = {
+        level: 0,
+        colorMode: "cct",
+        cct: null,
+        colorXy: null,
+        activity: { type: "idle" },
+        dirty: false,
+        reportAt: 0,
+      };
+      this.zones.set(zoneId, z);
+    }
+    return z;
+  }
+
+  /** Expose zone state for testing */
+  getZoneState(zoneId: number): ZoneState | undefined {
+    return this.zones.get(zoneId);
+  }
+
+  // ── CCT Tables ──────────────────────────────────────────
 
   /** Fetch CCT calibration tables from all paired WiZ bulbs */
   async fetchCctTables(): Promise<void> {
@@ -156,43 +215,51 @@ export class BridgeCore extends EventEmitter {
       JSON.stringify({ method: "getCctTable", params: {} }),
     );
 
-    const results = await Promise.all(
-      [...uniqueIps].map(
-        (ip) =>
-          new Promise<{ ip: string; table?: CctPoint[] }>((resolve) => {
-            const sock = createSocket("udp4");
-            const timeout = setTimeout(() => {
-              sock.close();
-              resolve({ ip });
-            }, 2000);
-            sock.send(buf, 38899, ip, () => {
-              sock.once("message", (msg) => {
-                clearTimeout(timeout);
-                sock.close();
-                try {
-                  const data = JSON.parse(msg.toString());
-                  const pts = data?.result?.cctPoints as CctPoint[] | undefined;
-                  resolve({ ip, table: pts });
-                } catch {
-                  resolve({ ip });
-                }
-              });
-            });
-          }),
-      ),
-    );
-
-    for (const { ip, table } of results) {
-      if (table && table.length > 0) {
-        this.cctTables.set(ip, table);
-        this.emit("log", `  [wiz] CCT table from ${ip}: ${table.length} points`);
-      } else {
-        this.emit("log", `  [wiz] CCT table from ${ip}: failed (using default)`);
+    for (const ip of uniqueIps) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const table = await this.fetchOneCctTable(ip, buf);
+        if (table) {
+          this.cctTables.set(ip, table);
+          this.emit("log", `  [wiz] CCT table from ${ip}: ${table.length} points`);
+          break;
+        }
+        if (attempt === 1) {
+          this.emit("log", `  [wiz] CCT table from ${ip}: FAILED after retry (using default)`);
+        }
       }
     }
   }
 
-  /** Get the CCT table for a pairing (from first bulb that has one) */
+  private fetchOneCctTable(
+    ip: string,
+    buf: Buffer,
+  ): Promise<CctPoint[] | null> {
+    return new Promise((resolve) => {
+      if (!this.wizSocket) return resolve(null);
+      const timeout = setTimeout(() => resolve(null), 2000);
+      const onMsg = (msg: Buffer, rinfo: { address: string }) => {
+        if (rinfo.address !== ip) return; // not from this bulb
+        clearTimeout(timeout);
+        this.wizSocket?.removeListener("message", onMsg);
+        try {
+          const data = JSON.parse(msg.toString());
+          const pts = data?.result?.cctPoints as CctPoint[] | undefined;
+          resolve(pts && pts.length > 0 ? pts : null);
+        } catch {
+          resolve(null);
+        }
+      };
+      this.wizSocket.on("message", onMsg);
+      this.wizSocket.send(buf, 38899, ip, (err) => {
+        if (err) {
+          clearTimeout(timeout);
+          this.wizSocket?.removeListener("message", onMsg);
+          resolve(null);
+        }
+      });
+    });
+  }
+
   private getCctTable(pairing: WizPairing): CctPoint[] | undefined {
     for (const ip of pairing.wizIps) {
       const table = this.cctTables.get(ip);
@@ -200,6 +267,8 @@ export class BridgeCore extends EventEmitter {
     }
     return undefined;
   }
+
+  // ── Packet handling ─────────────────────────────────────
 
   /** Process a decoded CCX packet through the bridge pipeline */
   handlePacket(pkt: CCXPacket): void {
@@ -213,372 +282,416 @@ export class BridgeCore extends EventEmitter {
       `${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`,
     );
 
-    // Handle LEVEL_CONTROL (processor → devices, multicast)
     if (pkt.parsed.type === "LEVEL_CONTROL") {
-      const {
-        zoneId,
-        sequence,
-        levelPercent,
-        fade,
-        cct,
-        warmDimMode,
-        colorXy,
-      } = pkt.parsed;
-      if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
-      if (this.isDuplicate(`lc:${zoneId}:${sequence}`)) return;
-      this.matchCount++;
-      // Resolve CCT: native CCT (key 6) > warm dim computation (key 5=5) > none
-      let resolvedCct = cct;
-      if (resolvedCct == null && warmDimMode != null && levelPercent > 0) {
-        const curve = getWarmDimCurve("default");
-        resolvedCct = evalWarmDimCurve(curve, levelPercent);
-      }
-      this.dispatch(zoneId, levelPercent, "LEVEL", fade, resolvedCct, colorXy);
+      this.handleLevelControl(pkt);
       return;
     }
 
-    // Handle BUTTON_PRESS — presets resolved via preset-zones lookup
     if (pkt.parsed.type === "BUTTON_PRESS") {
-      const presetId = presetIdFromDeviceId(pkt.parsed.deviceId);
-      if (this.isDuplicate(`bp:${presetId}:${pkt.parsed.sequence}`)) return;
-
-      const sceneEntry = this.presetZones.get(presetId);
-      if (sceneEntry) {
-        for (const [zid, assignment] of Object.entries(sceneEntry.zones)) {
-          const zoneId = Number(zid);
-          if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId))
-            continue;
-          this.matchCount++;
-          this.dispatch(
-            zoneId,
-            assignment.level,
-            `PRESET(${sceneEntry.name})`,
-            assignment.fade,
-          );
-        }
-      }
+      this.handleButtonPress(pkt);
       return;
     }
 
-    // Handle DIM_HOLD (raise/lower start)
     if (pkt.parsed.type === "DIM_HOLD") {
-      const { action, sequence, zoneId } = pkt.parsed;
-      if (this.isDuplicate(`dh:${zoneId || "p"}:${sequence}`)) return;
-      const direction = action === 3 ? "raise" : "lower";
-
-      if (
-        zoneId &&
-        (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))
-      ) {
-        this.matchCount++;
-        this.startRamp(zoneId, direction);
-      } else {
-        const presetId = presetIdFromDeviceId(pkt.parsed.deviceId);
-        const entry = this.presetZones.get(presetId);
-        if (entry) {
-          for (const zid of Object.keys(entry.zones)) {
-            const z = Number(zid);
-            if (this.watchedZones.size > 0 && !this.watchedZones.has(z))
-              continue;
-            this.matchCount++;
-            this.startRamp(z, direction);
-          }
-        }
-      }
+      this.handleDimHold(pkt);
       return;
     }
 
-    // Handle DIM_STEP (raise/lower release)
     if (pkt.parsed.type === "DIM_STEP") {
-      const { zoneId, sequence } = pkt.parsed;
-      if (this.isDuplicate(`ds:${zoneId || "p"}:${sequence}`)) return;
+      this.handleDimStep(pkt);
+    }
+  }
 
-      if (
-        zoneId &&
-        (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))
-      ) {
-        this.matchCount++;
-        this.stopRamp(zoneId);
-      } else {
-        const presetId = presetIdFromDeviceId(pkt.parsed.deviceId);
-        const entry = this.presetZones.get(presetId);
-        if (entry) {
-          for (const zid of Object.keys(entry.zones)) {
-            const z = Number(zid);
-            if (this.watchedZones.size > 0 && !this.watchedZones.has(z))
-              continue;
-            this.matchCount++;
-            this.stopRamp(z);
-          }
+  private handleLevelControl(pkt: CCXPacket): void {
+    const msg = pkt.parsed;
+    if (msg.type !== "LEVEL_CONTROL") return;
+    const { zoneId, sequence, levelPercent, fade, cct, warmDimMode, colorXy } = msg;
+
+    if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
+    if (this.isDuplicate(`0:${zoneId}:${sequence}`)) return;
+    this.matchCount++;
+
+    // Detect color-only command: CBOR key 0 (level) absent from inner map
+    const inner = (msg.rawBody?.[0] ?? {}) as Record<number, unknown>;
+    const levelPresent = 0 in inner;
+    const level = levelPresent ? levelPercent : null;
+
+    // Resolve color mode and CCT
+    let resolvedCct = cct ?? null;
+    let colorMode: "cct" | "xy" = "cct";
+
+    if (colorXy) {
+      colorMode = "xy";
+    } else if (resolvedCct == null && level !== null && level > 0) {
+      // Evaluate warm dim curve if no explicit color
+      const curveName =
+        warmDimMode != null
+          ? "default"
+          : this.pairingsByZone.get(zoneId)?.warmDimCurve;
+      if (curveName) {
+        resolvedCct = evalWarmDimCurve(getWarmDimCurve(curveName), level);
+      }
+    }
+
+    this.dispatch(zoneId, level, colorMode, resolvedCct, colorXy ?? null, fade, "LEVEL");
+  }
+
+  private handleButtonPress(pkt: CCXPacket): void {
+    const msg = pkt.parsed;
+    if (msg.type !== "BUTTON_PRESS") return;
+    const presetId = presetIdFromDeviceId(msg.deviceId);
+    if (this.isDuplicate(`1:${presetId}:${msg.sequence}`)) return;
+
+    const sceneEntry = this.presetZones.get(presetId);
+    if (!sceneEntry) return;
+
+    for (const [zid, assignment] of Object.entries(sceneEntry.zones)) {
+      const zoneId = Number(zid);
+      if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) continue;
+      this.matchCount++;
+
+      let cct: number | null = null;
+      if (assignment.warmDimCurve && assignment.level > 0) {
+        cct = evalWarmDimCurve(getWarmDimCurve(assignment.warmDimCurve), assignment.level);
+      }
+
+      this.dispatch(
+        zoneId,
+        assignment.level,
+        "cct",
+        cct,
+        null,
+        assignment.fade,
+        `PRESET(${sceneEntry.name})`,
+      );
+    }
+  }
+
+  private handleDimHold(pkt: CCXPacket): void {
+    const msg = pkt.parsed;
+    if (msg.type !== "DIM_HOLD") return;
+    const { action, sequence, zoneId } = msg;
+    if (this.isDuplicate(`2:${zoneId || "p"}:${sequence}`)) return;
+    const direction = action === 3 ? "raise" : "lower";
+
+    if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
+      this.matchCount++;
+      this.startRamp(zoneId, direction);
+    } else {
+      const presetId = presetIdFromDeviceId(msg.deviceId);
+      const entry = this.presetZones.get(presetId);
+      if (entry) {
+        for (const zid of Object.keys(entry.zones)) {
+          const z = Number(zid);
+          if (this.watchedZones.size > 0 && !this.watchedZones.has(z)) continue;
+          this.matchCount++;
+          this.startRamp(z, direction);
         }
       }
     }
   }
 
-  /** Clean up: close socket and clear ramp/fade timers */
-  destroy(): void {
-    for (const [zoneId] of this.activeRamps) {
+  private handleDimStep(pkt: CCXPacket): void {
+    const msg = pkt.parsed;
+    if (msg.type !== "DIM_STEP") return;
+    const { zoneId, sequence } = msg;
+    if (this.isDuplicate(`3:${zoneId || "p"}:${sequence}`)) return;
+
+    if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
+      this.matchCount++;
       this.stopRamp(zoneId);
+    } else {
+      const presetId = presetIdFromDeviceId(msg.deviceId);
+      const entry = this.presetZones.get(presetId);
+      if (entry) {
+        for (const zid of Object.keys(entry.zones)) {
+          const z = Number(zid);
+          if (this.watchedZones.size > 0 && !this.watchedZones.has(z)) continue;
+          this.matchCount++;
+          this.stopRamp(z);
+        }
+      }
     }
-    for (const [zoneId] of this.activeFades) {
-      this.stopFade(zoneId);
+  }
+
+  // ── Dispatch (pure state mutation) ──────────────────────
+
+  private dispatch(
+    zoneId: number,
+    level: number | null,
+    colorMode: "cct" | "xy",
+    cct: number | null,
+    colorXy: [number, number] | null,
+    fade = 1,
+    source = "LEVEL",
+  ): void {
+    const zone = this.getZone(zoneId);
+
+    // Fade idempotency: if already fading to same target, just update color
+    if (
+      zone.activity.type === "fading" &&
+      level !== null &&
+      fade > 1 &&
+      Math.round(zone.activity.targetLevel) === Math.round(level)
+    ) {
+      this.updateColor(zone, colorMode, cct, colorXy);
+      return;
     }
-    this.wizSocket?.close();
-    this.wizSocket = null;
-    this.nucleoSocket?.close();
-    this.nucleoSocket = null;
+
+    // Cancel in-progress activity
+    zone.activity = { type: "idle" };
+
+    // Update color state
+    this.updateColor(zone, colorMode, cct, colorXy);
+
+    // Log
+    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+    const time = new Date().toISOString().slice(11, 23);
+    const levelStr = level !== null ? `${level.toFixed(1)}%` : "color-only";
+    const fadeSec = fade / 4;
+    const fadeStr = fadeSec > 0.25 ? ` fade=${fadeSec}s` : "";
+    const colorStr = colorXy
+      ? ` xy=(${(colorXy[0] / 10000).toFixed(4)},${(colorXy[1] / 10000).toFixed(4)})`
+      : "";
+    this.emit(
+      "log",
+      `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelStr}${fadeStr}${colorStr}`,
+    );
+
+    if (level === null) {
+      // Color-only: preserve level, mark dirty for WiZ send
+      zone.dirty = true;
+      zone.reportAt = Date.now() + REPORT_DELAY_MS;
+      return;
+    }
+
+    if (fade > 1) {
+      // Wall-clock fade
+      zone.activity = {
+        type: "fading",
+        startLevel: zone.level,
+        targetLevel: level,
+        startCct: zone.colorMode === "cct" ? zone.cct : null,
+        targetCct: colorMode === "cct" ? cct : null,
+        colorXy,
+        startTime: Date.now(),
+        durationMs: fade * 250,
+      };
+      zone.dirty = true;
+      zone.reportAt = Date.now() + REPORT_DELAY_MS;
+    } else {
+      // Instant — send WiZ immediately (don't wait for next tick)
+      zone.level = level;
+      zone.reportAt = Date.now() + REPORT_DELAY_MS;
+      const pairing = this.pairingsByZone.get(zoneId);
+      if (pairing) {
+        this.sendWiz(this.buildWizCommand(zone, pairing));
+      }
+    }
+  }
+
+  private updateColor(
+    zone: ZoneState,
+    colorMode: "cct" | "xy",
+    cct: number | null,
+    colorXy: [number, number] | null,
+  ): void {
+    if (colorMode === "xy" && colorXy) {
+      zone.colorMode = "xy";
+      zone.colorXy = colorXy;
+      zone.cct = null;
+    } else if (cct != null) {
+      zone.colorMode = "cct";
+      zone.cct = cct;
+      zone.colorXy = null;
+    }
+  }
+
+  // ── Dim Ramp ──────────────────────────────────────────
+
+  private startRamp(zoneId: number, direction: "raise" | "lower"): void {
+    const zone = this.getZone(zoneId);
+    zone.activity = { type: "idle" }; // cancel existing
+
+    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+    const time = new Date().toISOString().slice(11, 23);
+    this.emit(
+      "log",
+      `\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${zone.level.toFixed(0)}%`,
+    );
+
+    zone.activity = {
+      type: "ramping",
+      direction,
+      startLevel: zone.level,
+      startTime: Date.now(),
+    };
+    zone.dirty = true;
+  }
+
+  private stopRamp(zoneId: number): void {
+    const zone = this.zones.get(zoneId);
+    if (!zone || zone.activity.type !== "ramping") return;
+
+    const elapsedMs = Date.now() - zone.activity.startTime;
+    zone.activity = { type: "idle" };
+    zone.dirty = true;
+    zone.reportAt = Date.now() + REPORT_DELAY_MS;
+
+    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
+    const time = new Date().toISOString().slice(11, 23);
+    this.emit(
+      "log",
+      `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${zone.level.toFixed(0)}% (${elapsedMs}ms)`,
+    );
+  }
+
+  // ── Tick loop ──────────────────────────────────────────
+
+  private tick(): void {
+    const now = Date.now();
+    const batch: WizCommand[] = [];
+
+    for (const [zoneId, zone] of this.zones) {
+      // Advance active animations
+      if (zone.activity.type === "fading") {
+        this.advanceFade(zone, now);
+      } else if (zone.activity.type === "ramping") {
+        this.advanceRamp(zone, zoneId, now);
+      }
+
+      // Collect dirty zones for batched send
+      if (zone.dirty) {
+        zone.dirty = false;
+        const pairing = this.pairingsByZone.get(zoneId);
+        if (pairing) {
+          batch.push(this.buildWizCommand(zone, pairing));
+        } else if (this.watchedZones.has(zoneId)) {
+          this.emit("log", `  [warn] Zone ${zoneId} has no WiZ pairing`);
+        }
+      }
+
+      // Emit DEVICE_REPORT after settling delay
+      if (zone.reportAt > 0 && zone.activity.type === "idle" && now >= zone.reportAt) {
+        zone.reportAt = 0;
+        this.sendDeviceReport(zoneId, zone.level);
+      }
+    }
+
+    // Send all WiZ commands for this tick
+    for (const cmd of batch) {
+      this.sendWiz(cmd);
+    }
+  }
+
+  private advanceFade(zone: ZoneState, now: number): void {
+    if (zone.activity.type !== "fading") return;
+    const fade = zone.activity;
+    const elapsed = now - fade.startTime;
+    const t = Math.min(1, elapsed / fade.durationMs);
+
+    zone.level = fade.startLevel + t * (fade.targetLevel - fade.startLevel);
+    if (fade.startCct != null && fade.targetCct != null) {
+      zone.cct = Math.round(fade.startCct + t * (fade.targetCct - fade.startCct));
+    }
+    zone.dirty = true;
+
+    if (t >= 1) {
+      zone.level = fade.targetLevel;
+      if (fade.targetCct != null) zone.cct = fade.targetCct;
+      zone.activity = { type: "idle" };
+    }
+  }
+
+  private advanceRamp(zone: ZoneState, zoneId: number, now: number): void {
+    if (zone.activity.type !== "ramping") return;
+    const ramp = zone.activity;
+    const elapsedSec = (now - ramp.startTime) / 1000;
+    const delta = elapsedSec * RAMP_RATE_PCT_PER_SEC;
+
+    if (ramp.direction === "raise") {
+      zone.level = Math.min(100, ramp.startLevel + delta);
+    } else {
+      zone.level = Math.max(0, ramp.startLevel - delta);
+    }
+
+    // Re-evaluate warm dim CCT each tick
+    const pairing = this.pairingsByZone.get(zoneId);
+    if (pairing?.warmDimCurve && zone.level > 0) {
+      zone.cct = evalWarmDimCurve(getWarmDimCurve(pairing.warmDimCurve), zone.level);
+      zone.colorMode = "cct";
+    }
+
+    zone.dirty = true;
+
+    // Auto-stop at limits
+    if (zone.level >= 100 || zone.level <= 0) {
+      zone.activity = { type: "idle" };
+      zone.reportAt = Date.now() + REPORT_DELAY_MS;
+    }
+  }
+
+  // ── WiZ UDP output ────────────────────────────────────
+
+  private buildWizCommand(zone: ZoneState, pairing: WizPairing): WizCommand {
+    return {
+      ips: pairing.wizIps,
+      port: pairing.wizPort,
+      level: zone.level,
+      colorMode: zone.level <= 0 ? "off" : zone.colorMode,
+      cct: zone.cct,
+      colorXy: zone.colorXy,
+      cctTable: this.getCctTable(pairing),
+      zoneName: pairing.name,
+    };
+  }
+
+  private sendWiz(cmd: WizCommand): void {
+    if (!this.wizSocket) return;
+
+    let params: Record<string, number | boolean>;
+    let logStr: string;
+
+    if (cmd.colorMode === "off") {
+      params = { state: false };
+      logStr = "OFF";
+    } else if (cmd.colorMode === "xy" && cmd.colorXy) {
+      const x = cmd.colorXy[0] / 10000;
+      const y = cmd.colorXy[1] / 10000;
+      const channels = xyToRgbwc(x, y, cmd.level, cmd.cctTable);
+      params = rgbwcToPilotParams(channels);
+      logStr = `${Math.round(cmd.level)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
+    } else {
+      const cct = cmd.cct ?? 2700;
+      const channels = cctToRgbwc(cct, cmd.level, cmd.cctTable);
+      params = rgbwcToPilotParams(channels);
+      const cctStr = cmd.cct != null ? `${cmd.cct}K` : "2700K(default)";
+      logStr = `${Math.round(cmd.level)}% ${cctStr} [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
+    }
+
+    const buf = Buffer.from(JSON.stringify({ method: "setPilot", params }));
+
+    for (const ip of cmd.ips) {
+      this.wizSocket.send(buf, cmd.port, ip);
+    }
+    this.emit("log", `  [wiz] → ${cmd.zoneName} (${cmd.ips.length} bulbs) ${logStr}`);
   }
 
   // ── Deduplication ─────────────────────────────────────
 
   private isDuplicate(key: string): boolean {
     const now = Date.now();
-    const prev = this.recentCommands.get(key);
+    const prev = this.dedup.get(key);
     if (prev && now - prev < DEDUP_WINDOW_MS) return true;
-    this.recentCommands.set(key, now);
+    this.dedup.set(key, now);
 
-    if (this.recentCommands.size > 100) {
-      for (const [k, ts] of this.recentCommands) {
-        if (now - ts > DEDUP_WINDOW_MS) this.recentCommands.delete(k);
+    // Evict stale entries
+    if (this.dedup.size > 100) {
+      for (const [k, ts] of this.dedup) {
+        if (now - ts > DEDUP_WINDOW_MS) this.dedup.delete(k);
       }
     }
     return false;
-  }
-
-  // ── WiZ UDP output ────────────────────────────────────
-
-  private sendWiz(
-    pairing: WizPairing,
-    levelPercent: number,
-    nativeCct?: number,
-    colorXy?: [number, number],
-  ) {
-    if (!this.wizSocket) return;
-
-    let params: Record<string, number | boolean>;
-    let logStr: string;
-
-    const table = this.getCctTable(pairing);
-
-    if (levelPercent <= 0) {
-      params = { state: false };
-      logStr = "OFF";
-    } else if (colorXy) {
-      const x = colorXy[0] / 10000;
-      const y = colorXy[1] / 10000;
-      const channels = xyToRgbwc(x, y, levelPercent, table);
-      params = rgbwcToPilotParams(channels);
-      logStr = `${Math.round(levelPercent)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
-    } else {
-      const cct = nativeCct ?? 2700;
-      const channels = cctToRgbwc(cct, levelPercent, table);
-      params = rgbwcToPilotParams(channels);
-      const cctStr = nativeCct != null ? `${nativeCct}K` : "2700K(default)";
-      logStr = `${Math.round(levelPercent)}% ${cctStr} [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
-    }
-
-    const buf = Buffer.from(
-      JSON.stringify({ method: "setPilot", params }),
-    );
-
-    for (const ip of pairing.wizIps) {
-      this.wizSocket.send(buf, pairing.wizPort, ip);
-    }
-    this.emit("log", `  [wiz] → ${pairing.name} (${pairing.wizIps.length} bulbs) ${logStr}`);
-  }
-
-  // ── Dispatch ──────────────────────────────────────────
-
-  private dispatch(
-    zoneId: number,
-    levelPercent: number,
-    source: string,
-    fade = 1,
-    nativeCct?: number,
-    colorXy?: [number, number],
-  ) {
-    // Cancel any in-progress ramp or fade for this zone
-    this.cancelZoneActivity(zoneId);
-
-    // Track color mode state — color and CCT are mutually exclusive
-    if (colorXy) {
-      this.zoneColorXy.set(zoneId, colorXy);
-      this.zoneCct.delete(zoneId);
-    } else if (nativeCct != null) {
-      this.zoneCct.set(zoneId, nativeCct);
-      this.zoneColorXy.delete(zoneId);
-    }
-    // Warm dim mode (key 5) also implies CCT mode — clear color
-    // (warmDimMode is resolved to nativeCct by the caller)
-
-    // Resolve effective color state: explicit > last-known
-    const effectiveColorXy = colorXy ?? this.zoneColorXy.get(zoneId);
-    const cct = nativeCct ?? this.zoneCct.get(zoneId);
-
-    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
-    const time = new Date().toISOString().slice(11, 23);
-    const fadeSec = fade / 4;
-    const fadeStr = fadeSec !== 0.25 ? ` fade=${fadeSec}s` : "";
-    const colorStr = effectiveColorXy
-      ? ` xy=(${(effectiveColorXy[0] / 10000).toFixed(4)},${(effectiveColorXy[1] / 10000).toFixed(4)})`
-      : "";
-
-    this.emit(
-      "log",
-      `\n${time} ** ${source} → ${zoneName} (zone=${zoneId}) ${levelPercent.toFixed(1)}%${fadeStr}${colorStr}`,
-    );
-
-    if (fade > 1) {
-      // Stepped fade: N steps at 250ms intervals (1 qs = 1 step)
-      // DEVICE_REPORT fires at the final step inside startFade
-      this.startFade(zoneId, levelPercent, cct, fade, effectiveColorXy);
-    } else {
-      // Instant: fire WiZ immediately, queue DEVICE_REPORT for batch flush
-      this.zoneLevel.set(zoneId, levelPercent);
-      const pairing = this.pairingsByZone.get(zoneId);
-      if (pairing)
-        this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
-      this.queueDeviceReport(zoneId, levelPercent);
-    }
-  }
-
-  // ── Dim Ramp ──────────────────────────────────────────
-
-  private computeRampLevel(
-    startLevel: number,
-    direction: "raise" | "lower",
-    elapsedMs: number,
-  ): number {
-    const delta = (elapsedMs / 1000) * RAMP_RATE_PCT_PER_SEC;
-    if (direction === "raise") return Math.min(100, startLevel + delta);
-    return Math.max(1, startLevel - delta);
-  }
-
-  private startRamp(zoneId: number, direction: "raise" | "lower") {
-    this.cancelZoneActivity(zoneId);
-    const startLevel = this.zoneLevel.get(zoneId) ?? 50;
-    const startTime = Date.now();
-    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
-    const time = new Date().toISOString().slice(11, 23);
-    this.emit(
-      "log",
-      `\n${time} ** RAMP ${direction.toUpperCase()} → ${zoneName} (zone=${zoneId}) from ${startLevel.toFixed(0)}%`,
-    );
-
-    const timer = setInterval(() => {
-      const level = this.computeRampLevel(
-        startLevel,
-        direction,
-        Date.now() - startTime,
-      );
-      this.zoneLevel.set(zoneId, level);
-
-      const pairing = this.pairingsByZone.get(zoneId);
-      if (pairing) this.sendWiz(pairing, level);
-
-      if (level >= 100 || level <= 1) {
-        this.stopRamp(zoneId);
-      }
-    }, RAMP_INTERVAL_MS);
-
-    this.activeRamps.set(zoneId, { timer, direction, startLevel, startTime });
-  }
-
-  private stopRamp(zoneId: number) {
-    const ramp = this.activeRamps.get(zoneId);
-    if (ramp) {
-      clearInterval(ramp.timer);
-      this.activeRamps.delete(zoneId);
-      const elapsedMs = Date.now() - ramp.startTime;
-      const finalLevel = this.computeRampLevel(
-        ramp.startLevel,
-        ramp.direction,
-        elapsedMs,
-      );
-      this.zoneLevel.set(zoneId, finalLevel);
-
-      const pairing = this.pairingsByZone.get(zoneId);
-      if (pairing) this.sendWiz(pairing, finalLevel);
-
-      const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
-      const time = new Date().toISOString().slice(11, 23);
-      this.emit(
-        "log",
-        `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
-      );
-      this.queueDeviceReport(zoneId, finalLevel);
-    }
-  }
-
-  // ── Fade Stepping ───────────────────────────────────────
-
-  private cancelZoneActivity(zoneId: number): void {
-    this.stopRamp(zoneId);
-    this.stopFade(zoneId);
-  }
-
-  private startFade(
-    zoneId: number,
-    endLevel: number,
-    endCct: number | undefined,
-    fadeQs: number,
-    colorXy?: [number, number],
-  ): void {
-    const startLevel = this.zoneLevel.get(zoneId) ?? 0;
-    const startCct = this.zoneCct.get(zoneId);
-    const totalSteps = fadeQs;
-    let step = 0;
-
-    const pairing = this.pairingsByZone.get(zoneId);
-    if (!pairing) return;
-
-    const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
-    const time = new Date().toISOString().slice(11, 23);
-    this.emit(
-      "log",
-      `${time} ** FADE ${zoneName} (zone=${zoneId}) ${startLevel.toFixed(0)}%→${endLevel.toFixed(0)}% steps=${totalSteps} (${(totalSteps * 0.25).toFixed(2)}s)`,
-    );
-
-    const sendStep = () => {
-      step++;
-      const t = step >= totalSteps ? 1 : step / totalSteps;
-      const level =
-        step >= totalSteps
-          ? endLevel
-          : startLevel + t * (endLevel - startLevel);
-      const cct =
-        startCct != null && endCct != null
-          ? step >= totalSteps
-            ? endCct
-            : Math.round(startCct + t * (endCct - startCct))
-          : endCct ?? startCct;
-
-      this.zoneLevel.set(zoneId, level);
-      if (cct != null) this.zoneCct.set(zoneId, cct);
-      // Color xy is fixed for the duration of the fade (only brightness ramps)
-      this.sendWiz(pairing, level, cct, colorXy);
-
-      if (step >= totalSteps) {
-        this.stopFade(zoneId);
-        this.queueDeviceReport(zoneId, level);
-      }
-    };
-
-    // First step immediately, then interval for the rest
-    sendStep();
-
-    if (totalSteps > 1) {
-      const timer = setInterval(sendStep, FADE_STEP_MS);
-      this.activeFades.set(zoneId, { timer, totalSteps, step });
-    }
-  }
-
-  private stopFade(zoneId: number): void {
-    const fade = this.activeFades.get(zoneId);
-    if (fade) {
-      clearInterval(fade.timer);
-      this.activeFades.delete(zoneId);
-    }
   }
 
   // ── Nucleo DEVICE_REPORT ────────────────────────────────
@@ -610,8 +723,18 @@ export class BridgeCore extends EventEmitter {
     });
   }
 
-  private queueDeviceReport(zoneId: number, levelPercent: number): void {
-    this.sendDeviceReport(zoneId, levelPercent);
+  // ── Lifecycle ──────────────────────────────────────────
+
+  /** Clean up: close sockets and stop tick loop */
+  destroy(): void {
+    if (this.tickTimer) {
+      clearInterval(this.tickTimer);
+      this.tickTimer = null;
+    }
+    this.wizSocket?.close();
+    this.wizSocket = null;
+    this.nucleoSocket?.close();
+    this.nucleoSocket = null;
   }
 }
 
@@ -625,8 +748,9 @@ function buildPairings(
     wizIps?: string[];
     name?: string;
     wizPort?: number;
+    warmDimCurve?: string;
   }>,
-  defaults: { wizPort: number },
+  defaults: { wizPort: number; warmDimCurve?: string },
 ): WizPairing[] {
   return rawPairings.map((p) => {
     const wizIps = p.wizIps ?? (Array.isArray(p.wiz) ? p.wiz : [p.wiz!]);
@@ -636,6 +760,7 @@ function buildPairings(
       zoneId: p.zoneId,
       wizIps,
       wizPort: p.wizPort ?? defaults.wizPort,
+      warmDimCurve: p.warmDimCurve ?? defaults.warmDimCurve,
     };
   });
 }
@@ -657,6 +782,7 @@ export function loadBridgeConfig(configPath: string): {
   return {
     pairings: buildPairings(raw.pairings, {
       wizPort: raw.defaults?.wizPort ?? 38899,
+      warmDimCurve: raw.defaults?.warmDimCurve ?? "halogen",
     }),
   };
 }
@@ -681,6 +807,7 @@ export function loadBridgeConfigFromOptions(opts: {
   return {
     pairings: buildPairings(rawPairings, {
       wizPort: opts.wiz_port ?? 38899,
+      warmDimCurve: "halogen",
     }),
   };
 }
