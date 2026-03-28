@@ -391,20 +391,27 @@ export class BridgeCore extends EventEmitter {
     // Cancel any in-progress ramp or fade for this zone
     this.cancelZoneActivity(zoneId);
 
-    // Track last-known CCT — reuse when brightness changes without CCT
-    if (nativeCct != null) this.zoneCct.set(zoneId, nativeCct);
-    // Color mode clears CCT tracking (they're mutually exclusive)
-    if (colorXy) this.zoneColorXy.set(zoneId, colorXy);
-    else if (nativeCct != null) this.zoneColorXy.delete(zoneId);
+    // Track color mode state — color and CCT are mutually exclusive
+    if (colorXy) {
+      this.zoneColorXy.set(zoneId, colorXy);
+      this.zoneCct.delete(zoneId);
+    } else if (nativeCct != null) {
+      this.zoneCct.set(zoneId, nativeCct);
+      this.zoneColorXy.delete(zoneId);
+    }
+    // Warm dim mode (key 5) also implies CCT mode — clear color
+    // (warmDimMode is resolved to nativeCct by the caller)
 
+    // Resolve effective color state: explicit > last-known
+    const effectiveColorXy = colorXy ?? this.zoneColorXy.get(zoneId);
     const cct = nativeCct ?? this.zoneCct.get(zoneId);
 
     const zoneName = getZoneName(zoneId) ?? `Zone ${zoneId}`;
     const time = new Date().toISOString().slice(11, 23);
     const fadeSec = fade / 4;
     const fadeStr = fadeSec !== 0.25 ? ` fade=${fadeSec}s` : "";
-    const colorStr = colorXy
-      ? ` xy=(${(colorXy[0] / 10000).toFixed(4)},${(colorXy[1] / 10000).toFixed(4)})`
+    const colorStr = effectiveColorXy
+      ? ` xy=(${(effectiveColorXy[0] / 10000).toFixed(4)},${(effectiveColorXy[1] / 10000).toFixed(4)})`
       : "";
 
     this.emit(
@@ -414,12 +421,13 @@ export class BridgeCore extends EventEmitter {
 
     if (fade > 1) {
       // Stepped fade: N steps at 250ms intervals (1 qs = 1 step)
-      this.startFade(zoneId, levelPercent, cct, fade, colorXy);
+      this.startFade(zoneId, levelPercent, cct, fade, effectiveColorXy);
     } else {
       // Instant: single setPilot, bulb's 250ms fadeIn handles it
       this.zoneLevel.set(zoneId, levelPercent);
       const pairing = this.pairingsByZone.get(zoneId);
-      if (pairing) await this.sendWiz(pairing, levelPercent, cct, colorXy);
+      if (pairing)
+        await this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
     }
   }
 
