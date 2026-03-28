@@ -49,6 +49,9 @@ bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code,
                    const char* uri_path,
                    const uint8_t* payload, size_t payload_len);
 
+/** Send pre-encoded CBOR bytes as a multicast CCX message */
+bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
+
 /** Get RX/TX packet counters */
 uint32_t ccx_rx_count(void);
 uint32_t ccx_tx_count(void);

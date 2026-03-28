@@ -51,6 +51,7 @@ extern "C" {
 #define STREAM_CMD_CCA_VIVE_LEVEL  0x13
 #define STREAM_CMD_CCA_VIVE_DIM    0x14
 #define STREAM_CMD_CCA_VIVE_PAIR   0x15
+#define STREAM_CMD_TX_RAW_CCX_CBOR 0x16
 #define STREAM_CMD_TEXT            0x20
 
 /**

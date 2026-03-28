@@ -52,6 +52,7 @@
 #define CCX_TX_TYPE_SCENE    1
 #define CCX_TX_TYPE_COAP     2
 #define CCX_TX_TYPE_ADDR_QRY 3
+#define CCX_TX_TYPE_RAW_CBOR 4
 
 #define CCX_COAP_MAX_PAYLOAD 128
 
@@ -1066,6 +1067,32 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
         return;
     }
 
+    /* --- Raw CBOR TX (pre-encoded by host) --- */
+    if (req->type == CCX_TX_TYPE_RAW_CBOR) {
+        const uint8_t* cbor = req->coap_payload;
+        size_t cbor_len = req->coap_payload_len;
+
+        uint8_t pkt[256];
+        size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt),
+            have_ipv6_addr ? our_ipv6_addr : NULL,
+            CCX_MULTICAST_ADDR, CCX_UDP_PORT, CCX_UDP_PORT, cbor, cbor_len);
+        if (pkt_len == 0) {
+            printf("[ccx] TX RAW: IPv6+UDP build failed\r\n");
+            return;
+        }
+        for (int i = 0; i < CCX_TX_RETRANSMITS; i++) {
+            ccx_transmit_ipv6(pkt, pkt_len);
+            if (i < CCX_TX_RETRANSMITS - 1)
+                vTaskDelay(pdMS_TO_TICKS(CCX_TX_RETRANSMIT_MS));
+        }
+        tx_count++;
+        printf("[ccx] TX RAW CBOR (%u):", (unsigned)cbor_len);
+        for (size_t i = 0; i < cbor_len; i++) printf(" %02X", cbor[i]);
+        printf("\r\n");
+        stream_send_ccx_packet(cbor, cbor_len);
+        return;
+    }
+
     /* --- Multicast CCX command TX --- */
     uint8_t cbor_buf[64];
     size_t  cbor_len = 0;
@@ -1671,6 +1698,19 @@ bool ccx_get_address_result(ccx_address_result_t* result)
     *result = addr_query_result;
     addr_query_result_ready = false;
     return true;
+}
+
+bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len)
+{
+    if (!ccx_thread_joined() || tx_queue == NULL || len > CCX_COAP_MAX_PAYLOAD) return false;
+
+    ccx_tx_request_t req;
+    memset(&req, 0, sizeof(req));
+    req.type = CCX_TX_TYPE_RAW_CBOR;
+    memcpy(req.coap_payload, cbor, len);
+    req.coap_payload_len = len;
+
+    return xQueueSend(tx_queue, &req, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
 uint32_t ccx_rx_count(void)

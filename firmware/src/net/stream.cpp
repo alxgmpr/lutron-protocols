@@ -367,6 +367,14 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
         break;
     }
 
+    case STREAM_CMD_TX_RAW_CCX_CBOR: {
+        if (data_len > 0) {
+            printf("[stream] CCX TX RAW CBOR: %u bytes\r\n", data_len);
+            ccx_send_raw_cbor(buf + 2, data_len);
+        }
+        break;
+    }
+
     case STREAM_CMD_NRF_DFU_START: {
         if (data_len >= 4) {
             uint32_t img_size =
