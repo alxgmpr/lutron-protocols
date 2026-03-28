@@ -18,8 +18,26 @@ options:
   thread_master_key: ""
   sniffer_device: /dev/ttyACM0
   wiz_port: 38899
-  nucleo_host: ""
-  device_serials: []
+  nucleo_host: "10.0.0.3"
+  device_serials:
+    - zone_id: 8238
+      serial: 167772161
+    - zone_id: 9390
+      serial: 167772162
+    - zone_id: 9475
+      serial: 167772163
+    - zone_id: 9538
+      serial: 167772164
+    - zone_id: 9555
+      serial: 167772165
+    - zone_id: 9572
+      serial: 167772166
+    - zone_id: 9589
+      serial: 167772167
+    - zone_id: 9606
+      serial: 167772168
+    - zone_id: 9623
+      serial: 167772169
   pairings:
     - zone_id: 8238
       name: ""
