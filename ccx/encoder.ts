@@ -175,13 +175,7 @@ export interface DeviceReportOpts {
  * Format B: inner key 3 = [[0, Uint8Array(level_BE), outputType]]
  */
 export function encodeDeviceReport(opts: DeviceReportOpts): Buffer {
-  const {
-    deviceSerial,
-    level,
-    sequence,
-    groupId = 0,
-    deviceType = 1,
-  } = opts;
+  const { deviceSerial, level, sequence, groupId = 0, deviceType = 1 } = opts;
 
   // Inner command: key 3 = array of [index, level_bytes, output_type]
   // We encode level as a 2-byte big-endian Uint8Array

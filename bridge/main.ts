@@ -117,11 +117,9 @@ async function main() {
   const pipeline = new FramePipeline({ masterKey, knownDevices: devices });
   // ── Nucleo state reporting ──────────────────────────────────
 
-  const nucleoHost =
-    process.env.NUCLEO_HOST ?? haOptions?.nucleo_host ?? "";
+  const nucleoHost = process.env.NUCLEO_HOST ?? haOptions?.nucleo_host ?? "";
   const deviceSerials = new Map<number, number>();
-  const serialEntries =
-    haOptions?.device_serials ?? [];
+  const serialEntries = haOptions?.device_serials ?? [];
   for (const entry of serialEntries) {
     if (entry.zone_id && entry.serial) {
       deviceSerials.set(entry.zone_id, entry.serial);
@@ -190,9 +188,9 @@ async function main() {
     console.log(`Pairings:`);
     for (const p of pairings) {
       const ips = p.wizIps.join(", ");
-      console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}`);
+      const curve = p.warmDimCurve ? ` [${p.warmDimCurve}]` : "";
+      console.log(`  ${p.name} (zone ${p.zoneId}) → ${ips}${curve}`);
     }
-    console.log(`CCT: native (key 6) or warm dim (key 5=5 → B-spline)`);
   }
 
   if (presetZones.size > 0) {

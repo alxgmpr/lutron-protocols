@@ -86,8 +86,13 @@ certs/
 
 .obsidian/
 .claude/projects/
+.claude/settings.local.json
 .mcp.json
 .env
+
+# iOS/Android app binaries
+*.ipa
+*.apk
 
 # RF captures (large binary files)
 captures/

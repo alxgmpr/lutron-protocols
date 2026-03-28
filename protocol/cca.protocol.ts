@@ -209,6 +209,9 @@ const qsType = constantGroup(
     ADDR_QRY: { value: 0xa5, description: "Address query" },
     PROP_SET_FIXED: { value: 0x64, description: "Property set (fixed-size)" },
     PROP_SET_VAR: { value: 0x65, description: "Property set (variable-size)" },
+    // No per-device PROP_GET at RF level (confirmed 2026-03-26). Devices respond
+    // to broadcast poll (format 0x0A with class 0x06) with format 0x0D dumps.
+    // See docs/wink-hub-firmware-findings.md for processor reboot discovery flow.
     DIM_CONFIG: { value: 0x78, description: "Dimming config sub-type" },
   },
 );
@@ -218,6 +221,134 @@ const qsComp = constantGroup("QsComp", "Component types", "QS_COMP_", {
   RELAY: { value: 0x38 },
   SCENE: { value: 0x40 },
 });
+
+// Full 32-bit DeviceClass values from Wink Hub lutron-db.sqlite firmware dump.
+// Structure: [category].[subcategory].[variant].[model]
+// Mask 0xFFFF0000 = match cat+subcat, 0xFFFF00FF = match cat+subcat+model (picos)
+const deviceClass32 = constantGroup(
+  "DeviceClass32",
+  "Full 32-bit device class (from firmware RE — byte 0=category, 1=subcat, 2=variant, 3=model)",
+  "DC32_",
+  {
+    SEETOUCH_KEYPAD: {
+      value: 0x01030101,
+      description: "RRD-W6BRL wall keypad",
+    },
+    TABLETOP_KEYPAD: { value: 0x01040101, description: "Tabletop keypad" },
+    PICO_1BTN: { value: 0x01070002, description: "1 Button Pico" },
+    PICO_2BTN: { value: 0x01070003, description: "2 Button Pico" },
+    PICO_2BTN_RL: {
+      value: 0x01070004,
+      description: "2 Button Pico with Raise/Lower",
+    },
+    PICO_3BTN: { value: 0x01070005, description: "3 Button Pico" },
+    PICO_3BTN_RL: {
+      value: 0x01070006,
+      description: "3 Button Pico with Raise/Lower",
+    },
+    PICO_3BRL: { value: 0x01070101, description: "PJ-3BRL" },
+    SUPER_PICO: { value: 0x01150101, description: "Super Pico" },
+    QS_ROLLER_SHADE: { value: 0x03040101, description: "RF QS Roller Shade" },
+    VENETIAN_BLIND: { value: 0x03050101, description: "RF Venetian Blind" },
+    SERENA_HONEYCOMB: { value: 0x03060101, description: "Serena Honeycomb" },
+    QS_CELLULAR_SHADE: {
+      value: 0x03070101,
+      description: "RF QS Cellular Shade",
+    },
+    SERENA_ROLLER: { value: 0x03090101, description: "Serena Roller" },
+    TRIATHLON_ROLLER: {
+      value: 0x030a0101,
+      description: "Sivoia QS Triathlon Roller",
+    },
+    MAESTRO_DIMMER: { value: 0x04010101, description: "RRD-6D" },
+    MAESTRO_NEUTRAL_SWITCH: { value: 0x04050101, description: "RRD-8ANS" },
+    TT_DIMMER: { value: 0x040c0101, description: "RRD-3LD tabletop dimmer" },
+    MAESTRO_SWITCH: { value: 0x040e0101, description: "RRD-8S-DV" },
+    MAESTRO_FLUORO: {
+      value: 0x040f0101,
+      description: "RRD-F6AN-DV fluorescent",
+    },
+    PID_DIMMER: { value: 0x04140101, description: "RR-3PD-1 plug-in dimmer" },
+    PID_SWITCH: { value: 0x04150101, description: "RR-15APS-1 plug-in switch" },
+    ADAPTIVE_DIMMER: { value: 0x042a0101, description: "RRD-6NA adaptive" },
+    CASETA_WALL_DIMMER: {
+      value: 0x04320101,
+      description: "Caseta wall dimmer",
+    },
+    CASETA_WALL_SWITCH: {
+      value: 0x04330101,
+      description: "Caseta wall switch",
+    },
+    CASETA_PID_DIMMER: {
+      value: 0x04340101,
+      description: "Caseta plug-in dimmer (repeater capable)",
+    },
+    CL_DIMMER: { value: 0x04350101, description: "RRD-6CL CFL/LED dimmer" },
+    GE_BULB: { value: 0x04370101, description: "GE smart bulb" },
+    AUX_REPEATER: {
+      value: 0x05020101,
+      description: "RR-AUX-REP (repeater only)",
+    },
+    MOTION_SENSOR: {
+      value: 0x06080101,
+      description: "LRF2-OCRB-P occupancy sensor",
+    },
+    CCT_PROCESSOR: {
+      value: 0x08030101,
+      description: "NXB-CCG / L-BDG gateway/bridge",
+    },
+    SOFTSWITCH_868: {
+      value: 0x16010101,
+      description: "LMK-16R-DV-B (868 MHz)",
+    },
+    SOFTSWITCH_434: {
+      value: 0x16030101,
+      description: "LMJ-16R-DV-B (434 MHz)",
+    },
+  },
+);
+
+const runtimePropertyType = constantGroup(
+  "RuntimePropertyType",
+  "Property types for RuntimePropertyQuery/Update (from firmware RE)",
+  "RT_PROP_",
+  {
+    LEVEL: {
+      value: 1,
+      description:
+        "Output level (8-bit or 16-bit depending on RuntimePropertySize)",
+    },
+    TILT: { value: 43, description: "Venetian blind tilt angle" },
+  },
+);
+
+const buttonEventBitmap = constantGroup(
+  "ButtonEventBitmap",
+  "Button event capability bitmask (from firmware lutron-db.sqlite)",
+  "BTN_EVT_",
+  {
+    PRESS: { value: 0x01 },
+    RELEASE: { value: 0x02 },
+    MULTI_TAP: { value: 0x04 },
+    MULTI_TAP_RELEASE: { value: 0x08 },
+    HOLD: { value: 0x10 },
+    HOLD_RELEASE: { value: 0x20 },
+  },
+);
+
+const linkNodeType = constantGroup(
+  "LinkNodeType",
+  "Device link node behavior (from firmware lutron-db.sqlite)",
+  "LNT_",
+  {
+    STANDARD: { value: 0, description: "Bidirectional device" },
+    LINK_MASTER: { value: 1, description: "Processor/gateway" },
+    TRANSMIT_ONLY: { value: 2, description: "Pico remotes" },
+    RANDOM_TRANSMIT: { value: 3, description: "Sensors (random backoff)" },
+    REPEATER_CAPABLE: { value: 4, description: "Can relay messages" },
+    REPEATER_ONLY: { value: 5, description: "Dedicated repeater" },
+  },
+);
 
 const qsProto = constantGroup(
   "QsProto",
@@ -1418,6 +1549,10 @@ export const CCA: CCAProtocolDef = {
     qsPreset,
     qsPadding,
     qsSensor,
+    deviceClass32,
+    runtimePropertyType,
+    buttonEventBitmap,
+    linkNodeType,
     rf: rfGroup,
     crc: crcGroup,
     framing: framingGroup,

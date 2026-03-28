@@ -19,10 +19,20 @@ const PROCESSOR_RLOC_IPV6 = "fd00::ff:fe00:3800";
 const SERIAL_BASE = 0x0a000001;
 
 // ChromaZone zone → device mapping (from LEAP probing)
-const KETRA_ZONES: { zoneId: number; deviceId: number; name: string; area: string }[] = [
+const KETRA_ZONES: {
+  zoneId: number;
+  deviceId: number;
+  name: string;
+  area: string;
+}[] = [
   { zoneId: 8238, deviceId: 8239, name: "Table Lamp", area: "Hallway" },
   { zoneId: 9390, deviceId: 9391, name: "Lamp", area: "Guest Bathroom" },
-  { zoneId: 9475, deviceId: 9476, name: "Nightstand Lamps", area: "Master Bedroom" },
+  {
+    zoneId: 9475,
+    deviceId: 9476,
+    name: "Nightstand Lamps",
+    area: "Master Bedroom",
+  },
   { zoneId: 9538, deviceId: 9539, name: "Lamp", area: "Kitchen" },
   { zoneId: 9555, deviceId: 9556, name: "Floor Lamp", area: "Living Room" },
   { zoneId: 9572, deviceId: 9573, name: "Shelf Lamp", area: "Dining Room" },
@@ -45,16 +55,21 @@ async function main() {
     for (const z of KETRA_ZONES) {
       const dev = await conn.readBody(`/device/${z.deviceId}`);
       if (dev?.Device?.AddressedState !== "Addressed") {
-        console.log(`  ${z.area}/${z.name} (device ${z.deviceId}): already unaddressed`);
+        console.log(
+          `  ${z.area}/${z.name} (device ${z.deviceId}): already unaddressed`,
+        );
         continue;
       }
       try {
-        const resp = await conn.create(`/device/${z.deviceId}/commandprocessor`, {
-          Command: {
-            CommandType: "UnaddressDevice",
-            UnaddressDeviceParameters: { IsDeviceOffline: true },
+        const resp = await conn.create(
+          `/device/${z.deviceId}/commandprocessor`,
+          {
+            Command: {
+              CommandType: "UnaddressDevice",
+              UnaddressDeviceParameters: { IsDeviceOffline: true },
+            },
           },
-        });
+        );
         console.log(`  ${z.area}/${z.name}: ${resp?.Header?.StatusCode}`);
       } catch (e: any) {
         console.log(`  ${z.area}/${z.name}: ERROR ${e.message}`);
@@ -76,9 +91,13 @@ async function main() {
     const existingSerial = dev?.Device?.SerialNumber || 0;
 
     if (state === "Addressed") {
-      console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: already addressed (serial ${existingSerial} / 0x${existingSerial.toString(16)})`);
+      console.log(
+        `  zone ${z.zoneId} ${z.area}/${z.name}: already addressed (serial ${existingSerial} / 0x${existingSerial.toString(16)})`,
+      );
     } else {
-      console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: UNADDRESSED → will assign serial 0x${serial.toString(16)} (${serial})`);
+      console.log(
+        `  zone ${z.zoneId} ${z.area}/${z.name}: UNADDRESSED → will assign serial 0x${serial.toString(16)} (${serial})`,
+      );
       toAddress.push(z);
     }
   }
@@ -99,11 +118,18 @@ async function main() {
 
   // Enter Association mode
   console.log("\nEntering Association mode on CCX link...");
-  const assocResp = await conn.send("UpdateRequest", `/link/${CCX_LINK_ID}/status`, {
-    LinkStatus: { OperatingModes: ["Association"] },
-  });
+  const assocResp = await conn.send(
+    "UpdateRequest",
+    `/link/${CCX_LINK_ID}/status`,
+    {
+      LinkStatus: { OperatingModes: ["Association"] },
+    },
+  );
   if (!assocResp?.Header?.StatusCode?.startsWith("200")) {
-    console.error("Failed to enter Association mode:", assocResp?.Header?.StatusCode);
+    console.error(
+      "Failed to enter Association mode:",
+      assocResp?.Header?.StatusCode,
+    );
     conn.close();
     process.exit(1);
   }
@@ -131,7 +157,8 @@ async function main() {
             DeviceClassParameters: {
               Action: "Overwrite",
               DeviceClass: {
-                HexadecimalEncoding: dev?.Device?.DeviceClass?.HexadecimalEncoding || "45e0101",
+                HexadecimalEncoding:
+                  dev?.Device?.DeviceClass?.HexadecimalEncoding || "45e0101",
               },
             },
             IPv6Properties: {
@@ -142,10 +169,14 @@ async function main() {
       });
       const status = resp?.Header?.StatusCode || "?";
       if (status.startsWith("204") || status.startsWith("200")) {
-        console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: OK → serial 0x${serial.toString(16)}`);
+        console.log(
+          `  zone ${z.zoneId} ${z.area}/${z.name}: OK → serial 0x${serial.toString(16)}`,
+        );
         success++;
       } else {
-        console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: ${status} ${resp?.Body?.Message || ""}`);
+        console.log(
+          `  zone ${z.zoneId} ${z.area}/${z.name}: ${status} ${resp?.Body?.Message || ""}`,
+        );
       }
     } catch (e: any) {
       console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: ERROR ${e.message}`);
@@ -168,7 +199,9 @@ async function main() {
     const zStatus = await conn.readBody(`/zone/${z.zoneId}/status/expanded`);
     const accuracy = zStatus?.ZoneExpandedStatus?.StatusAccuracy || "?";
     const serial = d?.SerialNumber || 0;
-    console.log(`  zone ${z.zoneId} ${z.area}/${z.name}: serial=${serial} (0x${serial.toString(16)}) addressed=${d?.AddressedState} accuracy=${accuracy}`);
+    console.log(
+      `  zone ${z.zoneId} ${z.area}/${z.name}: serial=${serial} (0x${serial.toString(16)}) addressed=${d?.AddressedState} accuracy=${accuracy}`,
+    );
     if (serial > 0) {
       serialMap[String(z.zoneId)] = { serial, hex: "0x" + serial.toString(16) };
     }

@@ -13,8 +13,7 @@
  * Prerequisites: Designer VM running with project open, sql-http-api.ps1 listening.
  */
 
-const DESIGNER_VM_HOST =
-  process.env.DESIGNER_VM_HOST ?? "10.0.0.5";
+const DESIGNER_VM_HOST = process.env.DESIGNER_VM_HOST ?? "10.0.0.5";
 const QUERY_URL = `http://${DESIGNER_VM_HOST}:9999/query`;
 
 // CCX zone IDs for WiZ-bridged zones (ObjectType=370 in Designer DB)
@@ -161,8 +160,8 @@ INSERT INTO tblControlStation (ControlStationID, Name, ParentId, ParentType, Des
 INSERT INTO tblControlStationDevice (ControlStationDeviceID, Name, SerialNumber, SerialNumberState, ModelInfoID, ParentControlStationID, DesignRevision, DatabaseRevision, SortOrder, ModelIsLocked, ProgrammingID, RFDeviceSlot, IsManuallyProgrammed, HardwareRevision, IsAuto, AppliedEngravingType, OrderOnCommunicationLink, IsSceneSaveEnabled, MasterSliderID, WhereUsedId, BacklightLevel, QuickTestStatus, InputReceived, IsEmergencyController, [Guid])
   VALUES (${csdId}, N'${name}', ${serial}, 2, ${MODEL_INFO_ID}, ${csId}, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2147483647, 0, 0, 0, 0, '${guid2}');
 
-INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDeviceType, AssignedZoneID, DesignRevision, DatabaseRevision, SortOrder, ControlNumber, DoubleTapFadeTimeOrRateValue, DoubleTapFadeType, LocalButtonDoubleTapPresetLevel, LocalButtonPresetLevel, LongFadeToOffPrefadeTime, LongFadeToOffTimeOrRateValue, LongFadeToOffType, PressFadeOffTimeOrRateValue, PressFadeOffType, PressFadeOnTimeOrRateValue, PressFadeOnType, RaiseLowerRate, SaveAlways, ObjectType, IsRemoteZone, SliderLowEndType, WhereUsedId, ZoneOnIndicatorIntensity, ZoneOffIndicatorIntensity)
-  VALUES (${zcuiId}, N'${name}', ${csdId}, 5, ${zoneId}, 1, 0, 0, 0, 0, 0, 100, 100, 0, 0, 0, 0, 0, 0, 0, 19, 0, 370, 0, 0, 2147483647, 0, 0);`);
+INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDeviceType, AssignedZoneID, DesignRevision, DatabaseRevision, SortOrder, ControlNumber, DoubleTapFadeTimeOrRateValue, DoubleTapFadeType, LocalButtonDoubleTapPresetLevel, LocalButtonPresetLevel, LongFadeToOffPrefadeTime, LongFadeToOffTimeOrRateValue, LongFadeToOffType, PressFadeOffTimeOrRateValue, PressFadeOffType, PressFadeOnTimeOrRateValue, PressFadeOnType, RaiseLowerRate, SaveAlways, ObjectType /* 15=standard dimmer */, IsRemoteZone, SliderLowEndType, WhereUsedId, ZoneOnIndicatorIntensity, ZoneOffIndicatorIntensity)
+  VALUES (${zcuiId}, N'${name}', ${csdId}, 5, ${zoneId}, 1, 0, 0, 0, 0, 0, 100, 100, 0, 0, 0, 0, 0, 0, 0, 19, 0, 15, 0, 0, 2147483647, 0, 0);`);
   }
 
   statements.push("", "COMMIT TRANSACTION;");
@@ -176,7 +175,9 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
   console.log("=== Serial Mapping ===");
   for (const [zid, serial] of Object.entries(serialMap)) {
     const z = zonesToRegister.find((r) => r.ZoneID === zid);
-    console.log(`  zone ${zid} (${z?.AreaName}/${z?.ZoneName}): serial ${serial}`);
+    console.log(
+      `  zone ${zid} (${z?.AreaName}/${z?.ZoneName}): serial ${serial}`,
+    );
   }
   console.log();
 
@@ -185,7 +186,12 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
     // Write serial map for reference
     const { writeFileSync } = await import("fs");
     const { join } = await import("path");
-    const outPath = join(import.meta.dir, "..", "data", "wiz-device-serials.json");
+    const outPath = join(
+      import.meta.dir,
+      "..",
+      "data",
+      "wiz-device-serials.json",
+    );
     writeFileSync(outPath, JSON.stringify(serialMap, null, 2) + "\n");
     console.log(`Serial map written to ${outPath}`);
     return;
@@ -210,7 +216,9 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
   );
 
   for (const row of verify) {
-    console.log(`  ✓ serial ${row.SerialNumber} → zone ${row.AssignedZoneID} (${row.Name})`);
+    console.log(
+      `  ✓ serial ${row.SerialNumber} → zone ${row.AssignedZoneID} (${row.Name})`,
+    );
   }
 
   if (verify.length === zonesToRegister.length) {
@@ -224,7 +232,12 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
   // Write serial map
   const { writeFileSync } = await import("fs");
   const { join } = await import("path");
-  const outPath = join(import.meta.dir, "..", "data", "wiz-device-serials.json");
+  const outPath = join(
+    import.meta.dir,
+    "..",
+    "data",
+    "wiz-device-serials.json",
+  );
   writeFileSync(outPath, JSON.stringify(serialMap, null, 2) + "\n");
   console.log(`Serial map written to ${outPath}`);
 

@@ -23,7 +23,8 @@ SELECT pa.ParentID AS PresetID, p.Name AS PresetName,
        pa.AssignableObjectID AS ZoneID, z.Name AS ZoneName,
        MAX(CASE WHEN acp.ParameterType = 3 THEN acp.ParameterValue END) AS LevelPct,
        MAX(CASE WHEN acp.ParameterType = 1 THEN acp.ParameterValue END) AS FadeQs,
-       MAX(CASE WHEN acp.ParameterType = 2 THEN acp.ParameterValue END) AS DelayQs
+       MAX(CASE WHEN acp.ParameterType = 2 THEN acp.ParameterValue END) AS DelayQs,
+       MAX(CASE WHEN acp.ParameterType = 69 THEN acp.ParameterValue END) AS WarmDimCurveId
 FROM tblPresetAssignment pa
 JOIN tblPreset p ON p.PresetID = pa.ParentID
 JOIN tblZone z ON z.ZoneID = pa.AssignableObjectID
@@ -31,6 +32,15 @@ JOIN tblAssignmentCommandParameter acp ON acp.ParentId = pa.PresetAssignmentID
 GROUP BY pa.ParentID, p.Name, pa.AssignableObjectID, z.Name
 ORDER BY pa.ParentID, pa.AssignableObjectID
 `.trim();
+
+/** Map Designer WarmDimCurveId → warm-dim.ts curve name */
+const CURVE_NAMES: Record<number, string> = {
+  1: "default",
+  2: "halogen",
+  3: "finire2700",
+  4: "finire3000",
+  // 5 is unknown — fall back to default
+};
 
 async function queryDesignerDb(sql: string): Promise<string> {
   const url = `http://${DESIGNER_VM_HOST}:9999/query`;
@@ -85,13 +95,20 @@ async function main() {
 
   const result: Record<
     string,
-    { name: string; zones: Record<string, { level: number; fade?: number }> }
+    {
+      name: string;
+      zones: Record<
+        string,
+        { level: number; fade?: number; warmDimCurve?: string }
+      >;
+    }
   > = {};
   let totalZoneAssignments = 0;
   let skippedNull = 0;
+  let warmDimCount = 0;
 
   for (const line of dataLines) {
-    const [presetId, designerName, zoneId, , levelStr, fadeStr] =
+    const [presetId, designerName, zoneId, , levelStr, fadeStr, , curveIdStr] =
       line.split("|");
     if (!presetId || !zoneId) continue;
 
@@ -111,8 +128,15 @@ async function main() {
       };
     }
 
-    const entry: { level: number; fade?: number } = { level };
+    const entry: { level: number; fade?: number; warmDimCurve?: string } = {
+      level,
+    };
     if (fade > 0) entry.fade = fade;
+    if (curveIdStr && curveIdStr !== "NULL") {
+      const curveId = Number(curveIdStr);
+      entry.warmDimCurve = CURVE_NAMES[curveId] ?? "default";
+      warmDimCount++;
+    }
     result[presetId].zones[zoneId] = entry;
     totalZoneAssignments++;
   }
@@ -128,7 +152,7 @@ async function main() {
   const presetCount = Object.keys(sorted).length;
   console.log(`\nWrote ${outPath}`);
   console.log(
-    `  ${presetCount} presets, ${totalZoneAssignments} zone assignments (${skippedNull} NULL levels skipped)`,
+    `  ${presetCount} presets, ${totalZoneAssignments} zone assignments (${skippedNull} NULL levels skipped, ${warmDimCount} with warm dim curve)`,
   );
 
   // Sample verification
