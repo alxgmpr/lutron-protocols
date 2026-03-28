@@ -188,15 +188,20 @@ export function xyToCct(x: number, y: number): number {
 }
 
 /**
- * Compute Euclidean distance from a CIE xy point to the nearest point
- * on the Planckian locus (interpolated from reference table).
- * Small distance = near-white, large distance = saturated color.
+ * Find the nearest point on the Planckian locus to a given CIE xy chromaticity.
+ * Returns both the distance (how saturated) and the CCT at the closest point
+ * (which white to use for blending). This is more stable than McCamy's for
+ * chromaticities far from the locus, where McCamy's extrapolation breaks down.
  */
-export function planckianDistance(x: number, y: number): number {
+export function nearestPlanckian(x: number, y: number): {
+  distance: number;
+  cct: number;
+} {
   let minDist = Infinity;
+  let bestCct = 4000;
   for (let i = 0; i < PLANCKIAN_LOCUS.length - 1; i++) {
-    const [, ax, ay] = PLANCKIAN_LOCUS[i];
-    const [, bx, by] = PLANCKIAN_LOCUS[i + 1];
+    const [cctA, ax, ay] = PLANCKIAN_LOCUS[i];
+    const [cctB, bx, by] = PLANCKIAN_LOCUS[i + 1];
     // Project (x,y) onto line segment [a, b], clamp t to [0,1]
     const dx = bx - ax;
     const dy = by - ay;
@@ -205,9 +210,17 @@ export function planckianDistance(x: number, y: number): number {
     const px = ax + t * dx;
     const py = ay + t * dy;
     const dist = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
-    if (dist < minDist) minDist = dist;
+    if (dist < minDist) {
+      minDist = dist;
+      bestCct = cctA + t * (cctB - cctA);
+    }
   }
-  return minDist;
+  return { distance: minDist, cct: bestCct };
+}
+
+/** Convenience: just the distance (for backward compat) */
+export function planckianDistance(x: number, y: number): number {
+  return nearestPlanckian(x, y).distance;
 }
 
 /**
@@ -231,11 +244,13 @@ export function xyToRgbwc(
   if (brightnessPercent <= 0 || y <= 0)
     return { r: 0, g: 0, b: 0, w: 0, c: 0 };
 
-  const dist = planckianDistance(x, y);
+  // Find nearest white point on the Planckian locus — more stable than McCamy's
+  // for chromaticities far from the locus where McCamy's extrapolation breaks down
+  const { distance: dist, cct } = nearestPlanckian(x, y);
 
   // Near the Planckian locus → use CCT pathway (white LEDs)
   if (dist <= PLANCKIAN_NEAR) {
-    return cctToRgbwc(xyToCct(x, y), brightnessPercent, table);
+    return cctToRgbwc(cct, brightnessPercent, table);
   }
 
   // Far from locus → pure RGB
@@ -244,11 +259,10 @@ export function xyToRgbwc(
   }
 
   // Blend zone: decompose brightness into white + color components.
-  // Instead of blending channel values (which creates muddy colors because
-  // normalized RGB overwhelms the white), we split the brightness budget:
-  // white LEDs carry the desaturated portion, RGB LEDs carry the color accent.
+  // White LEDs carry the desaturated portion at the nearest Planckian CCT,
+  // RGB LEDs carry the color accent. Brightness budget is split by saturation.
   const sat = (dist - PLANCKIAN_NEAR) / (PLANCKIAN_FAR - PLANCKIAN_NEAR);
-  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent * (1 - sat), table);
+  const white = cctToRgbwc(cct, brightnessPercent * (1 - sat), table);
   const color = xyToRgb(x, y, brightnessPercent * sat);
   return {
     r: Math.min(255, white.r + color.r),
