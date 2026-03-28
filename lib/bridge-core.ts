@@ -20,7 +20,12 @@ import {
 import { formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 import { evalWarmDimCurve, getWarmDimCurve } from "./warm-dim";
-import { cctToRgbwc, xyToRgbwc, rgbwcToPilotParams } from "./wiz-color";
+import {
+  cctToRgbwc,
+  xyToRgbwc,
+  rgbwcToPilotParams,
+  type CctPoint,
+} from "./wiz-color";
 
 // ── Config types ──────────────────────────────────────────
 
@@ -100,6 +105,9 @@ export class BridgeCore extends EventEmitter {
     }
   >();
 
+  // Per-bulb calibration (fetched from each WiZ bulb on startup)
+  private cctTables = new Map<string, CctPoint[]>(); // IP → CCT table
+
   // Stats
   packetCount = 0;
   matchCount = 0;
@@ -114,6 +122,63 @@ export class BridgeCore extends EventEmitter {
     }
 
     this.wizSocket = this.pairings.length > 0 ? createSocket("udp4") : null;
+  }
+
+  /** Fetch CCT calibration tables from all paired WiZ bulbs */
+  async fetchCctTables(): Promise<void> {
+    if (!this.wizSocket) return;
+    const uniqueIps = new Set<string>();
+    for (const p of this.pairings) {
+      for (const ip of p.wizIps) uniqueIps.add(ip);
+    }
+
+    const buf = Buffer.from(
+      JSON.stringify({ method: "getCctTable", params: {} }),
+    );
+
+    const results = await Promise.all(
+      [...uniqueIps].map(
+        (ip) =>
+          new Promise<{ ip: string; table?: CctPoint[] }>((resolve) => {
+            const sock = createSocket("udp4");
+            const timeout = setTimeout(() => {
+              sock.close();
+              resolve({ ip });
+            }, 2000);
+            sock.send(buf, 38899, ip, () => {
+              sock.once("message", (msg) => {
+                clearTimeout(timeout);
+                sock.close();
+                try {
+                  const data = JSON.parse(msg.toString());
+                  const pts = data?.result?.cctPoints as CctPoint[] | undefined;
+                  resolve({ ip, table: pts });
+                } catch {
+                  resolve({ ip });
+                }
+              });
+            });
+          }),
+      ),
+    );
+
+    for (const { ip, table } of results) {
+      if (table && table.length > 0) {
+        this.cctTables.set(ip, table);
+        this.emit("log", `  [wiz] CCT table from ${ip}: ${table.length} points`);
+      } else {
+        this.emit("log", `  [wiz] CCT table from ${ip}: failed (using default)`);
+      }
+    }
+  }
+
+  /** Get the CCT table for a pairing (from first bulb that has one) */
+  private getCctTable(pairing: WizPairing): CctPoint[] | undefined {
+    for (const ip of pairing.wizIps) {
+      const table = this.cctTables.get(ip);
+      if (table) return table;
+    }
+    return undefined;
   }
 
   /** Process a decoded CCX packet through the bridge pipeline */
@@ -271,20 +336,22 @@ export class BridgeCore extends EventEmitter {
     let params: Record<string, number | boolean>;
     let logStr: string;
 
+    const table = this.getCctTable(pairing);
+
     if (levelPercent <= 0) {
       params = { state: false };
       logStr = "OFF";
     } else if (colorXy) {
-      // CIE xy color mode — use RGB channels only
+      // CIE xy color mode — blend RGB + white LEDs based on Planckian distance
       const x = colorXy[0] / 10000;
       const y = colorXy[1] / 10000;
-      const channels = xyToRgbwc(x, y, levelPercent);
+      const channels = xyToRgbwc(x, y, levelPercent, table);
       params = rgbwcToPilotParams(channels);
-      logStr = `${Math.round(levelPercent)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b}]`;
+      logStr = `${Math.round(levelPercent)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
     } else {
       // CCT mode — use RGBWC for full 0-100% range (bypasses WiZ 10% floor)
       const cct = nativeCct ?? 2700;
-      const channels = cctToRgbwc(cct, levelPercent);
+      const channels = cctToRgbwc(cct, levelPercent, table);
       params = rgbwcToPilotParams(channels);
       const cctStr = nativeCct != null ? `${nativeCct}K` : "2700K(default)";
       logStr = `${Math.round(levelPercent)}% ${cctStr} [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;

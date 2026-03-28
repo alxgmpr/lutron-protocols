@@ -119,6 +119,10 @@ async function main() {
     watchedZones,
   });
 
+  // ── Fetch per-bulb calibration data ───────────────────────
+
+  await bridge.fetchCctTables();
+
   // ── Wire everything together ──────────────────────────────
 
   pipeline.onAddressLearned = (shortAddr: number, eui64: string) => {

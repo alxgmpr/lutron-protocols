@@ -18,7 +18,7 @@ export interface RgbwcChannels {
 }
 
 /** CCT table point: [kelvin, R, G, B, W, C] */
-type CctPoint = [number, number, number, number, number, number];
+export type CctPoint = [number, number, number, number, number, number];
 
 /**
  * Default 14-point CCT table from WiZ ESP24_SHRGB_01 bulbs (BP5758D driver).
@@ -226,6 +226,7 @@ export function xyToRgbwc(
   x: number,
   y: number,
   brightnessPercent: number,
+  table?: CctPoint[],
 ): RgbwcChannels {
   if (brightnessPercent <= 0 || y <= 0)
     return { r: 0, g: 0, b: 0, w: 0, c: 0 };
@@ -234,7 +235,7 @@ export function xyToRgbwc(
 
   // Near the Planckian locus → use CCT pathway (white LEDs)
   if (dist <= PLANCKIAN_NEAR) {
-    return cctToRgbwc(xyToCct(x, y), brightnessPercent);
+    return cctToRgbwc(xyToCct(x, y), brightnessPercent, table);
   }
 
   // Far from locus → pure RGB
@@ -247,7 +248,7 @@ export function xyToRgbwc(
   // normalized RGB overwhelms the white), we split the brightness budget:
   // white LEDs carry the desaturated portion, RGB LEDs carry the color accent.
   const sat = (dist - PLANCKIAN_NEAR) / (PLANCKIAN_FAR - PLANCKIAN_NEAR);
-  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent * (1 - sat));
+  const white = cctToRgbwc(xyToCct(x, y), brightnessPercent * (1 - sat), table);
   const color = xyToRgb(x, y, brightnessPercent * sat);
   return {
     r: Math.min(255, white.r + color.r),
