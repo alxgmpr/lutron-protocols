@@ -274,7 +274,17 @@ export class BridgeCore extends EventEmitter {
   handlePacket(pkt: CCXPacket): void {
     this.packetCount++;
 
-    // Log every packet
+    // Only log and process actionable message types
+    const { type } = pkt.parsed;
+    if (
+      type !== "LEVEL_CONTROL" &&
+      type !== "BUTTON_PRESS" &&
+      type !== "DIM_HOLD" &&
+      type !== "DIM_STEP"
+    ) {
+      return; // skip ACK, DEVICE_REPORT, STATUS, etc.
+    }
+
     const time = pkt.timestamp.slice(11, 23);
     const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
     this.emit(
@@ -282,22 +292,22 @@ export class BridgeCore extends EventEmitter {
       `${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`,
     );
 
-    if (pkt.parsed.type === "LEVEL_CONTROL") {
+    if (type === "LEVEL_CONTROL") {
       this.handleLevelControl(pkt);
       return;
     }
 
-    if (pkt.parsed.type === "BUTTON_PRESS") {
+    if (type === "BUTTON_PRESS") {
       this.handleButtonPress(pkt);
       return;
     }
 
-    if (pkt.parsed.type === "DIM_HOLD") {
+    if (type === "DIM_HOLD") {
       this.handleDimHold(pkt);
       return;
     }
 
-    if (pkt.parsed.type === "DIM_STEP") {
+    if (type === "DIM_STEP") {
       this.handleDimStep(pkt);
     }
   }
