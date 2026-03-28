@@ -118,7 +118,7 @@ interface WizCommand {
 // ── Constants ─────────────────────────────────────────────
 
 const TICK_MS = 50; // 20 Hz tick loop
-const DEDUP_WINDOW_MS = 200; // Thread retransmissions arrive within ~170ms
+const DEDUP_WINDOW_MS = 500; // Thread retransmissions span ~350ms across relays
 const RAMP_RATE_PCT_PER_SEC = 100 / 4.75; // 4.75s full range (19 quarter-seconds)
 const REPORT_DELAY_MS = 2000; // delay DEVICE_REPORT after activity settles (real devices wait seconds)
 
@@ -270,28 +270,22 @@ export class BridgeCore extends EventEmitter {
 
   // ── Packet handling ─────────────────────────────────────
 
-  /** Process a decoded CCX packet through the bridge pipeline */
-  handlePacket(pkt: CCXPacket): void {
-    this.packetCount++;
-
-    // Only log and process actionable message types
-    const { type } = pkt.parsed;
-    if (
-      type !== "LEVEL_CONTROL" &&
-      type !== "BUTTON_PRESS" &&
-      type !== "DIM_HOLD" &&
-      type !== "DIM_STEP"
-    ) {
-      return; // skip ACK, DEVICE_REPORT, STATUS, etc.
-    }
-
+  /** Log a packet (called after dedup passes) */
+  private logPacket(pkt: CCXPacket): void {
     const time = pkt.timestamp.slice(11, 23);
     const typeName = getMessageTypeName(pkt.msgType).padEnd(14);
     this.emit(
       "log",
       `${time} ${typeName} ${formatMessage(pkt.parsed)}  [${pkt.srcAddr} → ${pkt.dstAddr}]`,
     );
+  }
 
+  /** Process a decoded CCX packet through the bridge pipeline */
+  handlePacket(pkt: CCXPacket): void {
+    this.packetCount++;
+
+    // Only process actionable message types
+    const { type } = pkt.parsed;
     if (type === "LEVEL_CONTROL") {
       this.handleLevelControl(pkt);
       return;
@@ -320,6 +314,7 @@ export class BridgeCore extends EventEmitter {
     if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
     if (this.isDuplicate(`0:${zoneId}:${sequence}`)) return;
     this.matchCount++;
+    this.logPacket(pkt);
 
     // Detect color-only command: CBOR key 0 (level) absent from inner map
     const inner = (msg.rawBody?.[0] ?? {}) as Record<number, unknown>;
@@ -351,6 +346,7 @@ export class BridgeCore extends EventEmitter {
     if (msg.type !== "BUTTON_PRESS") return;
     const presetId = presetIdFromDeviceId(msg.deviceId);
     if (this.isDuplicate(`1:${presetId}:${msg.sequence}`)) return;
+    this.logPacket(pkt);
 
     const sceneEntry = this.presetZones.get(presetId);
     if (!sceneEntry) return;
@@ -382,6 +378,7 @@ export class BridgeCore extends EventEmitter {
     if (msg.type !== "DIM_HOLD") return;
     const { action, sequence, zoneId } = msg;
     if (this.isDuplicate(`2:${zoneId || "p"}:${sequence}`)) return;
+    this.logPacket(pkt);
     const direction = action === 3 ? "raise" : "lower";
 
     if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
@@ -406,6 +403,7 @@ export class BridgeCore extends EventEmitter {
     if (msg.type !== "DIM_STEP") return;
     const { zoneId, sequence } = msg;
     if (this.isDuplicate(`3:${zoneId || "p"}:${sequence}`)) return;
+    this.logPacket(pkt);
 
     if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
       this.matchCount++;
