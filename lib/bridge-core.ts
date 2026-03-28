@@ -118,6 +118,8 @@ export class BridgeCore extends EventEmitter {
   private nucleoHost: string | null = null;
   private serialByZone = new Map<number, number>(); // zoneId → synthetic serial
   private reportSeq = 0;
+  private pendingReports: { zoneId: number; level: number }[] = [];
+  private reportFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Stats
   packetCount = 0;
@@ -244,22 +246,18 @@ export class BridgeCore extends EventEmitter {
 
       const sceneEntry = this.presetZones.get(presetId);
       if (sceneEntry) {
-        const dispatches: Promise<void>[] = [];
         for (const [zid, assignment] of Object.entries(sceneEntry.zones)) {
           const zoneId = Number(zid);
           if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId))
             continue;
           this.matchCount++;
-          dispatches.push(
-            this.dispatch(
-              zoneId,
-              assignment.level,
-              `PRESET(${sceneEntry.name})`,
-              assignment.fade,
-            ),
+          this.dispatch(
+            zoneId,
+            assignment.level,
+            `PRESET(${sceneEntry.name})`,
+            assignment.fade,
           );
         }
-        Promise.all(dispatches);
       }
       return;
     }
@@ -351,7 +349,7 @@ export class BridgeCore extends EventEmitter {
 
   // ── WiZ UDP output ────────────────────────────────────
 
-  private async sendWiz(
+  private sendWiz(
     pairing: WizPairing,
     levelPercent: number,
     nativeCct?: number,
@@ -368,14 +366,12 @@ export class BridgeCore extends EventEmitter {
       params = { state: false };
       logStr = "OFF";
     } else if (colorXy) {
-      // CIE xy color mode — blend RGB + white LEDs based on Planckian distance
       const x = colorXy[0] / 10000;
       const y = colorXy[1] / 10000;
       const channels = xyToRgbwc(x, y, levelPercent, table);
       params = rgbwcToPilotParams(channels);
       logStr = `${Math.round(levelPercent)}% xy=(${x.toFixed(4)},${y.toFixed(4)}) [r${channels.r} g${channels.g} b${channels.b} w${channels.w} c${channels.c}]`;
     } else {
-      // CCT mode — use RGBWC for full 0-100% range (bypasses WiZ 10% floor)
       const cct = nativeCct ?? 2700;
       const channels = cctToRgbwc(cct, levelPercent, table);
       params = rgbwcToPilotParams(channels);
@@ -387,21 +383,16 @@ export class BridgeCore extends EventEmitter {
       JSON.stringify({ method: "setPilot", params }),
     );
 
-    await Promise.all(
-      pairing.wizIps.map(
-        (ip) =>
-          new Promise<void>((resolve) => {
-            this.wizSocket!.send(buf, pairing.wizPort, ip, (err) => {
-              if (err) {
-                this.emit("log", `  [wiz] Error → ${ip}: ${err.message}`);
-              } else {
-                this.emit("log", `  [wiz] → ${pairing.name} (${ip}) ${logStr}`);
-              }
-              resolve();
-            });
-          }),
-      ),
-    );
+    // Fire all UDP sends immediately — no await, no Promise.all
+    for (const ip of pairing.wizIps) {
+      this.wizSocket.send(buf, pairing.wizPort, ip, (err) => {
+        if (err) {
+          this.emit("log", `  [wiz] Error → ${ip}: ${err.message}`);
+        } else {
+          this.emit("log", `  [wiz] → ${pairing.name} (${ip}) ${logStr}`);
+        }
+      });
+    }
   }
 
   // ── Dispatch ──────────────────────────────────────────
@@ -450,12 +441,12 @@ export class BridgeCore extends EventEmitter {
       // DEVICE_REPORT fires at the final step inside startFade
       this.startFade(zoneId, levelPercent, cct, fade, effectiveColorXy);
     } else {
-      // Instant: fire WiZ + DEVICE_REPORT in parallel (no await)
+      // Instant: fire WiZ immediately, queue DEVICE_REPORT for batch flush
       this.zoneLevel.set(zoneId, levelPercent);
       const pairing = this.pairingsByZone.get(zoneId);
       if (pairing)
         this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
-      this.sendDeviceReport(zoneId, levelPercent);
+      this.queueDeviceReport(zoneId, levelPercent);
     }
   }
 
@@ -523,7 +514,7 @@ export class BridgeCore extends EventEmitter {
         "log",
         `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
       );
-      this.sendDeviceReport(zoneId, finalLevel);
+      this.queueDeviceReport(zoneId, finalLevel);
     }
   }
 
@@ -577,7 +568,7 @@ export class BridgeCore extends EventEmitter {
 
       if (step >= totalSteps) {
         this.stopFade(zoneId);
-        this.sendDeviceReport(zoneId, level);
+        this.queueDeviceReport(zoneId, level);
       }
     };
 
@@ -625,6 +616,26 @@ export class BridgeCore extends EventEmitter {
         );
       }
     });
+  }
+
+  /**
+   * Queue a DEVICE_REPORT for deferred batch flush.
+   * All WiZ UDP sends fire immediately; reports flush 15ms later so they
+   * don't interleave with WiZ sends during multi-zone scenes.
+   */
+  private queueDeviceReport(zoneId: number, levelPercent: number): void {
+    this.pendingReports.push({ zoneId, level: levelPercent });
+    if (!this.reportFlushTimer) {
+      this.reportFlushTimer = setTimeout(() => this.flushDeviceReports(), 15);
+    }
+  }
+
+  private flushDeviceReports(): void {
+    this.reportFlushTimer = null;
+    const batch = this.pendingReports.splice(0);
+    for (const { zoneId, level } of batch) {
+      this.sendDeviceReport(zoneId, level);
+    }
   }
 }
 
