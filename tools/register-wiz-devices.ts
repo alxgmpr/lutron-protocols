@@ -17,8 +17,8 @@ const DESIGNER_VM_HOST =
   process.env.DESIGNER_VM_HOST ?? "10.0.0.5";
 const QUERY_URL = `http://${DESIGNER_VM_HOST}:9999/query`;
 
-// WiZ zone IDs → synthetic serial numbers (90000001+)
-const WIZ_ZONES = [4999, 5251, 5278, 5306, 5331, 5356, 5383, 8238];
+// CCX zone IDs for WiZ-bridged zones (ObjectType=370 in Designer DB)
+const WIZ_ZONES = [8238, 9390, 9475, 9538, 9555, 9572, 9589, 9606, 9623];
 const SERIAL_BASE = 90000001;
 
 // HQR-3LD ModelInfoID — standard CCX local dimmer, already in the project
@@ -40,7 +40,15 @@ async function query(sql: string): Promise<string> {
 }
 
 function parsePsvRows(text: string): Record<string, string>[] {
-  const lines = text.trim().split("\n").filter((l) => l.trim());
+  const lines = text
+    .trim()
+    .split("\n")
+    .filter(
+      (l) =>
+        l.trim() &&
+        !l.match(/^\(?\d+ rows? affected\)?/) &&
+        !l.match(/^-+(\|-+)*$/),
+    );
   if (lines.length < 2) return [];
   const headers = lines[0].split("|").map((h) => h.trim());
   return lines.slice(1).map((line) => {
@@ -141,16 +149,20 @@ async function main() {
 
     serialMap[String(zoneId)] = serial;
 
+    const guid1 = crypto.randomUUID().toUpperCase();
+    const guid2 = crypto.randomUUID().toUpperCase();
+    const guid3 = crypto.randomUUID().toUpperCase();
+
     statements.push(`
 -- Zone ${zoneId}: ${z.AreaName} / ${z.ZoneName} → serial ${serial}
-INSERT INTO tblControlStation (ControlStationID, Name, ParentId)
-  VALUES (${csId}, N'${name}', ${areaId});
+INSERT INTO tblControlStation (ControlStationID, Name, ParentId, ParentType, DesignRevision, DatabaseRevision, SortOrder, CustomSortOrder, ShadeGroupCount, HasTranslucentCover, WhereUsedId, [Guid])
+  VALUES (${csId}, N'${name}', ${areaId}, 2, 1, 0, 0, 0, 0, 0, 2147483647, '${guid1}');
 
-INSERT INTO tblControlStationDevice (ControlStationDeviceID, SerialNumber, ModelInfoID, ParentControlStationID, Name)
-  VALUES (${csdId}, ${serial}, ${MODEL_INFO_ID}, ${csId}, N'${name}');
+INSERT INTO tblControlStationDevice (ControlStationDeviceID, Name, SerialNumber, SerialNumberState, ModelInfoID, ParentControlStationID, DesignRevision, DatabaseRevision, SortOrder, ModelIsLocked, ProgrammingID, RFDeviceSlot, IsManuallyProgrammed, HardwareRevision, IsAuto, AppliedEngravingType, OrderOnCommunicationLink, IsSceneSaveEnabled, MasterSliderID, WhereUsedId, BacklightLevel, QuickTestStatus, InputReceived, IsEmergencyController, [Guid])
+  VALUES (${csdId}, N'${name}', ${serial}, 2, ${MODEL_INFO_ID}, ${csId}, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2147483647, 0, 0, 0, 0, '${guid2}');
 
-INSERT INTO tblZoneControlUI (ZoneControlUIID, ParentDeviceID, ParentDeviceType, AssignedZoneID)
-  VALUES (${zcuiId}, ${csdId}, 5, ${zoneId});`);
+INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDeviceType, AssignedZoneID, DesignRevision, DatabaseRevision, SortOrder, ControlNumber, DoubleTapFadeTimeOrRateValue, DoubleTapFadeType, LocalButtonDoubleTapPresetLevel, LocalButtonPresetLevel, LongFadeToOffPrefadeTime, LongFadeToOffTimeOrRateValue, LongFadeToOffType, PressFadeOffTimeOrRateValue, PressFadeOffType, PressFadeOnTimeOrRateValue, PressFadeOnType, RaiseLowerRate, SaveAlways, ObjectType, IsRemoteZone, SliderLowEndType, WhereUsedId, ZoneOnIndicatorIntensity, ZoneOffIndicatorIntensity)
+  VALUES (${zcuiId}, N'${name}', ${csdId}, 5, ${zoneId}, 1, 0, 0, 0, 0, 0, 100, 100, 0, 0, 0, 0, 0, 0, 0, 19, 0, 370, 0, 0, 2147483647, 0, 0);`);
   }
 
   statements.push("", "COMMIT TRANSACTION;");
