@@ -15,7 +15,13 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { BodyKey, CCXMessageType, Level } from "./constants";
 
-const SEQ_FILE = join(import.meta.dir, "..", ".ccx-seq");
+// import.meta.dir is Bun-only; fall back for Node/tsx
+const metaDir = (import.meta as unknown as Record<string, unknown>).dir as
+  | string
+  | undefined;
+const SEQ_FILE = metaDir
+  ? join(metaDir, "..", ".ccx-seq")
+  : join(process.cwd(), ".ccx-seq");
 
 // --- Minimal CBOR encoder for integer-keyed maps ---
 

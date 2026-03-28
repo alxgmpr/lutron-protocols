@@ -20,6 +20,7 @@ import {
 import { formatMessage, getMessageTypeName } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
 import { evalWarmDimCurve, getWarmDimCurve } from "./warm-dim";
+import { encodeDeviceReport, percentToLevel } from "../ccx/encoder";
 import {
   cctToRgbwc,
   xyToRgbwc,
@@ -62,6 +63,10 @@ export interface BridgeCoreOptions {
   presetZones: Map<number, PresetZoneEntry>;
   /** Zone IDs to watch (empty = all) */
   watchedZones: Set<number>;
+  /** Nucleo host for Thread TX (enables DEVICE_REPORT state injection) */
+  nucleoHost?: string;
+  /** Zone → synthetic device serial mapping for DEVICE_REPORT */
+  deviceSerials?: Map<number, number>;
 }
 
 // ── Constants ─────────────────────────────────────────────
@@ -108,6 +113,12 @@ export class BridgeCore extends EventEmitter {
   // Per-bulb calibration (fetched from each WiZ bulb on startup)
   private cctTables = new Map<string, CctPoint[]>(); // IP → CCT table
 
+  // Nucleo state reporting (Thread TX via UDP:9433)
+  private nucleoSocket: Socket | null = null;
+  private nucleoHost: string | null = null;
+  private serialByZone = new Map<number, number>(); // zoneId → synthetic serial
+  private reportSeq = 0;
+
   // Stats
   packetCount = 0;
   matchCount = 0;
@@ -122,6 +133,15 @@ export class BridgeCore extends EventEmitter {
     }
 
     this.wizSocket = this.pairings.length > 0 ? createSocket("udp4") : null;
+
+    // Nucleo state reporting
+    if (opts.nucleoHost) {
+      this.nucleoHost = opts.nucleoHost;
+      this.nucleoSocket = createSocket("udp4");
+      if (opts.deviceSerials) {
+        this.serialByZone = opts.deviceSerials;
+      }
+    }
   }
 
   /** Fetch CCT calibration tables from all paired WiZ bulbs */
@@ -305,6 +325,8 @@ export class BridgeCore extends EventEmitter {
     }
     this.wizSocket?.close();
     this.wizSocket = null;
+    this.nucleoSocket?.close();
+    this.nucleoSocket = null;
   }
 
   // ── Deduplication ─────────────────────────────────────
@@ -421,6 +443,7 @@ export class BridgeCore extends EventEmitter {
 
     if (fade > 1) {
       // Stepped fade: N steps at 250ms intervals (1 qs = 1 step)
+      // DEVICE_REPORT fires at the final step inside startFade
       this.startFade(zoneId, levelPercent, cct, fade, effectiveColorXy);
     } else {
       // Instant: single setPilot, bulb's 250ms fadeIn handles it
@@ -428,6 +451,8 @@ export class BridgeCore extends EventEmitter {
       const pairing = this.pairingsByZone.get(zoneId);
       if (pairing)
         await this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
+      // Report state to Lutron processor after a short delay
+      setTimeout(() => this.sendDeviceReport(zoneId, levelPercent), 50);
     }
   }
 
@@ -495,6 +520,8 @@ export class BridgeCore extends EventEmitter {
         "log",
         `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
       );
+      // Report final ramp level to Lutron processor
+      setTimeout(() => this.sendDeviceReport(zoneId, finalLevel), 50);
     }
   }
 
@@ -548,6 +575,8 @@ export class BridgeCore extends EventEmitter {
 
       if (step >= totalSteps) {
         this.stopFade(zoneId);
+        // Report final level to Lutron processor
+        setTimeout(() => this.sendDeviceReport(zoneId, level), 50);
       }
     };
 
@@ -566,6 +595,35 @@ export class BridgeCore extends EventEmitter {
       clearInterval(fade.timer);
       this.activeFades.delete(zoneId);
     }
+  }
+
+  // ── Nucleo DEVICE_REPORT ────────────────────────────────
+
+  private sendDeviceReport(zoneId: number, levelPercent: number): void {
+    if (!this.nucleoSocket || !this.nucleoHost) return;
+    const serial = this.serialByZone.get(zoneId);
+    if (!serial) return;
+
+    const level = percentToLevel(levelPercent);
+    const seq = this.reportSeq++ & 0xff;
+    const cbor = encodeDeviceReport({ deviceSerial: serial, level, sequence: seq });
+
+    // Stream protocol: [CMD=0x16, LEN, ...cbor]
+    const frame = Buffer.alloc(2 + cbor.length);
+    frame[0] = 0x16; // STREAM_CMD_TX_RAW_CCX_CBOR
+    frame[1] = cbor.length;
+    cbor.copy(frame, 2);
+
+    this.nucleoSocket.send(frame, 9433, this.nucleoHost, (err) => {
+      if (err) {
+        this.emit("log", `  [nucleo] DEVICE_REPORT error: ${err.message}`);
+      } else {
+        this.emit(
+          "log",
+          `  [nucleo] DEVICE_REPORT zone=${zoneId} serial=${serial} level=${Math.round(levelPercent)}%`,
+        );
+      }
+    });
   }
 }
 

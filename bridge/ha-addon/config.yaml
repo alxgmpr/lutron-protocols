@@ -18,6 +18,8 @@ options:
   thread_master_key: ""
   sniffer_device: /dev/ttyACM0
   wiz_port: 38899
+  nucleo_host: ""
+  device_serials: []
   pairings:
     - zone_id: 8238
       name: ""
@@ -59,6 +61,10 @@ schema:
   thread_master_key: password
   sniffer_device: str
   wiz_port: port
+  nucleo_host: "str?"
+  device_serials:
+    - zone_id: int
+      serial: int
   pairings:
     - zone_id: int
       name: "str?"

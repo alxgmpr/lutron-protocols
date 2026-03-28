@@ -26,6 +26,8 @@ interface HAOptions {
   thread_master_key?: string;
   sniffer_device?: string;
   wiz_port?: number;
+  nucleo_host?: string;
+  device_serials?: Array<{ zone_id: number; serial: number }>;
   pairings?: Array<{
     zone_id: number;
     name?: string;
@@ -113,10 +115,31 @@ async function main() {
 
   const sniffer = new SerialSniffer({ port: snifferDevice, channel });
   const pipeline = new FramePipeline({ masterKey, knownDevices: devices });
+  // ── Nucleo state reporting ──────────────────────────────────
+
+  const nucleoHost =
+    process.env.NUCLEO_HOST ?? haOptions?.nucleo_host ?? "";
+  const deviceSerials = new Map<number, number>();
+  const serialEntries =
+    haOptions?.device_serials ?? [];
+  for (const entry of serialEntries) {
+    if (entry.zone_id && entry.serial) {
+      deviceSerials.set(entry.zone_id, entry.serial);
+    }
+  }
+
+  if (nucleoHost) {
+    console.log(
+      `Nucleo state reporting: ${nucleoHost}:9433 (${deviceSerials.size} device serials)`,
+    );
+  }
+
   const bridge = new BridgeCore({
     pairings,
     presetZones,
     watchedZones,
+    nucleoHost: nucleoHost || undefined,
+    deviceSerials: deviceSerials.size > 0 ? deviceSerials : undefined,
   });
 
   // ── Fetch per-bulb calibration data ───────────────────────
