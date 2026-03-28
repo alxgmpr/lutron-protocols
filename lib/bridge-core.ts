@@ -244,18 +244,22 @@ export class BridgeCore extends EventEmitter {
 
       const sceneEntry = this.presetZones.get(presetId);
       if (sceneEntry) {
+        const dispatches: Promise<void>[] = [];
         for (const [zid, assignment] of Object.entries(sceneEntry.zones)) {
           const zoneId = Number(zid);
           if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId))
             continue;
           this.matchCount++;
-          this.dispatch(
-            zoneId,
-            assignment.level,
-            `PRESET(${sceneEntry.name})`,
-            assignment.fade,
+          dispatches.push(
+            this.dispatch(
+              zoneId,
+              assignment.level,
+              `PRESET(${sceneEntry.name})`,
+              assignment.fade,
+            ),
           );
         }
+        Promise.all(dispatches);
       }
       return;
     }
@@ -402,7 +406,7 @@ export class BridgeCore extends EventEmitter {
 
   // ── Dispatch ──────────────────────────────────────────
 
-  private async dispatch(
+  private dispatch(
     zoneId: number,
     levelPercent: number,
     source: string,
@@ -446,13 +450,12 @@ export class BridgeCore extends EventEmitter {
       // DEVICE_REPORT fires at the final step inside startFade
       this.startFade(zoneId, levelPercent, cct, fade, effectiveColorXy);
     } else {
-      // Instant: single setPilot, bulb's 250ms fadeIn handles it
+      // Instant: fire WiZ + DEVICE_REPORT in parallel (no await)
       this.zoneLevel.set(zoneId, levelPercent);
       const pairing = this.pairingsByZone.get(zoneId);
       if (pairing)
-        await this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
-      // Report state to Lutron processor after a short delay
-      setTimeout(() => this.sendDeviceReport(zoneId, levelPercent), 50);
+        this.sendWiz(pairing, levelPercent, cct, effectiveColorXy);
+      this.sendDeviceReport(zoneId, levelPercent);
     }
   }
 
@@ -520,8 +523,7 @@ export class BridgeCore extends EventEmitter {
         "log",
         `${time} ** RAMP STOP → ${zoneName} (zone=${zoneId}) at ${finalLevel.toFixed(0)}% (${elapsedMs}ms)`,
       );
-      // Report final ramp level to Lutron processor
-      setTimeout(() => this.sendDeviceReport(zoneId, finalLevel), 50);
+      this.sendDeviceReport(zoneId, finalLevel);
     }
   }
 
@@ -575,8 +577,7 @@ export class BridgeCore extends EventEmitter {
 
       if (step >= totalSteps) {
         this.stopFade(zoneId);
-        // Report final level to Lutron processor
-        setTimeout(() => this.sendDeviceReport(zoneId, level), 50);
+        this.sendDeviceReport(zoneId, level);
       }
     };
 
