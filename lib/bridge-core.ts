@@ -118,8 +118,6 @@ export class BridgeCore extends EventEmitter {
   private nucleoHost: string | null = null;
   private serialByZone = new Map<number, number>(); // zoneId → synthetic serial
   private reportSeq = 0;
-  private pendingReports: { zoneId: number; level: number }[] = [];
-  private reportFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Stats
   packetCount = 0;
@@ -383,16 +381,10 @@ export class BridgeCore extends EventEmitter {
       JSON.stringify({ method: "setPilot", params }),
     );
 
-    // Fire all UDP sends immediately — no await, no Promise.all
     for (const ip of pairing.wizIps) {
-      this.wizSocket.send(buf, pairing.wizPort, ip, (err) => {
-        if (err) {
-          this.emit("log", `  [wiz] Error → ${ip}: ${err.message}`);
-        } else {
-          this.emit("log", `  [wiz] → ${pairing.name} (${ip}) ${logStr}`);
-        }
-      });
+      this.wizSocket.send(buf, pairing.wizPort, ip);
     }
+    this.emit("log", `  [wiz] → ${pairing.name} (${pairing.wizIps.length} bulbs) ${logStr}`);
   }
 
   // ── Dispatch ──────────────────────────────────────────
@@ -618,24 +610,8 @@ export class BridgeCore extends EventEmitter {
     });
   }
 
-  /**
-   * Queue a DEVICE_REPORT for deferred batch flush.
-   * All WiZ UDP sends fire immediately; reports flush 15ms later so they
-   * don't interleave with WiZ sends during multi-zone scenes.
-   */
   private queueDeviceReport(zoneId: number, levelPercent: number): void {
-    this.pendingReports.push({ zoneId, level: levelPercent });
-    if (!this.reportFlushTimer) {
-      this.reportFlushTimer = setTimeout(() => this.flushDeviceReports(), 15);
-    }
-  }
-
-  private flushDeviceReports(): void {
-    this.reportFlushTimer = null;
-    const batch = this.pendingReports.splice(0);
-    for (const { zoneId, level } of batch) {
-      this.sendDeviceReport(zoneId, level);
-    }
+    this.sendDeviceReport(zoneId, levelPercent);
   }
 }
 
