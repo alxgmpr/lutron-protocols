@@ -110,7 +110,13 @@ Both signatures use the same Lutron "Caseta Wireless" PKI:
 - This is the active signing cert, also found at:
   `etc/ssl/firmwaresigning/public.pem` in the Caseta SmartBridge rootfs
 
-## Caseta SmartBridge Firmware ("Connect")
+## Connect Bridge Firmware ("Connect")
+
+**IMPORTANT:** "Connect" is NOT the Caseta SmartBridge. The Connect Bridge (L-BDG2-WH)
+is a separate product that adds smart home integration (HomeKit, LEAP API, remote access)
+to existing Homeworks (HW) and RadioRA 2 (RA2) systems. It bridges the older CCA-only
+systems to IP/cloud. Same AM335x hardware platform as Caseta but different firmware and
+different product role.
 
 ### Discovery
 
@@ -234,12 +240,19 @@ The `Packages.sig` uses a **different signing cert** than Caseta/Vive:
 - `POST /download` — exists but requires Django CSRF cookie+token (device/admin use?)
 - `GET /` `/version` `/health` `/status` `/firmware` `/api` `/api/v1` `/api/v2` — all return `{"Status": "200 OK", "Message": ""}`
 
-### RA3 Firmware is Bundled Inside Designer MSIX
+### RA3 Firmware is on the CDN (and inside Designer MSIX)
 
-The RA3 processor firmware was found inside the Designer MSIX installer at:
+Decompiling `Lutron.Gulliver.Infrastructure.dll` (via ilspycmd) revealed the download URL.
+`FirmwareFileProvider.DownloadFileFromUrl()` constructs: `{repoUrl}/lutron_firmware`
+
 ```
-QuantumResi/BinDirectory/Firmware/phoenix/lutron_firmware
+https://firmware-downloads.iot.lutron.io/phoenix/final/26.01.13f000/lutron_firmware   (101 MB, RA3)
+https://firmware-downloads.iot.lutron.io/phoenix/final/26.00.14f000/lutron_firmware   (99 MB, RA3 staged)
+https://firmware-downloads.iot.lutron.io/lite-heron/final/26.00.12f000/lutron_firmware (78 MB, CCX-only proc)
 ```
+
+All **live, no auth required**. Same file also in the MSIX at
+`QuantumResi/BinDirectory/Firmware/phoenix/lutron_firmware` (SHA-256 verified identical).
 
 This is a 101 MB ZIP containing:
 ```
@@ -300,7 +313,7 @@ From the `Packages.gz` metadata across versions:
 | uboot | 2017.01.010 (beta) | 2017.01.017 | Upgraded from .011 to .017 |
 | spl | 2017.01.010 (beta) | 2017.01.017 | Matches uboot |
 
-The Phoenix (RA3) processor uses the same AM335x + Linux architecture as Caseta but with newer U-Boot and larger rootfs (~55-69 MB vs ~31 MB).
+The Phoenix (RA3) processor uses the same AM335x + Linux architecture as the Connect Bridge but with newer U-Boot and larger rootfs (~55-69 MB vs ~31 MB).
 
 ## Firmware Update Server Enumeration
 
@@ -323,9 +336,11 @@ Response: `{"Status": "200 OK", "Url": "<CDN repo URL>"}`
 | `08100101` | RA3/HWQSX variant | `phoenix/final/26.01.13f000` |
 | `08110101` | **RA3 Processor** | `phoenix/final/26.01.13f000` |
 | `08120101`–`08190101` | RA3 variants | `phoenix/final/26.01.13f000` (shared) |
+| `080E0101` | **Caseta SmartBridge** | `caseta.s3.amazonaws.com/02.08.00f000` |
+| `080F0101` | **Caseta / RA2 Select bridge** | `caseta-ra2select/final/08.25.17f000` |
 | `08200101` | **Caseta Pro / "lite-heron"** | `lite-heron/final/26.00.12f000` |
 
-Not found: `08030101` (Caseta bridge uses different update path via `curlscript.sh`).
+Not found: `08030101` (older Caseta uses different update path via `curlscript.sh`).
 
 The server performs **staged rollout** — different `coderev` values get different firmware URLs.
 Reporting `25.00.00f000` returns `26.00.14f000`, while `01.01.00a000` gets `26.01.13f000`.
@@ -338,11 +353,13 @@ firmware over CCA radio from the processor, not via HTTP.
 
 | Codename | Product | CDN Path | Notes |
 |----------|---------|----------|-------|
-| `connect` | Caseta SmartBridge | `connect/alpha/` | Unencrypted .debs |
+| `connect` | Connect Bridge (HW/RA2 HomeKit bridge) | `connect/alpha/` | Unencrypted .debs |
 | `phoenix` | RA3 / HWQSX Processor | `phoenix/final/` | Unencrypted .debs (purged) |
 | `lite-heron` | Caseta Pro | `lite-heron/final/` | .debs purged, Packages.gz live |
 | `vive` | Vive Hub (production) | `vive/Release/` | Encrypted .vive archives |
 | `vive-hub` (S3) | Vive Hub (prototype) | `s3.amazonaws.com/vive-hub/` | Unencrypted .debs, 2016 |
+| `caseta` (S3) | Caseta SmartBridge (080E0101) | `caseta.s3.amazonaws.com/` | Unencrypted .debs, v02.08.00 |
+| `caseta-ra2select` | Caseta / RA2 Select bridge (080F0101) | `caseta-ra2select/final/` | Unencrypted, v08.25.17, Linux 5.10 |
 
 ## Vive Hub Prototype (2016, device class 08070101)
 
@@ -358,14 +375,14 @@ An early prototype firmware on a **separate public S3 bucket** (`s3.amazonaws.co
 ## Cross-Product Observations
 
 ### Shared PKI
-All three products (Vive, Caseta, RA3) use the same "Caseta Wireless" signing certificate infrastructure. The firmware signing cert from the Caseta rootfs matches the Vive firmware signature.
+All three products (Vive, Connect Bridge, RA3) use the same "Caseta Wireless" signing certificate infrastructure. The firmware signing cert from the Connect Bridge rootfs matches the Vive firmware signature.
 
 ### Architecture Pattern
 All products follow the same ARM Linux + A/B partition update pattern:
 - AM335x SoC (TI Sitara)
-- Linux 3.12 (2016 proto) → 4.4 (Caseta/RA3) → 5.10 (Vive Hub/RA3 v26+)
+- Linux 3.12 (2016 proto) → 4.4 (Connect Bridge/RA3) → 5.10 (Vive Hub/RA3 v26+)
 - U-Boot bootloader (2013.07 → 2017.01)
-- UBI/UBIFS (Caseta) or ext4 (Vive Hub) root filesystem with dual partitions
+- UBI/UBIFS (Connect Bridge) or ext4 (Vive Hub) root filesystem with dual partitions
 - EEPROM-based boot partition selection
 - opkg package manager with signed repos
 
@@ -395,8 +412,8 @@ data/firmware/
 │   ├── kernel-3.12.002.deb            — Linux 3.12 kernel
 │   ├── uboot-2013.07.001.deb          — U-Boot
 │   └── spl-2013.07.001.deb            — SPL
-└── caseta/
-    ├── caseta-rootfs-05.01.01a000.deb — Full rootfs package (30 MB)
+└── caseta/                            — ACTUALLY Connect Bridge firmware (not Caseta SmartBridge)
+    ├── caseta-rootfs-05.01.01a000.deb — Full rootfs package (30 MB) [misnamed, is Connect Bridge]
     ├── caseta-kernel-4.4.001.deb      — Linux kernel (2.8 MB)
     ├── caseta-uboot.deb               — U-Boot (115 KB)
     ├── caseta-spl.deb                 — SPL (17 KB)
@@ -414,7 +431,7 @@ data/firmware/
 
 1. **Probe firmwareupdates.lutron.com**: POST to `/sources` with spoofed MAC/device class to get CDN URLs for other products (RA3, Homeworks QSX).
 2. **Analyze Vive Hub Go binaries**: `leap-server.gobin`, `lutron-web-app.gobin` contain the LEAP and web UI implementations. Decompile with Ghidra or `go tool objdump`.
-3. **Analyze Caseta Go binaries**: `multi-server-connect.gobin` (15 MB) is the combined server.
-4. **Compare rootfs across products**: Diff Caseta (v05.01.01), RR-SEL-REP2, and Vive Hub (v01.30.04) configs, certs, and binaries.
+3. **Analyze Connect Bridge Go binaries**: `multi-server-connect.gobin` (15 MB) is the combined server.
+4. **Compare rootfs across products**: Diff Connect Bridge (v05.01.01), RR-SEL-REP2, and Vive Hub (v01.30.04) configs, certs, and binaries.
 5. **Decrypt older Vive versions**: Apply same `primary.pub` key to v01.24.07 firmware to check for weaker security in earlier releases.
 6. **Wayback Machine**: Try fetching cached copies of Phoenix .deb files via `web.archive.org/web/*/firmware-downloads.iot.lutron.io/phoenix/final/*/rootfs-*.deb`.
