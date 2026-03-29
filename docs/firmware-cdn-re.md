@@ -234,10 +234,60 @@ The `Packages.sig` uses a **different signing cert** than Caseta/Vive:
 - `POST /download` — exists but requires Django CSRF cookie+token (device/admin use?)
 - `GET /` `/version` `/health` `/status` `/firmware` `/api` `/api/v1` `/api/v2` — all return `{"Status": "200 OK", "Message": ""}`
 
-To get RA3 rootfs, options:
-1. MITM the processor during a firmware update to capture the transient `.deb` download
-2. Extract from processor via UART/SSH (if debug port accessible like RR-SEL-REP2)
-3. The decrypted Vive Hub v01.30.04 rootfs runs the same platform (Linux 5.10, U-Boot 2017.01.027)
+### RA3 Firmware is Bundled Inside Designer MSIX
+
+The RA3 processor firmware was found inside the Designer MSIX installer at:
+```
+QuantumResi/BinDirectory/Firmware/phoenix/lutron_firmware
+```
+
+This is a 101 MB ZIP containing:
+```
+device-firmware-manifest.json  — CCX device firmware manifest (FirmwarePackageVersion 002.025.024r000)
+firmware.tar.enc               — AES-128-CBC encrypted tar (processor OS + CCX .pff files)
+key.tar/
+  key.enc                      — 64-char base64 passphrase (48 bytes decoded)
+  iv.hex                       — Explicit IV: a789e29c032f7c9bfcfca42a6d826c53
+  algorithm                    — "-aes-128-cbc"
+  message_digest               — "md5"
+EULA, EULA.zip
+manifest, sigFiles/manifest_2.sig
+versionInfo                    — "26.01.13f000"
+```
+
+**Different encryption from Vive Hub:**
+- Vive: `key.enc` is 512 bytes, RSA-signed, recovered with 4096-bit public key + `pkeyutl -verifyrecover`
+- RA3: `key.enc` is 64 bytes (base64 passphrase), includes explicit `iv.hex` and `message_digest`
+- RA3 uses a **different keypair** — the Vive/RR-SEL-REP2 `primary.pub` does NOT decrypt RA3 firmware
+- The RA3 processor has its own `/etc/ssl/firmwareupgrade/primary.pub` — needed to decrypt
+
+**Signing cert is different too:** OU=Phoenix Processors (vs OU=Caseta Wireless for Vive).
+
+### Firmware Delivery Model
+
+Designer does NOT download individual `.deb` files from the CDN. The flow is:
+
+1. `Packages.gz` on CDN is used **only** for version checking (opkg `list-upgradable`)
+2. The encrypted `lutron_firmware` ZIP is bundled inside the Designer MSIX (or downloaded via `api.iot.lutron.io/api/v1/deploy` with OAuth)
+3. Designer pushes the encrypted ZIP to the processor via LEAP
+4. Processor runs `firmwareValidation.sh` → `decryptFile.sh` → `firmwareUpgrade.sh`
+5. Decrypted `firmware.tar` contains `.deb` packages installed via opkg from local path
+6. Individual `.deb` files **never exist on the CDN**
+
+### CCX Device Firmware (Sunnata/Darter)
+
+The `device-firmware-manifest.json` inside the ZIP maps device classes to `.pff` (Pegasus Firmware Format) files:
+- `0x1B010101` — Pegasus bulb (app: 003.011.023r001, boot: 002.000.005r000)
+- `0x1B030101` — Pegasus downlight
+- Plus entries for all CCX device types (dimmers, switches, keypads, sensors, etc.)
+- These `.pff` files are INSIDE `firmware.tar.enc` — need decryption to access
+
+### To Decrypt RA3 Firmware
+
+Need the RA3 processor's `/etc/ssl/firmwareupgrade/primary.pub`. Options:
+1. **UART access** to the RA3 processor (if debug port is exposed like RR-SEL-REP2)
+2. **SSH with correct key** — RA3 has SSH open but requires pubkey auth (no password)
+3. **LEAP API** — check if `/firmware` or file-read endpoints can expose the key
 
 ### Version Evolution
 
