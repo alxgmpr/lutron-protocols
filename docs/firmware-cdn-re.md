@@ -56,20 +56,44 @@ sigFiles/manifest_2.sig — PKCS7 signature (2017 cert, valid to 2117)
 versionInfo             — Version string (e.g. "01.30.04f000")
 ```
 
-### Encryption Chain
+### Encryption Chain (BROKEN — fully decryptable)
 
-1. `firmware.tar.enc` is encrypted with AES-128-CBC
-2. The AES key is RSA-encrypted → `key.enc` (512 bytes)
-3. The RSA public key for verification is the firmware signing cert
-4. The RSA **private** key needed to decrypt is on the device itself
+1. `firmware.tar.enc` is encrypted with AES-128-CBC (OpenSSL `Salted__` format, MD5 KDF)
+2. The AES passphrase is RSA-**signed** (not encrypted) → `key.enc` (512 bytes)
+3. The device recovers the passphrase using the RSA **public** key via `openssl pkeyutl -verifyrecover -pubin`
+4. The public keys are on the device at `/etc/ssl/firmwareupgrade/{primary,secondary}.pub`
+
+The critical design flaw: Lutron used RSA signing (`-verifyrecover`) instead of RSA encryption.
+The "decryption" key is the **public** key, which ships on every device. Anyone with the public
+key can recover the AES passphrase and decrypt the firmware.
 
 To decrypt:
 ```
-# 1. Decrypt AES key with RSA private key (from device rootfs)
-openssl rsautl -decrypt -inkey <private.pem> -in key.enc -out key.bin
-# 2. Decrypt firmware tar
-openssl enc -d -aes-128-cbc -in firmware.tar.enc -out firmware.tar -pass file:key.bin
+# 1. Recover AES passphrase from key.enc using the device's PUBLIC key (4096-bit RSA)
+openssl pkeyutl -verifyrecover -pubin \
+  -inkey /etc/ssl/firmwareupgrade/primary.pub \
+  -in key.enc -out symkey.bin
+
+# 2. Decrypt firmware tar (must use -md md5 for old OpenSSL KDF compatibility)
+openssl enc -d -aes-128-cbc -md md5 \
+  -in firmware.tar.enc -pass file:symkey.bin \
+  -out firmware.tar
 ```
+
+### Decrypted Contents (v01.30.04f000)
+
+The decrypted `firmware.tar` is a Debian apt repo:
+
+| File | Size | Description |
+|------|------|-------------|
+| `rootfs-01.30.04f000.deb` | 117 MB | Full Linux rootfs (Timesys LinuxLink) |
+| `kernel-5.10.001.deb` | 3.7 MB | Linux 5.10 kernel |
+| `uboot-2017.01.027.deb` | 152 KB | U-Boot bootloader |
+| `spl-2017.01.027.deb` | 36 KB | U-Boot SPL |
+| `Packages.gz` / `Packages.sig` | — | APT metadata + signature |
+
+The rootfs contains the complete Vive Hub system: `lutron-core`, `leap-server.gobin`,
+`lutron-web-app.gobin`, `lutron-cci-engine`, OpenADR and BACnet users, Python 3.8, etc.
 
 ### Signing Certificates
 
@@ -214,11 +238,11 @@ The Phoenix (RA3) processor uses the same AM335x + Linux architecture as Caseta 
 All three products (Vive, Caseta, RA3) use the same "Caseta Wireless" signing certificate infrastructure. The firmware signing cert from the Caseta rootfs matches the Vive firmware signature.
 
 ### Architecture Pattern
-All products follow the same ARM Linux + UBI filesystem + A/B partition update pattern:
+All products follow the same ARM Linux + A/B partition update pattern:
 - AM335x SoC (TI Sitara)
-- Linux 4.4 kernel
+- Linux 4.4 kernel (Caseta/RA3) or 5.10 (Vive Hub)
 - U-Boot bootloader
-- UBI/UBIFS root filesystem with dual partitions
+- UBI/UBIFS (Caseta) or ext4 (Vive Hub) root filesystem with dual partitions
 - EEPROM-based boot partition selection
 - opkg package manager with signed repos
 
@@ -234,10 +258,15 @@ data/firmware/
 ├── vive/
 │   ├── vive-hub-v01.30.04f000.vive    — Latest Vive firmware (121 MB)
 │   ├── vive-hub-v01.24.07f000.vive    — Oldest available (112 MB)
-│   └── v01.30.04-extracted/           — Extracted metadata from latest
-│       ├── EULA, manifest, manifest.sig, versionInfo
-│       ├── key.tar (key.enc + algorithm)
-│       └── sigFiles/manifest_2.sig
+│   ├── v01.30.04-extracted/           — Extracted metadata from latest
+│   │   ├── EULA, manifest, manifest.sig, versionInfo
+│   │   ├── key.tar (key.enc + algorithm)
+│   │   └── sigFiles/manifest_2.sig
+│   └── v01.30.04-rootfs/             — Key files from decrypted rootfs
+│       ├── etc/ssl/                   — Certs, keys, firmware upgrade pubkeys
+│       ├── etc/lutron.d/              — Lutron service configuration
+│       ├── etc/passwd, opkg.conf
+│       └── usr/sbin/                  — Firmware upgrade/decrypt scripts
 └── caseta/
     ├── caseta-rootfs-05.01.01a000.deb — Full rootfs package (30 MB)
     ├── caseta-kernel-4.4.001.deb      — Linux kernel (2.8 MB)
@@ -255,8 +284,9 @@ data/firmware/
 
 ## Next Steps
 
-1. **Decrypt Vive firmware**: Extract RSA private key from RR-SEL-REP2 rootfs (already extracted at `data/vive-hub/`). The key should be at a path like `etc/ssl/firmwaresigning/private.pem` or embedded in the update binary.
-2. **Probe firmwareupdates.lutron.com**: POST to `/sources` with spoofed MAC/device class to get CDN URLs for other products.
-3. **Analyze Caseta Go binaries**: `multi-server-connect.gobin` (15 MB) likely contains LEAP/LAP protocol implementation. Can be decompiled with `go tool objdump` or Ghidra.
-4. **Compare Caseta vs RR-SEL-REP2 rootfs**: The RR-SEL-REP2 extraction in `data/vive-hub/` is a newer repeater variant — diff configs, certs, and binaries.
-5. **Wayback Machine**: Try fetching cached copies of Phoenix .deb files via `web.archive.org/web/*/firmware-downloads.iot.lutron.io/phoenix/final/*/rootfs-*.deb`.
+1. **Probe firmwareupdates.lutron.com**: POST to `/sources` with spoofed MAC/device class to get CDN URLs for other products (RA3, Homeworks QSX).
+2. **Analyze Vive Hub Go binaries**: `leap-server.gobin`, `lutron-web-app.gobin` contain the LEAP and web UI implementations. Decompile with Ghidra or `go tool objdump`.
+3. **Analyze Caseta Go binaries**: `multi-server-connect.gobin` (15 MB) is the combined server.
+4. **Compare rootfs across products**: Diff Caseta (v05.01.01), RR-SEL-REP2, and Vive Hub (v01.30.04) configs, certs, and binaries.
+5. **Decrypt older Vive versions**: Apply same `primary.pub` key to v01.24.07 firmware to check for weaker security in earlier releases.
+6. **Wayback Machine**: Try fetching cached copies of Phoenix .deb files via `web.archive.org/web/*/firmware-downloads.iot.lutron.io/phoenix/final/*/rootfs-*.deb`.
