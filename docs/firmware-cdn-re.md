@@ -271,21 +271,41 @@ versionInfo                    — "26.01.13f000"
 **Different encryption from Vive Hub:**
 - Vive: `key.enc` is 512 bytes, RSA-signed, recovered with 4096-bit public key + `pkeyutl -verifyrecover`
 - RA3: `key.enc` is 64 bytes (base64 passphrase), includes explicit `iv.hex` and `message_digest`
-- RA3 uses a **different keypair** — the Vive/RR-SEL-REP2 `primary.pub` does NOT decrypt RA3 firmware
-- The RA3 processor has its own `/etc/ssl/firmwareupgrade/primary.pub` — needed to decrypt
+**Encryption scheme evolution** (discovered by comparing beta vs final):
 
-**Signing cert is different too:** OU=Phoenix Processors (vs OU=Caseta Wireless for Vive).
+| Era | Example | key.enc size | Scheme |
+|-----|---------|-------------|--------|
+| 2020 beta | `01.01.24b005` | 512 bytes | RSA 4096-bit `pkeyutl -verifyrecover -pubin` (same approach as Vive) |
+| 2021+ final | `21.01.07f000`+ | 65 bytes | AES-128-CBC symmetric (new scheme) |
+
+The Vive Hub's own `decryptFile.sh` (v01.30.04, Jan 2026) has **both code paths**:
+- `-t asymmetric` (default, backwards compat): `openssl pkeyutl -verifyrecover -pubin -inkey primary.pub`
+- `-t symmetric`: `openssl enc -d -aes-128-cbc -in key.enc -base64 -K "$(cat KEY_FILE)" -iv "$(cat iv.hex)"`
+
+**RA3 current scheme** (symmetric):
+```
+# Step 1: Decrypt the base64-encoded AES-wrapped passphrase
+openssl enc -d -aes-128-cbc -in key.enc -base64 \
+  -K <32-hex-char-device-key> -iv <iv.hex contents> -out passphrase.bin
+
+# Step 2: Decrypt firmware tar using recovered passphrase
+openssl enc -d -aes-128-cbc -md md5 -pass file:passphrase.bin \
+  -in firmware.tar.enc -out firmware.tar
+```
+
+The device key is a 16-byte AES key (32 hex chars) stored at `/etc/ssl/firmwareupgrade/` on the processor.
+Likely shared across all RA3 processors (same model = same key, like primary.pub was shared for Vive).
+
+**Signing cert:** OU=Phoenix Processors (vs OU=Caseta Wireless for Vive), 2048-bit RSA, valid to 2120.
 
 ### Firmware Delivery Model
 
-Designer does NOT download individual `.deb` files from the CDN. The flow is:
-
-1. `Packages.gz` on CDN is used **only** for version checking (opkg `list-upgradable`)
-2. The encrypted `lutron_firmware` ZIP is bundled inside the Designer MSIX (or downloaded via `api.iot.lutron.io/api/v1/deploy` with OAuth)
+1. `Packages.gz` on CDN used **only** for version checking (opkg `list-upgradable`)
+2. Designer downloads `{repoUrl}/lutron_firmware` from CDN (or uses bundled copy from MSIX)
 3. Designer pushes the encrypted ZIP to the processor via LEAP
 4. Processor runs `firmwareValidation.sh` → `decryptFile.sh` → `firmwareUpgrade.sh`
-5. Decrypted `firmware.tar` contains `.deb` packages installed via opkg from local path
-6. Individual `.deb` files **never exist on the CDN**
+5. Decrypted `firmware.tar` contains `.deb` packages + CCX `.pff` files
+6. opkg installs debs from local path; individual `.deb` files **never exist on CDN**
 
 ### CCX Device Firmware (Sunnata/Darter)
 
@@ -297,10 +317,11 @@ The `device-firmware-manifest.json` inside the ZIP maps device classes to `.pff`
 
 ### To Decrypt RA3 Firmware
 
-Need the RA3 processor's `/etc/ssl/firmwareupgrade/primary.pub`. Options:
-1. **UART access** to the RA3 processor (if debug port is exposed like RR-SEL-REP2)
-2. **SSH with correct key** — RA3 has SSH open but requires pubkey auth (no password)
-3. **LEAP API** — check if `/firmware` or file-read endpoints can expose the key
+Need the 16-byte AES device key from `/etc/ssl/firmwareupgrade/` on the RA3 processor. Options:
+1. **Designer VM** — search project DB (`Project.mdf`) or cached files for device crypto material
+2. **Physical access** — find UART pads on RA3 processor board for root shell
+3. **Brute force** — AES-128 is not brutable, but the key might be derivable from known device info (serial, MAC)
+4. **Older firmware** — the 2020 beta used RSA (512-byte key.enc) but with a different 4096-bit keypair than Vive
 
 ### Version Evolution
 
@@ -427,11 +448,182 @@ data/firmware/
         └── home/support/              — SSH keys
 ```
 
+## Shared Secrets Across Product Families
+
+Analysis of firmware from 6 product families reveals extensively shared credentials and keys.
+
+### smartbridge.key — Universal TLS Private Key
+
+RSA 2048-bit key (`SHA256: 56090a64...`), identical across **all** products:
+- Vive Hub prototype (v00.03.00, v00.07.03)
+- Caseta SmartBridge (v02.05.00–v02.10.03)
+- Connect Bridge (v05.01.01)
+- RR-SEL-REP2
+- RA2 Select (v08.25.17)
+
+Cert: `CN=updatecaseta-dev.intra.lutron.com`, signed by `Lutron-Enterprise-CA-01`, expired 2018.
+Used on LIP TLS port 8081 — every unit ships with the same key.
+
+### abhat@PC0008690 — Universal SSH Authorized Key
+
+Same RSA public key in `/home/support/.ssh/authorized_keys` across all product families.
+Fingerprint: `SHA256:oz3yilFy8TYBdkTkZAvJwoju+v9qrqjvosnWZvHjnTI`
+
+### lutron-bridge / Lutr0n@1 — Firmware Update Credentials
+
+Hardcoded in all products for `firmwareupdates.lutron.com` API. Also used for dev
+time server (`lutrondevelopment.herokuapp.com`, now dead).
+
+### LAP EC P-256 Private Key
+
+Shared between RR-SEL-REP2 and RA2 Select (`SHA256: c4b70a15...`).
+Different key in Caseta SmartBridge alpha builds.
+Connect Bridge has its own key.
+
+### LAP CA Certificate Evolution
+
+| Product / Version | CA CN | Notes |
+|---|---|---|
+| Caseta v02.10.03 (alpha) | Lutron Electronics Cert Authority | Earliest LAP |
+| Connect Bridge v05.01.01 | Connect Local Access Protocol Cert Authority | |
+| RR-SEL-REP2 | Caseta Local Access Protocol Cert Authority | TLS-accepted by live Caseta |
+| RA2 Select v08.25.17 | Caseta Local Access Protocol Cert Authority | Different cert, same CN |
+
+### TripleDES Key — Web UI Password Encryption
+
+`LuuTTr0n#$S@&65Xsw234fr4` — hardcoded in `encryptionHelper.js`, used as both key AND IV.
+Present in Vive prototype v00.03.00 and v00.07.03. Dropped from production Vive (Go rewrite).
+
+### Other Credentials
+
+- **Web admin default**: user `admin`, SHA-256 hash `8266498d...` (in default SQLite DB)
+- **Integration login**: hardcoded username `lutron`, logs plaintext passwords
+- **MQTT brokers**: `tls://v3mqtt.xively.com:8883`, `tls://lutron.broker.xively.com:8883` (Xively, dead)
+- **Dev servers**: `lutrondevelopment.herokuapp.com` (dead), `firmwareupdates-dev.herokuapp.com` (dead)
+- **Prod association**: `device-login.lutron.com` (AWS API Gateway, alive, requires SigV4 auth)
+
+### SSH Key Exchange PKI
+
+`lutron.ssh.master.crt` — CA:TRUE certificate for "Lutron SSH Key Exchange Master",
+signed by "Lutron SSH Key Exchange Root" (Engineering dept, systemsupport@lutron.com).
+Found in Caseta SmartBridge v02.05.00–v02.10.03 and Vive v00.07.03.
+Referenced as `ClientCAsPath` in lutron.conf — validates SSH client certs during association.
+Dropped from newer production builds.
+
+### Platform DB Pre-loaded SSH Keys
+
+Vive prototype v00.03.00 platform DB contains pre-provisioned SSH keys:
+- `LeapServer` key for `leap` user (2015-02-03)
+- `logitech` key for `leap` user (2015-02-03) — Logitech Harmony integration
+
+### sshUser.conf — LEAP Shell Backdoor
+
+The `leap` SSH user gets a forced command dropping directly into the LEAP server:
+```
+command="/usr/bin/telnet localhost 8080",permitopen="localhost:8080",no-X11-forwarding,no-agent-forwarding
+```
+
+## Live Caseta Attack Surface (tested 2026-03-29)
+
+Tested against production Caseta SmartBridge at 10.0.0.7.
+
+**Open ports:** 8081 (LIP/TLS), 8083 (LAP/TLS). All others closed (22, 80, 443, 4548, 8090).
+
+### Port 8081 (LIP/TLS)
+- Server cert: self-signed, `CN=SmartBridgeA0B1C2D3E4F6`, valid 100 years (2015–2115)
+- Per-device PKI: only accepts client certs signed by itself or `Installer-SmartBridgeA0B1C2D3E4F6`
+- The shared `smartbridge.key`+cert is recognized but **rejected: cert expired** (2018)
+- A fresh self-signed cert with the shared key gets **rejected: unknown ca** (wrong CA)
+
+### Port 8083 (LAP/TLS)
+- Server cert: `CN=Caseta Smart Bridge`, signed by `Caseta Local Access Protocol Cert Authority`
+- RR-SEL-REP2 LAP certs **pass TLS handshake** (cross-product CA trust confirmed)
+- BUT: every LEAP request returns `400 "This request is not supported"` — application layer
+  rejects the cert identity as not a paired/authorized client
+- LIP text commands return `400 "The json request is malformed"` — confirming JSON protocol
+
+## Complete Device Class Map
+
+Full fuzz of 256 device classes in category `08` (processors/hubs):
+
+| Device Class | Product | Firmware URL |
+|---|---|---|
+| `08070101` | Vive Hub (prototype) | `s3.amazonaws.com/vive-hub/` |
+| `080E0101` | Caseta SmartBridge | `caseta.s3.amazonaws.com/` |
+| `080F0101` | Caseta / RA2 Select | `caseta-ra2select/final/` |
+| `08100101`–`081B0101` | RA3 / HWQSX (12 variants) | `phoenix/final/` |
+| `08200101` | Caseta Pro / lite-heron | `lite-heron/final/` |
+
+All other classes (00–07, 09–0D, 1C–FF) return no firmware — non-processor devices
+(dimmers, shades, keypads) receive firmware over CCA radio, not HTTP.
+
+## All Discovered Firmware Versions
+
+### Caseta SmartBridge S3 (caseta.s3.amazonaws.com) — 21 versions
+```
+02.01.02f000  (rootfs access denied)
+02.05.00a000, 02.05.00a001, 02.05.01a000, 02.05.02a000, 02.05.03a000
+02.07.00a000, 02.07.01a000, 02.07.01a001, 02.07.02a000, 02.07.02a001, 02.07.02a002
+02.08.00f000  (production — what firmwareupdates.lutron.com returns)
+02.08.03a001, 02.08.03a002
+02.09.00a000, 02.09.01a000
+02.10.00a000, 02.10.01a000, 02.10.02a000, 02.10.03a000
+```
+
+### Vive Hub S3 (s3.amazonaws.com/vive-hub) — 2 versions
+```
+00.03.00a002  (2016, "Ethernet Bridge", no firmware signing)
+00.07.03a000  (later, "Vive-Hub", has firmwaresigning + SSH master cert)
+```
+
+### Caseta-RA2Select CDN (firmware-downloads.iot.lutron.io/caseta-ra2select/final/) — 329 versions!
+Lutron never cleaned up this path. Every build from v08.00.06 through v08.28.02 is live
+and downloadable. All unencrypted .deb packages. This is the complete development history
+of the Caseta/RA2 Select bridge firmware.
+
+### Phoenix CDN (firmware-downloads.iot.lutron.io) — debs purged, manifests only
+```
+beta:  01.01.24b005
+final: 21.01.07–21.01.14, 21.02.03–21.02.13, 21.03.00–21.03.06, ... through 22.07.12
+```
+Wayback Machine confirmed ~50 version directories but no cached .deb files.
+
+## Files Saved
+
+All downloaded firmware is in `data/firmware/` (gitignored):
+
+```
+data/firmware/
+├── vive/
+│   ├── vive-hub-v01.30.04f000.vive    — Latest Vive firmware (126 MB)
+│   ├── vive-hub-v01.24.07f000.vive    — Oldest available (117 MB)
+│   ├── v01.30.04-extracted/           — Extracted metadata from latest
+│   ├── v01.30.04-rootfs/              — Key files from decrypted rootfs
+│   └── v01.30.04-decrypted/           — Fully decrypted firmware tar + rootfs
+├── vive-prototype/
+│   ├── rootfs-00.03.00a002.deb        — 2016 prototype rootfs (45 MB)
+│   ├── rootfs-00.07.03a000.deb        — Later prototype rootfs (43 MB)
+│   ├── rootfs-extracted/rootfs/       — Fully extracted v00.03.00 rootfs
+│   └── rootfs-00.07.03/              — Fully extracted v00.07.03 rootfs
+├── caseta-smartbridge/
+│   ├── rootfs-02.08.00f000.deb        — Production rootfs (18 MB)
+│   ├── rootfs-02.05.00a000.deb        — Earliest alpha (18 MB)
+│   ├── rootfs-02.10.03a000.deb        — Latest alpha with LAP certs (17 MB)
+│   ├── rootfs/                        — Extracted v02.08.00 rootfs
+│   ├── rootfs-02.05.00a000/           — Extracted earliest alpha
+│   └── rootfs-02.10.03a000/           — Extracted latest alpha
+├── caseta-ra2select/
+│   └── rootfs-08.25.17f000.deb        — RA2 Select rootfs (47 MB, UBIFS)
+└── caseta/                            — ACTUALLY Connect Bridge firmware
+    ├── caseta-rootfs-05.01.01a000.deb — Connect Bridge rootfs (31 MB)
+    └── rootfs/                        — Extracted key files
+```
+
 ## Next Steps
 
-1. **Probe firmwareupdates.lutron.com**: POST to `/sources` with spoofed MAC/device class to get CDN URLs for other products (RA3, Homeworks QSX).
-2. **Analyze Vive Hub Go binaries**: `leap-server.gobin`, `lutron-web-app.gobin` contain the LEAP and web UI implementations. Decompile with Ghidra or `go tool objdump`.
-3. **Analyze Connect Bridge Go binaries**: `multi-server-connect.gobin` (15 MB) is the combined server.
-4. **Compare rootfs across products**: Diff Connect Bridge (v05.01.01), RR-SEL-REP2, and Vive Hub (v01.30.04) configs, certs, and binaries.
-5. **Decrypt older Vive versions**: Apply same `primary.pub` key to v01.24.07 firmware to check for weaker security in earlier releases.
-6. **Wayback Machine**: Try fetching cached copies of Phoenix .deb files via `web.archive.org/web/*/firmware-downloads.iot.lutron.io/phoenix/final/*/rootfs-*.deb`.
+1. ~~Probe firmwareupdates.lutron.com~~ — Done. Complete 08xx device class map.
+2. **Analyze Go binaries**: Decompile `multi-server-connect.gobin`, `leap-server.gobin` for LAP protocol internals and hidden endpoints.
+3. **Forge client cert**: Use the shared `smartbridge.key` to create a client cert matching the bridge's per-device CA — if the bridge's CA key is derivable from its serial number or MAC, we can forge valid certs without pairing.
+4. **LAP protocol RE**: The RR-SEL-REP2 certs bypass TLS auth on any Caseta LAP port — find the correct request format to bypass the application-layer identity check.
+5. **Decrypt all Vive versions**: Check if older versions (v01.24.07) have weaker security or exposed debug interfaces.
+6. **Analyze `lutron.ssh.master.crt` PKI**: This CA cert validates SSH client certs during association — if we can find the corresponding CA private key (or it was left in an early firmware), we can forge valid SSH credentials.
