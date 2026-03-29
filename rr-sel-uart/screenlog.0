@@ -1,0 +1,16 @@
+
+# ?
+-/bin/sh: ?: not found
+# whoami
+root
+# dir
+-/bin/sh: dir: not found
+# help
+Built-in commands:
+------------------
+	. : [ [[ alias bg break cd chdir continue echo eval exec exit
+	export false fg getopts hash help jobs kill let local printf
+	pwd read readonly return set shift source test times trap true
+	type ulimit umask unalias unset wait
+
+# 
