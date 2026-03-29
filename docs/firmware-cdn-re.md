@@ -232,6 +232,52 @@ From the `Packages.gz` metadata across versions:
 
 The Phoenix (RA3) processor uses the same AM335x + Linux architecture as Caseta but with newer U-Boot and larger rootfs (~55-69 MB vs ~31 MB).
 
+## Firmware Update Server Enumeration
+
+### Server API
+
+`https://firmwareupdates.lutron.com/sources` accepts POST with:
+- `username=lutron-bridge`, `password=Lutr0n@1` (hardcoded, same for all products)
+- `macid` — not validated (dummy `CC:CC:CC:CC:CC:CC` works)
+- `deviceclass` — 8-hex-digit device class ID (this selects the firmware)
+- `coderev` — current version (use `01.01.00a000` to always get latest)
+- `datestamp` — EEPROM date code
+
+Response: `{"Status": "200 OK", "Url": "<CDN repo URL>"}`
+
+### Discovered Device Classes → Firmware URLs
+
+| Device Class | Product | Firmware URL / Codename |
+|-------------|---------|------------------------|
+| `08070101` | Early Vive Hub prototype | `s3.amazonaws.com/vive-hub/00.03.00a002` |
+| `08100101` | RA3/HWQSX variant | `phoenix/final/26.01.13f000` |
+| `08110101` | **RA3 Processor** | `phoenix/final/26.01.13f000` |
+| `08120101`–`08190101` | RA3 variants | `phoenix/final/26.01.13f000` (shared) |
+| `08200101` | **Caseta Pro / "lite-heron"** | `lite-heron/final/26.00.12f000` |
+
+Not found: `08030101` (Caseta bridge uses different update path via `curlscript.sh`).
+
+### Product Codenames
+
+| Codename | Product | CDN Path | Notes |
+|----------|---------|----------|-------|
+| `connect` | Caseta SmartBridge | `connect/alpha/` | Unencrypted .debs |
+| `phoenix` | RA3 / HWQSX Processor | `phoenix/final/` | Unencrypted .debs (purged) |
+| `lite-heron` | Caseta Pro | `lite-heron/final/` | .debs purged, Packages.gz live |
+| `vive` | Vive Hub (production) | `vive/Release/` | Encrypted .vive archives |
+| `vive-hub` (S3) | Vive Hub (prototype) | `s3.amazonaws.com/vive-hub/` | Unencrypted .debs, 2016 |
+
+## Vive Hub Prototype (2016, device class 08070101)
+
+An early prototype firmware on a **separate public S3 bucket** (`s3.amazonaws.com/vive-hub/`):
+- Version `00.03.00a002`, dated January 4, 2016
+- Described as "Ethernet Bridge" (pre-Vive branding)
+- **No encryption, no signing** — no `firmwaresigning/` or `firmwareupgrade/` directories
+- Linux 3.12, U-Boot 2013.07, BusyBox
+- Includes Python 2.7 and Ruby 2.1
+- Root passwordless, same opkg update mechanism
+- All `.deb` packages still downloadable
+
 ## Cross-Product Observations
 
 ### Shared PKI
@@ -240,8 +286,8 @@ All three products (Vive, Caseta, RA3) use the same "Caseta Wireless" signing ce
 ### Architecture Pattern
 All products follow the same ARM Linux + A/B partition update pattern:
 - AM335x SoC (TI Sitara)
-- Linux 4.4 kernel (Caseta/RA3) or 5.10 (Vive Hub)
-- U-Boot bootloader
+- Linux 3.12 (2016 proto) → 4.4 (Caseta/RA3) → 5.10 (Vive Hub/RA3 v26+)
+- U-Boot bootloader (2013.07 → 2017.01)
 - UBI/UBIFS (Caseta) or ext4 (Vive Hub) root filesystem with dual partitions
 - EEPROM-based boot partition selection
 - opkg package manager with signed repos
@@ -267,6 +313,11 @@ data/firmware/
 │       ├── etc/lutron.d/              — Lutron service configuration
 │       ├── etc/passwd, opkg.conf
 │       └── usr/sbin/                  — Firmware upgrade/decrypt scripts
+├── vive-prototype/
+│   ├── rootfs-00.03.00a002.deb        — 2016 prototype rootfs (43 MB, unencrypted)
+│   ├── kernel-3.12.002.deb            — Linux 3.12 kernel
+│   ├── uboot-2013.07.001.deb          — U-Boot
+│   └── spl-2013.07.001.deb            — SPL
 └── caseta/
     ├── caseta-rootfs-05.01.01a000.deb — Full rootfs package (30 MB)
     ├── caseta-kernel-4.4.001.deb      — Linux kernel (2.8 MB)
