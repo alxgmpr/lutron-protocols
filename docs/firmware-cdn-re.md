@@ -215,9 +215,29 @@ https://firmware-downloads.iot.lutron.io/phoenix/{channel}/{version}/
 
 ### Current Status
 
-- **`Packages.gz` and `Packages.sig`**: Still live (HTTP 200) for all indexed versions
+- **`Packages.gz` and `Packages.sig`**: Still live (HTTP 200) for all 200+ indexed versions
 - **Actual `.deb` files** (rootfs, kernel, uboot, spl): All removed (HTTP 404)
 - Same package structure as Caseta: kernel, rootfs, uboot, spl
+
+Lutron deletes `.deb` files from S3 after the update window. The `Packages.gz` metadata persists
+as a stub. No encrypted alternatives (`.enc`, `.vive`) exist at the phoenix path. The processor
+downloads debs transiently during firmware updates; they're removed afterward.
+
+The `Packages.sig` uses a **different signing cert** than Caseta/Vive:
+`OU=Phoenix Processors` (vs `OU=Caseta Wireless`), valid 2020-02-13 to 2120-01-20.
+
+### Firmware Update Server
+
+`firmwareupdates.lutron.com` is a **Django** application. Known endpoints:
+- `POST /sources` — returns CDN repo URL (no CSRF required)
+- `POST /checkin` — status reporting (no CSRF required)
+- `POST /download` — exists but requires Django CSRF cookie+token (device/admin use?)
+- `GET /` `/version` `/health` `/status` `/firmware` `/api` `/api/v1` `/api/v2` — all return `{"Status": "200 OK", "Message": ""}`
+
+To get RA3 rootfs, options:
+1. MITM the processor during a firmware update to capture the transient `.deb` download
+2. Extract from processor via UART/SSH (if debug port accessible like RR-SEL-REP2)
+3. The decrypted Vive Hub v01.30.04 rootfs runs the same platform (Linux 5.10, U-Boot 2017.01.027)
 
 ### Version Evolution
 
@@ -256,6 +276,13 @@ Response: `{"Status": "200 OK", "Url": "<CDN repo URL>"}`
 | `08200101` | **Caseta Pro / "lite-heron"** | `lite-heron/final/26.00.12f000` |
 
 Not found: `08030101` (Caseta bridge uses different update path via `curlscript.sh`).
+
+The server performs **staged rollout** — different `coderev` values get different firmware URLs.
+Reporting `25.00.00f000` returns `26.00.14f000`, while `01.01.00a000` gets `26.01.13f000`.
+
+Full fuzz of 1050 device classes (`00000101`–`20500101`) confirmed only category `08` (processors/hubs)
+has HTTP-delivered firmware. All other device types (dimmers, shades, sensors, keypads) receive
+firmware over CCA radio from the processor, not via HTTP.
 
 ### Product Codenames
 
