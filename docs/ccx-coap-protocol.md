@@ -147,7 +147,7 @@ Hybrid Keypads: 11+ slots (same groups minus some AA* entries).
 | `AAI`  | `[3, {2: high_raw, 3: low_raw, 8: profile}]` | Trim (high/low limits) |
 | `AHA`  | `[108, {4: active_byte, 5: inactive_byte}]`   | Status LED brightness  |
 
-**Trim encoding**: `raw = percent × 0x0100 − 0x0100` (0% → 0x0000, 100% → 0xFF00)
+**Trim encoding**: `raw = percent × 0xFEFF / 100` — same as level encoding (1% → 0x028C, 100% → 0xFEFF)
 
 ### Presets (cg/db/pr/c/)
 
