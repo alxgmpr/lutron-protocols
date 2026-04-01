@@ -60,24 +60,100 @@ function generatePaths(): string[] {
   if (wordlist === "paths" || wordlist === "all") {
     // Single-segment paths
     const segs1 = [
-      "cg", "fw", "lg", "em", "lut", "ot", "rd", "rt", "sd", "st",
-      "db", "ct", "mc", "ns", "pr", "ac", "ra", "tc", "it",
-      "diag", "test", "debug", "info", "status", "config",
-      "reset", "factory", "boot", "dfu", "ota", "smp",
-      "led", "dim", "fan", "btn", "occ", "pir", "temp",
-      "net", "mesh", "thread", "coap", "dtls",
-      "a", "b", "c", "d", "e", "f", "i", "l", "n", "p", "r", "s", "t",
+      "cg",
+      "fw",
+      "lg",
+      "em",
+      "lut",
+      "ot",
+      "rd",
+      "rt",
+      "sd",
+      "st",
+      "db",
+      "ct",
+      "mc",
+      "ns",
+      "pr",
+      "ac",
+      "ra",
+      "tc",
+      "it",
+      "diag",
+      "test",
+      "debug",
+      "info",
+      "status",
+      "config",
+      "reset",
+      "factory",
+      "boot",
+      "dfu",
+      "ota",
+      "smp",
+      "led",
+      "dim",
+      "fan",
+      "btn",
+      "occ",
+      "pir",
+      "temp",
+      "net",
+      "mesh",
+      "thread",
+      "coap",
+      "dtls",
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "i",
+      "l",
+      "n",
+      "p",
+      "r",
+      "s",
+      "t",
     ];
     for (const s of segs1) paths.push(s);
 
     // Two-segment paths
     const prefixes = ["cg", "fw", "lg", "em", "lut", "a", "d"];
     const suffixes = [
-      "ac", "ra", "db", "ct", "mc", "ns", "pr", "nt", "tc",
-      "f", "i", "ia", "ib", "ic", "ip", "it",
-      "all", "lim", "cfg", "sta", "ver", "id",
-      "able", "info", "data", "list", "set", "get",
-      "md", "st", "log", "diag",
+      "ac",
+      "ra",
+      "db",
+      "ct",
+      "mc",
+      "ns",
+      "pr",
+      "nt",
+      "tc",
+      "f",
+      "i",
+      "ia",
+      "ib",
+      "ic",
+      "ip",
+      "it",
+      "all",
+      "lim",
+      "cfg",
+      "sta",
+      "ver",
+      "id",
+      "able",
+      "info",
+      "data",
+      "list",
+      "set",
+      "get",
+      "md",
+      "st",
+      "log",
+      "diag",
     ];
     for (const p of prefixes) {
       for (const s of suffixes) {
@@ -138,8 +214,9 @@ async function main() {
     if (msg[0] !== RESP_TEXT) return;
     const text = msg.subarray(1).toString("utf-8").trim();
     // Parse "[coap] X.XX <path> mid=0xXXXX len=N" or "[coap] X.XX mid=0xXXXX len=N"
-    const m = text.match(/\[coap\] (\d+\.\d+) (.+?) mid=/) ||
-              text.match(/\[coap\] (\d+\.\d+) (mid=.*)/);
+    const m =
+      text.match(/\[coap\] (\d+\.\d+) (.+?) mid=/) ||
+      text.match(/\[coap\] (\d+\.\d+) (mid=.*)/);
     if (m) {
       const [, code, path] = m;
       if (code !== "4.04") {
@@ -147,7 +224,9 @@ async function main() {
       }
       responseCount++;
       if (responseCount % 50 === 0) {
-        process.stderr.write(`  ${responseCount}/${paths.length} responses, ${hits.size} hits\r`);
+        process.stderr.write(
+          `  ${responseCount}/${paths.length} responses, ${hits.size} hits\r`,
+        );
       }
     }
     // Also catch "OK" / "FAIL" from probe command
@@ -179,7 +258,7 @@ async function main() {
 
     if ((i + BATCH) % 200 < BATCH) {
       process.stderr.write(
-        `  Sent ${Math.min(i + BATCH, paths.length)}/${paths.length}, ${responseCount} responses, ${hits.size} hits\n`
+        `  Sent ${Math.min(i + BATCH, paths.length)}/${paths.length}, ${responseCount} responses, ${hits.size} hits\n`,
       );
     }
   }
@@ -194,7 +273,9 @@ async function main() {
   for (const [path, code] of sorted) {
     console.log(`  ${code.padEnd(6)} ${path}`);
   }
-  console.log(`\nTotal: ${responseCount} responses from ${paths.length} probes`);
+  console.log(
+    `\nTotal: ${responseCount} responses from ${paths.length} probes`,
+  );
 
   sock.close();
 }

@@ -53,7 +53,7 @@ function parsePsvRows(text: string): Record<string, string>[] {
   return lines.slice(1).map((line) => {
     const vals = line.split("|").map((v) => v.trim());
     const row: Record<string, string> = {};
-    headers.forEach((h, i) => (row[h] = vals[i] ?? ""));
+    for (let i = 0; i < headers.length; i++) row[headers[i]] = vals[i] ?? "";
     return row;
   });
 }
@@ -150,7 +150,6 @@ async function main() {
 
     const guid1 = crypto.randomUUID().toUpperCase();
     const guid2 = crypto.randomUUID().toUpperCase();
-    const guid3 = crypto.randomUUID().toUpperCase();
 
     statements.push(`
 -- Zone ${zoneId}: ${z.AreaName} / ${z.ZoneName} → serial ${serial}

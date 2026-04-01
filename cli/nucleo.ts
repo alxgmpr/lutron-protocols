@@ -594,12 +594,12 @@ function displayCcaPacket(
   // Device column: MAC-only (8 hex chars)
   let deviceText = "";
   let deviceColor = WHITE;
-  let deviceSerial = 0; // for LEAP zone lookup
+  let _deviceSerial = 0; // for LEAP zone lookup
   const takeDevice = (fieldName: string): boolean => {
     const val = fieldValues.get(fieldName);
     if (!val || deviceText) return false;
     deviceText = val;
-    deviceSerial = parseInt(val, 16);
+    _deviceSerial = parseInt(val, 16);
     deviceColor = YELLOW;
     fieldValues.delete(fieldName);
     return true;
@@ -613,7 +613,7 @@ function displayCcaPacket(
   const hasQsAddress = identified.fields.some((f) => f.name === "subnet");
   if (!deviceText && !hasQsAddress && fallbackDeviceId) {
     deviceText = fallbackDeviceId;
-    deviceSerial = parseInt(fallbackDeviceId, 16);
+    _deviceSerial = parseInt(fallbackDeviceId, 16);
     deviceColor = YELLOW;
   }
 
@@ -1198,7 +1198,12 @@ function handleDatagram(msg: Buffer) {
       /^\[coap\] (\d+\.\d+)(?: (.+?))? mid=0x([0-9A-Fa-f]+) len=(\d+)/,
     );
     if (coapBc) {
-      handleCoapBroadcast(coapBc[1], coapBc[2] || null, coapBc[3], parseInt(coapBc[4], 10));
+      handleCoapBroadcast(
+        coapBc[1],
+        coapBc[2] || null,
+        coapBc[3],
+        parseInt(coapBc[4], 10),
+      );
       return;
     }
 
@@ -1424,7 +1429,7 @@ function coapCodeColor(code: string): string {
 
 function finishCoapPending() {
   if (!coapPending) return;
-  const { method, addr, path, lines } = coapPending;
+  const { method, path, lines } = coapPending;
   coapPending = null;
 
   // Parse response from accumulated text lines
@@ -1507,7 +1512,8 @@ function startCoapScan(addr: string, basePath: string) {
   // e.g. "cg/db/ct/c/" → scan A-Z (single letter)
   // e.g. "cg/db/ct/c" → scan cg/db/ct/c/A - cg/db/ct/c/Z
   const lastSlash = basePath.lastIndexOf("/");
-  const prefix = lastSlash >= 0 ? basePath.slice(0, lastSlash + 1) : basePath + "/";
+  const prefix =
+    lastSlash >= 0 ? basePath.slice(0, lastSlash + 1) : basePath + "/";
   const suffix = lastSlash >= 0 ? basePath.slice(lastSlash + 1) : "";
 
   if (suffix.length === 0) {
@@ -1557,7 +1563,7 @@ function startCoapScan(addr: string, basePath: string) {
 
 function finishCoapScan() {
   if (!coapScan) return;
-  const { hits, sent, received, startTime, paths } = coapScan;
+  const { hits, sent, received, startTime } = coapScan;
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   coapScan = null;
 
@@ -1570,7 +1576,9 @@ function finishCoapScan() {
       `${BOLD}CoAP Scan Results${RESET} — ${hits.size} hits from ${sent} probes (${elapsed}s)`,
       "",
     ];
-    for (const [p, c] of [...hits.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    for (const [p, c] of [...hits.entries()].sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    )) {
       const cc = coapCodeColor(c);
       lines.push(`  ${cc}${c.padEnd(6)}${RESET} ${p}`);
     }
@@ -1585,8 +1593,6 @@ function handleCoapCommand(args: string[]) {
   const sub = (args[2] || "").toLowerCase();
   const addr = args[3] || "";
   const path = args[4] || "";
-  const rest = args.slice(5).join(" ");
-
   if (sub === "scan") {
     if (!addr || !path) {
       screen.appendLine(

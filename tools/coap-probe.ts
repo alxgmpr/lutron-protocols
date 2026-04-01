@@ -56,7 +56,7 @@ function sendText(text: string): Promise<string> {
 
 async function coapGet(
   rloc: string,
-  path: string
+  path: string,
 ): Promise<{ code: string; payload: string }> {
   const resp = await sendText(`ccx coap get rloc:${rloc} ${path}`);
   // Parse: "CoAP GET ... → waiting...\r\nCoAP response code=X.XX mid=0xXXXX ...\r\n..."
@@ -74,37 +74,182 @@ const devices: {
   type: string;
   name: string;
 }[] = [
-  { rloc: "8400", leapId: 1496, type: "SunnataDimmer", name: "Hallway Top of Stairs" },
+  {
+    rloc: "8400",
+    leapId: 1496,
+    type: "SunnataDimmer",
+    name: "Hallway Top of Stairs",
+  },
   { rloc: "1400", leapId: 1862, type: "SunnataDimmer", name: "Foyer Entrance" },
-  { rloc: "A000", leapId: 1940, type: "SunnataDimmer", name: "Master Bedroom Entrance" },
-  { rloc: "A00A", leapId: 2001, type: "SunnataDimmer", name: "Master Bedroom Closet" },
-  { rloc: "D001", leapId: 2111, type: "SunnataDimmer", name: "Living Room Entry" },
-  { rloc: "D400", leapId: 2138, type: "SunnataDimmer", name: "Kitchen Entrance" },
-  { rloc: "A402", leapId: 2291, type: "SunnataDimmer", name: "Dining Room Back Doorway" },
-  { rloc: "C401", leapId: 2432, type: "SunnataDimmer", name: "Living Room Fireplace" },
+  {
+    rloc: "A000",
+    leapId: 1940,
+    type: "SunnataDimmer",
+    name: "Master Bedroom Entrance",
+  },
+  {
+    rloc: "A00A",
+    leapId: 2001,
+    type: "SunnataDimmer",
+    name: "Master Bedroom Closet",
+  },
+  {
+    rloc: "D001",
+    leapId: 2111,
+    type: "SunnataDimmer",
+    name: "Living Room Entry",
+  },
+  {
+    rloc: "D400",
+    leapId: 2138,
+    type: "SunnataDimmer",
+    name: "Kitchen Entrance",
+  },
+  {
+    rloc: "A402",
+    leapId: 2291,
+    type: "SunnataDimmer",
+    name: "Dining Room Back Doorway",
+  },
+  {
+    rloc: "C401",
+    leapId: 2432,
+    type: "SunnataDimmer",
+    name: "Living Room Fireplace",
+  },
   { rloc: "4800", leapId: 3647, type: "SunnataDimmer", name: "Office Closet" },
-  { rloc: "F400", leapId: 3989, type: "SunnataDimmer", name: "Guest Bedroom Closet" },
-  { rloc: "A801", leapId: 4623, type: "SunnataDimmer", name: "Storage Closet Stairs (a)" },
-  { rloc: "A800", leapId: 4648, type: "SunnataDimmer", name: "Storage Closet Stairs (b)" },
-  { rloc: "EC00", leapId: 5640, type: "SunnataDimmer", name: "Powder Bathroom Entry" },
-  { rloc: "080C", leapId: 5747, type: "SunnataDimmer", name: "Master Bathroom Shower" },
-  { rloc: "A002", leapId: 1965, type: "SunnataFanControl", name: "Master Bedroom Entrance" },
-  { rloc: "3801", leapId: 483, type: "SunnataHybridKeypad", name: "Office Entrance" },
-  { rloc: "0C00", leapId: 1091, type: "SunnataHybridKeypad", name: "Guest Bedroom Entrance" },
-  { rloc: "6400", leapId: 1557, type: "SunnataHybridKeypad", name: "Hallway Top of Stairs" },
-  { rloc: "1401", leapId: 1803, type: "SunnataHybridKeypad", name: "Foyer Entrance" },
-  { rloc: "A001", leapId: 1894, type: "SunnataHybridKeypad", name: "Master Bedroom Entrance" },
-  { rloc: "A400", leapId: 2028, type: "SunnataHybridKeypad", name: "Dining Room Entrance" },
-  { rloc: "D800", leapId: 2165, type: "SunnataHybridKeypad", name: "Kitchen Entrance" },
-  { rloc: "C400", leapId: 2384, type: "SunnataHybridKeypad", name: "Living Room Fireplace" },
-  { rloc: "1402", leapId: 2461, type: "SunnataHybridKeypad", name: "Stairs Base" },
-  { rloc: "0800", leapId: 2607, type: "SunnataHybridKeypad", name: "Hallway End" },
-  { rloc: "0809", leapId: 4210, type: "SunnataHybridKeypad", name: "Master Bathroom Entry" },
-  { rloc: "D000", leapId: 2076, type: "SunnataKeypad", name: "Living Room Entry" },
-  { rloc: "A010", leapId: 2657, type: "SunnataKeypad", name: "Master Bedroom Bedside" },
-  { rloc: "C000", leapId: 4291, type: "SunnataKeypad", name: "Laundry Room Entry" },
-  { rloc: "EC01", leapId: 5665, type: "SunnataSwitch", name: "Powder Bathroom Entry" },
-  { rloc: "0806", leapId: 5772, type: "SunnataSwitch", name: "Master Bathroom Shower" },
+  {
+    rloc: "F400",
+    leapId: 3989,
+    type: "SunnataDimmer",
+    name: "Guest Bedroom Closet",
+  },
+  {
+    rloc: "A801",
+    leapId: 4623,
+    type: "SunnataDimmer",
+    name: "Storage Closet Stairs (a)",
+  },
+  {
+    rloc: "A800",
+    leapId: 4648,
+    type: "SunnataDimmer",
+    name: "Storage Closet Stairs (b)",
+  },
+  {
+    rloc: "EC00",
+    leapId: 5640,
+    type: "SunnataDimmer",
+    name: "Powder Bathroom Entry",
+  },
+  {
+    rloc: "080C",
+    leapId: 5747,
+    type: "SunnataDimmer",
+    name: "Master Bathroom Shower",
+  },
+  {
+    rloc: "A002",
+    leapId: 1965,
+    type: "SunnataFanControl",
+    name: "Master Bedroom Entrance",
+  },
+  {
+    rloc: "3801",
+    leapId: 483,
+    type: "SunnataHybridKeypad",
+    name: "Office Entrance",
+  },
+  {
+    rloc: "0C00",
+    leapId: 1091,
+    type: "SunnataHybridKeypad",
+    name: "Guest Bedroom Entrance",
+  },
+  {
+    rloc: "6400",
+    leapId: 1557,
+    type: "SunnataHybridKeypad",
+    name: "Hallway Top of Stairs",
+  },
+  {
+    rloc: "1401",
+    leapId: 1803,
+    type: "SunnataHybridKeypad",
+    name: "Foyer Entrance",
+  },
+  {
+    rloc: "A001",
+    leapId: 1894,
+    type: "SunnataHybridKeypad",
+    name: "Master Bedroom Entrance",
+  },
+  {
+    rloc: "A400",
+    leapId: 2028,
+    type: "SunnataHybridKeypad",
+    name: "Dining Room Entrance",
+  },
+  {
+    rloc: "D800",
+    leapId: 2165,
+    type: "SunnataHybridKeypad",
+    name: "Kitchen Entrance",
+  },
+  {
+    rloc: "C400",
+    leapId: 2384,
+    type: "SunnataHybridKeypad",
+    name: "Living Room Fireplace",
+  },
+  {
+    rloc: "1402",
+    leapId: 2461,
+    type: "SunnataHybridKeypad",
+    name: "Stairs Base",
+  },
+  {
+    rloc: "0800",
+    leapId: 2607,
+    type: "SunnataHybridKeypad",
+    name: "Hallway End",
+  },
+  {
+    rloc: "0809",
+    leapId: 4210,
+    type: "SunnataHybridKeypad",
+    name: "Master Bathroom Entry",
+  },
+  {
+    rloc: "D000",
+    leapId: 2076,
+    type: "SunnataKeypad",
+    name: "Living Room Entry",
+  },
+  {
+    rloc: "A010",
+    leapId: 2657,
+    type: "SunnataKeypad",
+    name: "Master Bedroom Bedside",
+  },
+  {
+    rloc: "C000",
+    leapId: 4291,
+    type: "SunnataKeypad",
+    name: "Laundry Room Entry",
+  },
+  {
+    rloc: "EC01",
+    leapId: 5665,
+    type: "SunnataSwitch",
+    name: "Powder Bathroom Entry",
+  },
+  {
+    rloc: "0806",
+    leapId: 5772,
+    type: "SunnataSwitch",
+    name: "Master Bathroom Shower",
+  },
 ];
 
 // Endpoints to probe
@@ -172,8 +317,19 @@ function decodeFwIcMd(hex: string): string {
     const comp = buf[off + 4];
     const ver = `${buf[off + 5]}.${buf[off + 6]}.${buf[off + 7]}`;
     const compName =
-      comp === 1 ? "app" : comp === 2 ? "boot" : comp === 4 ? "peri" : `c${comp}`;
-    const flagStr = flags === 0x80 ? "active" : flags === 0x08 ? "pending" : `0x${flags.toString(16)}`;
+      comp === 1
+        ? "app"
+        : comp === 2
+          ? "boot"
+          : comp === 4
+            ? "peri"
+            : `c${comp}`;
+    const flagStr =
+      flags === 0x80
+        ? "active"
+        : flags === 0x08
+          ? "pending"
+          : `0x${flags.toString(16)}`;
     parts.push(`${compName}:${ver}(${flagStr})`);
   }
   return parts.join(" ");
@@ -181,9 +337,7 @@ function decodeFwIcMd(hex: string): string {
 
 async function probeDevice(dev: (typeof devices)[0]) {
   const { rloc, leapId, type, name } = dev;
-  const shortType = type
-    .replace("Sunnata", "")
-    .replace("Hybrid", "H-");
+  const shortType = type.replace("Sunnata", "").replace("Hybrid", "H-");
 
   process.stderr.write(`Probing ${rloc} ${shortType} ${name}...\n`);
 
@@ -262,8 +416,7 @@ async function main() {
       const d = devs[i];
       process.stderr.write(`Quick probe ${d.rloc} ${d.name}...\n`);
       const { code, payload } = await coapGet(d.rloc, "fw/it/md");
-      const fwInfo =
-        code === "2.05" && payload ? decodeFwItMd(payload) : code;
+      const fwInfo = code === "2.05" && payload ? decodeFwItMd(payload) : code;
       results.push({
         rloc: d.rloc,
         leapId: d.leapId,
