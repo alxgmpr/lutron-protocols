@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 /**
  * QS Link RS-485 N81 Decoder
  *
@@ -137,13 +137,14 @@ function findSerial(pkt: number[], serial: number): boolean {
 async function main() {
   let hexStr: string;
 
+  const { readFileSync } = await import("fs");
   const fileArg = process.argv.find((a) => a === "--file");
   if (fileArg) {
     const filePath = process.argv[process.argv.indexOf("--file") + 1];
-    hexStr = await Bun.file(filePath).text();
+    hexStr = readFileSync(filePath, "utf8");
   } else {
     // Read from stdin
-    hexStr = await new Response(Bun.stdin.stream()).text();
+    hexStr = readFileSync(0, "utf8");
   }
 
   // Clean up: extract just hex bytes

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  WARM_DIM_CURVES,
   evalWarmDimCurve,
   generateWarmDimTable,
   getWarmDimCurve,
+  WARM_DIM_CURVES,
 } from "../lib/warm-dim";
 
 test("getWarmDimCurve falls back to default", () => {

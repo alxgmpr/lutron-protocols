@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 /**
  * Interactive command sender to Nucleo via UDP.
  * Sends commands from argv or stdin, prints responses.

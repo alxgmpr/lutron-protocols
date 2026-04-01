@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * Wiz bulb test — quick control from CLI

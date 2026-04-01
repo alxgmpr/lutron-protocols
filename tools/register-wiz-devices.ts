@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * Register synthetic CCX devices in the Designer DB for WiZ-bridged zones.
@@ -12,6 +12,11 @@
  *
  * Prerequisites: Designer VM running with project open, sql-http-api.ps1 listening.
  */
+
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 const DESIGNER_VM_HOST = process.env.DESIGNER_VM_HOST ?? "10.0.0.5";
 const QUERY_URL = `http://${DESIGNER_VM_HOST}:9999/query`;
@@ -185,12 +190,7 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
     // Write serial map for reference
     const { writeFileSync } = await import("fs");
     const { join } = await import("path");
-    const outPath = join(
-      import.meta.dir,
-      "..",
-      "data",
-      "wiz-device-serials.json",
-    );
+    const outPath = join(__dir, "..", "data", "wiz-device-serials.json");
     writeFileSync(outPath, JSON.stringify(serialMap, null, 2) + "\n");
     console.log(`Serial map written to ${outPath}`);
     return;
@@ -231,12 +231,7 @@ INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, ParentDeviceID, ParentDevic
   // Write serial map
   const { writeFileSync } = await import("fs");
   const { join } = await import("path");
-  const outPath = join(
-    import.meta.dir,
-    "..",
-    "data",
-    "wiz-device-serials.json",
-  );
+  const outPath = join(__dir, "..", "data", "wiz-device-serials.json");
   writeFileSync(outPath, JSON.stringify(serialMap, null, 2) + "\n");
   console.log(`Serial map written to ${outPath}`);
 

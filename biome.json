@@ -6,7 +6,9 @@
       "cli/**/*.ts",
       "tools/**/*.ts",
       "ccx/**/*.ts",
-      "protocol/**/*.ts"
+      "protocol/**/*.ts",
+      "lib/**/*.ts",
+      "test/**/*.ts"
     ],
     "ignoreUnknown": true
   },
@@ -14,9 +16,9 @@
     "enabled": true,
     "rules": {
       "correctness": {
-        "noUnusedVariables": "warn",
-        "noUnusedImports": "warn",
-        "noUnusedFunctionParameters": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noUnusedFunctionParameters": "error"
       },
       "style": {
         "useTemplate": "off",
@@ -28,7 +30,8 @@
         "useLiteralKeys": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "off",
+        "noControlCharactersInRegex": "off"
       }
     }
   },

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 /**
  * CCX Programming Replay — replays a captured /cg/db programming sequence
  * to a device via udp6 (ot-daemon), with optional payload overrides.

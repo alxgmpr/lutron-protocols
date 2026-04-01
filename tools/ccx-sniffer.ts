@@ -569,8 +569,8 @@ function runDecryptPass(file: string): number {
       });
 
     // Try EUI-64 sources: tshark MLE > address table > brute-force
-    let plaintext: Buffer | null = null;
-    let matchedEui64 = Buffer.alloc(8);
+    let plaintext: Buffer<ArrayBufferLike> | null = null;
+    let matchedEui64: Buffer<ArrayBufferLike> = Buffer.alloc(8);
 
     if (meta.srcEui64.includes(":")) {
       const eui64 = Buffer.from(meta.srcEui64.replace(/:/g, ""), "hex");

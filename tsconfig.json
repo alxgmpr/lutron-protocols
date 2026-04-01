@@ -10,7 +10,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "strict": false,
+    "strict": true,
     "noEmit": true
   },
   "include": ["bridge/**/*.ts", "cli/**/*.ts", "ccx/**/*.ts", "lib/**/*.ts", "protocol/**/*.ts", "tools/**/*.ts"],

@@ -8,13 +8,15 @@
  */
 
 import { writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { CCA } from "../protocol/cca.protocol";
 import { CCX } from "../protocol/ccx.protocol";
 import type { ConstantGroup, PacketTypeDef } from "../protocol/dsl";
 
-const CCA_OUTPUT = join(import.meta.dir, "../firmware/src/cca/cca_generated.h");
-const CCX_OUTPUT = join(import.meta.dir, "../firmware/src/ccx/ccx_generated.h");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const CCA_OUTPUT = join(__dir, "../firmware/src/cca/cca_generated.h");
+const CCX_OUTPUT = join(__dir, "../firmware/src/ccx/ccx_generated.h");
 
 // ============================================================================
 // Helpers

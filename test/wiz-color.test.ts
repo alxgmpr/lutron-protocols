@@ -1,12 +1,12 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
-  cctToRgbwc,
   cctToPilotParams,
-  xyToRgbwc,
-  xyToCct,
+  cctToRgbwc,
   planckianDistance,
   rgbwcToPilotParams,
+  xyToCct,
+  xyToRgbwc,
 } from "../lib/wiz-color";
 
 describe("cctToRgbwc", () => {
@@ -67,7 +67,10 @@ describe("cctToRgbwc", () => {
     const full = cctToRgbwc(2700, 100);
     const half = cctToRgbwc(2700, 50);
     // r=35 at 100% → ~18 at 50%
-    assert.ok(half.r < full.r, `half.r=${half.r} should be less than full.r=${full.r}`);
+    assert.ok(
+      half.r < full.r,
+      `half.r=${half.r} should be less than full.r=${full.r}`,
+    );
     // w=255 at 100% → ~128 at 50%
     assert.ok(half.w > 120 && half.w < 136, `half.w=${half.w} should be ~128`);
   });
@@ -182,7 +185,10 @@ describe("xyToRgbwc", () => {
   it("uses white LEDs for near-white chromaticities", () => {
     // D65 white is on the Planckian locus → should use W/C channels
     const ch = xyToRgbwc(0.3127, 0.329, 100);
-    assert.ok(ch.w > 0 || ch.c > 0, `w=${ch.w} c=${ch.c} — should use white LEDs for D65`);
+    assert.ok(
+      ch.w > 0 || ch.c > 0,
+      `w=${ch.w} c=${ch.c} — should use white LEDs for D65`,
+    );
   });
 
   it("uses warm white for Planckian locus at 2700K", () => {
@@ -220,7 +226,10 @@ describe("xyToRgbwc", () => {
     // Green — far from locus, pure RGB
     const full = xyToRgbwc(0.3064, 0.6561, 100);
     const half = xyToRgbwc(0.3064, 0.6561, 50);
-    assert.ok(half.g < full.g, `half.g=${half.g} should be less than full.g=${full.g}`);
+    assert.ok(
+      half.g < full.g,
+      `half.g=${half.g} should be less than full.g=${full.g}`,
+    );
   });
 
   it("scales by brightness for near-white", () => {
@@ -229,7 +238,10 @@ describe("xyToRgbwc", () => {
     // At least one channel should be lower at half brightness
     const fullMax = Math.max(full.r, full.g, full.b, full.w, full.c);
     const halfMax = Math.max(half.r, half.g, half.b, half.w, half.c);
-    assert.ok(halfMax < fullMax, `halfMax=${halfMax} should be less than fullMax=${fullMax}`);
+    assert.ok(
+      halfMax < fullMax,
+      `halfMax=${halfMax} should be less than fullMax=${fullMax}`,
+    );
   });
 
   it("floors active channels at 2 for very low brightness", () => {

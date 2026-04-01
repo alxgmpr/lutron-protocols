@@ -63,7 +63,7 @@ const XYZ_TO_SRGB = [
 const PLANCKIAN_LOCUS: [number, number, number][] = [
   [1500, 0.5857, 0.3931],
   [2000, 0.5267, 0.4133],
-  [2500, 0.4770, 0.4137],
+  [2500, 0.477, 0.4137],
   [3000, 0.4369, 0.4041],
   [3500, 0.4053, 0.3907],
   [4000, 0.3805, 0.3768],
@@ -193,7 +193,10 @@ export function xyToCct(x: number, y: number): number {
  * (which white to use for blending). This is more stable than McCamy's for
  * chromaticities far from the locus, where McCamy's extrapolation breaks down.
  */
-export function nearestPlanckian(x: number, y: number): {
+export function nearestPlanckian(
+  x: number,
+  y: number,
+): {
   distance: number;
   cct: number;
 } {
@@ -206,7 +209,10 @@ export function nearestPlanckian(x: number, y: number): {
     const dx = bx - ax;
     const dy = by - ay;
     const lenSq = dx * dx + dy * dy;
-    const t = lenSq > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq)) : 0;
+    const t =
+      lenSq > 0
+        ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq))
+        : 0;
     const px = ax + t * dx;
     const py = ay + t * dy;
     const dist = Math.sqrt((x - px) * (x - px) + (y - py) * (y - py));
@@ -241,8 +247,7 @@ export function xyToRgbwc(
   brightnessPercent: number,
   table?: CctPoint[],
 ): RgbwcChannels {
-  if (brightnessPercent <= 0 || y <= 0)
-    return { r: 0, g: 0, b: 0, w: 0, c: 0 };
+  if (brightnessPercent <= 0 || y <= 0) return { r: 0, g: 0, b: 0, w: 0, c: 0 };
 
   // Find nearest white point on the Planckian locus — more stable than McCamy's
   // for chromaticities far from the locus where McCamy's extrapolation breaks down
@@ -287,9 +292,9 @@ function xyToRgb(
   // XYZ → linear sRGB
   const dot = (row: readonly [number, number, number]) =>
     row[0] * X + row[1] * Y + row[2] * Z;
-  let lr = Math.max(0, dot(XYZ_TO_SRGB[0]));
-  let lg = Math.max(0, dot(XYZ_TO_SRGB[1]));
-  let lb = Math.max(0, dot(XYZ_TO_SRGB[2]));
+  const lr = Math.max(0, dot(XYZ_TO_SRGB[0]));
+  const lg = Math.max(0, dot(XYZ_TO_SRGB[1]));
+  const lb = Math.max(0, dot(XYZ_TO_SRGB[2]));
 
   // Normalize so the max channel = 255, then scale by brightness
   const maxCh = Math.max(lr, lg, lb);

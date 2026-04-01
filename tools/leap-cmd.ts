@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * LEAP Command Tool — send commands and config changes to zones via LEAP API
@@ -23,7 +23,7 @@ import { CASETA_HOST } from "../lib/env";
 import { hrefId, LeapConnection } from "./leap-client";
 
 const { values, positionals } = parseArgs({
-  args: Bun.argv.slice(2),
+  args: process.argv.slice(2),
   options: {
     host: { type: "string", short: "h", default: CASETA_HOST },
     cert: { type: "string", short: "c", default: "caseta" },

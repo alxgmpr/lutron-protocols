@@ -12,10 +12,13 @@
  */
 
 import { readdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { DESIGNER_VM_HOST } from "../lib/env";
 
-const dataDir = join(import.meta.dirname ?? __dirname, "../data");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+
+const dataDir = join(__dir, "../data");
 const outPath = join(dataDir, "preset-zones.json");
 
 const SQL = `

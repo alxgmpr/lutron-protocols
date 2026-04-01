@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * LEAP API Dump - Enumerate all devices, buttons, presets, and zones
@@ -19,7 +19,8 @@
  */
 
 import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import {
   buildDumpData,
   type DeviceInfo,
@@ -42,15 +43,14 @@ function hasFlag(name: string): boolean {
 
 import { RA3_HOST } from "../lib/env";
 
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+
 const HOST = getArg("--host") ?? RA3_HOST;
 const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
 const SAVE_OUTPUT = hasFlag("--save");
-const DATA_DIR = join(
-  import.meta.dirname ?? (import.meta as any).dir ?? __dirname,
-  "../data",
-);
+const DATA_DIR = join(__dir, "../data");
 
 function log(msg: string): void {
   if (!JSON_OUTPUT && !CONFIG_OUTPUT) {
