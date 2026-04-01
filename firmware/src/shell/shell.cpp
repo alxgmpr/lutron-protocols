@@ -1665,6 +1665,47 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca hybrid-pair <bridge_id_hex> <class_hex_4byte> <subnet_hex> <zone_hex> [duration]
+     * Vive B9 beacon to wake PowPaks, then pair with RA3 bridge ID + B0 announce. */
+    if (strncmp(arg, "hybrid-pair ", 12) == 0) {
+        char*    p;
+        uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca hybrid-pair <bridge_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint32_t dev_class = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca hybrid-pair <bridge_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint16_t subnet = (uint16_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca hybrid-pair <bridge_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint8_t zone = (uint8_t)strtoul(p + 1, &p, 16);
+        uint8_t dur = 30;
+        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_HYBRID_PAIR;
+        item.device_id = bridge_id;
+        item.target_id = dev_class;
+        item.raw_payload[0] = (subnet >> 8) & 0xFF;
+        item.raw_payload[1] = subnet & 0xFF;
+        item.zone_byte = zone;
+        item.duration_sec = dur;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Hybrid pair queued (bridge=%08X class=%08X subnet=%04X zone=0x%02X dur=%us)\r\n",
+                   (unsigned)bridge_id, (unsigned)dev_class, subnet, zone, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca raw <zone_hex> <target_hex> <format_hex> <payload_hex_bytes...>
      * Payload starts at byte 13 (first byte is typically addr_mode: FE/EF/FF).
      * Bytes 0-12 are auto-built: [type][seq][zone:4 LE][0x21][fmt][0x00][target:4 BE] */
@@ -1832,6 +1873,7 @@ static void cmd_cca(const char* arg)
     printf("  cca pair pico <dev> [type] [dur]      — pico pairing\r\n");
     printf("  cca pair bridge <id> <target> <zone> [dur] — bridge pairing\r\n");
     printf("  cca announce <serial> <class> <subnet> [dur] — spoofed B0 announce\r\n");
+    printf("  cca hybrid-pair <bridge> <class> <subnet> <zone> [dur] — Vive→RA3 pair\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
     printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");
@@ -2251,7 +2293,7 @@ static void cmd_ccx_coap(const char* arg)
     }
 
     if (strncmp(arg, "get ", 4) == 0) {
-        /* ccx coap get <ipv6_addr> <uri_path> */
+        /* ccx coap get <ipv6_addr> <uri_path> [port] */
         const char* p = arg + 4;
         char addr_str[64];
         const char* space = strchr(p, ' ');
@@ -2267,10 +2309,130 @@ static void cmd_ccx_coap(const char* arg)
             return;
         }
 
-        if (ccx_send_coap(dst, COAP_CODE_GET, space + 1, NULL, 0)) {
-            printf("CoAP GET %s queued\r\n", space + 1);
-        } else {
+        /* Parse URI path and optional port */
+        const char* uri = space + 1;
+        uint16_t port = 0; /* 0 = default 5683 */
+        const char* port_space = strchr(uri, ' ');
+        char uri_buf[64];
+        if (port_space) {
+            size_t ulen = (size_t)(port_space - uri);
+            if (ulen >= sizeof(uri_buf)) goto coap_usage;
+            memcpy(uri_buf, uri, ulen);
+            uri_buf[ulen] = '\0';
+            uri = uri_buf;
+            port = (uint16_t)strtoul(port_space + 1, NULL, 10);
+        }
+
+        ccx_coap_response_arm();
+        if (!ccx_send_coap_port(dst, COAP_CODE_GET, uri, NULL, 0, port)) {
             printf("CoAP TX failed (not joined?)\r\n");
+            return;
+        }
+        printf("CoAP GET %s → waiting...\r\n", space + 1);
+        for (int i = 0; i < 50; i++) { /* 5 seconds */
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ccx_coap_response_t resp;
+            if (ccx_coap_response_get(&resp)) {
+                printf("CoAP response code=%u.%02u mid=0x%04X from ",
+                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                for (int j = 0; j < 16; j += 2) {
+                    if (j > 0) printf(":");
+                    printf("%02x%02x", resp.src_addr[j], resp.src_addr[j + 1]);
+                }
+                printf("\r\n");
+                if (resp.payload_len > 0) {
+                    printf("Payload (%u bytes):", (unsigned)resp.payload_len);
+                    for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
+                    printf("\r\n");
+                } else {
+                    printf("(no payload)\r\n");
+                }
+                return;
+            }
+        }
+        printf("No CoAP response (timeout 5s)\r\n");
+        return;
+    }
+
+    if (strncmp(arg, "observe ", 8) == 0) {
+        /* ccx coap observe <ipv6_addr> <uri_path> [dereg] */
+        const char* p = arg + 8;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address\r\n");
+            return;
+        }
+
+        /* Check for optional "dereg" after path */
+        const char* uri = space + 1;
+        uint8_t observe_val = 0; /* 0 = register */
+        const char* dereg = strstr(uri, " dereg");
+        char uri_buf[64];
+        if (dereg) {
+            size_t ulen = (size_t)(dereg - uri);
+            if (ulen >= sizeof(uri_buf)) goto coap_usage;
+            memcpy(uri_buf, uri, ulen);
+            uri_buf[ulen] = '\0';
+            uri = uri_buf;
+            observe_val = 1;
+        }
+
+        ccx_coap_response_arm();
+        if (!ccx_send_coap_observe(dst, uri, observe_val)) {
+            printf("CoAP TX failed (not joined?)\r\n");
+            return;
+        }
+        printf("CoAP Observe %s %s → waiting...\r\n",
+               observe_val == 0 ? "REGISTER" : "DEREGISTER", uri);
+        /* Wait up to 5s for initial response */
+        for (int i = 0; i < 50; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ccx_coap_response_t resp;
+            if (ccx_coap_response_get(&resp)) {
+                printf("CoAP response code=%u.%02u mid=0x%04X\r\n",
+                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                if (resp.payload_len > 0) {
+                    printf("Payload (%u bytes):", (unsigned)resp.payload_len);
+                    for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
+                    printf("\r\n");
+                }
+                return;
+            }
+        }
+        printf("No initial response (timeout 5s)\r\n");
+        printf("If registered, notifications will appear as [coap] broadcasts\r\n");
+        return;
+    }
+
+    if (strncmp(arg, "probe ", 6) == 0) {
+        /* ccx coap probe <ipv6_addr> <uri_path> — fire-and-forget GET (no wait) */
+        const char* p = arg + 6;
+        char addr_str[64];
+        const char* space = strchr(p, ' ');
+        if (!space) goto coap_usage;
+        size_t alen = (size_t)(space - p);
+        if (alen >= sizeof(addr_str)) goto coap_usage;
+        memcpy(addr_str, p, alen);
+        addr_str[alen] = '\0';
+
+        uint8_t dst[16];
+        if (!resolve_ccx_addr(addr_str, dst)) {
+            printf("Invalid address\r\n");
+            return;
+        }
+
+        if (ccx_send_coap(dst, COAP_CODE_GET, space + 1, NULL, 0)) {
+            printf("OK\r\n");
+        } else {
+            printf("FAIL\r\n");
         }
         return;
     }
@@ -2300,9 +2462,10 @@ static void cmd_ccx_coap(const char* arg)
         return;
     }
 
-    if (strncmp(arg, "post ", 5) == 0) {
-        /* ccx coap post <ipv6_addr> <uri_path> <payload_hex> */
-        const char* p = arg + 5;
+    if (strncmp(arg, "put ", 4) == 0 || strncmp(arg, "post ", 5) == 0) {
+        /* ccx coap put/post <ipv6_addr> <uri_path> <payload_hex> */
+        bool is_put = (arg[1] == 'u');
+        const char* p = arg + (is_put ? 4 : 5);
 
         /* Parse addr */
         char addr_str[64];
@@ -2337,11 +2500,28 @@ static void cmd_ccx_coap(const char* arg)
             return;
         }
 
-        if (ccx_send_coap(dst, COAP_CODE_POST, uri, payload, plen)) {
-            printf("CoAP POST %s (%u bytes) queued\r\n", uri, (unsigned)plen);
-        } else {
+        uint8_t code = is_put ? COAP_CODE_PUT : COAP_CODE_POST;
+        ccx_coap_response_arm();
+        if (!ccx_send_coap(dst, code, uri, payload, plen)) {
             printf("CoAP TX failed (not joined?)\r\n");
+            return;
         }
+        printf("CoAP %s %s (%u bytes) → waiting...\r\n", is_put ? "PUT" : "POST", uri, (unsigned)plen);
+        for (int i = 0; i < 50; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ccx_coap_response_t resp;
+            if (ccx_coap_response_get(&resp)) {
+                printf("CoAP response code=%u.%02u mid=0x%04X\r\n",
+                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                if (resp.payload_len > 0) {
+                    printf("Payload (%u bytes):", (unsigned)resp.payload_len);
+                    for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
+                    printf("\r\n");
+                }
+                return;
+            }
+        }
+        printf("No CoAP response (timeout 5s)\r\n");
         return;
     }
 
@@ -2360,8 +2540,10 @@ coap_usage:
     printf("    Read a CoAP resource\r\n");
     printf("  ccx coap delete <addr> <uri_path>\r\n");
     printf("    Delete a CoAP resource\r\n");
+    printf("  ccx coap put <addr> <uri_path> <payload_hex>\r\n");
+    printf("    Write raw CBOR to a CoAP resource (PUT)\r\n");
     printf("  ccx coap post <addr> <uri_path> <payload_hex>\r\n");
-    printf("    Write raw CBOR to a CoAP resource\r\n");
+    printf("    Write raw CBOR to a CoAP resource (POST)\r\n");
     printf("  addr: IPv6, rloc:XXXX (hex), or serial:NNN (decimal)\r\n");
 }
 

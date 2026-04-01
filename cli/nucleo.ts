@@ -148,6 +148,30 @@ let connected = false;
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
 
+// ============================================================================
+// CoAP first-class interface state
+// ============================================================================
+interface CoapPending {
+  method: string;
+  addr: string;
+  path: string;
+  lines: string[];
+  startTime: number;
+}
+
+interface CoapScanJob {
+  addr: string;
+  paths: string[];
+  hits: Map<string, string>; // path → code
+  sent: number;
+  received: number;
+  startTime: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+let coapPending: CoapPending | null = null;
+let coapScan: CoapScanJob | null = null;
+
 interface CcaSlotFlowState {
   key: string;
   lastTs: number;
@@ -317,6 +341,12 @@ function updateStatusBar(): void {
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
   if (!packetTable.isLive()) parts.push(`${YELLOW}[scroll]${RESET}`);
+  if (coapScan) {
+    const { sent, received, hits, paths } = coapScan;
+    parts.push(
+      `${CYAN}[scan ${sent}/${paths.length} sent=${sent} recv=${received} hits=${hits.size}]${RESET}`,
+    );
+  }
   screen.setStatusBar(parts.join(" "));
 }
 
@@ -1161,19 +1191,51 @@ function handleDatagram(msg: Buffer) {
       textCmdTimer = null;
     }
     const text = msg.subarray(1).toString("utf-8").trim();
-    if (text.length > 0) {
-      const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
-      if (lines.length <= 3) {
-        // Short responses go into the table as styled lines
-        for (const line of lines) screen.appendLine(line);
-      } else {
-        // Multi-line → overlay
-        screen.showOverlay([
-          ...lines,
-          "",
-          `${DIM}Press any key to dismiss${RESET}`,
-        ]);
+    if (text.length === 0) return;
+
+    // Check for [coap] broadcast (async response notification)
+    const coapBc = text.match(
+      /^\[coap\] (\d+\.\d+)(?: (.+?))? mid=0x([0-9A-Fa-f]+) len=(\d+)/,
+    );
+    if (coapBc) {
+      handleCoapBroadcast(coapBc[1], coapBc[2] || null, coapBc[3], parseInt(coapBc[4], 10));
+      return;
+    }
+
+    // Suppress [ccx] CoAP TX/Observe broadcast lines (noise during pending/scan)
+    if (text.startsWith("[ccx] CoAP") && (coapPending || coapScan)) return;
+
+    // Suppress "OK" from probe commands during scan
+    if (text === "OK" && coapScan) return;
+
+    // If we have a pending CoAP request, accumulate response lines
+    if (coapPending) {
+      for (const l of text.split("\n")) {
+        const lt = l.trim();
+        if (lt) coapPending.lines.push(lt);
       }
+      // Check for terminal conditions
+      if (
+        text.includes("Payload (") ||
+        text.includes("(no payload)") ||
+        text.includes("No CoAP response") ||
+        text.includes("CoAP TX failed")
+      ) {
+        finishCoapPending();
+      }
+      return;
+    }
+
+    // Normal text passthrough
+    const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
+    if (lines.length <= 3) {
+      for (const line of lines) screen.appendLine(line);
+    } else {
+      screen.showOverlay([
+        ...lines,
+        "",
+        `${DIM}Press any key to dismiss${RESET}`,
+      ]);
     }
     return;
   }
@@ -1296,6 +1358,7 @@ function showHelp() {
     `  ${CYAN}cca vive-level${RESET} <hub> <zone> <%> [fade]   Vive set-level`,
     `  ${CYAN}cca vive-raise${RESET}/<lower> <hub> <zone>      Vive dim raise/lower`,
     `  ${CYAN}cca vive-pair${RESET} <hub> <zone> [dur]         Vive pairing`,
+    `  ${CYAN}cca hybrid-pair${RESET} <bridge> <class> <subnet> <zone> [dur]  Vive→RA3 pair`,
     `  ${CYAN}cca tune${RESET} ...                             CC1101 tuning/debug`,
     `  ${CYAN}cca log${RESET} [on|off]                         CCA RX UART log toggle`,
     "",
@@ -1305,7 +1368,13 @@ function showHelp() {
     `  ${YELLOW}ccx level${RESET} <zone> <0-100>                  Set level %`,
     `  ${YELLOW}ccx scene${RESET} <id>                            Recall scene`,
     `  ${YELLOW}ccx peers${RESET}                                 List known Thread peers`,
-    `  ${YELLOW}ccx coap${RESET} ...                              CoAP device programming`,
+    `  ${YELLOW}ccx coap get${RESET} <addr> <path>                 CoAP GET with decoded response`,
+    `  ${YELLOW}ccx coap put${RESET} <addr> <path> <hex>          CoAP PUT`,
+    `  ${YELLOW}ccx coap post${RESET} <addr> <path> <hex>         CoAP POST`,
+    `  ${YELLOW}ccx coap observe${RESET} <addr> <path>            Subscribe to notifications`,
+    `  ${YELLOW}ccx coap scan${RESET} <addr> <basePath>           Scan suffixes A-Z (e.g. cg/db/ct/c/AA)`,
+    `  ${YELLOW}ccx coap probe${RESET} <addr> <path>              Fire-and-forget GET`,
+    `  ${YELLOW}ccx coap trim${RESET}/${YELLOW}led${RESET}/${YELLOW}preset${RESET} ...              Device programming`,
     `  ${YELLOW}ccx discover${RESET} <ipv6>                       TMF Address Query`,
     `  ${YELLOW}ccx promisc${RESET} [on|off]                      802.15.4 promiscuous mode`,
     `  ${YELLOW}ccx log${RESET} [on|off]                          CCX RX UART log`,
@@ -1322,6 +1391,233 @@ function showHelp() {
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Page Up/Down to scroll. Ctrl-L to redraw.${RESET}`,
     `${DIM}Press any key to dismiss${RESET}`,
   ]);
+}
+
+// ============================================================================
+// CoAP first-class command handler
+// ============================================================================
+
+function tryDecodeCbor(hex: string): string | null {
+  try {
+    const { decode } = require("cbor-x") as typeof import("cbor-x");
+    const buf = Buffer.from(hex.replace(/ /g, ""), "hex");
+    const val = decode(buf);
+    return JSON.stringify(
+      val,
+      (_, v) => {
+        if (typeof v === "bigint") return "0x" + v.toString(16);
+        if (Buffer.isBuffer(v)) return "h'" + v.toString("hex") + "'";
+        return v;
+      },
+      2,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function coapCodeColor(code: string): string {
+  if (code.startsWith("2.")) return GREEN;
+  if (code.startsWith("4.") || code.startsWith("5.")) return RED;
+  return YELLOW;
+}
+
+function finishCoapPending() {
+  if (!coapPending) return;
+  const { method, addr, path, lines } = coapPending;
+  coapPending = null;
+
+  // Parse response from accumulated text lines
+  let code = "";
+  let payloadHex = "";
+  let fromAddr = "";
+  let error = "";
+
+  for (const l of lines) {
+    const cm = l.match(/code=(\d+\.\d+)/);
+    if (cm) code = cm[1];
+    const pm = l.match(/Payload \(\d+ bytes\):\s*([0-9A-Fa-f ]+)/);
+    if (pm) payloadHex = pm[1].trim();
+    const fm = l.match(/from ([\da-f:]+)/);
+    if (fm) fromAddr = fm[1];
+    if (l.includes("No CoAP response")) error = "timeout";
+    if (l.includes("CoAP TX failed")) error = "tx failed";
+  }
+
+  if (error) {
+    screen.appendLine(
+      `${RED}[CoAP] ${method.toUpperCase()} ${path} → ${error}${RESET}`,
+    );
+    return;
+  }
+
+  const cc = coapCodeColor(code);
+  const methodUp = method.toUpperCase();
+  const hdr = `${cc}[CoAP]${RESET} ${cc}${code}${RESET} ${methodUp} ${YELLOW}${path}${RESET}`;
+
+  if (!payloadHex) {
+    screen.appendLine(`${hdr}${fromAddr ? `  ${DIM}${fromAddr}${RESET}` : ""}`);
+    return;
+  }
+
+  // Has payload — decode
+  const bytes = payloadHex.split(" ").length;
+  screen.appendLine(
+    `${hdr}  ${DIM}${bytes} bytes${fromAddr ? "  " + fromAddr : ""}${RESET}`,
+  );
+  screen.appendLine(`${DIM}  hex: ${payloadHex}${RESET}`);
+  const decoded = tryDecodeCbor(payloadHex);
+  if (decoded) {
+    for (const dl of decoded.split("\n")) {
+      screen.appendLine(`  ${GREEN}${dl}${RESET}`);
+    }
+  }
+}
+
+function handleCoapBroadcast(
+  code: string,
+  path: string | null,
+  mid: string,
+  len: number,
+) {
+  // Route to scan job if active
+  if (coapScan && path) {
+    coapScan.received++;
+    if (code !== "4.04") coapScan.hits.set(path, code);
+    updateStatusBar();
+    return;
+  }
+
+  // Otherwise display as notification (observe, unsolicited, etc.)
+  if (path) {
+    const cc = coapCodeColor(code);
+    screen.appendLine(
+      `${CYAN}[CoAP notify]${RESET} ${cc}${code}${RESET} ${path} ${DIM}mid=${mid} len=${len}${RESET}`,
+    );
+  }
+}
+
+function startCoapScan(addr: string, basePath: string) {
+  // Generate paths to probe
+  const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const paths: string[] = [];
+
+  // If basePath ends with 1-2 chars after last /, enumerate the remaining letters
+  // e.g. "cg/db/ct/c/AA" → scan AAA-AAZ
+  // e.g. "cg/db/ct/c/" → scan A-Z (single letter)
+  // e.g. "cg/db/ct/c" → scan cg/db/ct/c/A - cg/db/ct/c/Z
+  const lastSlash = basePath.lastIndexOf("/");
+  const prefix = lastSlash >= 0 ? basePath.slice(0, lastSlash + 1) : basePath + "/";
+  const suffix = lastSlash >= 0 ? basePath.slice(lastSlash + 1) : "";
+
+  if (suffix.length === 0) {
+    // Scan single letters: prefix + A through Z
+    for (const c of alpha) paths.push(prefix + c);
+  } else if (suffix.length <= 2) {
+    // Scan suffix + [A-Z]
+    for (const c of alpha) paths.push(prefix + suffix + c);
+  } else {
+    // 3+ chars — just probe that one path
+    paths.push(basePath);
+  }
+
+  coapScan = {
+    addr,
+    paths,
+    hits: new Map(),
+    sent: 0,
+    received: 0,
+    startTime: Date.now(),
+    timer: null,
+  };
+
+  screen.appendLine(
+    `${CYAN}[CoAP scan]${RESET} Probing ${paths.length} paths on ${addr}...`,
+  );
+  updateStatusBar();
+
+  // Fire probes in sequence with 800ms delay
+  let idx = 0;
+  function sendNext() {
+    if (!coapScan || idx >= coapScan.paths.length) {
+      // All sent — wait for stragglers then finish
+      if (coapScan) {
+        coapScan.timer = setTimeout(finishCoapScan, 3000);
+      }
+      return;
+    }
+    const p = coapScan.paths[idx++];
+    coapScan.sent = idx;
+    sendTextCommand(`ccx coap probe rloc:${addr} ${p}`);
+    updateStatusBar();
+    if (coapScan) coapScan.timer = setTimeout(sendNext, 800);
+  }
+  sendNext();
+}
+
+function finishCoapScan() {
+  if (!coapScan) return;
+  const { hits, sent, received, startTime, paths } = coapScan;
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  coapScan = null;
+
+  if (hits.size === 0) {
+    screen.appendLine(
+      `${DIM}[CoAP scan] No hits from ${sent} probes (${received} responses, ${elapsed}s)${RESET}`,
+    );
+  } else {
+    const lines = [
+      `${BOLD}CoAP Scan Results${RESET} — ${hits.size} hits from ${sent} probes (${elapsed}s)`,
+      "",
+    ];
+    for (const [p, c] of [...hits.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const cc = coapCodeColor(c);
+      lines.push(`  ${cc}${c.padEnd(6)}${RESET} ${p}`);
+    }
+    lines.push("", `${DIM}Press any key to dismiss${RESET}`);
+    screen.showOverlay(lines);
+  }
+  updateStatusBar();
+}
+
+function handleCoapCommand(args: string[]) {
+  // args: ["ccx", "coap", subcommand, ...]
+  const sub = (args[2] || "").toLowerCase();
+  const addr = args[3] || "";
+  const path = args[4] || "";
+  const rest = args.slice(5).join(" ");
+
+  if (sub === "scan") {
+    if (!addr || !path) {
+      screen.appendLine(
+        `Usage: ccx coap scan <rloc> <basePath>  (e.g. ccx coap scan 4800 cg/db/ct/c/AA)`,
+      );
+      return;
+    }
+    startCoapScan(addr, path);
+    return;
+  }
+
+  if (["get", "put", "post", "delete", "observe"].includes(sub)) {
+    if (!addr || !path) {
+      screen.appendLine(`Usage: ccx coap ${sub} <addr> <path> [payload_hex]`);
+      return;
+    }
+    // Set up pending response capture
+    coapPending = {
+      method: sub,
+      addr,
+      path,
+      lines: [],
+      startTime: Date.now(),
+    };
+    // Forward the full command to STM32 as-is
+    sendTextCommand(args.join(" "));
+    return;
+  }
+
+  // For probe, trim, led, preset, etc. — just pass through
+  sendTextCommand(args.join(" "));
 }
 
 function handleCommand(line: string) {
@@ -1420,6 +1716,12 @@ function handleCommand(line: string) {
     case "restart":
       sendTextCommand("reboot");
       return;
+  }
+
+  // CoAP first-class handler
+  if (cmd === "ccx" && args[1]?.toLowerCase() === "coap") {
+    handleCoapCommand(args);
+    return;
   }
 
   // Everything else → forward to STM32 shell
@@ -1636,6 +1938,7 @@ async function startup() {
     "cca vive-raise",
     "cca vive-lower",
     "cca vive-pair",
+    "cca hybrid-pair",
     "cca tune",
     "cca log",
     // CCX
@@ -1644,7 +1947,15 @@ async function startup() {
     "ccx level",
     "ccx scene",
     "ccx peers",
-    "ccx coap",
+    "ccx coap get",
+    "ccx coap put",
+    "ccx coap post",
+    "ccx coap observe",
+    "ccx coap scan",
+    "ccx coap probe",
+    "ccx coap trim",
+    "ccx coap led",
+    "ccx coap preset",
     "ccx discover",
     "ccx promisc",
     "ccx log",
