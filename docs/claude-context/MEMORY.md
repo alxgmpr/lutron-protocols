@@ -94,13 +94,14 @@
 ## ESN-QS Firmware — See `memory/esn-firmware-analysis.md`
 - M68K architecture, "QS Link" = CCA radio
 
-## Firmware Updates — See `docs/infrastructure-notes.md`, `memory/firmware-update-infra.md`
-- AES-128-CBC encrypted, RSA-wrapped key
+## Firmware Updates — See `docs/firmware-cdn-re.md`, `memory/firmware-update-infra.md`
+- **Phoenix/lite-heron firmware DECRYPTED** — AES-128-CBC, key `6cba80b2bf3cf2a63be017340f1801d8` from eMMC
+- Vive uses RSA-4096 `pkeyutl -verifyrecover` (512-byte key.enc, primary.pub)
+- Phoenix/lite-heron use AES-128-CBC symmetric (65-byte base64 key.enc + iv.hex)
 - **OTA protocol decoded** — custom CoAP `/fw/` paths, NOT MCUboot SMP — see `memory/ccx-firmware-ota-protocol.md`
 - Firmware is **re-encrypted for OTA** (entropy 7.99 bits/byte) — no plaintext capture possible
 - CoAP Block1 (RFC 7959), 128-byte blocks, unicast to target device
 - Extractor: `tools/extract-fw-blocks.ts`, capture: `/tmp/ccx-fw-capture/`
-- `firmware.tar.enc` uses OpenSSL `Salted__` format; `key.enc` = 48 bytes (unknown wrapping, NOT RSA-4096)
 - **Designer never decrypts** — pushes encrypted package to processor via FTP; processor decrypts
 - RA3 SSH port 22 open but auth rejected (need credentials for plaintext access)
 

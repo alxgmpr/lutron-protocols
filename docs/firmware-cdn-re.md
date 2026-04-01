@@ -315,13 +315,35 @@ The `device-firmware-manifest.json` inside the ZIP maps device classes to `.pff`
 - Plus entries for all CCX device types (dimmers, switches, keypads, sensors, etc.)
 - These `.pff` files are INSIDE `firmware.tar.enc` — need decryption to access
 
-### To Decrypt RA3 Firmware
+### Decrypting RA3/Phoenix Firmware (SOLVED)
 
-Need the 16-byte AES device key from `/etc/ssl/firmwareupgrade/` on the RA3 processor. Options:
-1. **Designer VM** — search project DB (`Project.mdf`) or cached files for device crypto material
-2. **Physical access** — find UART pads on RA3 processor board for root shell
-3. **Brute force** — AES-128 is not brutable, but the key might be derivable from known device info (serial, MAC)
-4. **Older firmware** — the 2020 beta used RSA (512-byte key.enc) but with a different 4096-bit keypair than Vive
+The 16-byte AES device keys were extracted from the Phoenix processor eMMC via UART boot
+(see `docs/claude-context/phoenix-uart-boot.md`). These are hardcoded — shared across all
+Phoenix-based processors (RA3, HWQSX, lite-heron).
+
+| Key | Hex (16 bytes) | Purpose |
+|-----|----------------|---------|
+| Primary | `6cba80b2bf3cf2a63be017340f1801d8` | Firmware decryption (works) |
+| Secondary | `9cd6427d4be4e9711cbbffc4ba338d7d` | Backup (does not decrypt current bundles) |
+
+Verified against both `phoenix/final/26.01.13f000` and `lite-heron/final/26.00.12f000`.
+
+```bash
+# Step 1: Extract key.tar from the lutron_firmware ZIP
+unzip lutron_firmware key.tar && tar xf key.tar
+
+# Step 2: Decrypt the AES-wrapped passphrase
+openssl enc -d -aes-128-cbc -in key.enc -base64 \
+  -K 6cba80b2bf3cf2a63be017340f1801d8 \
+  -iv "$(cat iv.hex)" -out passphrase.bin
+
+# Step 3: Decrypt firmware.tar.enc
+openssl enc -d -aes-128-cbc -md md5 \
+  -pass file:passphrase.bin \
+  -in firmware.tar.enc -out firmware.tar
+
+# Result: POSIX tar containing .deb packages (rootfs, kernel, uboot, spl)
+```
 
 ### Version Evolution
 
