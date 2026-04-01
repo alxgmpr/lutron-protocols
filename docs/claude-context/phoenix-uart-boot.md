@@ -144,6 +144,60 @@ The 3KB ARM assembly program (`phoenix-emmc-read.S`) executes entirely from SRAM
 2. **Signature**: RSA-4096 verification using `primary.pub` or `secondary.pub` on the device
 3. **Signing cert**: Self-signed RSA-2048 X.509 from `firmwaresigning/public.pem`
 
+## Root Shell Access
+
+### Method: inittab Patch (Single-Byte eMMC Write)
+
+The firmware ships with a commented-out UART shell in `/etc/inittab`:
+```
+#::respawn:-/bin/sh
+```
+
+The ARM stub's `P` (patch) command does a read-verify-write-verify cycle on a single eMMC sector. Changing the `#` (0x23) to a newline (0x0A) uncomments the line without changing file size or ext4 metadata:
+```
+\n::respawn:-/bin/sh
+```
+
+BusyBox init reads the empty id field → opens `/dev/console` (UART) → root shell.
+
+### Rooting Procedure
+
+1. **Find inittab physical location** (one-time):
+   - inittab = inode 97791, extent at physical block 406467
+   - Target byte at file offset 741 = LBA 0xD9787, byte offset 0xE5
+
+2. **Boot the ARM stub** (SYSBOOT2 grounded, UART via Pi):
+   ```
+   ssh $PI "python3 ~/emmc-dump.py boot"
+   ```
+
+3. **Patch the byte** (from ARM stub prompt):
+   ```
+   P 000D9787 E5 23 0A
+   ```
+   The stub reads the sector, verifies byte 0xE5 is 0x23, writes 0x0A, re-reads to verify.
+
+   Note: first attempt used 0x20 (space) which failed — BusyBox interpreted the space as TTY device name `/dev/ `. Newline (0x0A) creates an empty line + `::respawn:-/bin/sh` with empty id = `/dev/console`.
+
+4. **Normal boot** — unground SYSBOOT2, connect serial adapter, power cycle. Root shell appears on UART at 115200.
+
+5. **Persist SSH access** from the UART shell (see below).
+
+### SSH Persistence
+
+From the UART root shell, SSH is already running with key-only root login enabled:
+```
+# sshd_config: AllowUsers root ..., PasswordAuthentication no
+# AuthorizedKeysFile .ssh/authorized_keys /var/misc/ssh/authorized_keys
+```
+
+To persist access, add an SSH public key to one of the authorized paths and it survives reboots. The `/var/misc/ssh/authorized_keys` path is likely the intended location since `/var` is persistent across firmware updates.
+
+### Important Notes
+
+- **Firmware updates may overwrite rootfs** — the A/B partition scheme means updates write to the inactive rootfs slot and swap. The inittab patch only modifies one rootfs partition. After an update, the other slot becomes active and the patch is lost. Patch both `rootfs` (partition 14) and `rootfs2` (partition 15) for resilience, or rely on SSH key persistence in `/var/`.
+- **The `#` was originally at file offset 741** — if Lutron changes inittab in a firmware update, the offset will shift. Re-extract and re-locate before patching.
+
 ### DDR Bypass Rationale
 
 The original approach was to build a custom U-Boot SPL to fully boot the AM335x (with DDR, U-Boot shell, Linux). This hit two blockers:

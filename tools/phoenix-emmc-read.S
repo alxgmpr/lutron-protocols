@@ -62,6 +62,7 @@
 .equ CMD7_VAL,      0x071B0000     @ SELECT_CARD: R1b, CRC+idx
 .equ CMD16_VAL,     0x101A0000     @ SET_BLOCKLEN: R1, CRC+idx
 .equ CMD17_VAL,     0x113A0010     @ READ_SINGLE_BLOCK: R1, CRC+idx, data, read
+.equ CMD24_VAL,     0x183A0000     @ WRITE_SINGLE_BLOCK: R1, CRC+idx, data, write (DDIR=0)
 
 .equ CMD1_OCR,      0x40FF8080     @ sector mode, wide voltage
 
@@ -332,6 +333,10 @@ cmd_loop:
     beq do_info_cmd
     cmp r0, #'i'
     beq do_info_cmd
+    cmp r0, #'P'
+    beq do_patch_cmd
+    cmp r0, #'p'
+    beq do_patch_cmd
     cmp r0, #0
     beq cmd_loop          @ empty line, just prompt again
 
@@ -402,6 +407,123 @@ do_info_cmd:
     mov r0, r8
     sub r0, r0, #0x100     @ module base
     bl puthex32
+    bl print_crlf
+    b cmd_loop
+
+@ ---- P SECTOR OFFSET OLD NEW : patch one byte (read-verify-write-verify) ----
+@ Format: P 00013F00 E5 23 20
+@   → reads sector 0x13F00, checks byte at offset 0xE5 == 0x23, writes 0x20, re-reads to verify
+do_patch_cmd:
+
+    @ Parse sector number
+    add r0, r10, #2
+    bl parse_hex
+    mov r4, r0              @ r4 = sector
+
+    @ Parse byte offset within sector
+    add r0, r10, #2
+    bl skip_to_space
+    bl parse_hex
+    mov r5, r0              @ r5 = offset (0-511)
+
+    @ Parse expected old byte
+    mov r0, r10
+    add r0, r0, #2
+    bl skip_to_space
+    bl skip_to_space
+    bl parse_hex
+    mov r6, r0              @ r6 = old byte
+
+    @ Parse new byte
+    mov r0, r10
+    add r0, r0, #2
+    bl skip_to_space
+    bl skip_to_space
+    bl skip_to_space
+    bl parse_hex
+    mov r11, r0             @ r11 = new byte
+
+    @ Print what we're doing
+    ldr r0, =msg_patch_read
+    bl puts
+    mov r0, r4
+    bl puthex32
+    mov r0, #'+'
+    bl uart_putc
+    mov r0, r5
+    bl puthex32
+    bl print_crlf
+
+    @ Step 1: Read the sector
+    mov r0, r4
+    bl read_sector
+    cmp r0, #0
+    bne .Lpatch_read_fail
+
+    @ Step 2: Verify old byte matches
+    ldr r0, =SECT_BUF
+    ldrb r1, [r0, r5]      @ byte at offset
+    cmp r1, r6
+    bne .Lpatch_verify_fail
+
+    @ Step 3: Write new byte
+    ldr r0, =SECT_BUF
+    strb r11, [r0, r5]
+
+    @ Step 4: Write sector back
+    ldr r0, =msg_patch_write
+    bl puts
+    mov r0, r4
+    bl write_sector
+    cmp r0, #0
+    bne .Lpatch_write_fail
+
+    @ Step 5: Re-read and verify
+    ldr r0, =msg_patch_verify
+    bl puts
+    mov r0, r4
+    bl read_sector
+    cmp r0, #0
+    bne .Lpatch_read_fail
+
+    ldr r0, =SECT_BUF
+    ldrb r1, [r0, r5]
+    cmp r1, r11
+    bne .Lpatch_final_fail
+
+    @ Success!
+    ldr r0, =msg_patch_ok
+    bl puts
+    b cmd_loop
+
+.Lpatch_read_fail:
+    ldr r0, =msg_read_err
+    bl puts
+    b cmd_loop
+
+.Lpatch_verify_fail:
+    @ Print what we found vs expected
+    ldr r0, =msg_patch_mismatch
+    bl puts
+    mov r0, r1
+    bl puthex8
+    ldr r0, =msg_patch_expected
+    bl puts
+    mov r0, r6
+    bl puthex8
+    bl print_crlf
+    b cmd_loop
+
+.Lpatch_write_fail:
+    ldr r0, =msg_patch_wfail
+    bl puts
+    pop {r4-r7, pc}
+
+.Lpatch_final_fail:
+    ldr r0, =msg_patch_vfail
+    bl puts
+    mov r0, r1
+    bl puthex8
     bl print_crlf
     b cmd_loop
 
@@ -840,7 +962,105 @@ read_sector:
     .ltorg  @ literal pool #3
 
 @ ========================================================
-@ dump_sector_hex: Print 512 bytes at OCMC_BUF as hex
+@ write_sector: Write one 512-byte sector to eMMC from SECT_BUF
+@ Input: r0 = sector number
+@ Output: r0 = 0 success / -1 error
+@ ========================================================
+write_sector:
+    push {r4-r6, lr}
+    mov r4, r0              @ sector number
+
+    @ Set block size + count
+    ldr r0, =(1 << 16) | 512
+    str r0, [r8, #MMC_BLK]
+
+    @ Clear status
+    mvn r0, #0
+    str r0, [r8, #MMC_STAT]
+
+    @ Wait for data line free
+    ldr r2, =200000
+.Lws_dfree:
+    ldr r0, [r8, #MMC_PSTATE]
+    tst r0, #2              @ DATI
+    beq .Lws_go
+    subs r2, r2, #1
+    bne .Lws_dfree
+.Lws_go:
+
+    @ Send CMD24 (WRITE_SINGLE_BLOCK)
+    str r4, [r8, #MMC_ARG]
+    ldr r0, =CMD24_VAL
+    str r0, [r8, #MMC_CMD]
+
+    @ Wait for CC (command accepted)
+    ldr r2, =5000000
+.Lws_cc:
+    ldr r0, [r8, #MMC_STAT]
+    tst r0, #(1 << 15)     @ ERRI
+    bne .Lws_err
+    tst r0, #1              @ CC
+    bne .Lws_cc_ok
+    subs r2, r2, #1
+    bne .Lws_cc
+    mov r0, #-1
+    pop {r4-r6, pc}
+.Lws_cc_ok:
+
+    @ Wait for BWR (buffer write ready)
+    ldr r2, =5000000
+.Lws_bwr:
+    ldr r0, [r8, #MMC_STAT]
+    tst r0, #(1 << 15)     @ ERRI
+    bne .Lws_err
+    tst r0, #(1 << 4)      @ BWR
+    bne .Lws_bwr_ok
+    subs r2, r2, #1
+    bne .Lws_bwr
+    mov r0, #-1
+    pop {r4-r6, pc}
+.Lws_bwr_ok:
+
+    @ Write 128 words (512 bytes) from SECT_BUF to DATA register
+    ldr r5, =SECT_BUF
+    mov r6, #128
+.Lws_write:
+    ldr r0, [r5], #4
+    str r0, [r8, #MMC_DATA]
+    subs r6, r6, #1
+    bne .Lws_write
+
+    @ Wait for TC (transfer complete)
+    ldr r2, =5000000
+.Lws_tc:
+    ldr r0, [r8, #MMC_STAT]
+    tst r0, #(1 << 15)     @ ERRI
+    bne .Lws_err
+    tst r0, #(1 << 1)      @ TC
+    bne .Lws_tc_ok
+    subs r2, r2, #1
+    bne .Lws_tc
+.Lws_tc_ok:
+
+    @ Clear all status
+    mvn r0, #0
+    str r0, [r8, #MMC_STAT]
+
+    mov r0, #0
+    pop {r4-r6, pc}
+
+.Lws_err:
+    ldr r0, [r8, #MMC_STAT]
+    bl puthex32
+    mvn r0, #0
+    str r0, [r8, #MMC_STAT]
+    mov r0, #-1
+    pop {r4-r6, pc}
+
+    .ltorg  @ literal pool #5 (after write_sector + patch)
+
+@ ========================================================
+@ dump_sector_hex: Print 512 bytes at SECT_BUF as hex
 @ Input: r0 = sector number (for header)
 @ Output: none
 @ ========================================================
@@ -1119,10 +1339,18 @@ msg_found:   .asciz "eMMC found! Initializing...\r\n"
 msg_no_emmc: .asciz "ERROR: No eMMC found on any controller!\r\n"
 msg_emmc_fail: .asciz "ERROR: eMMC card init failed!\r\n"
 msg_ready:   .asciz "READY\r\n"
-msg_help:    .asciz "Commands: R <sector>, D <start> <count>, I (info)\r\n"
+msg_help:    .asciz "R <sec> D <s> <n> P <sec> <off> <old> <new> I\r\n"
 msg_read_err: .asciz "READ ERROR\r\n"
 msg_info_hdr: .asciz "MMC base: "
 msg_crlf:    .asciz "\r\n"
 msg_cmd1_fail: .asciz "CMD1 timeout\r\n"
 msg_mmc2_lcd: .asciz "MMC2-LCD: "
+msg_patch_read: .asciz "PATCH: reading sector "
+msg_patch_write: .asciz "PATCH: writing...\r\n"
+msg_patch_verify: .asciz "PATCH: verifying...\r\n"
+msg_patch_ok: .asciz "PATCH: OK!\r\n"
+msg_patch_mismatch: .asciz "PATCH FAIL: found "
+msg_patch_expected: .asciz " expected "
+msg_patch_wfail: .asciz "PATCH FAIL: write error\r\n"
+msg_patch_vfail: .asciz "PATCH FAIL: verify mismatch, got "
     .align 2
