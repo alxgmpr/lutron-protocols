@@ -121,6 +121,14 @@
 - **All bulbs identical hardware**: BP5758D driver, same 14-point CCT table, curr [28,28,28,48,48]
 - **WiZ project**: `/Volumes/Secondary/wiz` — firmware RE, UDP CLI, MQTT intercept, protocol docs
 
+## Phoenix Processor UART Boot — See `docs/claude-context/phoenix-uart-boot.md`
+- AM335x UART boot via SYSBOOT2 pin grounding — XMODEM loads custom SPL
+- Custom U-Boot SPL (am335x_evm config, modified for Phoenix 26MHz/BBB DDR3)
+- ARM entry stub does WDT, clocks, DPLL (PRCM writes crash from C/Thumb but work from ARM)
+- DDR init is last blocker — EMIF needs L3 CLKSTCTRL from ARM stub
+- Tools: `tools/phoenix-uart-boot.py` (XMODEM), `tools/phoenix-emmc-dump.py` (sector dump)
+- Build: `/tmp/u-boot-2017.01/` (source), `/tmp/phoenix-boot/` (artifacts)
+
 ## Network Topology
 - Designer VM: `ssh alex@192.168.64.4` (key auth, UTM Shared Network/NAT)
   - Mac from VM: `192.168.64.1` (stable gateway IP)
