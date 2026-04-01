@@ -159,7 +159,7 @@ Biome handles both linting and formatting. Config in `biome.json`:
 - Relaxed rules: `noExplicitAny` off, `noNonNullAssertion` off, `useTemplate` off, `useNodejsImportProtocol` off
 - Pre-push hook (`.githooks/pre-push`) runs lint + typecheck — **CI must be green before push**
 - `npx biome check --write cli/ tools/ ccx/ protocol/` — auto-fix formatting
-- `npx tsc -p tsconfig.typecheck.json --noEmit` — type errors
+- `npx tsc --noEmit` — type errors
 
 ## CCX→WiZ Bridge
 

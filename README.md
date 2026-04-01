@@ -1,269 +1,115 @@
 # Lutron Tools
 
-Reverse-engineering toolkit for Lutron lighting systems (RadioRA3, Homeworks QSX, Caseta, Vive). Covers all three Lutron transport layers — RF packet capture and injection, Thread mesh networking, and the LEAP processor API — from a single STM32 platform with host-side TypeScript tooling.
+Reverse-engineering toolkit for Lutron lighting control systems. RF packet capture/injection, Thread mesh networking, LEAP processor API, and CoAP device programming — from a single STM32 hardware platform with TypeScript host tooling.
 
-## Architecture
+Targets RadioRA 3, Homeworks QSX, Caseta, and Vive product families.
+
+## Hardware
 
 ```
-  CC1101 (CCA 433 MHz) ──┐                               ┌── Interactive shell (USART3/ST-LINK VCP)
-                          ├── STM32H723 Nucleo (FreeRTOS) ┤
-  nRF52840 (CCX Thread) ──┘   Ethernet / TCP :9433        └── TCP stream → Bun CLI (cli/nucleo.ts)
+  CC1101 (433 MHz CCA) ──┐                                ┌── UART shell (ST-LINK VCP)
+                          ├── STM32H723 Nucleo (FreeRTOS) ─┤
+  nRF52840 (Thread CCX) ──┘   Ethernet, UDP :9433          └── Stream → CLI (cli/nucleo.ts)
 ```
 
-The STM32H723 Nucleo runs dual radios (CC1101 for CCA, nRF52840 for CCX), Ethernet via lwIP, and FreeRTOS. The host CLI (`cli/nucleo.ts`) connects over TCP for real-time packet streaming, protocol decoding, and command dispatch.
+The Nucleo drives dual radios — a CC1101 for CCA (Clear Connect Type A, 433 MHz FSK) and an nRF52840 NCP for CCX (Clear Connect Type X, Thread/802.15.4). The host CLI connects over UDP for real-time packet display, protocol decoding, and interactive command dispatch.
 
-## Transport Layers
+## Protocol Coverage
 
-| Layer | Frequency | Physical | Encoding | Port/Protocol |
-|-------|-----------|----------|----------|---------------|
-| **CCA** (Clear Connect Type A) | 433 MHz | 2-FSK, CC1101 | N81 line coding, CRC-16 | SPI to STM32 |
-| **CCX** (Clear Connect Type X) | 2.4 GHz | 802.15.4, Thread | CBOR arrays over IPv6/UDP | UDP :9190, nRF52840 NCP |
-| **LEAP** | TCP/IP | TLS 1.2 mutual auth | JSON lines | TCP :8081 on processor |
+| Layer | Transport | What It Does |
+|-------|-----------|-------------|
+| **CCA** | 433 MHz 2-FSK, CC1101 | Legacy RF — dimmer control, pico remotes, pairing, state reports |
+| **CCX** | 802.15.4 Thread, nRF52840 | Sunnata/Darter — multicast level/scene, unicast CoAP programming |
+| **LEAP** | TLS mutual-auth JSON | Processor API — zone/device/area hierarchy, status, configuration |
+| **CoAP** | UDP :5683 over Thread | Direct device communication — firmware metadata, trim, LED, DFU |
 
-## Directory Layout
-
-| Directory | Runtime | Purpose |
-|-----------|---------|---------|
-| `firmware/` | STM32 C/C++ (FreeRTOS, lwIP) | Radio drivers, protocol engine, TCP stream, shell |
-| `cli/nucleo.ts` | Bun | Primary UI — TCP client, interactive shell, packet decoder |
-| `cli/tui/` | Bun | Terminal UI components (line editor, screen, table rendering) |
-| `tools/` | Bun/TypeScript, Python | CLI utilities (see below) |
-| `protocol/` | YAML + generated TS/C | CCA/CCX protocol definitions (single source of truth) |
-| `ccx/` | TypeScript | CCX protocol encoder/decoder/config |
-| `lib/` | TypeScript | Shared libraries (env loader, IEEE 802.15.4, Thread crypto) |
-| `ldproxy/` | Node.js | Designer auth proxy — injects channel strings to unlock all product types |
-| `data/` | — | LEAP dumps, device maps, MITM certs, Designer DB exports |
-| `certs/` | — | Extracted Lutron certificates (Designer, IPL, product certs) |
-| `re/` | — | Reverse engineering artifacts (iOS app frameworks) |
-| `src/` | — | Third-party sources (OpenThread nRF528xx) |
-| `docs/` | — | Protocol documentation, research notes |
-| `captures/` | — | RF capture files (RTL-SDR .bin, session logs) |
-
-## Setup
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) 22+ (primary runtime — full OpenSSL crypto support)
-- [Bun](https://bun.sh) (still used by CLI and some tools; migrating away — see note below)
-- [ARM GCC](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain) (`arm-none-eabi-gcc` for firmware)
-- [OpenOCD](https://openocd.org/) (firmware flashing)
-- [CMake](https://cmake.org/) (firmware build system)
-- Optional: [RTL-SDR](https://www.rtl-sdr.com/) dongle for raw RF captures
-- Optional: [tshark](https://www.wireshark.org/) for CCX packet capture
-
-> **Runtime migration note:** We are incrementally migrating from Bun to Node.js (via `tsx`). Bun is missing critical OpenSSL ciphers like `aes-128-ccm` required for Thread 802.15.4 decryption, and has other reliability issues with Node.js API compatibility. New tools should target Node.js. The CLI and older tools still use Bun for now.
-
-### Install
+## Quick Start
 
 ```bash
-git clone https://github.com/alxgmpr/lutron-tools.git
-cd lutron-tools
-bun install
+git clone https://github.com/alxgmpr/lutron-tools.git && cd lutron-tools
+npm install
+cp .env.example .env  # configure IPs
 
-# Copy and configure secrets
-cp .env.example .env                                          # edit with your IPs/credentials
-cp firmware/src/ccx/thread_config.example.h \
-   firmware/src/ccx/thread_config.h                           # edit with your Thread network params
+# Connect to Nucleo
+npx tsx cli/nucleo.ts
+
+# One-shot commands
+npx tsx tools/nucleo-cmd.ts "ccx coap get rloc:4800 fw/it/md"
+npx tsx tools/nucleo-cmd.ts "cca button 001D94EF on"
+
+# LEAP
+npx tsx tools/leap-dump.ts --save
+npx tsx tools/leap-query.ts /zone/3663/status
 ```
 
-### LEAP Certificates
-
-LEAP tools require mutual TLS certificates for your processor. Place them in the project root:
-
-```
-lutron-ra3-cert.pem    lutron-ra3-key.pem    lutron-ra3-ca.pem       # RA3 / Homeworks
-lutron-caseta-cert.pem lutron-caseta-key.pem lutron-caseta-ca.pem    # Caseta
-```
-
-These can be extracted from the Lutron app or obtained via the LEAP pairing process.
-
-### Build Firmware
+## Firmware
 
 ```bash
 cd firmware
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=arm-toolchain.cmake
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake
 make -C build -j8
+make flash     # OpenOCD + ST-LINK
+make test      # C++ unit tests
 ```
 
-### Flash
+Requires `arm-none-eabi-gcc`, CMake, and OpenOCD.
 
-```bash
-cd firmware
-make flash    # uses OpenOCD + ST-LINK
+## CLI
+
+The interactive TUI (`cli/nucleo.ts`) provides live packet display with protocol decoding, CCA/CCX/CoAP command dispatch, and recording.
+
+```
+ccx coap get rloc:4800 fw/it/md        # CoAP GET with CBOR decode
+ccx coap scan 4800 cg/db/ct/c/AA       # Scan bucket names A-Z
+ccx coap trim rloc:4800 95.0 1.0       # Set dimmer trim
+ccx level 3663 50                       # Multicast level to zone
+cca button 001D94EF on                  # CCA button press
+status                                  # Radio/network status
 ```
 
-## Usage
+## Tools
 
-### CLI — Connect to Nucleo
-
-```bash
-bun cli/nucleo.ts <nucleo-ip>
-```
-
-Interactive shell with live packet display, protocol decoding, and all CCA/CCX commands. Type `help` for the full command list.
-
-### LEAP — Query and Control
-
-```bash
-# Read zone status, set levels, configure presets
-bun run tools/leap-cmd.ts status
-bun run tools/leap-cmd.ts level 75 --fade 5
-bun run tools/leap-cmd.ts config
-
-# Dump full device hierarchy
-bun run tools/leap-dump.ts --save
-
-# Explore all LEAP endpoints
-bun run tools/leap-explore.ts --save
-
-# Watch real-time LEAP events
-bun run tools/leap-event-watch.ts
-
-# LEAP MITM proxy
-bun run tools/leap-mitm.ts
-```
-
-### CCX — Thread Mesh Commands
-
-```bash
-# Send commands to Thread devices
-bun run tools/ccx-send.ts level 50 --zone 3663
-bun run tools/ccx-send.ts on --zone 3663
-
-# Sniff Thread traffic
-bun run tools/ccx-sniffer.ts --live
-
-# CoAP programming (trim, LED config, etc.)
-bun run tools/ccx-coap-send.ts aha --dst <ipv6> --src <ipv6>
-
-# Watch CCX programming traffic
-bun run tools/ccx-program-watch.ts --live
-
-# Diff programming sessions
-bun run tools/ccx-program-diff.ts <before.json> <after.json>
-
-# Analyze captured CCX traffic
-bun run tools/ccx-analyzer.ts <capture.json>
-
-# Decrypt Thread 802.15.4 frames
-bun run tools/thread-decrypt.ts <pcap>
-```
-
-### CCA — RF Capture and Decode
-
-```bash
-# Capture with RTL-SDR
-rtl_sdr -f 433602844 -s 2000000 -g 40 capture.bin
-
-# Decode packets
-bun run tools/rtlsdr-cca-decode.ts --rate 2000000 capture.bin
-
-# Analyze a recorded STM32/Bun CLI session for a one-way transmitter serial
-bun run cca:owt -- captures/cca-sessions/<session>.csv --serial 00c7e498
-
-# Decode QS Link RS-485 traffic
-bun run tools/qslink-decode.ts <capture>
-```
-
-### Designer Tools
-
-```bash
-# MCP server for Designer LocalDB queries
-bun run tools/mcp-designer-db.ts
-
-# IPL protocol client
-bun run tools/ipl-client.ts
-
-# Convert Designer projects between formats
-bun run tools/project-convert.ts
-
-# nRF52840 DFU flashing
-bun run tools/nrf-dfu-flash.ts <firmware.zip>
-```
-
-### NPM Scripts
-
-```bash
-bun run codegen          # Regenerate protocol.ts from YAML definitions
-bun run ccx:sniff        # Sniff Thread traffic
-bun run ccx:analyze      # Analyze CCX captures
-bun run ccx:send         # Send CCX commands
-bun run ccx:coap         # Send CoAP commands
-bun run ccx:watch        # Watch programming traffic (live)
-bun run ccx:diff         # Diff programming sessions
-bun run leap:dump        # Dump LEAP device hierarchy
-bun run lint             # Run Biome linter
-bun run lint:fix         # Auto-fix lint issues
-bun run format           # Format code with Biome
-```
-
-## Protocol Definitions
-
-`protocol/cca.yaml` and `protocol/ccx.yaml` are the single source of truth for packet structure. The codegen tool produces:
-
-- `protocol/generated/typescript/protocol.ts` — TypeScript packet types and field parsers
-- `protocol/generated/c/cca_types.h` — C header with packet format constants
-
-## Key Concepts
-
-**OUTPUT vs DEVICE** is the fundamental architectural split in Lutron:
-- **OUTPUT** = zone/load control with level + fade + delay (CCA format 0x0E, CCX type 0)
-- **DEVICE** = component control like button presses (CCA pico packets, CCX type 1)
-
-**CCA packet lengths**: type byte 0x80–0x9F = 24 bytes, type 0xA0+ = 53 bytes (both include 2-byte CRC).
-
-**Level encoding**: `level16 = percent * 0xFEFF / 100` (shared across CCA and CCX).
-
-**Fade encoding**: quarter-seconds (`byte = seconds * 4`).
-
-## Configuration
-
-All environment-specific values live in `.env` (gitignored):
-
-```bash
-RA3_HOST=10.x.x.x          # RadioRA3 processor IP
-CASETA_HOST=10.x.x.x       # Caseta bridge IP
-NUCLEO_HOST=10.x.x.x       # STM32 Nucleo IP
-DESIGNER_VM_HOST=10.x.x.x  # Designer VM IP
-DESIGNER_VM_USER=user       # Designer VM SSH user
-DESIGNER_VM_PASS=pass       # Designer VM SSH password
-THREAD_CHANNEL=25           # Thread 802.15.4 channel
-THREAD_PANID=0x0000         # Thread PAN ID
-THREAD_XPANID=...           # Thread extended PAN ID (hex)
-THREAD_MASTER_KEY=...       # Thread network master key (hex)
-```
-
-Thread network parameters for the firmware live in `firmware/src/ccx/thread_config.h` (also gitignored). Get both from the LEAP API `/link` endpoint on your processor.
+| Tool | Purpose |
+|------|---------|
+| `cli/nucleo.ts` | Interactive TUI — packet display, commands, CoAP explorer |
+| `tools/nucleo-cmd.ts` | Scriptable one-shot Nucleo commands |
+| `tools/coap-probe.ts` | Scan all CCX devices for CoAP endpoints |
+| `tools/coap-fuzz.ts` | Rapid CoAP path fuzzer |
+| `tools/leap-dump.ts` | Dump LEAP device/zone hierarchy |
+| `tools/leap-query.ts` | One-shot LEAP API query |
+| `tools/leap-cmd.ts` | LEAP zone control (level, on, off, raise, lower) |
+| `tools/ccx-sniffer.ts` | Thread traffic sniffer |
+| `tools/ccx-send.ts` | Send CCX multicast commands |
+| `tools/codegen.ts` | Generate C headers from TS protocol definitions |
+| `tools/thread-decrypt.ts` | Decrypt 802.15.4 frames |
+| `tools/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures |
+| `ldproxy/` | Designer auth proxy — unlocks all product types |
 
 ## Documentation
 
-The `docs/` directory contains detailed protocol research:
+Protocol research and RE findings are in `docs/`:
 
-| Document | Topic |
-|----------|-------|
-| `lutron-rf-overview.md` | High-level RF transport overview |
-| `cca-protocol.md` | CCA packet structure and field layouts |
-| `cca-protocol-notes.md` | CCA protocol research notes (pairing, dimming, config) |
-| `CCX.md` | Thread/802.15.4 protocol deep dive |
-| `ccx-protocol-notes.md` | CCX protocol research notes |
-| `ccx-programming-plane.md` | CCX CoAP programming plane (trim, LED, scenes) |
-| `ccx-device-map.md` | Discovered CCX device map |
-| `qslink-protocol.md` | QS Link RS-485 protocol |
-| `qslink-cca-mapping.md` | QS Link to CCA protocol mapping |
-| `leap-api-exploration.md` | Full LEAP endpoint enumeration |
-| `leap-routes.md` | LEAP REST API routes |
-| `cloud-leap-proxy.md` | Cloud LEAP relay via Lutron IoT |
-| `ipl-protocol.md` | Designer IPL integration protocol |
-| `firmware-update-infra.md` | OTA firmware update infrastructure |
-| `ble-commissioning-re.md` | BLE commissioning reverse engineering |
-| `lutron-pki.md` | Lutron PKI and certificate infrastructure |
-| `dimming-curves.md` | Dimming curve analysis |
-| `ra3-system.md` | RA3 system architecture |
-| `ra3-to-hw-migration.md` | RA3 to Homeworks project migration |
-| `vive-processor-integration.md` | Vive processor integration |
-| `designer-db-enumeration.md` | Designer database schema enumeration |
-| `pd-3pcl-firmware-extraction.md` | PD-3PCL firmware extraction |
+- **`ccx-coap-protocol.md`** — CoAP endpoint map, firmware metadata format, database buckets
+- **`cca-protocol.md`** — CCA packet structure, field layouts, pairing sequences
+- **`CCX.md`** — Thread/802.15.4 protocol, CBOR message types
+- **`leap-api-exploration.md`** — Full LEAP endpoint enumeration
+- **`coproc-firmware-re.md`** — Kinetis/EFR32 coprocessor firmware reverse engineering
+- **`lutron-pki.md`** — Certificate infrastructure and key extraction
+
+## Configuration
+
+Environment values in `.env`:
+
+```bash
+RA3_HOST=10.x.x.x
+CASETA_HOST=10.x.x.x
+NUCLEO_HOST=10.x.x.x
+```
+
+Thread network parameters in `firmware/src/ccx/thread_config.h`. Both are gitignored — get credentials from LEAP API `/link` endpoint.
+
+LEAP tools require mutual TLS certificates (`lutron-{name}-{cert,key,ca}.pem` in project root).
 
 ## License
 
-This project is for research and educational purposes. Not affiliated with Lutron Electronics.
+Research and educational purposes. Not affiliated with Lutron Electronics.

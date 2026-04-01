@@ -13,7 +13,7 @@ fi
 
 # Typecheck
 echo "  Typecheck..."
-npx tsc -p tsconfig.typecheck.json --noEmit 2>&1
+npx tsc --noEmit 2>&1
 if [ $? -ne 0 ]; then
   echo "❌ Typecheck failed. Fix errors before pushing."
   exit 1
