@@ -1,55 +1,56 @@
 #!/usr/bin/env python3
 """
-Phoenix eMMC Sector Dump Tool
+Phoenix eMMC Dump — runs on Raspberry Pi.
 
-Sends a patched SPL via XMODEM that silently initializes hardware,
-then enters an interactive eMMC sector dump mode over UART.
+Boots the emmc-read ARM stub via XMODEM, then reads eMMC sectors
+over UART and saves them to a binary file.
 
 Usage:
-  python3 tools/phoenix-emmc-dump.py [port] [--dump START COUNT OUTPUT]
-  python3 tools/phoenix-emmc-dump.py --interactive
+  python3 emmc-dump.py boot                  # Boot and show output
+  python3 emmc-dump.py read START COUNT      # Read sectors (hex), save to file
+  python3 emmc-dump.py gpt                   # Auto-read and parse GPT
+  python3 emmc-dump.py interactive           # Boot then manual commands
 """
 
 import sys
 import os
 import time
 import struct
-
-VENV = "/tmp/xmodem-venv/lib"
-for d in os.listdir(VENV):
-    sp = os.path.join(VENV, d, "site-packages")
-    if os.path.isdir(sp) and sp not in sys.path:
-        sys.path.insert(0, sp)
+import subprocess
 
 import serial
 import xmodem
 
-SPL_PATH = "/tmp/phoenix-boot/emmc-dump-spl.bin"
+BIN_PATH = os.path.expanduser("~/emmc-read.bin")
+SERIAL_PORT = "/dev/ttyAMA0"
 BAUD = 115200
+GPIO_POWER = 17
 
+def gpio_set(pin, value):
+    """Use pinctrl (Pi 5 compatible, doesn't hold line open)."""
+    level = "dh" if value else "dl"
+    subprocess.run(["pinctrl", "set", str(pin), "op", level],
+                   check=True, capture_output=True)
 
-def wait_for_cccc(ser, timeout=60):
-    print("Waiting for CCCC pattern...", flush=True)
+def power_cycle(off_time=0.5):
+    gpio_set(GPIO_POWER, 1)  # Active-LOW: HIGH = OFF
+    time.sleep(off_time)
+    gpio_set(GPIO_POWER, 0)  # Active-LOW: LOW = ON
+
+def wait_for_cccc(ser, timeout=15):
     buf = b""
     start = time.time()
     while time.time() - start < timeout:
         data = ser.read(ser.in_waiting or 1)
         if data:
             buf += data
-            sys.stdout.buffer.write(data)
-            sys.stdout.buffer.flush()
             if b"CCC" in buf[-10:]:
-                print("\nGot CCCC!", flush=True)
-                time.sleep(0.5)
+                time.sleep(0.3)
                 ser.reset_input_buffer()
                 return True
-    print(f"\nTimeout after {timeout}s", flush=True)
     return False
 
-
 def send_xmodem(ser, filepath):
-    filesize = os.path.getsize(filepath)
-    print(f"Sending {os.path.basename(filepath)} ({filesize} bytes) via XMODEM...", flush=True)
     def getc(size, timeout=1):
         ser.timeout = timeout
         return ser.read(size) or None
@@ -58,225 +59,312 @@ def send_xmodem(ser, filepath):
         return ser.write(data)
     modem = xmodem.XMODEM(getc, putc)
     with open(filepath, "rb") as f:
-        result = modem.send(f, retry=10)
-    if result:
-        print(f"  Sent OK", flush=True)
-    else:
-        print(f"  FAILED", flush=True)
-    return result
-
+        return modem.send(f, retry=10)
 
 def wait_for_ready(ser, timeout=30):
-    """Wait for READY from the eMMC dump shellcode."""
-    print("Waiting for SPL init + READY signal...", flush=True)
+    """Wait for READY or > prompt from ARM code, printing everything we see."""
     buf = b""
     start = time.time()
+    ser.timeout = 0.5
     while time.time() - start < timeout:
         data = ser.read(ser.in_waiting or 1)
         if data:
+            text = data.decode('ascii', errors='replace')
+            print(text, end='', flush=True)
             buf += data
-            sys.stdout.buffer.write(data)
-            sys.stdout.buffer.flush()
-            if b"READY" in buf:
-                print("\n*** eMMC dump ready! ***", flush=True)
-                time.sleep(0.2)
-                ser.reset_input_buffer()
+            if b"READY" in buf or b"> " in buf:
                 return True
-            if b"NO MMC" in buf:
-                print("\n*** MMC not found! ***", flush=True)
+            if b"ERROR: No eMMC" in buf:
                 return False
-    print(f"\nTimeout ({timeout}s). SPL may have hung during init.", flush=True)
-    # Show any partial output
-    if buf:
-        print(f"Received: {buf!r}", flush=True)
     return False
 
+def boot_stub(ser, bin_path):
+    """Full boot sequence: power cycle, XMODEM, wait for READY."""
+    size = os.path.getsize(bin_path)
+    print(f"Binary: {bin_path} ({size} bytes)")
+    print(f"Serial: {SERIAL_PORT} @ {BAUD}")
 
-def read_sectors(ser, start, count):
-    """Send read command and receive sector data."""
-    cmd = f"R {start:08X} {count:04X}\r\n"
-    ser.write(cmd.encode())
+    print("Power cycling...")
+    power_cycle(0.5)
+    time.sleep(0.2)
 
-    sectors = {}
-    current_sector = None
-    current_data = bytearray()
-
-    ser.timeout = 5
-    buf = b""
-
-    while True:
-        line_data = ser.readline()
-        if not line_data:
-            print(f"  Timeout waiting for data", flush=True)
-            break
-
-        line = line_data.decode('ascii', errors='replace').strip()
-
-        if line.startswith("S:"):
-            current_sector = int(line[2:], 16)
-            current_data = bytearray()
-        elif line == "DONE":
-            break
-        elif line and current_sector is not None:
-            # Hex data line
-            try:
-                current_data += bytes.fromhex(line)
-            except ValueError:
-                print(f"  Bad hex line: {line!r}", flush=True)
-                continue
-
-            if len(current_data) >= 512:
-                sectors[current_sector] = bytes(current_data[:512])
-                current_sector = None
-                current_data = bytearray()
-
-    return sectors
-
-
-def dump_sectors(ser, start, count, outfile):
-    """Dump a range of sectors to a file."""
-    print(f"Reading {count} sectors starting at {start:#x}...")
-    total = 0
-    batch = 16  # Read 16 sectors at a time
-
-    with open(outfile, "wb") as f:
-        while total < count:
-            n = min(batch, count - total)
-            sectors = read_sectors(ser, start + total, n)
-            for i in range(n):
-                sec = start + total + i
-                if sec in sectors:
-                    f.write(sectors[sec])
-                else:
-                    print(f"  Missing sector {sec:#x}, writing zeros", flush=True)
-                    f.write(b"\x00" * 512)
-            total += n
-            pct = total * 100 // count
-            print(f"  {total}/{count} sectors ({pct}%)", flush=True)
-
-    print(f"Done. Written to {outfile}")
-
-
-def interactive_mode(ser):
-    """Interactive sector read mode."""
-    print("\n=== Interactive eMMC dump mode ===")
-    print("Commands:")
-    print("  r START COUNT  — read COUNT sectors from START (hex)")
-    print("  gpt            — read GPT header (sectors 0-33)")
-    print("  q              — quit (jump to U-Boot)")
-    print()
-
-    while True:
-        try:
-            cmd = input("emmc> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            break
-
-        if not cmd:
-            continue
-
-        parts = cmd.split()
-
-        if parts[0] == "r" and len(parts) >= 3:
-            start = int(parts[1], 16)
-            count = int(parts[2], 16) if len(parts) > 2 else 1
-            sectors = read_sectors(ser, start, count)
-            for sec_num in sorted(sectors.keys()):
-                data = sectors[sec_num]
-                print(f"\n--- Sector {sec_num:#010x} ---")
-                for i in range(0, 512, 16):
-                    hex_str = data[i:i+16].hex()
-                    ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in data[i:i+16])
-                    print(f"  {i:03x}: {hex_str}  {ascii_str}")
-
-        elif parts[0] == "gpt":
-            print("Reading GPT (sectors 0-33)...")
-            dump_sectors(ser, 0, 34, "/tmp/phoenix-gpt.bin")
-            # Parse GPT
-            with open("/tmp/phoenix-gpt.bin", "rb") as f:
-                gpt_data = f.read()
-            if gpt_data[512:520] == b"EFI PART":
-                print("\nGPT Header found:")
-                num_entries = struct.unpack_from('<I', gpt_data, 512+80)[0]
-                entry_size = struct.unpack_from('<I', gpt_data, 512+84)[0]
-                print(f"  {num_entries} partition entries, {entry_size} bytes each")
-                for i in range(min(num_entries, 20)):
-                    off = 1024 + i * entry_size
-                    type_guid = gpt_data[off:off+16]
-                    if type_guid == b'\x00' * 16:
-                        continue
-                    first_lba = struct.unpack_from('<Q', gpt_data, off+32)[0]
-                    last_lba = struct.unpack_from('<Q', gpt_data, off+40)[0]
-                    name = gpt_data[off+56:off+entry_size].decode('utf-16-le', errors='replace').rstrip('\x00')
-                    size_mb = (last_lba - first_lba + 1) * 512 / 1024 / 1024
-                    print(f"  p{i+1}: {name:20s} LBA {first_lba:>10d}-{last_lba:>10d} ({size_mb:.0f} MB)")
-            else:
-                print("No GPT header found (might use MBR)")
-
-        elif parts[0] == "q":
-            print("Sending quit...")
-            ser.write(b"Q\r\n")
-            break
-
-        else:
-            print(f"Unknown command: {cmd}")
-
-
-def main():
-    port = "/dev/tty.usbserial-4240"
-    args = sys.argv[1:]
-
-    for i, a in enumerate(args):
-        if not a.startswith("-") and "/" in a:
-            port = a
-
-    if not os.path.exists(SPL_PATH):
-        print(f"SPL not found at {SPL_PATH}")
-        print("Build it first with the build script")
-        sys.exit(1)
-
-    print(f"Opening {port} @ {BAUD}")
-    ser = serial.Serial(port, BAUD, timeout=1)
     ser.reset_input_buffer()
 
-    print("Power-cycle Phoenix with SYSBOOT2 (TP701) grounded")
-    print()
+    print("Waiting for CCCC...", end="", flush=True)
+    if not wait_for_cccc(ser, timeout=15):
+        print(" TIMEOUT! Retrying...")
+        power_cycle(1.0)
+        time.sleep(0.2)
+        ser.reset_input_buffer()
+        if not wait_for_cccc(ser, timeout=15):
+            print("No CCCC. Check wiring/SYSBOOT2.")
+            return False
+    print(" OK")
 
-    if not wait_for_cccc(ser):
+    print(f"Sending {size} bytes via XMODEM...", end="", flush=True)
+    if not send_xmodem(ser, bin_path):
+        print(" XMODEM FAILED!")
+        return False
+    print(" OK")
+
+    print("Waiting for ARM code...", flush=True)
+    if not wait_for_ready(ser, timeout=30):
+        print("\nDid not get READY. Check output above.")
+        return False
+
+    print("\neMMC reader is ready!")
+    return True
+
+def send_cmd(ser, cmd):
+    """Send a command string and return all response lines until > prompt."""
+    ser.reset_input_buffer()
+    ser.write((cmd + "\r").encode())
+    time.sleep(0.05)
+
+    lines = []
+    buf = b""
+    start = time.time()
+    ser.timeout = 5
+    while time.time() - start < 30:
+        data = ser.read(ser.in_waiting or 1)
+        if data:
+            buf += data
+            # Check for next prompt
+            if b"> " in buf[-(len(buf)):]:
+                # Split into lines
+                text = buf.decode('ascii', errors='replace')
+                lines = text.strip().split('\n')
+                return lines
+    # Timeout — return what we have
+    text = buf.decode('ascii', errors='replace')
+    return text.strip().split('\n')
+
+def parse_sector_dump(lines):
+    """Parse hex dump lines back into 512 bytes."""
+    data = bytearray()
+    in_sector = False
+    for line in lines:
+        line = line.strip()
+        if line.startswith('S '):
+            in_sector = True
+            continue
+        if line == 'E':
+            in_sector = False
+            continue
+        if in_sector and line:
+            # Parse hex bytes: "XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX XX"
+            parts = line.split()
+            for h in parts:
+                if len(h) == 2:
+                    try:
+                        data.append(int(h, 16))
+                    except ValueError:
+                        pass
+    return bytes(data[:512])
+
+def read_sectors(ser, start, count):
+    """Read a range of sectors, return concatenated bytes."""
+    result = bytearray()
+    for i in range(count):
+        sector = start + i
+        cmd = f"R {sector:08X}"
+        lines = send_cmd(ser, cmd)
+        data = parse_sector_dump(lines)
+        if len(data) != 512:
+            print(f"  Sector {sector:#x}: got {len(data)} bytes (expected 512)")
+            if len(data) == 0:
+                # Print raw response for debug
+                for l in lines[:5]:
+                    print(f"    {l}")
+                result += b'\x00' * 512
+                continue
+            data = data.ljust(512, b'\x00')
+        result += data
+        if (i + 1) % 10 == 0 or i == count - 1:
+            print(f"  {i+1}/{count} sectors read", flush=True)
+    return bytes(result)
+
+def parse_gpt(data):
+    """Parse GPT header and partition entries from raw sector data."""
+    # Sector 0 = protective MBR
+    # Sector 1 = GPT header
+    if len(data) < 1024:
+        print("Not enough data for GPT header")
+        return
+
+    gpt = data[512:1024]
+    sig = gpt[0:8]
+    if sig != b'EFI PART':
+        print(f"No GPT signature (got {sig!r})")
+        # Check MBR
+        mbr = data[0:512]
+        if mbr[510:512] == b'\x55\xAA':
+            print("Valid MBR signature found (0x55AA)")
+            # Print partition table
+            for i in range(4):
+                entry = mbr[446 + i*16 : 446 + (i+1)*16]
+                ptype = entry[4]
+                if ptype != 0:
+                    lba_start = struct.unpack_from('<I', entry, 8)[0]
+                    lba_count = struct.unpack_from('<I', entry, 12)[0]
+                    print(f"  Partition {i}: type=0x{ptype:02X} start={lba_start} count={lba_count} ({lba_count*512/1024/1024:.1f}MB)")
+        else:
+            print(f"No MBR signature either (got {mbr[510:512].hex()})")
+            print(f"First 16 bytes: {data[:16].hex()}")
+        return
+
+    print("GPT Header found!")
+    revision = struct.unpack_from('<I', gpt, 8)[0]
+    header_size = struct.unpack_from('<I', gpt, 12)[0]
+    my_lba = struct.unpack_from('<Q', gpt, 24)[0]
+    alt_lba = struct.unpack_from('<Q', gpt, 32)[0]
+    first_usable = struct.unpack_from('<Q', gpt, 40)[0]
+    last_usable = struct.unpack_from('<Q', gpt, 48)[0]
+    part_entry_lba = struct.unpack_from('<Q', gpt, 72)[0]
+    num_parts = struct.unpack_from('<I', gpt, 80)[0]
+    part_entry_size = struct.unpack_from('<I', gpt, 84)[0]
+
+    print(f"  Revision: {revision:#x}")
+    print(f"  First usable LBA: {first_usable}")
+    print(f"  Last usable LBA: {last_usable}")
+    print(f"  Partition entries at LBA {part_entry_lba}, count={num_parts}, size={part_entry_size}")
+
+    # Parse partition entries (starts at sector 2 typically)
+    pe_offset = part_entry_lba * 512
+    if pe_offset + num_parts * part_entry_size > len(data):
+        need = part_entry_lba + (num_parts * part_entry_size + 511) // 512
+        print(f"  Need sectors 0-{need} for full partition table")
+        num_parts = min(num_parts, (len(data) - pe_offset) // part_entry_size)
+
+    for i in range(num_parts):
+        offset = pe_offset + i * part_entry_size
+        entry = data[offset:offset + part_entry_size]
+        type_guid = entry[0:16]
+        if type_guid == b'\x00' * 16:
+            continue
+        unique_guid = entry[16:32]
+        first_lba = struct.unpack_from('<Q', entry, 32)[0]
+        last_lba = struct.unpack_from('<Q', entry, 40)[0]
+        attrs = struct.unpack_from('<Q', entry, 48)[0]
+        name = entry[56:128].decode('utf-16-le', errors='replace').rstrip('\x00')
+        size_mb = (last_lba - first_lba + 1) * 512 / 1024 / 1024
+        print(f"  Partition {i}: '{name}' LBA {first_lba}-{last_lba} ({size_mb:.1f}MB)")
+
+def cmd_boot(args):
+    bin_path = args[0] if args else BIN_PATH
+    ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
+    try:
+        if not boot_stub(ser, bin_path):
+            return
+        print("\nBooted successfully. Capturing output for 10s...")
+        start = time.time()
+        while time.time() - start < 10:
+            data = ser.read(ser.in_waiting or 1)
+            if data:
+                print(data.decode('ascii', errors='replace'), end='', flush=True)
+    finally:
         ser.close()
-        sys.exit(1)
 
-    if not send_xmodem(ser, SPL_PATH):
+def cmd_read(args):
+    if len(args) < 2:
+        print("Usage: emmc-dump.py read <start_hex> <count>")
+        return
+    start_sector = int(args[0], 16)
+    count = int(args[1])
+    bin_path = args[2] if len(args) > 2 else BIN_PATH
+    outfile = f"emmc-{start_sector:08x}-{count}.bin"
+
+    ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
+    try:
+        if not boot_stub(ser, bin_path):
+            return
+        time.sleep(0.5)
+        ser.reset_input_buffer()
+
+        print(f"\nReading {count} sectors from {start_sector:#x}...")
+        data = read_sectors(ser, start_sector, count)
+        with open(outfile, 'wb') as f:
+            f.write(data)
+        print(f"Saved {len(data)} bytes to {outfile}")
+    finally:
         ser.close()
-        sys.exit(1)
 
-    if not wait_for_ready(ser):
-        print("\nDropping to raw interactive console (Ctrl+C to exit)")
-        import select, tty, termios
-        old = termios.tcgetattr(sys.stdin)
-        try:
-            tty.setraw(sys.stdin)
-            ser.timeout = 0.1
-            while True:
-                data = ser.read(256)
+def cmd_gpt(args):
+    bin_path = args[0] if args else BIN_PATH
+    ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
+    try:
+        if not boot_stub(ser, bin_path):
+            return
+        time.sleep(0.5)
+        ser.reset_input_buffer()
+
+        # Read first 34 sectors (GPT header + partition entries)
+        print("\nReading GPT (sectors 0-33)...")
+        data = read_sectors(ser, 0, 34)
+        with open("emmc-gpt.bin", 'wb') as f:
+            f.write(data)
+        print(f"Saved {len(data)} bytes to emmc-gpt.bin")
+
+        parse_gpt(data)
+    finally:
+        ser.close()
+
+def cmd_interactive(args):
+    bin_path = args[0] if args else BIN_PATH
+    ser = serial.Serial(SERIAL_PORT, BAUD, timeout=1)
+    try:
+        if not boot_stub(ser, bin_path):
+            return
+
+        print("\nInteractive mode. Type commands (R <hex>, D <start> <count>, I, q to quit)")
+        time.sleep(0.5)
+        ser.reset_input_buffer()
+
+        while True:
+            try:
+                cmd = input("emmc> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+            if cmd.lower() in ('q', 'quit', 'exit'):
+                break
+            if not cmd:
+                continue
+
+            lines = send_cmd(ser, cmd)
+            for line in lines:
+                print(line)
+
+            # If it was a read command, try to parse and show hex
+            if cmd.upper().startswith('R '):
+                data = parse_sector_dump(lines)
                 if data:
-                    sys.stdout.buffer.write(data)
-                    sys.stdout.buffer.flush()
-                if select.select([sys.stdin], [], [], 0)[0]:
-                    ch = sys.stdin.buffer.read(1)
-                    if ch == b"\x03":
-                        break
-                    ser.write(ch)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old)
+                    print(f"  ({len(data)} bytes parsed)")
+    finally:
         ser.close()
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: emmc-dump.py <boot|read|gpt|interactive> [args...]")
+        print("  boot                    - Boot stub, show output")
+        print("  read <start_hex> <cnt>  - Read sector range, save to file")
+        print("  gpt                     - Read and parse GPT partition table")
+        print("  interactive             - Boot then manual commands")
         sys.exit(1)
 
-    interactive_mode(ser)
-    ser.close()
+    mode = sys.argv[1]
+    args = sys.argv[2:]
 
+    if mode == 'boot':
+        cmd_boot(args)
+    elif mode == 'read':
+        cmd_read(args)
+    elif mode == 'gpt':
+        cmd_gpt(args)
+    elif mode in ('interactive', 'i'):
+        cmd_interactive(args)
+    else:
+        print(f"Unknown mode: {mode}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
