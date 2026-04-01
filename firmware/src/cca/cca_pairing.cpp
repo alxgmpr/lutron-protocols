@@ -914,6 +914,167 @@ static void exec_announce(uint32_t serial, uint32_t device_class,
 }
 
 /* -----------------------------------------------------------------------
+ * Hybrid pairing — interleaved B9 Vive beacons + B0 spoofed announces.
+ *
+ * B9 beacons keep the PowPak in pairing mode (it only responds to Vive
+ * beacons, not bridge 0x91-0x93). B0 announces make the RA3 processor
+ * think a compatible device appeared. The RA3 processor handles all
+ * the actual programming — we're just the beacon/announce proxy.
+ *
+ * Usage: put RA3 into pairing mode via the app, then run this command.
+ * The PowPak must also be in pairing mode (hold button / power cycle).
+ *
+ * Loop: B9 burst (3 pkts) → B0 burst (3 pkts) → RX window → repeat
+ * ----------------------------------------------------------------------- */
+static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
+                              uint16_t subnet, uint8_t zone_byte, uint8_t duration_sec)
+{
+    if (duration_sec == 0) duration_sec = 60;
+
+    /* device_id for B0 announce: use bridge_id as placeholder until B8 captured */
+    uint32_t announce_serial = 0;
+    bool     have_serial = false;
+
+    printf("[cca] CMD hybrid_pair bridge=%08X class=%08X subnet=%04X dur=%us\r\n",
+           (unsigned)bridge_id, (unsigned)device_class_32, subnet, duration_sec);
+    printf("[cca] Interleaved B9 beacon + B0 announce loop\r\n");
+    printf("[cca] Put RA3 into pairing mode, then power-cycle the PowPak\r\n");
+
+    vive_device_detected = false;
+    vive_detected_device_id = 0;
+
+    uint8_t  pkt[51];
+    uint8_t  b9_seq = 0x01;
+    uint8_t  b0_seq = 0x00;
+    bool     b0_first = true;
+    uint32_t start = HAL_GetTick();
+
+    while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
+        cc1101_stop_rx();
+
+        /* ---- TX: B9 Vive beacon burst (3 packets) ---- */
+        for (int b = 0; b < 3; b++) {
+            memset(pkt, 0x00, sizeof(pkt));
+            pkt[0] = 0xB9;
+            pkt[1] = b9_seq;
+            put_be32(pkt + 2, bridge_id);
+            pkt[6] = QS_PROTO_RADIO_TX;
+            pkt[7] = QS_FMT_LED;    /* 0x11 — Vive pairing beacon */
+            pkt[8] = 0x00;
+            pkt[9] = QS_ADDR_BROADCAST;
+            pkt[10] = QS_ADDR_BROADCAST;
+            pkt[11] = QS_ADDR_BROADCAST;
+            pkt[12] = QS_ADDR_BROADCAST;
+            pkt[13] = QS_ADDR_BROADCAST;
+            pkt[14] = 0x60;
+            pkt[15] = 0x00;
+            put_be32(pkt + 16, bridge_id);
+            pkt[20] = 0xFF;
+            pkt[21] = 0xFF;
+            pkt[22] = 0xFF;
+            pkt[23] = 0xFF;
+            pkt[24] = 0x3C; /* timer: active */
+            transmit_one(pkt, 51);
+
+            b9_seq += 8;
+            if (b9_seq >= 0x48) b9_seq = 0x01;
+            vTaskDelay(pdMS_TO_TICKS(75));
+        }
+
+        /* ---- TX: B0 spoofed announce burst (3 packets) ---- */
+        if (have_serial) {
+            for (int a = 0; a < 3; a++) {
+                memset(pkt, 0xCC, sizeof(pkt));
+                pkt[0] = 0xB0;
+                pkt[1] = b0_seq;
+                pkt[2] = b0_first ? 0xA0 : 0xA1;
+                pkt[3] = (subnet >> 8) & 0xFF;
+                pkt[4] = subnet & 0xFF;
+                pkt[5] = 0x7F;
+                pkt[6] = QS_PROTO_RADIO_TX;
+                pkt[7] = 0x13;
+                pkt[8] = 0x00;
+                pkt[9]  = 0xFF;
+                pkt[10] = 0xFF;
+                pkt[11] = 0xFF;
+                pkt[12] = 0xFF;
+                pkt[13] = 0xFF;
+                pkt[14] = 0x08;
+                pkt[15] = 0x05;
+                put_be32(pkt + 16, announce_serial);
+                put_be32(pkt + 20, device_class_32);
+                pkt[24] = 0xFF;
+                pkt[25] = 0x00;
+                pkt[26] = 0x00;
+                /* [27-50] already 0xCC */
+                transmit_one(pkt, 51);
+
+                b0_first = false;
+                b0_seq = (b0_seq + 6) & 0xFF;
+                if (b0_seq >= 0x48) b0_seq = 0x01;
+                vTaskDelay(pdMS_TO_TICKS(75));
+            }
+        }
+
+        /* ---- RX: listen for B8 from PowPak (~2 seconds) ---- */
+        cca_set_rx_hook(vive_rx_hook);
+        cc1101_start_rx();
+
+        for (int poll = 0; poll < 200; poll++) {
+            cc1101_check_rx();
+            if (vive_device_detected && !have_serial) {
+                announce_serial = vive_detected_device_id;
+                have_serial = true;
+                printf("[cca] Hybrid pair: PowPak serial=%08X — now announcing\r\n",
+                       (unsigned)announce_serial);
+                vive_device_detected = false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+        cca_set_rx_hook(NULL);
+    }
+
+    /* ---- Stop beacon ---- */
+    cc1101_stop_rx();
+    for (int b = 0; b < 3; b++) {
+        memset(pkt, 0x00, sizeof(pkt));
+        pkt[0] = 0xB9;
+        pkt[1] = b9_seq;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_LED;
+        pkt[8] = 0x00;
+        pkt[9] = QS_ADDR_BROADCAST;
+        pkt[10] = QS_ADDR_BROADCAST;
+        pkt[11] = QS_ADDR_BROADCAST;
+        pkt[12] = QS_ADDR_BROADCAST;
+        pkt[13] = QS_ADDR_BROADCAST;
+        pkt[14] = 0x60;
+        pkt[15] = 0x00;
+        put_be32(pkt + 16, bridge_id);
+        pkt[20] = 0xFF;
+        pkt[21] = 0xFF;
+        pkt[22] = 0xFF;
+        pkt[23] = 0xFF;
+        pkt[24] = 0x00; /* timer: STOP */
+        transmit_one(pkt, 51);
+
+        b9_seq += 8;
+        if (b9_seq >= 0x48) b9_seq = 0x01;
+        vTaskDelay(pdMS_TO_TICKS(90));
+    }
+
+    cc1101_start_rx();
+
+    if (have_serial) {
+        printf("[cca] CMD hybrid_pair complete (serial=%08X)\r\n", (unsigned)announce_serial);
+    } else {
+        printf("[cca] CMD hybrid_pair complete (no PowPak detected)\r\n");
+    }
+}
+
+/* -----------------------------------------------------------------------
  * Public dispatcher — called from cca_cmd_execute()
  * ----------------------------------------------------------------------- */
 void cca_pairing_execute(const CcaCmdItem* item)
@@ -933,6 +1094,13 @@ void cca_pairing_execute(const CcaCmdItem* item)
                       item->target_id,   /* device class packed as uint32 */
                       (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
                       item->duration_sec);
+        break;
+    case CCA_CMD_HYBRID_PAIR:
+        exec_hybrid_pair(item->device_id,
+                         item->target_id,   /* device class for B0 announce */
+                         (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
+                         item->zone_byte,
+                         item->duration_sec);
         break;
     default:
         printf("[cca] Unknown pairing command: 0x%02X\r\n", item->cmd);

