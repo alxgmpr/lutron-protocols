@@ -467,7 +467,7 @@ export async function fetchLeapData(
   devices: DeviceInfo[];
   presets: PresetMapping[];
   link: LinkInfo;
-  leapVersion: number;
+  leapVersion: string;
   productType: string;
 }> {
   // Fetch server info

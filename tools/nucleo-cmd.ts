@@ -128,7 +128,7 @@ sock.bind(0, () => {
 
     if (cmds.length === 0) {
       console.error(
-        "Usage: npx tsx tools/nucleo-cmd.ts [--wait N] [--host IP] <command> [command...]"
+        "Usage: npx tsx tools/nucleo-cmd.ts [--wait N] [--host IP] <command> [command...]",
       );
       process.exit(1);
     }

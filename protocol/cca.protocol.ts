@@ -1951,13 +1951,14 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "dimmer",
     models: ["HQRT-G25LW"],
   },
-  // NOTE: DB has 0x043D0101 for both this and HWQS GrafikT Switch — likely DB error
+  // NOTE: DB has 0x043D0101 for both this and HWQS GrafikT Switch — likely DB error.
+  // Keeping the dimmer entry here; switch entry below is commented out.
   0x043d0101: {
     id: 0x043d0101,
-    name: "RA2 Grafik T ELV Dimmer",
+    name: "RA2 Grafik T ELV Dimmer / HWQS GrafikT Switch",
     ccaClass: 0x04,
     category: "dimmer",
-    models: ["RRT-G5NEW"],
+    models: ["RRT-G5NEW", "HQRT-G5ANSW"],
   },
   0x043e0101: {
     id: 0x043e0101,
@@ -2087,13 +2088,7 @@ export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
     category: "switch",
     models: ["RRT-G5ANSW"],
   },
-  0x043d0101: {
-    id: 0x043d0101,
-    name: "HWQS GrafikT Switch",
-    ccaClass: 0x05,
-    category: "switch",
-    models: ["HQRT-G5ANSW"],
-  },
+  // 0x043d0101 duplicate — merged into RA2 Grafik T ELV Dimmer entry above
   0x044e0101: {
     id: 0x044e0101,
     name: "RA2 InLineSwitch UK",

@@ -13,7 +13,9 @@ const level = Number(args[1] ?? 0);
 const fadeSec = Number(args[2] ?? 1);
 
 if (!zoneId) {
-  console.error("Usage: npx tsx tools/leap-level.ts <zone_id> <level%> [fade_s]");
+  console.error(
+    "Usage: npx tsx tools/leap-level.ts <zone_id> <level%> [fade_s]",
+  );
   process.exit(1);
 }
 

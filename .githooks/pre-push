@@ -1,0 +1,22 @@
+#!/bin/bash
+# Pre-push hook: run lint + typecheck before allowing push
+
+echo "Running CI checks before push..."
+
+# Lint
+echo "  Lint..."
+npx biome check cli/ tools/ ccx/ protocol/ 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Lint failed. Fix errors before pushing."
+  exit 1
+fi
+
+# Typecheck
+echo "  Typecheck..."
+npx tsc -p tsconfig.typecheck.json --noEmit 2>&1
+if [ $? -ne 0 ]; then
+  echo "❌ Typecheck failed. Fix errors before pushing."
+  exit 1
+fi
+
+echo "✅ All checks passed."
