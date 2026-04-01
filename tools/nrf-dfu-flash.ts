@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * nRF52840 DFU Flasher — upload firmware via STM32 stream protocol.

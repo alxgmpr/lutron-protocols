@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * CCX Command Sender — send CBOR-encoded commands to Lutron Thread devices

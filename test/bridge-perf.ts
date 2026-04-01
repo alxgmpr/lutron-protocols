@@ -5,10 +5,15 @@
  */
 
 import { createSocket } from "dgram";
-import { BridgeCore } from "../lib/bridge-core";
 import type { CCXPacket } from "../ccx/types";
+import { BridgeCore } from "../lib/bridge-core";
 
-function makeLevelControlPacket(zoneId: number, level: number, fade: number, seq: number): CCXPacket {
+function makeLevelControlPacket(
+  zoneId: number,
+  level: number,
+  fade: number,
+  seq: number,
+): CCXPacket {
   const levelRaw = Math.round((level * 0xfeff) / 100);
   const inner: Record<number, unknown> = { 0: levelRaw, 3: fade };
   return {
@@ -70,17 +75,30 @@ async function main() {
   // Create bridge with a real pairing (but fake IP)
   const bridge = new BridgeCore({
     pairings: [
-      { name: "Test Zone A", zoneId: 3978, wizIps: ["127.0.0.1"], wizPort: 19999 },
-      { name: "Test Zone B", zoneId: 8238, wizIps: ["127.0.0.1"], wizPort: 19999 },
+      {
+        name: "Test Zone A",
+        zoneId: 3978,
+        wizIps: ["127.0.0.1"],
+        wizPort: 19999,
+      },
+      {
+        name: "Test Zone B",
+        zoneId: 8238,
+        wizIps: ["127.0.0.1"],
+        wizPort: 19999,
+      },
     ],
     presetZones: new Map([
-      [4163, {
-        name: "On [Hallway Table]",
-        zones: {
-          "3978": { level: 100, fade: 1 },
-          "8238": { level: 100, fade: 1 },
+      [
+        4163,
+        {
+          name: "On [Hallway Table]",
+          zones: {
+            "3978": { level: 100, fade: 1 },
+            "8238": { level: 100, fade: 1 },
+          },
         },
-      }],
+      ],
     ]),
     watchedZones: new Set([3978, 8238]),
   });
@@ -118,7 +136,9 @@ async function main() {
     console.log(`  dispatch() time:     ${dispatchTime.toFixed(2)}ms`);
     console.log(`  UDP send count:      ${sendTimes.length}`);
     if (sendTimes.length > 0) {
-      console.log(`  dispatch→UDP delay:  ${(sendTimes[0] - (t0 + dispatchTime - dispatchTime)).toFixed(2)}ms`);
+      console.log(
+        `  dispatch→UDP delay:  ${(sendTimes[0] - (t0 + dispatchTime - dispatchTime)).toFixed(2)}ms`,
+      );
       console.log(`  total (call→UDP):    ${(sendTimes[0] - t0).toFixed(2)}ms`);
     }
     console.log("");
@@ -138,10 +158,16 @@ async function main() {
     console.log(`  dispatch() time:     ${dispatchTime.toFixed(2)}ms`);
     console.log(`  UDP send count:      ${sendTimes.length}`);
     if (sendTimes.length > 0) {
-      console.log(`  first UDP at:        +${(sendTimes[0] - t0).toFixed(2)}ms`);
+      console.log(
+        `  first UDP at:        +${(sendTimes[0] - t0).toFixed(2)}ms`,
+      );
       if (sendTimes.length > 1) {
-        console.log(`  last UDP at:         +${(sendTimes[sendTimes.length - 1] - t0).toFixed(2)}ms`);
-        console.log(`  inter-zone gap:      ${(sendTimes[1] - sendTimes[0]).toFixed(2)}ms`);
+        console.log(
+          `  last UDP at:         +${(sendTimes[sendTimes.length - 1] - t0).toFixed(2)}ms`,
+        );
+        console.log(
+          `  inter-zone gap:      ${(sendTimes[1] - sendTimes[0]).toFixed(2)}ms`,
+        );
       }
     }
     console.log("");
@@ -162,8 +188,12 @@ async function main() {
     console.log(`  dispatch() time:     ${dispatchTime.toFixed(2)}ms`);
     console.log(`  UDP send count:      ${sendTimes.length}`);
     if (sendTimes.length > 0) {
-      console.log(`  first UDP at:        +${(sendTimes[0] - t0).toFixed(2)}ms`);
-      console.log(`  last UDP at:         +${(sendTimes[sendTimes.length - 1] - t0).toFixed(2)}ms`);
+      console.log(
+        `  first UDP at:        +${(sendTimes[0] - t0).toFixed(2)}ms`,
+      );
+      console.log(
+        `  last UDP at:         +${(sendTimes[sendTimes.length - 1] - t0).toFixed(2)}ms`,
+      );
       const intervals = sendTimes.slice(1).map((t, i) => t - sendTimes[i]);
       if (intervals.length > 0) {
         const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length;

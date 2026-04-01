@@ -10,10 +10,13 @@
  */
 
 import { readdirSync, readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 // Load presets from LEAP dump files
-const dataDir = join(import.meta.dirname ?? __dirname, "../data");
+const dataDir = join(__dir, "../data");
 const presets: Record<string, { name: string; role: string; device: string }> =
   {};
 for (const file of readdirSync(dataDir).filter(

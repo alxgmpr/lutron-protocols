@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * MCP Server: Lutron Designer LocalDB
@@ -11,8 +11,10 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { existsSync } from "fs";
-import { basename, resolve } from "path";
+import { execFileSync } from "child_process";
+import { existsSync, readFileSync } from "fs";
+import { basename, dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 import { z } from "zod";
 
 // ── Config ──────────────────────────────────────────────────────────
@@ -28,7 +30,8 @@ const VM_USER = process.env.DESIGNER_VM_USER ?? DESIGNER_VM_USER;
 const VM_PASS = process.env.DESIGNER_VM_PASS ?? DESIGNER_VM_PASS;
 const HTTP_BASE = `http://${VM_HOST}:9999`;
 const DEFAULT_TIMEOUT = 30_000;
-const SQL_DIR = resolve(import.meta.dir, "sql");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const SQL_DIR = resolve(__dir, "sql");
 
 // ── HTTP API (primary) ──────────────────────────────────────────────
 
@@ -89,42 +92,40 @@ async function execPowerShell(
   timeout = DEFAULT_TIMEOUT,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const encoded = encodePowerShell(script);
-  const proc = Bun.spawn(
-    [
+  try {
+    const stdout = execFileSync(
       "/opt/homebrew/bin/sshpass",
-      "-p",
-      VM_PASS,
-      "ssh",
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "ConnectTimeout=10",
-      "-o",
-      "PreferredAuthentications=password",
-      "-o",
-      "LogLevel=ERROR",
-      `${VM_USER}@${VM_HOST}`,
-      "powershell",
-      "-EncodedCommand",
-      encoded,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-
-  const timer = setTimeout(() => proc.kill(), timeout);
-
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
-  clearTimeout(timer);
-
-  return {
-    stdout: stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
-    stderr: stderr.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
-    exitCode,
-  };
+      [
+        "-p",
+        VM_PASS,
+        "ssh",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "PreferredAuthentications=password",
+        "-o",
+        "LogLevel=ERROR",
+        `${VM_USER}@${VM_HOST}`,
+        "powershell",
+        "-EncodedCommand",
+        encoded,
+      ],
+      { timeout, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
+    );
+    return {
+      stdout: stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      stderr: "",
+      exitCode: 0,
+    };
+  } catch (err: any) {
+    return {
+      stdout: (err.stdout ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      stderr: (err.stderr ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      exitCode: err.status ?? 1,
+    };
+  }
 }
 
 // ── Pipe discovery & caching (SSH fallback) ─────────────────────────
@@ -270,14 +271,14 @@ async function runSQLFile(
 ): Promise<string> {
   // Try HTTP API first
   try {
-    const fileContent = await Bun.file(filePath).text();
+    const fileContent = readFileSync(filePath, "utf8");
     return await httpQuery("/query", fileContent, timeout);
   } catch {
     // Fall through to SSH
   }
 
   const { pipe, database } = await discover();
-  const fileContent = await Bun.file(filePath).text();
+  const fileContent = readFileSync(filePath, "utf8");
 
   const script = `
 $ErrorActionPreference = "Continue"

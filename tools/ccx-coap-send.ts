@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * CCX CoAP Sender - send dynamic CoAP programming packets on Thread

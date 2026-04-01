@@ -12,16 +12,12 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { BodyKey, CCXMessageType, Level } from "./constants";
 
-// import.meta.dir is Bun-only; fall back for Node/tsx
-const metaDir = (import.meta as unknown as Record<string, unknown>).dir as
-  | string
-  | undefined;
-const SEQ_FILE = metaDir
-  ? join(metaDir, "..", ".ccx-seq")
-  : join(process.cwd(), ".ccx-seq");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const SEQ_FILE = join(__dir, "..", ".ccx-seq");
 
 // --- Minimal CBOR encoder for integer-keyed maps ---
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * CCX Device Map — build a unified device inventory from Designer DB + LEAP + manual map
@@ -15,7 +15,10 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
+
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -109,7 +112,7 @@ interface DesignerDevice {
 
 async function loadDesignerData(): Promise<DesignerDevice[]> {
   // Try loading from cached file first
-  const cacheFile = join(import.meta.dir, "../data/designer-ccx-devices.json");
+  const cacheFile = join(__dir, "../data/designer-ccx-devices.json");
   if (existsSync(cacheFile)) {
     return JSON.parse(readFileSync(cacheFile, "utf-8"));
   }
@@ -151,14 +154,14 @@ interface LeapData {
 }
 
 function loadLeapData(): LeapData {
-  const dataDir = join(import.meta.dir, "../data");
+  const dataDir = join(__dir, "../data");
   const merged: LeapData = { serials: {}, zones: {}, devices: {} };
 
   if (!existsSync(dataDir)) return merged;
 
   const { readdirSync: readdir } = require("fs");
   const files = readdir(dataDir)
-    .filter((f) => f.startsWith("leap-") && f.endsWith(".json"))
+    .filter((f: string) => f.startsWith("leap-") && f.endsWith(".json"))
     .sort();
 
   for (const file of files) {
@@ -187,7 +190,7 @@ interface ManualEntry {
 
 function loadManualMap(): ManualEntry[] {
   // Parse from docs/ccx-device-map.md (the markdown table)
-  const mdFile = join(import.meta.dir, "../docs/ccx-device-map.md");
+  const mdFile = join(__dir, "../docs/ccx-device-map.md");
   if (!existsSync(mdFile)) return [];
 
   const content = readFileSync(mdFile, "utf-8");
@@ -215,7 +218,7 @@ function loadManualMap(): ManualEntry[] {
 // ---------------------------------------------------------------------------
 
 function loadSavedMap(): DeviceMap | null {
-  const file = join(import.meta.dir, "../data/ccx-device-map.json");
+  const file = join(__dir, "../data/ccx-device-map.json");
   if (!existsSync(file)) return null;
   try {
     return JSON.parse(readFileSync(file, "utf-8"));
@@ -442,7 +445,7 @@ const deviceMap = buildDeviceMap(designerDevices, leap, manualMap, savedMap);
 displayDeviceMap(deviceMap);
 
 if (doSave) {
-  const outFile = join(import.meta.dir, "../data/ccx-device-map.json");
+  const outFile = join(__dir, "../data/ccx-device-map.json");
   writeFileSync(outFile, JSON.stringify(deviceMap, null, 2) + "\n");
   console.log(`Saved to ${outFile}`);
 }

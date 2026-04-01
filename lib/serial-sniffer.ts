@@ -14,9 +14,9 @@
  *   await sniffer.start();
  */
 
+import { ReadlineParser } from "@serialport/parser-readline";
 import { EventEmitter } from "events";
 import { SerialPort } from "serialport";
-import { ReadlineParser } from "@serialport/parser-readline";
 
 export interface SerialSnifferOptions {
   /** Serial port path (e.g. /dev/ttyACM0, /dev/cu.usbmodem201401) */
@@ -44,7 +44,6 @@ const WATCHDOG_TIMEOUT_MS = 30_000;
 
 export class SerialSniffer extends EventEmitter {
   private port: SerialPort | null = null;
-  private parser: ReadlineParser | null = null;
   private opts: Required<SerialSnifferOptions>;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
@@ -77,18 +76,15 @@ export class SerialSniffer extends EventEmitter {
       this.port.close();
     }
     this.port = null;
-    this.parser = null;
   }
 
   private async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const port = new SerialPort(
-        {
-          path: this.opts.port,
-          baudRate: 115200,
-          autoOpen: false,
-        },
-      );
+      const port = new SerialPort({
+        path: this.opts.port,
+        baudRate: 115200,
+        autoOpen: false,
+      });
 
       const parser = port.pipe(new ReadlineParser({ delimiter: "\n" }));
 
@@ -123,7 +119,6 @@ export class SerialSniffer extends EventEmitter {
         }
 
         this.port = port;
-        this.parser = parser;
         this.initSniffer(resolve);
       });
     });
@@ -182,7 +177,9 @@ export class SerialSniffer extends EventEmitter {
   private handleLine(line: string): void {
     // Format: "\x1b[Jreceived: <hex> power: <rssi> lqi: <lqi> time: <ts>"
     // Strip ANSI escape sequences and \r before matching
-    const clean = line.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "").replace(/\r/g, "");
+    const clean = line
+      .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "")
+      .replace(/\r/g, "");
     const match = clean.match(/received:\s+([0-9a-fA-F]+)\s+power:/);
     if (!match) return;
 
@@ -209,7 +206,6 @@ export class SerialSniffer extends EventEmitter {
           this.port.close();
         }
         this.port = null;
-        this.parser = null;
         await this.connect();
       } catch {
         // connect() handles its own retry via autoReconnect
@@ -238,7 +234,9 @@ export function detectSnifferPort(): string {
 
   try {
     const entries = readdirSync("/dev")
-      .filter((e: string) => e.startsWith("cu.usbmodem") || e.startsWith("ttyACM"))
+      .filter(
+        (e: string) => e.startsWith("cu.usbmodem") || e.startsWith("ttyACM"),
+      )
       .sort();
     if (entries.length > 0) return `/dev/${entries[0]}`;
   } catch {}

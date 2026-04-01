@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * IPL (Integration Protocol Lutron) client for RA3 processors.
@@ -18,8 +18,9 @@
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { connect, type TLSSocket } from "tls";
+import { fileURLToPath } from "url";
 import { inflateSync } from "zlib";
 
 const args = process.argv.slice(2);
@@ -33,11 +34,13 @@ function hasFlag(name: string): boolean {
 
 import { RA3_HOST } from "../lib/env";
 
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+
 const HOST = getArg("--host") ?? RA3_HOST;
 const PORT = Number.parseInt(getArg("--port") ?? "8902", 10);
 const SAVE = hasFlag("--save");
 const QUIET = hasFlag("--quiet");
-const CERT_DIR = join(import.meta.dir, "..", "certs", "designer");
+const CERT_DIR = join(__dir, "..", "certs", "designer");
 
 // Load certs
 const clientCert = readFileSync(join(CERT_DIR, "ipl_client_cert.pem"));
@@ -276,7 +279,7 @@ const socket: TLSSocket = connect(
   },
 );
 
-let remainder = Buffer.alloc(0);
+let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
 socket.on("data", (chunk: Buffer) => {
   if (SAVE) rawChunks.push(Buffer.from(chunk));

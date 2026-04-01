@@ -100,8 +100,8 @@ export class FramePipeline {
         eui64,
       });
 
-    let plaintext: Buffer | null = null;
-    let matchedEui64 = Buffer.alloc(8);
+    let plaintext: Buffer<ArrayBufferLike> | null = null;
+    let matchedEui64: Buffer<ArrayBufferLike> = Buffer.alloc(8);
 
     // Try source address if it's an extended EUI-64 in the frame
     // (reverse from LE frame order to BE canonical for nonce)

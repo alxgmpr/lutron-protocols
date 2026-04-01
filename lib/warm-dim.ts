@@ -62,8 +62,7 @@ function bsplineBasis(
   let left = 0;
   let right = 0;
   const d1 = knots[i + p] - knots[i];
-  if (d1 > 0)
-    left = ((t - knots[i]) / d1) * bsplineBasis(knots, i, p - 1, t);
+  if (d1 > 0) left = ((t - knots[i]) / d1) * bsplineBasis(knots, i, p - 1, t);
   const d2 = knots[i + p + 1] - knots[i + 1];
   if (d2 > 0)
     right =

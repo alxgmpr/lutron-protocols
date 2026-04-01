@@ -16,6 +16,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as tls from "tls";
+import { fileURLToPath } from "url";
 
 // --- Types ---
 
@@ -93,10 +94,9 @@ export interface LeapDumpData {
 
 // --- Cert resolver ---
 
-const DEFAULT_CERT_DIR = path.resolve(
-  import.meta.dirname ?? (import.meta as any).dir ?? __dirname,
-  "..",
-);
+const __dir =
+  import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CERT_DIR = path.resolve(__dir, "..");
 
 /**
  * Resolve LEAP TLS certificate paths.

@@ -82,21 +82,21 @@ Binary framing: `[FLAGS:1][LEN:1][TS:4 LE][DATA:N]`. Host→STM32: `[CMD:1][LEN:
 ## Commands
 
 ```bash
-# TypeScript tools (all run directly with Bun, no build step)
-bun run cli/nucleo.ts               # Connect to Nucleo interactive shell
-npx tsx tools/nucleo-cmd.ts "cmd"    # Scriptable one-shot command to Nucleo
-bun run tools/codegen.ts            # Regenerate C headers from TS protocol defs
-bun run tools/ccx-sniffer.ts --live # Sniff Thread traffic
-bun run tools/leap-dump.ts          # Dump LEAP device hierarchy
+# TypeScript tools (all run with tsx, no build step)
+npx tsx cli/nucleo.ts               # Connect to Nucleo interactive shell
+npx tsx tools/nucleo-cmd.ts "cmd"   # Scriptable one-shot command to Nucleo
+npx tsx tools/codegen.ts            # Regenerate C headers from TS protocol defs
+npx tsx tools/ccx-sniffer.ts --live # Sniff Thread traffic
+npx tsx tools/leap-dump.ts          # Dump LEAP device hierarchy
 
 # NPM script shortcuts
-bun run codegen        # Regenerate C headers from TS protocol defs
-bun run ccx:sniff      # Sniff Thread traffic
-bun run ccx:send       # Send CCX commands
-bun run leap:dump      # Dump LEAP hierarchy
-bun run lint           # Biome linter (check)
-bun run lint:fix       # Biome auto-fix
-bun run format         # Biome formatter
+npm run codegen        # Regenerate C headers from TS protocol defs
+npm run ccx:sniff      # Sniff Thread traffic
+npm run ccx:send       # Send CCX commands
+npm run leap:dump      # Dump LEAP hierarchy
+npm run lint           # Biome linter (check)
+npm run lint:fix       # Biome auto-fix
+npm run format         # Biome formatter
 
 # Firmware
 cd firmware && cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake && make -C build -j8
@@ -111,7 +111,7 @@ cd firmware && make lint       # cppcheck
 
 ### TypeScript Tool Structure
 
-All tools follow this pattern: `#!/usr/bin/env bun` shebang, JSDoc header, imports, then `main()`. No CLI arg parsing library — tools use manual `process.argv.slice(2)` with helpers:
+All tools follow this pattern: `#!/usr/bin/env npx tsx` shebang, JSDoc header, imports, then `main()`. No CLI arg parsing library — tools use manual `process.argv.slice(2)` with helpers:
 ```typescript
 const getArg = (name: string) => { const i = args.indexOf(name); return i !== -1 ? args[i + 1] : undefined; };
 const hasFlag = (name: string) => args.includes(name);
@@ -159,7 +159,7 @@ Biome handles both linting and formatting. Config in `biome.json`:
 - Relaxed rules: `noExplicitAny` off, `noNonNullAssertion` off, `useTemplate` off, `useNodejsImportProtocol` off
 - Pre-push hook (`.githooks/pre-push`) runs lint + typecheck — **CI must be green before push**
 - `npx biome check --write cli/ tools/ ccx/ protocol/` — auto-fix formatting
-- `npx tsc --noEmit` — type errors
+- `npx tsc --noEmit` — type errors (strict mode, covers all TS files)
 
 ## CCX→WiZ Bridge
 
@@ -181,7 +181,7 @@ The bridge captures Lutron Thread traffic and forwards level/scene/button comman
 
 ## Project Conventions
 
-- **Use Node.js, not Bun** for new tools — Bun lacks AES-128-CCM and other ciphers; use `npx tsx`
+- **No Bun** — all tools use `npx tsx` (Node.js). No `Bun.*` APIs, no `import.meta.dir`
 - **Add tests** for new modules, especially unattended code like bridge (`node --import tsx --test test/**/*.test.ts`)
 - **NEVER use `st-flash`** — always use `make flash` (openocd) for STM32 programming
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * Offline RA3/HW project file converter.
@@ -12,16 +12,29 @@
  */
 
 import "../lib/env"; // load .env
+import { execFileSync } from "child_process";
 import { randomUUID } from "crypto";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
-import { basename, extname, join } from "path";
+import { basename, dirname, extname, join } from "path";
+import { fileURLToPath } from "url";
 import { parseArgs } from "util";
+
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 // ── CLI ──────────────────────────────────────────────────────────────
 
 const { values, positionals } = parseArgs({
-  args: Bun.argv.slice(2),
+  args: process.argv.slice(2),
   options: {
     direction: { type: "string" },
     "extract-only": { type: "string" },
@@ -89,7 +102,7 @@ interface ModelEntry {
 }
 
 function loadModelInfo(): ModelEntry[] {
-  const path = join(import.meta.dir, "data/model-info.json");
+  const path = join(__dir, "data/model-info.json");
   if (!existsSync(path)) {
     throw new Error(
       `Model info not found: ${path}\nRun: bun run tools/build-model-info.ts`,
@@ -258,23 +271,22 @@ async function exec(
   cmd: string[],
   opts?: { timeout?: number; cwd?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(cmd, {
-    stdout: "pipe",
-    stderr: "pipe",
-    cwd: opts?.cwd,
-  });
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  if (opts?.timeout) {
-    timer = setTimeout(() => proc.kill(), opts.timeout);
+  const [bin, ...args] = cmd;
+  try {
+    const stdout = execFileSync(bin, args, {
+      encoding: "utf8",
+      timeout: opts?.timeout,
+      cwd: opts?.cwd,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    return { stdout, stderr: "", exitCode: 0 };
+  } catch (err: any) {
+    return {
+      stdout: err.stdout ?? "",
+      stderr: err.stderr ?? "",
+      exitCode: err.status ?? 1,
+    };
   }
-
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
-
-  if (timer) clearTimeout(timer);
-  return { stdout, stderr, exitCode };
 }
 
 async function execOrDie(
@@ -327,7 +339,7 @@ async function extractBak(projectFile: string): Promise<ExtractResult> {
 
   // Copy .lut → .bak for clarity (it's the same file)
   const bakPath = join(tempDir, "Project.bak");
-  await Bun.write(bakPath, Bun.file(lutPath));
+  copyFileSync(lutPath, bakPath);
 
   return { bakPath, lutFilename: lutFile, tempDir };
 }
@@ -469,34 +481,33 @@ async function execPowerShell(
   timeout = 120_000,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const encoded = encodePowerShell(script);
-  const proc = Bun.spawn(
-    [
+  try {
+    const stdout = execFileSync(
       "/opt/homebrew/bin/sshpass",
-      "-p",
-      VM_PASS,
-      "ssh",
-      ...SSH_OPTS,
-      `${VM_USER}@${VM_HOST}`,
-      "powershell",
-      "-EncodedCommand",
-      encoded,
-    ],
-    { stdout: "pipe", stderr: "pipe" },
-  );
-
-  const timer = setTimeout(() => proc.kill(), timeout);
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const exitCode = await proc.exited;
-  clearTimeout(timer);
-
-  return {
-    stdout: stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
-    stderr: stderr.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
-    exitCode,
-  };
+      [
+        "-p",
+        VM_PASS,
+        "ssh",
+        ...SSH_OPTS,
+        `${VM_USER}@${VM_HOST}`,
+        "powershell",
+        "-EncodedCommand",
+        encoded,
+      ],
+      { encoding: "utf8", timeout, maxBuffer: 10 * 1024 * 1024 },
+    );
+    return {
+      stdout: stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      stderr: "",
+      exitCode: 0,
+    };
+  } catch (err: any) {
+    return {
+      stdout: (err.stdout ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      stderr: (err.stderr ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+      exitCode: err.status ?? 1,
+    };
+  }
 }
 
 async function scp(
@@ -583,7 +594,7 @@ async function vmSqlcmd(
     // SCP the SQL file to the VM, then execute with sqlcmd -i
     const localTmp = join(tmpdir(), `convert-${Date.now()}.sql`);
     const remoteTmp = `${VM_WORK_DIR}\\convert-${Date.now()}.sql`;
-    await Bun.write(localTmp, sql);
+    writeFileSync(localTmp, sql);
 
     try {
       await scp(localTmp, remoteTmp, "upload", 30_000);
@@ -1470,8 +1481,8 @@ async function main(): Promise<void> {
     const outBak = join(outDir, "Project.bak");
     const outMeta = join(outDir, "metadata.json");
 
-    await Bun.write(outBak, Bun.file(result.bakPath));
-    await Bun.write(
+    copyFileSync(result.bakPath, outBak);
+    writeFileSync(
       outMeta,
       JSON.stringify(
         { lutFilename: result.lutFilename, sourceFile: basename(input) },
@@ -1505,7 +1516,7 @@ async function main(): Promise<void> {
     const metaPath = join(bakPath, "..", "metadata.json");
     let lutFilename: string;
     if (existsSync(metaPath)) {
-      const meta = JSON.parse(await Bun.file(metaPath).text());
+      const meta = JSON.parse(readFileSync(metaPath, "utf8"));
       lutFilename = meta.lutFilename;
     } else {
       // Generate a UUID-based name

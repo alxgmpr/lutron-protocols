@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseFrame, formatAddr } from "../lib/ieee802154";
+import { formatAddr, parseFrame } from "../lib/ieee802154";
 import { buildNonce, deriveThreadKeys, micLength } from "../lib/thread-crypto";
 
 // ── EUI-64 byte order ────────────────────────────────────
@@ -41,8 +41,8 @@ test("parseFrame: secured data frame with short addresses", () => {
   // dst=0x0034(LE), src=0x0038(LE), sec ctrl=0x0D, fc=360594, keyIdx=4
   const header = Buffer.from("799849ef62003400380d9280050004", "hex");
   // Add some fake encrypted payload + 4-byte MIC
-  const payload = Buffer.alloc(20, 0xAA);
-  const mic = Buffer.alloc(4, 0xBB);
+  const payload = Buffer.alloc(20, 0xaa);
+  const mic = Buffer.alloc(4, 0xbb);
   const frame = Buffer.concat([header, payload, mic]);
 
   const parsed = parseFrame(frame);
@@ -65,7 +65,7 @@ test("parseFrame: unsecured frame with extended source", () => {
   // Seq=0x96, dstPan=0xXXXX, dst=0xFFFF, src=8 bytes EUI-64 (LE)
   const frame = Buffer.from(
     "41d896ef62ffff92954de067a57bae" + // header (15 bytes)
-    "7f3b01f04d4c4d4c", // payload start
+      "7f3b01f04d4c4d4c", // payload start
     "hex",
   );
 
@@ -126,7 +126,9 @@ test("micLength: security level 6 = 8 bytes", () => {
 test("serial sniffer: parse received line with ANSI escapes", () => {
   const line =
     "\x1b[Jreceived: 41882e146bffff00000912fcff0000017a37a23d270dad1b0028d296060137a23d270dad1b00006dc17ca4771e00 power: -63 lqi: 120 time: 315639708";
-  const clean = line.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "").replace(/\r/g, "");
+  const clean = line
+    .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "")
+    .replace(/\r/g, "");
   const match = clean.match(/received:\s+([0-9a-fA-F]+)\s+power:/);
   assert.ok(match, "should match received pattern");
   assert.ok(match![1].length > 0, "should capture hex payload");

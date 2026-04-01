@@ -16,8 +16,9 @@
 import { createSocket } from "dgram";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { networkInterfaces } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import * as readline from "readline";
+import { fileURLToPath } from "url";
 import YAML from "yaml";
 import { getAllZonesWithControlType, getZoneName } from "../ccx/config";
 import { WARM_DIM_CURVES } from "../lib/warm-dim";
@@ -31,7 +32,8 @@ const getArg = (name: string) => {
 };
 const hasFlag = (name: string) => args.includes(name);
 
-const projectRoot = join(import.meta.dirname ?? __dirname, "..");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(__dir, "..");
 const configPath =
   getArg("--config") ?? join(projectRoot, "config", "ccx-bridge.yaml");
 const noDiscover = hasFlag("--no-discover");

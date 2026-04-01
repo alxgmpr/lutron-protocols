@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * LEAP API Explorer — systematically probe every endpoint on the processor.

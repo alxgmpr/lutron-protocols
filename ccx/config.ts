@@ -2,13 +2,16 @@
  * CCX Network Configuration
  *
  * Auto-loads from LEAP dump files in data/leap-*.json.
- * Generate with: bun run tools/leap-dump.ts
- * Or refresh from CLI: bun run cli/nucleo.ts --update-leap
+ * Generate with: npx tsx tools/leap-dump.ts
+ * Or refresh from CLI: npx tsx cli/nucleo.ts --update-leap
  */
 
 import { existsSync, readdirSync, readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import type { LeapDumpData } from "../tools/leap-client";
+
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 const LUTRON_UDP_PORT = 9190;
 
@@ -20,13 +23,7 @@ function base64ToHex(base64: string, separator = ""): string {
 
 /** Resolve data directory: CCX_DATA_DIR env var, or ../data relative to this file */
 export function resolveDataDir(): string {
-  return (
-    process.env.CCX_DATA_DIR ??
-    join(
-      (import.meta as any).dir ?? import.meta.dirname ?? __dirname,
-      "../data",
-    )
-  );
+  return process.env.CCX_DATA_DIR ?? join(__dir, "../data");
 }
 
 function loadLeapFromDisk(): LeapDumpData | null {

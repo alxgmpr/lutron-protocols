@@ -17,6 +17,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as tls from "tls";
+import { fileURLToPath } from "url";
 import { RA3_HOST } from "../lib/env";
 import { resolveCerts } from "./leap-client";
 
@@ -25,8 +26,11 @@ const PROCESSOR_PORT = 8081;
 const LISTEN_PORT = 8081;
 const LISTEN_HOST = "127.0.0.1";
 
+const __dir =
+  import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+
 // Our client certs for upstream connection to the processor
-const certPaths = resolveCerts("ra3", path.resolve(import.meta.dir, ".."));
+const certPaths = resolveCerts("ra3", path.resolve(__dir, ".."));
 
 // Self-signed server cert for downstream (app-facing) side
 const MITM_CERT = "/tmp/mitm-cert.pem";

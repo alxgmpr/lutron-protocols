@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 /**
  * Parse pipe-delimited SQLMODELINFO output into tools/data/model-info.json.
@@ -7,15 +7,19 @@
  * Output: tools/data/model-info.json
  */
 
-import { resolve } from "path";
+import { readFileSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 import { buildModelInfoOutput, parseModelInfo } from "./build-model-info-lib";
 
-const input = await Bun.stdin.text();
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+
+const input = readFileSync(0, "utf8");
 const models = parseModelInfo(input);
 const output = buildModelInfoOutput(models);
-const outPath = resolve(import.meta.dir, "data/model-info.json");
+const outPath = resolve(__dir, "data/model-info.json");
 
-await Bun.write(outPath, JSON.stringify(output, null, 2) + "\n");
+writeFileSync(outPath, JSON.stringify(output, null, 2) + "\n");
 
 console.log(`Written ${models.length} models to ${outPath}`);
 console.log(`Duplicate names: ${output.duplicateNames.length}`);

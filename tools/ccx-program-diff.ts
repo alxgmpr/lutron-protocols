@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 import { Decoder } from "cbor-x";
 import { spawn } from "child_process";

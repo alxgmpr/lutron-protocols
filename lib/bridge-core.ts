@@ -7,25 +7,21 @@
  * See docs/bridge-state-spec.md for the governing spec.
  */
 
-import { EventEmitter } from "events";
 import { createSocket, type Socket } from "dgram";
+import { EventEmitter } from "events";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import YAML from "yaml";
-import {
-  getPresetInfo,
-  getZoneName,
-  presetIdFromDeviceId,
-} from "../ccx/config";
+import { getZoneName, presetIdFromDeviceId } from "../ccx/config";
 import { formatMessage, getMessageTypeName } from "../ccx/decoder";
+import { encodeDeviceReport, percentToLevel } from "../ccx/encoder";
 import type { CCXPacket } from "../ccx/types";
 import { evalWarmDimCurve, getWarmDimCurve } from "./warm-dim";
-import { encodeDeviceReport, percentToLevel } from "../ccx/encoder";
 import {
-  cctToRgbwc,
-  xyToRgbwc,
-  rgbwcToPilotParams,
   type CctPoint,
+  cctToRgbwc,
+  rgbwcToPilotParams,
+  xyToRgbwc,
 } from "./wiz-color";
 
 // ── Config types ──────────────────────────────────────────
@@ -57,7 +53,10 @@ export interface WizPairing {
 
 export interface PresetZoneEntry {
   name: string;
-  zones: Record<string, { level: number; fade?: number; warmDimCurve?: string }>;
+  zones: Record<
+    string,
+    { level: number; fade?: number; warmDimCurve?: string }
+  >;
 }
 
 export interface BridgeCoreOptions {
@@ -220,11 +219,17 @@ export class BridgeCore extends EventEmitter {
         const table = await this.fetchOneCctTable(ip, buf);
         if (table) {
           this.cctTables.set(ip, table);
-          this.emit("log", `  [wiz] CCT table from ${ip}: ${table.length} points`);
+          this.emit(
+            "log",
+            `  [wiz] CCT table from ${ip}: ${table.length} points`,
+          );
           break;
         }
         if (attempt === 1) {
-          this.emit("log", `  [wiz] CCT table from ${ip}: FAILED after retry (using default)`);
+          this.emit(
+            "log",
+            `  [wiz] CCT table from ${ip}: FAILED after retry (using default)`,
+          );
         }
       }
     }
@@ -309,7 +314,8 @@ export class BridgeCore extends EventEmitter {
   private handleLevelControl(pkt: CCXPacket): void {
     const msg = pkt.parsed;
     if (msg.type !== "LEVEL_CONTROL") return;
-    const { zoneId, sequence, levelPercent, fade, cct, warmDimMode, colorXy } = msg;
+    const { zoneId, sequence, levelPercent, fade, cct, warmDimMode, colorXy } =
+      msg;
 
     if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) return;
     if (this.isDuplicate(`0:${zoneId}:${sequence}`)) return;
@@ -338,7 +344,15 @@ export class BridgeCore extends EventEmitter {
       }
     }
 
-    this.dispatch(zoneId, level, colorMode, resolvedCct, colorXy ?? null, fade, "LEVEL");
+    this.dispatch(
+      zoneId,
+      level,
+      colorMode,
+      resolvedCct,
+      colorXy ?? null,
+      fade,
+      "LEVEL",
+    );
   }
 
   private handleButtonPress(pkt: CCXPacket): void {
@@ -353,12 +367,16 @@ export class BridgeCore extends EventEmitter {
 
     for (const [zid, assignment] of Object.entries(sceneEntry.zones)) {
       const zoneId = Number(zid);
-      if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId)) continue;
+      if (this.watchedZones.size > 0 && !this.watchedZones.has(zoneId))
+        continue;
       this.matchCount++;
 
       let cct: number | null = null;
       if (assignment.warmDimCurve && assignment.level > 0) {
-        cct = evalWarmDimCurve(getWarmDimCurve(assignment.warmDimCurve), assignment.level);
+        cct = evalWarmDimCurve(
+          getWarmDimCurve(assignment.warmDimCurve),
+          assignment.level,
+        );
       }
 
       this.dispatch(
@@ -381,7 +399,10 @@ export class BridgeCore extends EventEmitter {
     this.logPacket(pkt);
     const direction = action === 3 ? "raise" : "lower";
 
-    if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
+    if (
+      zoneId &&
+      (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))
+    ) {
       this.matchCount++;
       this.startRamp(zoneId, direction);
     } else {
@@ -405,7 +426,10 @@ export class BridgeCore extends EventEmitter {
     if (this.isDuplicate(`3:${zoneId || "p"}:${sequence}`)) return;
     this.logPacket(pkt);
 
-    if (zoneId && (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))) {
+    if (
+      zoneId &&
+      (this.watchedZones.size === 0 || this.watchedZones.has(zoneId))
+    ) {
       this.matchCount++;
       this.stopRamp(zoneId);
     } else {
@@ -580,7 +604,11 @@ export class BridgeCore extends EventEmitter {
       }
 
       // Emit DEVICE_REPORT after settling delay
-      if (zone.reportAt > 0 && zone.activity.type === "idle" && now >= zone.reportAt) {
+      if (
+        zone.reportAt > 0 &&
+        zone.activity.type === "idle" &&
+        now >= zone.reportAt
+      ) {
         zone.reportAt = 0;
         this.sendDeviceReport(zoneId, zone.level);
       }
@@ -600,7 +628,9 @@ export class BridgeCore extends EventEmitter {
 
     zone.level = fade.startLevel + t * (fade.targetLevel - fade.startLevel);
     if (fade.startCct != null && fade.targetCct != null) {
-      zone.cct = Math.round(fade.startCct + t * (fade.targetCct - fade.startCct));
+      zone.cct = Math.round(
+        fade.startCct + t * (fade.targetCct - fade.startCct),
+      );
     }
     zone.dirty = true;
 
@@ -626,7 +656,10 @@ export class BridgeCore extends EventEmitter {
     // Re-evaluate warm dim CCT each tick
     const pairing = this.pairingsByZone.get(zoneId);
     if (pairing?.warmDimCurve && zone.level > 0) {
-      zone.cct = evalWarmDimCurve(getWarmDimCurve(pairing.warmDimCurve), zone.level);
+      zone.cct = evalWarmDimCurve(
+        getWarmDimCurve(pairing.warmDimCurve),
+        zone.level,
+      );
       zone.colorMode = "cct";
     }
 
@@ -682,7 +715,10 @@ export class BridgeCore extends EventEmitter {
     for (const ip of cmd.ips) {
       this.wizSocket.send(buf, cmd.port, ip);
     }
-    this.emit("log", `  [wiz] → ${cmd.zoneName} (${cmd.ips.length} bulbs) ${logStr}`);
+    this.emit(
+      "log",
+      `  [wiz] → ${cmd.zoneName} (${cmd.ips.length} bulbs) ${logStr}`,
+    );
   }
 
   // ── Deduplication ─────────────────────────────────────
@@ -711,7 +747,11 @@ export class BridgeCore extends EventEmitter {
 
     const level = percentToLevel(levelPercent);
     const seq = this.reportSeq++ & 0xff;
-    const cbor = encodeDeviceReport({ deviceSerial: serial, level, sequence: seq });
+    const cbor = encodeDeviceReport({
+      deviceSerial: serial,
+      level,
+      sequence: seq,
+    });
 
     // Stream protocol: [CMD=0x16, LEN, ...cbor]
     const frame = Buffer.alloc(2 + cbor.length);

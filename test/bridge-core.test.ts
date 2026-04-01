@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test, { describe, mock } from "node:test";
+import test, { describe } from "node:test";
 import type { CCXPacket } from "../ccx/types";
 
 // ── Test helpers ──────────────────────────────────────────
@@ -139,7 +139,16 @@ function makeDimStepPacket(opts: {
 /** Create a BridgeCore with no real sockets (empty pairings) */
 async function createTestBridge(opts?: {
   pairings?: Array<{ zoneId: number; name?: string }>;
-  presetZones?: Map<number, { name: string; zones: Record<string, { level: number; fade?: number; warmDimCurve?: string }> }>;
+  presetZones?: Map<
+    number,
+    {
+      name: string;
+      zones: Record<
+        string,
+        { level: number; fade?: number; warmDimCurve?: string }
+      >;
+    }
+  >;
 }) {
   const { BridgeCore } = await import("../lib/bridge-core");
   const pairings = (opts?.pairings ?? []).map((p) => ({
@@ -160,8 +169,16 @@ async function createTestBridge(opts?: {
 describe("dedup", () => {
   test("rejects duplicate within 200ms", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    const pkt1 = makeLevelControlPacket({ zoneId: 100, level: 50, sequence: 1 });
-    const pkt2 = makeLevelControlPacket({ zoneId: 100, level: 50, sequence: 1 });
+    const pkt1 = makeLevelControlPacket({
+      zoneId: 100,
+      level: 50,
+      sequence: 1,
+    });
+    const pkt2 = makeLevelControlPacket({
+      zoneId: 100,
+      level: 50,
+      sequence: 1,
+    });
 
     bridge.handlePacket(pkt1);
     bridge.handlePacket(pkt2); // same seq, should be deduped
@@ -172,8 +189,16 @@ describe("dedup", () => {
 
   test("accepts different sequence", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    const pkt1 = makeLevelControlPacket({ zoneId: 100, level: 50, sequence: 1 });
-    const pkt2 = makeLevelControlPacket({ zoneId: 100, level: 50, sequence: 2 });
+    const pkt1 = makeLevelControlPacket({
+      zoneId: 100,
+      level: 50,
+      sequence: 1,
+    });
+    const pkt2 = makeLevelControlPacket({
+      zoneId: 100,
+      level: 50,
+      sequence: 2,
+    });
 
     bridge.handlePacket(pkt1);
     bridge.handlePacket(pkt2);
@@ -183,9 +208,19 @@ describe("dedup", () => {
   });
 
   test("accepts same sequence for different zones", async () => {
-    const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }, { zoneId: 200 }] });
-    const pkt1 = makeLevelControlPacket({ zoneId: 100, level: 50, sequence: 1 });
-    const pkt2 = makeLevelControlPacket({ zoneId: 200, level: 50, sequence: 1 });
+    const bridge = await createTestBridge({
+      pairings: [{ zoneId: 100 }, { zoneId: 200 }],
+    });
+    const pkt1 = makeLevelControlPacket({
+      zoneId: 100,
+      level: 50,
+      sequence: 1,
+    });
+    const pkt2 = makeLevelControlPacket({
+      zoneId: 200,
+      level: 50,
+      sequence: 1,
+    });
 
     bridge.handlePacket(pkt1);
     bridge.handlePacket(pkt2);
@@ -200,7 +235,9 @@ describe("dedup", () => {
 describe("zone state", () => {
   test("instant LEVEL_CONTROL sets level, stays idle, marks dirty+reportPending", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 75, fade: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 75, fade: 1 }),
+    );
 
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
@@ -213,7 +250,9 @@ describe("zone state", () => {
 
   test("faded LEVEL_CONTROL enters fading state", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8 }),
+    );
 
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
@@ -229,14 +268,18 @@ describe("zone state", () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
     // Set initial level
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 60, sequence: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 60, sequence: 1 }),
+    );
     // Then color-only (no level in inner map)
-    bridge.handlePacket(makeLevelControlPacket({
-      zoneId: 100,
-      colorXy: [3000, 4000],
-      levelPresent: false,
-      sequence: 2,
-    }));
+    bridge.handlePacket(
+      makeLevelControlPacket({
+        zoneId: 100,
+        colorXy: [3000, 4000],
+        levelPresent: false,
+        sequence: 2,
+      }),
+    );
 
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
@@ -248,20 +291,23 @@ describe("zone state", () => {
 
   test("BUTTON_PRESS dispatches all zones in preset", async () => {
     const presetZones = new Map([
-      [0x0C2C, {
-        name: "Test Scene",
-        zones: {
-          "100": { level: 80, fade: 1 },
-          "200": { level: 50, fade: 1 },
+      [
+        0x0c2c,
+        {
+          name: "Test Scene",
+          zones: {
+            "100": { level: 80, fade: 1 },
+            "200": { level: 50, fade: 1 },
+          },
         },
-      }],
+      ],
     ]);
     const bridge = await createTestBridge({
       pairings: [{ zoneId: 100 }, { zoneId: 200 }],
       presetZones,
     });
 
-    bridge.handlePacket(makeButtonPressPacket({ presetId: 0x0C2C }));
+    bridge.handlePacket(makeButtonPressPacket({ presetId: 0x0c2c }));
 
     const z1 = bridge.getZoneState(100);
     const z2 = bridge.getZoneState(200);
@@ -288,7 +334,9 @@ describe("zone state", () => {
 
   test("DIM_STEP stops ramp", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    bridge.handlePacket(makeDimHoldPacket({ zoneId: 100, action: 3, sequence: 1 }));
+    bridge.handlePacket(
+      makeDimHoldPacket({ zoneId: 100, action: 3, sequence: 1 }),
+    );
     bridge.handlePacket(makeDimStepPacket({ zoneId: 100, sequence: 2 }));
 
     const zone = bridge.getZoneState(100);
@@ -306,13 +354,17 @@ describe("fade", () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
     // Start a fade to 80%
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }),
+    );
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
     assert.equal(zone.activity.type, "fading");
 
     // Send same target — should keep fading, not restart
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 2 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 2 }),
+    );
     assert.equal(zone.activity.type, "fading");
     if (zone.activity.type === "fading") {
       // startTime should NOT have changed (fade was not restarted)
@@ -324,11 +376,15 @@ describe("fade", () => {
   test("different target during fade cancels and restarts", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }),
+    );
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
 
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 30, fade: 4, sequence: 2 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 30, fade: 4, sequence: 2 }),
+    );
     assert.equal(zone.activity.type, "fading");
     if (zone.activity.type === "fading") {
       assert.equal(zone.activity.targetLevel, 30);
@@ -340,10 +396,14 @@ describe("fade", () => {
   test("instant command during fade cancels fade", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 80, fade: 8, sequence: 1 }),
+    );
     assert.equal(bridge.getZoneState(100)?.activity.type, "fading");
 
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 50, fade: 1, sequence: 2 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 50, fade: 1, sequence: 2 }),
+    );
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
     assert.equal(zone.activity.type, "idle");
@@ -358,10 +418,14 @@ describe("ramp", () => {
   test("LEVEL_CONTROL during ramp cancels ramp", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
-    bridge.handlePacket(makeDimHoldPacket({ zoneId: 100, action: 3, sequence: 1 }));
+    bridge.handlePacket(
+      makeDimHoldPacket({ zoneId: 100, action: 3, sequence: 1 }),
+    );
     assert.equal(bridge.getZoneState(100)?.activity.type, "ramping");
 
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 75, sequence: 2 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 75, sequence: 2 }),
+    );
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
     assert.equal(zone.activity.type, "idle");
@@ -375,7 +439,9 @@ describe("ramp", () => {
 describe("color mode", () => {
   test("CCT command sets cct mode", async () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 50, cct: 3000 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({ zoneId: 100, level: 50, cct: 3000 }),
+    );
 
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
@@ -389,9 +455,23 @@ describe("color mode", () => {
     const bridge = await createTestBridge({ pairings: [{ zoneId: 100 }] });
 
     // Set CCT first
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 50, cct: 3000, sequence: 1 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({
+        zoneId: 100,
+        level: 50,
+        cct: 3000,
+        sequence: 1,
+      }),
+    );
     // Then xy
-    bridge.handlePacket(makeLevelControlPacket({ zoneId: 100, level: 50, colorXy: [3000, 4000], sequence: 2 }));
+    bridge.handlePacket(
+      makeLevelControlPacket({
+        zoneId: 100,
+        level: 50,
+        colorXy: [3000, 4000],
+        sequence: 2,
+      }),
+    );
 
     const zone = bridge.getZoneState(100);
     assert.ok(zone);

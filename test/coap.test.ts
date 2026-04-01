@@ -70,8 +70,14 @@ test("parseIpv6 expands shorthand and raw UDP packet embeds addresses", () => {
   });
 
   assert.equal(packet.length, 50);
-  assert.equal(packet.subarray(8, 24).toString("hex"), parseIpv6(src).toString("hex"));
-  assert.equal(packet.subarray(24, 40).toString("hex"), parseIpv6(dst).toString("hex"));
+  assert.equal(
+    packet.subarray(8, 24).toString("hex"),
+    parseIpv6(src).toString("hex"),
+  );
+  assert.equal(
+    packet.subarray(24, 40).toString("hex"),
+    parseIpv6(dst).toString("hex"),
+  );
 });
 
 test("bucket tokens are url-safe and reversible", () => {

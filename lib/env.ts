@@ -5,10 +5,12 @@
  * instead of hardcoding IPs, credentials, or network parameters.
  */
 
-import { resolve } from "path";
 import { existsSync, readFileSync } from "fs";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
-const ROOT = resolve((import.meta as any).dir ?? import.meta.dirname ?? __dirname, "..");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(__dir, "..");
 const envPath = resolve(ROOT, ".env");
 
 // Load .env file into process.env (only if not already set)
@@ -34,4 +36,5 @@ export const DESIGNER_VM_PASS = process.env.DESIGNER_VM_PASS ?? "pass";
 export const THREAD_CHANNEL = parseInt(process.env.THREAD_CHANNEL ?? "25", 10);
 export const THREAD_PANID = parseInt(process.env.THREAD_PANID ?? "0", 16);
 export const THREAD_XPANID = process.env.THREAD_XPANID ?? "0000000000000000";
-export const THREAD_MASTER_KEY = process.env.THREAD_MASTER_KEY ?? "00000000000000000000000000000000";
+export const THREAD_MASTER_KEY =
+  process.env.THREAD_MASTER_KEY ?? "00000000000000000000000000000000";

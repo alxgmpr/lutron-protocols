@@ -1,7 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env npx tsx
 
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { identifyPacket, parseLux16bit } from "../protocol/protocol-ui";
 
 interface CaptureRow {
@@ -31,7 +32,9 @@ interface GroupSummary {
   packets: MatchedPacket[];
 }
 
-const DEFAULT_CAPTURE_DIR = join(import.meta.dir, "../captures/cca-sessions");
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_CAPTURE_DIR = join(__dir, "../captures/cca-sessions");
 const DEFAULT_SHOW = 8;
 
 function usage(): never {
