@@ -2240,7 +2240,7 @@ static void cmd_ccx_coap(const char* arg)
         /* ccx coap trim <ipv6_addr> <high%> <low%>
          * Programs dimmer trim via AAI bucket (0x0002).
          * CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}]
-         * Encoding: raw = percent * 0x0100 - 0x0100 (approx percent * 655.35) */
+         * Encoding: raw = percent * 0xFEFF / 100 (same as level encoding) */
         const char* p = arg + 5;
         char addr_str[64];
         const char* space = strchr(p, ' ');
@@ -2262,9 +2262,9 @@ static void cmd_ccx_coap(const char* arg)
         if (*endptr != ' ') goto coap_usage;
         float low_pct = strtof(endptr + 1, NULL);
 
-        /* Convert percent to raw: raw = percent * 256 - 256 */
-        uint16_t high_raw = (uint16_t)(high_pct * 256.0f - 256.0f);
-        uint16_t low_raw = (uint16_t)(low_pct * 256.0f - 256.0f);
+        /* Convert percent to raw: same as level encoding, raw = percent * 0xFEFF / 100 */
+        uint16_t high_raw = (uint16_t)(high_pct * 65279.0f / 100.0f);
+        uint16_t low_raw = (uint16_t)(low_pct * 65279.0f / 100.0f);
 
         /* Build CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}] */
         uint8_t cbor[32];
