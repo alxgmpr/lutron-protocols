@@ -1,0 +1,2198 @@
+openapi: 3.0.3
+info:
+  title: Lutron LEAP API (Phoenix RA3 Processor)
+  description: |
+    Extracted from multi-server-phoenix.gobin v26.01.13f000.
+    384 endpoint handlers, 773 object types, 14 communique types.
+
+    LEAP uses JSON over TLS (port 8081) with newline-delimited messages.
+    Each message has CommuniqueType, Header (Url, MessageBodyType), and Body.
+    This is NOT a REST API — it's a custom protocol that resembles REST.
+
+    CommuniqueTypes: ReadRequest, ReadResponse, CreateRequest, CreateResponse,
+    UpdateRequest, UpdateResponse, DeleteRequest, DeleteResponse,
+    SubscribeRequest, SubscribeResponse, UnsubscribeRequest, UnsubscribeResponse,
+    ExceptionResponse, CommandResponse.
+
+    StatusCodes: 200, 204, 400, 500, 502, 504.
+  version: 26.01.13f000
+  contact:
+    name: Extracted from firmware — not an official Lutron document
+
+servers:
+  - url: leap://10.0.0.1:8081
+    description: RA3 Processor (TLS)
+
+# Transport configuration:
+# LEAP TLS:     TCP 8081 (10 clients max, 600s idle timeout)
+# LEAP plain:   TCP 8080 (localhost only)
+# LAP (mobile): TCP 8083 (mTLS, 25 integrators max)
+# HAP (HomeKit):TCP 4548 (20 clients max)
+# McLEAP:       UDP 239.255.255.255:2647 (multicast, 4000 byte max)
+
+paths:
+  # ============================================================
+  # AREA
+  # ============================================================
+  /area:
+    get:
+      summary: List all areas
+      description: Paged. Query filters available.
+      tags: [Area]
+    post:
+      summary: Create area
+      tags: [Area]
+    subscribe:
+      summary: Subscribe to area changes
+      tags: [Area]
+
+  /area/rootarea:
+    get:
+      summary: Get root area
+      tags: [Area]
+
+  /area/{areaId}:
+    get:
+      summary: Read area
+      description: XID lookup available
+      tags: [Area]
+    put:
+      summary: Update area
+      tags: [Area]
+    delete:
+      summary: Delete area
+      tags: [Area]
+    subscribe:
+      summary: Subscribe to area
+      tags: [Area]
+
+  /area/{areaId}/status:
+    get:
+      summary: Get area status
+      tags: [Area]
+    subscribe:
+      summary: Subscribe to area status
+      tags: [Area]
+
+  /area/{areaId}/summary:
+    get:
+      summary: Get area summary
+      description: Query variant available
+      tags: [Area]
+
+  /area/{areaId}/associatedzone:
+    get:
+      summary: List zones in area
+      description: Also /status and /status/expanded variants
+      tags: [Area]
+
+  /area/{areaId}/associatedcontrolstation:
+    get:
+      summary: List control stations in area
+      tags: [Area]
+
+  /area/{areaId}/areascene:
+    get:
+      summary: List scenes in area
+      description: Paged. Also child area scenes.
+      tags: [Area]
+
+  /area/{areaId}/childarea/summary:
+    get:
+      summary: List child area summaries
+      tags: [Area]
+
+  /area/{areaId}/occupancygroup:
+    get:
+      summary: List occupancy groups in area
+      tags: [Area]
+
+  /area/{areaId}/occupancysensorsettings:
+    get:
+      summary: Get area occupancy sensor settings
+      tags: [Area]
+    put:
+      summary: Update area occupancy sensor settings
+      tags: [Area]
+    subscribe:
+      summary: Subscribe to occupancy sensor settings
+      tags: [Area]
+
+  /area/{areaId}/occupancysettings:
+    get:
+      summary: Get area occupancy settings
+      tags: [Area]
+    put:
+      summary: Update area occupancy settings
+      tags: [Area]
+
+  /area/{areaId}/loadshedding:
+    get:
+      summary: Get area load shedding config
+      tags: [Area]
+    put:
+      summary: Update area load shedding
+      tags: [Area]
+
+  /area/{areaId}/daylightinggainsettings:
+    get:
+      summary: Get area daylighting gain settings
+      tags: [Area]
+    put:
+      summary: Update area daylighting gain settings
+      tags: [Area]
+
+  /area/{areaId}/relation:
+    get:
+      summary: Get area relations
+      tags: [Area]
+
+  /area/{areaId}/presetbutton:
+    get:
+      summary: List preset buttons in area
+      tags: [Area]
+
+  /area/{areaId}/virtualbutton:
+    get:
+      summary: List virtual buttons in area
+      tags: [Area]
+
+  /area/{areaId}/zonealias:
+    get:
+      summary: List zone aliases in area
+      tags: [Area]
+
+  # ============================================================
+  # ZONE
+  # ============================================================
+  /zone:
+    get:
+      summary: List all zones
+      description: Paged. Query string filters.
+      tags: [Zone]
+    subscribe:
+      summary: Subscribe to zone changes
+      tags: [Zone]
+
+  /zone/{zoneId}:
+    get:
+      summary: Read zone
+      description: XID lookup available
+      tags: [Zone]
+    put:
+      summary: Update zone
+      tags: [Zone]
+    subscribe:
+      summary: Subscribe to zone
+      tags: [Zone]
+
+  /zone/{zoneId}/status:
+    get:
+      summary: Get zone status
+      description: |
+        Returns Level (0-100 float), FadeQsec, DelayQsec.
+        Paged and expanded variants available.
+      tags: [Zone]
+    put:
+      summary: Set zone level
+      description: |
+        Body: Level (0-100), FadeTime (HH:MM:SS or Qsec),
+        DelayTime, CommandType (GoToLevel, Stop, etc.)
+      tags: [Zone]
+    subscribe:
+      summary: Subscribe to zone status
+      tags: [Zone]
+
+  /zone/{zoneId}/expandedstatus:
+    get:
+      summary: Get expanded zone status
+      tags: [Zone]
+
+  /zone/{zoneId}/associatedloadcontroller:
+    get:
+      summary: List load controllers for zone
+      tags: [Zone]
+
+  /zone/{zoneId}/countdowntimer:
+    get:
+      summary: Get zone countdown timer
+      tags: [Zone]
+
+  /zone/{zoneId}/daylightinggainsettings:
+    get:
+      summary: Get zone daylighting gain settings
+      tags: [Zone]
+    put:
+      summary: Update zone daylighting gain settings
+      tags: [Zone]
+
+  /zone/{zoneId}/naturalshow:
+    get:
+      summary: Get zone natural show config
+      tags: [Zone]
+
+  /zone/{zoneId}/occupancysettings:
+    get:
+      summary: Get zone occupancy settings
+      tags: [Zone]
+    put:
+      summary: Update zone occupancy settings
+      tags: [Zone]
+
+  /zone/{zoneId}/phasesettings:
+    get:
+      summary: Get zone phase settings
+      tags: [Zone]
+    put:
+      summary: Update zone phase settings
+      tags: [Zone]
+
+  /zone/{zoneId}/tuningsettings:
+    get:
+      summary: Get zone tuning settings
+      tags: [Zone]
+    put:
+      summary: Update zone tuning settings
+      tags: [Zone]
+
+  /zone/{zoneId}/zonescene:
+    get:
+      summary: List zone scenes
+      tags: [Zone]
+
+  # ============================================================
+  # DEVICE
+  # ============================================================
+  /device:
+    get:
+      summary: List all devices
+      description: Paged. Query filters.
+      tags: [Device]
+    post:
+      summary: Create device
+      tags: [Device]
+    subscribe:
+      summary: Subscribe to device changes
+      tags: [Device]
+
+  /device/{deviceId}:
+    get:
+      summary: Read device
+      tags: [Device]
+    put:
+      summary: Update device
+      tags: [Device]
+    delete:
+      summary: Delete device
+      tags: [Device]
+    subscribe:
+      summary: Subscribe to device
+      tags: [Device]
+
+  /device/{deviceId}/status:
+    get:
+      summary: Get device status
+      description: Paged, expanded variant.
+      tags: [Device]
+    subscribe:
+      summary: Subscribe to device status
+      tags: [Device]
+
+  /device/{deviceId}/buttongroup:
+    get:
+      summary: List button groups on device
+      description: Also /expanded variant
+      tags: [Device]
+
+  /device/{deviceId}/cci:
+    get:
+      summary: List CCIs on device
+      tags: [Device]
+
+  /device/{deviceId}/ledsettings:
+    get:
+      summary: Get device LED settings
+      tags: [Device]
+
+  /device/{deviceId}/linknode/{linkNodeId}:
+    get:
+      summary: Get device link node
+      tags: [Device]
+
+  /device/{deviceId}/logger:
+    get:
+      summary: Get device logger
+      tags: [Device]
+
+  /device/{deviceId}/repeatabledevicerules:
+    get:
+      summary: Get repeatable device rules
+      tags: [Device]
+
+  /device/{deviceId}/temperaturesensor:
+    get:
+      summary: Get device temperature sensor
+      tags: [Device]
+
+  /device/{deviceId}/zonecontroller:
+    get:
+      summary: List zone controllers on device
+      tags: [Device]
+
+  /device/status/availability:
+    get:
+      summary: List device availability status
+      description: Paged.
+      tags: [Device]
+    subscribe:
+      summary: Subscribe to availability changes
+      tags: [Device]
+
+  /device/status/batterystatus:
+    get:
+      summary: List device battery status
+      description: Paged.
+      tags: [Device]
+    subscribe:
+      summary: Subscribe to battery status changes
+      tags: [Device]
+
+  # ============================================================
+  # BUTTON & BUTTON GROUP
+  # ============================================================
+  /button:
+    get:
+      summary: List all buttons
+      tags: [Button]
+
+  /button/{buttonId}:
+    get:
+      summary: Read button
+      tags: [Button]
+    put:
+      summary: Update button
+      tags: [Button]
+
+  /button/{buttonId}/status/event:
+    subscribe:
+      summary: Subscribe to button press events
+      description: |
+        Events: Press, Release, LongPress, DoubleTap, etc.
+        This is the primary way to monitor physical button presses.
+      tags: [Button]
+
+  /buttongroup:
+    get:
+      summary: List all button groups
+      tags: [Button]
+
+  /buttongroup/{buttonGroupId}:
+    get:
+      summary: Read button group
+      tags: [Button]
+    put:
+      summary: Update button group
+      tags: [Button]
+
+  /buttongroup/{buttonGroupId}/affectedzone:
+    get:
+      summary: List zones affected by button group
+      tags: [Button]
+
+  /buttongroup/{buttonGroupId}/button:
+    get:
+      summary: List buttons in button group
+      tags: [Button]
+
+  # ============================================================
+  # VIRTUAL BUTTON
+  # ============================================================
+  /virtualbutton:
+    get:
+      summary: List all virtual buttons
+      tags: [Virtual Button]
+    post:
+      summary: Create virtual button
+      tags: [Virtual Button]
+    subscribe:
+      summary: Subscribe to virtual button changes
+      tags: [Virtual Button]
+
+  /virtualbutton/{virtualButtonId}:
+    get:
+      summary: Read virtual button
+      tags: [Virtual Button]
+    put:
+      summary: Update virtual button
+      tags: [Virtual Button]
+    delete:
+      summary: Delete virtual button
+      tags: [Virtual Button]
+
+  /virtualbutton/summary:
+    get:
+      summary: Get virtual button summary
+      tags: [Virtual Button]
+
+  # ============================================================
+  # CONTROL STATION
+  # ============================================================
+  /controlstation:
+    get:
+      summary: List all control stations
+      description: Paged. XID lookup.
+      tags: [Control Station]
+    post:
+      summary: Create control station
+      tags: [Control Station]
+
+  /controlstation/{controlStationId}:
+    get:
+      summary: Read control station
+      tags: [Control Station]
+    put:
+      summary: Update control station
+      tags: [Control Station]
+    delete:
+      summary: Delete control station
+      tags: [Control Station]
+
+  /controlstation/{controlStationId}/device/ledstatus:
+    subscribe:
+      summary: Subscribe to LED status changes
+      tags: [Control Station]
+
+  # ============================================================
+  # LINK
+  # ============================================================
+  /link:
+    get:
+      summary: List all links
+      tags: [Link]
+
+  /link/{linkId}:
+    get:
+      summary: Read link
+      tags: [Link]
+    put:
+      summary: Update link
+      tags: [Link]
+
+  /link/{linkId}/status:
+    get:
+      summary: Get link status
+      tags: [Link]
+    subscribe:
+      summary: Subscribe to link status
+      tags: [Link]
+
+  /link/{linkId}/associatedlinknode:
+    get:
+      summary: List link nodes
+      description: Paged. Expanded variant.
+      tags: [Link]
+
+  /link/{linkId}/memberdiscoverysession/{sessionId}/status:
+    get:
+      summary: Get member discovery session status
+      tags: [Link]
+    subscribe:
+      summary: Subscribe to discovery session
+      tags: [Link]
+
+  /link/{linkId}/memberinfostatus:
+    get:
+      summary: Get member info status
+      tags: [Link]
+
+  # ============================================================
+  # LOAD CONTROL
+  # ============================================================
+  /loadcontroller/{loadControllerId}:
+    get:
+      summary: Read load controller
+      description: XID lookup available.
+      tags: [Load Control]
+
+  /loadcontroller/{loadControllerId}/status:
+    get:
+      summary: Get load controller status
+      description: Paged.
+      tags: [Load Control]
+    subscribe:
+      summary: Subscribe to load controller status
+      tags: [Load Control]
+
+  /loadcontroller/{loadControllerId}/tuningsettings:
+    get:
+      summary: Get load controller tuning settings
+      tags: [Load Control]
+    put:
+      summary: Update tuning settings
+      tags: [Load Control]
+
+  /zonecontroller/{zoneControllerId}:
+    get:
+      summary: Read zone controller
+      tags: [Load Control]
+
+  /zonetypegroup:
+    get:
+      summary: List all zone type groups
+      tags: [Load Control]
+    subscribe:
+      summary: Subscribe to zone type group changes
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}:
+    get:
+      summary: Read zone type group
+      tags: [Load Control]
+    subscribe:
+      summary: Subscribe to zone type group
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}/status:
+    get:
+      summary: Get zone type group status
+      tags: [Load Control]
+    subscribe:
+      summary: Subscribe to zone type group status
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}/emergencysettings/{settingsId}:
+    get:
+      summary: Get emergency settings for zone type group
+      tags: [Load Control]
+    put:
+      summary: Update emergency settings
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}/loadshedding:
+    get:
+      summary: Get zone type group load shedding
+      tags: [Load Control]
+    put:
+      summary: Update load shedding
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}/loadshedding/goal:
+    get:
+      summary: Get load shedding goal
+      tags: [Load Control]
+    put:
+      summary: Update load shedding goal
+      tags: [Load Control]
+
+  /zonetypegroup/{zoneTypeGroupId}/occupancysettings:
+    get:
+      summary: Get zone type group occupancy settings
+      tags: [Load Control]
+    put:
+      summary: Update occupancy settings
+      tags: [Load Control]
+
+  /load/{loadId}:
+    get:
+      summary: Read load
+      description: XID variant available.
+      tags: [Load Control]
+
+  /fadesettings:
+    get:
+      summary: Get fade settings
+      tags: [Load Control]
+    put:
+      summary: Update fade settings
+      tags: [Load Control]
+
+  /ledsettings:
+    get:
+      summary: Get LED settings
+      tags: [Load Control]
+    put:
+      summary: Update LED settings
+      tags: [Load Control]
+
+  /led/{ledId}:
+    get:
+      summary: Read LED
+      tags: [Load Control]
+
+  /led/{ledId}/status:
+    get:
+      summary: Get LED status
+      tags: [Load Control]
+    put:
+      summary: Set LED status
+      tags: [Load Control]
+
+  /cci/{cciId}:
+    get:
+      summary: Read CCI
+      tags: [Load Control]
+    put:
+      summary: Update CCI
+      tags: [Load Control]
+
+  # ============================================================
+  # OCCUPANCY
+  # ============================================================
+  /occupancygroup:
+    get:
+      summary: List all occupancy groups
+      tags: [Occupancy]
+    post:
+      summary: Create occupancy group
+      tags: [Occupancy]
+
+  /occupancygroup/{occupancyGroupId}:
+    get:
+      summary: Read occupancy group
+      description: Status sub-resource available.
+      tags: [Occupancy]
+    put:
+      summary: Update occupancy group
+      tags: [Occupancy]
+    delete:
+      summary: Delete occupancy group
+      tags: [Occupancy]
+
+  /occupancygroup/status:
+    get:
+      summary: Get all occupancy group statuses
+      tags: [Occupancy]
+
+  /occupancysensor:
+    get:
+      summary: List all occupancy sensors
+      tags: [Occupancy]
+    post:
+      summary: Create occupancy sensor
+      tags: [Occupancy]
+
+  /occupancysensor/{sensorId}:
+    get:
+      summary: Read occupancy sensor
+      tags: [Occupancy]
+    delete:
+      summary: Delete occupancy sensor
+      tags: [Occupancy]
+
+  /occupancysensor/{sensorId}/occupancysensorsettings:
+    get:
+      summary: Get sensor settings
+      tags: [Occupancy]
+    put:
+      summary: Update sensor settings
+      tags: [Occupancy]
+
+  /occupancysensor/{sensorId}/status:
+    get:
+      summary: Get sensor status
+      tags: [Occupancy]
+    subscribe:
+      summary: Subscribe to sensor status
+      tags: [Occupancy]
+
+  /occupancysensor/status:
+    get:
+      summary: Get all sensor statuses
+      tags: [Occupancy]
+    subscribe:
+      summary: Subscribe to all sensor statuses
+      tags: [Occupancy]
+
+  # ============================================================
+  # PRESET & ASSIGNMENTS
+  # ============================================================
+  /preset/{presetId}:
+    get:
+      summary: Read preset
+      tags: [Preset]
+
+  /preset/{presetId}/assignableresource:
+    get:
+      summary: List assignable resources for preset
+      tags: [Preset]
+
+  # 32 assignment types, all follow same pattern: GET list, POST create
+  /preset/{presetId}/dimmedlevelassignment:
+    get:
+      summary: List dimmed level assignments
+      tags: [Preset]
+    post:
+      summary: Create dimmed level assignment
+      tags: [Preset]
+  /preset/{presetId}/switchedlevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/fanspeedassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/shadelevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/shadelevelwithtiltassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/shadelevelwithtiltwhenclosedassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/ccolevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/colortuninglevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/spectrumtuninglevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/whitetuninglevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/warmdimassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/receptaclelevelassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/raiselowerassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/tiltassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/areasceneassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/favoritecycleassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/nexttrackassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/pauseassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/playpausetoggleassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/sonosplayassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/occupancysensorsettingsassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/occupancysettingsassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/startemergencyassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/stopemergencyassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+  /preset/{presetId}/startsequenceassignment:
+    get:
+      tags: [Preset]
+    post:
+      tags: [Preset]
+
+  # Individual assignment CRUD (all 32 types follow this pattern)
+  /dimmedlevelassignment/{assignmentId}:
+    get:
+      summary: Read assignment
+      tags: [Preset]
+    put:
+      summary: Update assignment
+      tags: [Preset]
+    delete:
+      summary: Delete assignment
+      tags: [Preset]
+
+  /areascene/{sceneId}:
+    get:
+      summary: Read area scene
+      tags: [Preset]
+    put:
+      summary: Update area scene
+      tags: [Preset]
+
+  /areasceneassignment/{assignmentId}:
+    get:
+      summary: Read area scene assignment
+      tags: [Preset]
+    post:
+      summary: Create via preset
+      tags: [Preset]
+    put:
+      summary: Update area scene assignment
+      tags: [Preset]
+    delete:
+      summary: Delete area scene assignment
+      tags: [Preset]
+
+  # ============================================================
+  # SCHEDULING
+  # ============================================================
+  /timeclock:
+    get:
+      summary: List all time clocks
+      description: Paged.
+      tags: [Schedule]
+
+  /timeclock/{timeClockId}:
+    get:
+      summary: Read time clock
+      tags: [Schedule]
+
+  /timeclock/{timeClockId}/status:
+    get:
+      summary: Get time clock status
+      tags: [Schedule]
+    put:
+      summary: Update time clock status (enable/disable)
+      tags: [Schedule]
+    subscribe:
+      summary: Subscribe to time clock status
+      tags: [Schedule]
+
+  /timeclock/{timeClockId}/timeclockevent:
+    get:
+      summary: List events for time clock
+      tags: [Schedule]
+    post:
+      summary: Create time clock event
+      tags: [Schedule]
+
+  /timeclockevent:
+    get:
+      summary: List all time clock events
+      description: Paged. Query.
+      tags: [Schedule]
+
+  /timeclockevent/{eventId}:
+    get:
+      summary: Read time clock event
+      tags: [Schedule]
+    put:
+      summary: Update time clock event
+      tags: [Schedule]
+    delete:
+      summary: Delete time clock event
+      tags: [Schedule]
+
+  /timeclockevent/{eventId}/status:
+    get:
+      summary: Get event status
+      tags: [Schedule]
+    put:
+      summary: Update event status (enable/disable)
+      tags: [Schedule]
+    subscribe:
+      summary: Subscribe to event status
+      tags: [Schedule]
+
+  /dailyschedule:
+    get:
+      summary: List daily schedules
+      tags: [Schedule]
+    put:
+      summary: Update daily schedule
+      tags: [Schedule]
+
+  /dailyschedule/{scheduleId}/dailyevent:
+    get:
+      summary: List daily events
+      tags: [Schedule]
+
+  /dailyevent:
+    get:
+      summary: List all daily events
+      tags: [Schedule]
+    put:
+      summary: Update daily event
+      tags: [Schedule]
+
+  /weeklyschedule:
+    get:
+      summary: List weekly schedules
+      tags: [Schedule]
+    put:
+      summary: Update weekly schedule
+      tags: [Schedule]
+
+  /countdowntimer:
+    get:
+      summary: List countdown timers
+      tags: [Schedule]
+    post:
+      summary: Create countdown timer
+      tags: [Schedule]
+    put:
+      summary: Update countdown timer
+      tags: [Schedule]
+    delete:
+      summary: Delete countdown timer
+      tags: [Schedule]
+
+  /sequence:
+    get:
+      summary: List sequences
+      tags: [Schedule]
+    post:
+      summary: Create sequence
+      tags: [Schedule]
+    put:
+      summary: Update sequence
+      tags: [Schedule]
+    delete:
+      summary: Delete sequence
+      tags: [Schedule]
+
+  /sequence/{sequenceId}:
+    get:
+      summary: Read sequence
+      tags: [Schedule]
+    put:
+      summary: Update sequence
+      tags: [Schedule]
+    delete:
+      summary: Delete sequence
+      tags: [Schedule]
+
+  /sequencestep/{stepId}:
+    get:
+      summary: Read sequence step
+      tags: [Schedule]
+    put:
+      summary: Update sequence step
+      tags: [Schedule]
+
+  # ============================================================
+  # SYSTEM
+  # ============================================================
+  /system:
+    get:
+      summary: Get system info
+      tags: [System]
+    put:
+      summary: Update system settings
+      tags: [System]
+
+  /system/status:
+    get:
+      summary: Get system status
+      tags: [System]
+    put:
+      summary: Update system status
+      tags: [System]
+    subscribe:
+      summary: Subscribe to system status
+      tags: [System]
+
+  /system/away:
+    get:
+      summary: Get away mode config
+      tags: [System]
+
+  /system/away/{awayId}:
+    get:
+      summary: Read away mode
+      tags: [System]
+    put:
+      summary: Update away mode
+      tags: [System]
+
+  /system/emergencysettings:
+    get:
+      summary: Get emergency settings
+      description: Query variant.
+      tags: [System]
+
+  /system/emergencysettings/{settingsId}:
+    get:
+      summary: Read emergency settings
+      tags: [System]
+    put:
+      summary: Update emergency settings
+      tags: [System]
+
+  /system/loadshedding:
+    get:
+      summary: Get system load shedding
+      tags: [System]
+    put:
+      summary: Update system load shedding
+      tags: [System]
+
+  /system/loadshedding/status:
+    get:
+      summary: Get load shedding status
+      tags: [System]
+    put:
+      summary: Update load shedding status
+      tags: [System]
+    subscribe:
+      summary: Subscribe to load shedding status
+      tags: [System]
+
+  /system/loadshedding/goal:
+    get:
+      summary: Get load shedding goal
+      tags: [System]
+    put:
+      summary: Update load shedding goal
+      tags: [System]
+
+  /system/naturallightoptimization:
+    get:
+      summary: List natural light optimization configs
+      description: Paged.
+      tags: [System]
+
+  /system/user:
+    get:
+      summary: List system users
+      tags: [System]
+    post:
+      summary: Create system user
+      tags: [System]
+
+  /system/user/{userId}:
+    get:
+      summary: Read system user
+      tags: [System]
+    put:
+      summary: Update system user
+      tags: [System]
+
+  /project:
+    get:
+      summary: Get project info
+      tags: [System]
+    put:
+      summary: Update project
+      tags: [System]
+    subscribe:
+      summary: Subscribe to project changes
+      tags: [System]
+
+  /project/contactinfo:
+    get:
+      summary: Get project contact info
+      tags: [System]
+    post:
+      summary: Create contact info
+      tags: [System]
+    put:
+      summary: Update contact info
+      tags: [System]
+
+  /project/masterdevicelist:
+    get:
+      summary: Get master device list
+      tags: [System]
+    put:
+      summary: Update master device list
+      tags: [System]
+
+  /project/masterdevicelist/device:
+    get:
+      summary: List devices in master list
+      description: Expanded status variant.
+      tags: [System]
+
+  /project/timeclockeventrules:
+    get:
+      summary: Get time clock event rules
+      tags: [System]
+
+  /login:
+    get:
+      summary: Get login info
+      tags: [System]
+    put:
+      summary: Update login
+      tags: [System]
+
+  /clientsetting:
+    get:
+      summary: Get client settings
+      tags: [System]
+    put:
+      summary: Update client settings
+      tags: [System]
+
+  /ping:
+    get:
+      summary: Ping processor
+      tags: [System]
+
+  # ============================================================
+  # SERVER
+  # ============================================================
+  /server:
+    get:
+      summary: List servers
+      tags: [Server]
+
+  /server/{serverId}:
+    get:
+      summary: Read server
+      tags: [Server]
+    command:
+      summary: Send command to server
+      description: Uses CommandResponse communique type.
+      tags: [Server]
+
+  /server/database:
+    get:
+      summary: Get server database info
+      tags: [Server]
+
+  /server/iplassociation:
+    get:
+      summary: Get IPL association
+      tags: [Server]
+    put:
+      summary: Update IPL association
+      tags: [Server]
+
+  /server/leap/pairing:
+    get:
+      summary: List LEAP pairings
+      tags: [Server]
+    post:
+      summary: Create LEAP pairing
+      tags: [Server]
+
+  /server/leap/pairing/{pairingId}:
+    get:
+      summary: Read pairing
+      tags: [Server]
+    put:
+      summary: Update pairing
+      tags: [Server]
+
+  /server/leap/pairing/integrator:
+    get:
+      summary: List integrator pairings
+      tags: [Server]
+
+  /server/status/ping:
+    get:
+      summary: Ping server status
+      description: Legacy variant available.
+      tags: [Server]
+
+  /server/web/endpoint:
+    get:
+      summary: Get web endpoint info
+      tags: [Server]
+
+  # ============================================================
+  # LIGHTING FEATURES
+  # ============================================================
+  /emergency:
+    get:
+      summary: List emergency configs
+      tags: [Lighting]
+
+  /emergency/{emergencyId}:
+    get:
+      summary: Read emergency config
+      tags: [Lighting]
+    put:
+      summary: Update emergency
+      tags: [Lighting]
+
+  /emergency/{emergencyId}/status:
+    get:
+      summary: Get emergency status
+      tags: [Lighting]
+    put:
+      summary: Update emergency status
+      tags: [Lighting]
+    subscribe:
+      summary: Subscribe to emergency status
+      tags: [Lighting]
+
+  /shadegroup:
+    get:
+      summary: List shade groups
+      tags: [Lighting]
+
+  /shadegroup/{shadeGroupId}:
+    get:
+      summary: Read shade group
+      tags: [Lighting]
+
+  /shadegroup/{shadeGroupId}/status:
+    get:
+      summary: Get shade group status
+      tags: [Lighting]
+
+  /daylightsensor/{sensorId}:
+    get:
+      summary: Read daylight sensor
+      tags: [Lighting]
+
+  /daylightsensor/{sensorId}/status:
+    get:
+      summary: Get daylight sensor status
+      tags: [Lighting]
+    subscribe:
+      summary: Subscribe to daylight sensor status
+      tags: [Lighting]
+
+  /daylightinggaingroup/{groupId}:
+    get:
+      summary: Read daylighting gain group
+      tags: [Lighting]
+
+  /daylightinggaingroup/{groupId}/daylightinggainsettings:
+    get:
+      summary: Get gain group daylighting settings
+      tags: [Lighting]
+    put:
+      summary: Update gain group daylighting settings
+      tags: [Lighting]
+
+  /daylightinggaingroup/{groupId}/associatedzone/{zoneId}:
+    get:
+      summary: Get associated zone
+      tags: [Lighting]
+
+  /daylightinggaingroup/memberdiscoverysession:
+    get:
+      summary: Get member discovery session
+      tags: [Lighting]
+
+  /naturallightoptimization/{nloId}:
+    get:
+      summary: Read natural light optimization
+      tags: [Lighting]
+    put:
+      summary: Update NLO
+      tags: [Lighting]
+
+  /naturallightoptimization/{nloId}/status:
+    get:
+      summary: Get NLO status
+      tags: [Lighting]
+    put:
+      summary: Update NLO status
+      tags: [Lighting]
+    subscribe:
+      summary: Subscribe to NLO status
+      tags: [Lighting]
+
+  /naturallightoptimization/{nloId}/affectedresource/{resourceId}:
+    get:
+      summary: Get NLO affected resource
+      tags: [Lighting]
+    post:
+      summary: Add affected resource
+      tags: [Lighting]
+    delete:
+      summary: Remove affected resource
+      tags: [Lighting]
+
+  /naturallightoptimization/{nloId}/preview:
+    get:
+      summary: Preview NLO
+      tags: [Lighting]
+
+  /naturalshow/{showId}:
+    get:
+      summary: Read natural show
+      tags: [Lighting]
+
+  /daynightmode/{modeId}:
+    get:
+      summary: Read day/night mode
+      tags: [Lighting]
+
+  /curve:
+    get:
+      summary: List curves
+      tags: [Lighting]
+
+  /temperaturesensor/status:
+    get:
+      summary: Get all temperature sensor statuses
+      tags: [Lighting]
+    subscribe:
+      summary: Subscribe to temperature sensor statuses
+      tags: [Lighting]
+
+  # ============================================================
+  # INTEGRATIONS
+  # ============================================================
+  /service:
+    get:
+      summary: List all services
+      description: Query variant.
+      tags: [Integration]
+    post:
+      summary: Create service
+      tags: [Integration]
+
+  /service/{serviceId}:
+    get:
+      summary: Read service
+      tags: [Integration]
+    put:
+      summary: Update service
+      tags: [Integration]
+    delete:
+      summary: Delete service
+      tags: [Integration]
+
+  # --- Alexa ---
+  /service/alexa:
+    get:
+      tags: [Integration]
+  /service/alexa/config:
+    get:
+      tags: [Integration]
+  /service/alexa/config/associatedalias:
+    get:
+      tags: [Integration]
+    post:
+      tags: [Integration]
+  /service/alexa/config/associatedalias/{aliasId}:
+    get:
+      tags: [Integration]
+    delete:
+      tags: [Integration]
+  /service/alexa/datasummary:
+    get:
+      summary: Alexa data summary (scenes, zones, shade groups)
+      tags: [Integration]
+
+  # --- Google Home ---
+  /service/googlehome:
+    get:
+      tags: [Integration]
+  /service/googlehome/config:
+    get:
+      tags: [Integration]
+  /service/googlehome/datasummary:
+    get:
+      summary: Google Home data summary
+      tags: [Integration]
+
+  # --- HomeKit ---
+  /service/homekit:
+    get:
+      tags: [Integration]
+  /service/homekit/config:
+    get:
+      tags: [Integration]
+  /service/homekit/config/associatedzone:
+    get:
+      tags: [Integration]
+    post:
+      tags: [Integration]
+  /service/homekit/config/associatedzone/{zoneId}:
+    get:
+      tags: [Integration]
+    delete:
+      tags: [Integration]
+  /service/homekit/config/associatedshadegroup:
+    get:
+      tags: [Integration]
+    post:
+      tags: [Integration]
+  /service/homekit/config/associatedshadegroup/{groupId}:
+    get:
+      tags: [Integration]
+    delete:
+      tags: [Integration]
+  /service/homekit/datasummary:
+    get:
+      summary: HomeKit data summary (associations, accessories)
+      tags: [Integration]
+
+  # --- IFTTT ---
+  /service/ifttt:
+    get:
+      tags: [Integration]
+  /service/ifttt/config:
+    get:
+      tags: [Integration]
+  /service/ifttt/datasummary:
+    get:
+      summary: IFTTT data summary (scenes, zones)
+      tags: [Integration]
+
+  # --- Sonos ---
+  /service/sonos:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+  /service/sonos/status:
+    get:
+      tags: [Integration]
+  /service/sonos/household:
+    get:
+      tags: [Integration]
+  /service/sonos/household/{householdId}:
+    get:
+      tags: [Integration]
+  /service/sonos/household/{householdId}/favorite:
+    get:
+      tags: [Integration]
+  /service/sonos/household/{householdId}/favorite/{favoriteId}:
+    get:
+      summary: Includes status sub-resource
+      tags: [Integration]
+  /service/sonos/household/{householdId}/speaker:
+    get:
+      tags: [Integration]
+  /service/sonos/household/{householdId}/speaker/{speakerId}:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+  /service/sonos/account/household:
+    get:
+      tags: [Integration]
+
+  # --- BACnet ---
+  /service/bacnet:
+    get:
+      tags: [Integration]
+  /service/bacnet/settings:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+    subscribe:
+      tags: [Integration]
+  /service/bacnet/bacnetinstances:
+    get:
+      tags: [Integration]
+  /service/bacnet/networksettings:
+    get:
+      summary: Paged. Query.
+      tags: [Integration]
+    put:
+      tags: [Integration]
+    subscribe:
+      tags: [Integration]
+  /service/bacnet/networksettings/{settingsId}/bacnetinstances:
+    get:
+      tags: [Integration]
+
+  # --- Ketra ---
+  /service/ketra:
+    get:
+      tags: [Integration]
+
+  # --- NTP ---
+  /service/ntpserver:
+    get:
+      tags: [Integration]
+    post:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+  /service/ntpserver/{serverId}:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+
+  # --- OpenADR (Demand Response) ---
+  /service/openadr:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+  /service/openadr/connection:
+    get:
+      summary: Includes status sub-resource
+      tags: [Integration]
+    put:
+      tags: [Integration]
+  /service/openadr/credentials:
+    get:
+      tags: [Integration]
+    put:
+      tags: [Integration]
+
+  # --- AutoProg ---
+  /service/autoprog:
+    get:
+      tags: [Integration]
+
+  # ============================================================
+  # FIRMWARE & DATABASE OPERATIONS
+  # ============================================================
+  /firmwareupdatesession:
+    get:
+      summary: Get firmware update session
+      tags: [Operations]
+
+  /devicefirmwarepackageupdatesession:
+    get:
+      summary: Get device firmware package update session
+      tags: [Operations]
+    delete:
+      summary: Cancel firmware package session
+      tags: [Operations]
+
+  /firmwareimage/{imageId}:
+    get:
+      summary: Read firmware image info
+      tags: [Operations]
+
+  /database/{databaseId}:
+    get:
+      summary: Read database info
+      tags: [Operations]
+
+  /database/{databaseId}/status:
+    get:
+      summary: Get database status
+      tags: [Operations]
+
+  /databasetransfersession:
+    get:
+      summary: Get transfer session
+      tags: [Operations]
+    delete:
+      summary: Cancel transfer session
+      tags: [Operations]
+
+  /databasetransfersession/status:
+    get:
+      summary: Get transfer session status
+      tags: [Operations]
+
+  /datashippingrule/{ruleId}:
+    get:
+      summary: Read data shipping rule
+      tags: [Operations]
+    put:
+      summary: Update data shipping rule
+      tags: [Operations]
+
+  /operation/status:
+    get:
+      summary: Get operation status
+      tags: [Operations]
+    subscribe:
+      summary: Subscribe to operation status
+      tags: [Operations]
+
+  /profilesession:
+    get:
+      summary: List profile sessions
+      tags: [Operations]
+
+  /profilesession/{sessionId}:
+    get:
+      summary: Read profile session
+      tags: [Operations]
+    delete:
+      summary: Delete profile session
+      tags: [Operations]
+
+  /profilesession/{sessionId}/status:
+    get:
+      summary: Get profile session status
+      tags: [Operations]
+    subscribe:
+      summary: Subscribe to profile session status
+      tags: [Operations]
+
+  /auditlog:
+    get:
+      summary: Get audit log
+      tags: [Operations]
+
+  # ============================================================
+  # NETWORK & INFRASTRUCTURE
+  # ============================================================
+  /networkinterface/{interfaceId}:
+    get:
+      summary: Read network interface
+      tags: [Network]
+    put:
+      summary: Update network interface
+      tags: [Network]
+
+  /networkinterface/{interfaceId}/status:
+    get:
+      summary: Get network interface status
+      tags: [Network]
+
+  /endpoint/{endpointId}/associatednetworkinterface/{interfaceId}:
+    get:
+      summary: Get endpoint-interface association
+      tags: [Network]
+    put:
+      summary: Update endpoint-interface association
+      tags: [Network]
+
+  /certauthority:
+    get:
+      summary: Get certificate authority info
+      tags: [Network]
+
+  /datasecurity:
+    get:
+      summary: Get data security info
+      tags: [Network]
+
+  /nonce:
+    get:
+      summary: Get nonce (for auth flows)
+      tags: [Network]
+
+  /linknode/{linkNodeId}:
+    get:
+      summary: Read link node
+      tags: [Network]
+
+  /linknodeassociation/{associationId}:
+    get:
+      summary: Read link node association
+      tags: [Network]
+    delete:
+      summary: Delete link node association
+      tags: [Network]
+
+  # ============================================================
+  # PREVIOUSLY UNDOCUMENTED
+  # ============================================================
+  /intruderdeterrent:
+    get:
+      summary: List intruder deterrent configs
+      description: Security/alarm integration. gRPC-backed.
+      tags: [Undocumented]
+    post:
+      summary: Create intruder deterrent
+      tags: [Undocumented]
+    put:
+      summary: Update intruder deterrent
+      tags: [Undocumented]
+    delete:
+      summary: Delete intruder deterrent
+      tags: [Undocumented]
+
+  /intruderdeterrent/{deterrentId}/associatedzone:
+    get:
+      summary: List zones for intruder deterrent
+      tags: [Undocumented]
+    post:
+      summary: Associate zone with deterrent
+      tags: [Undocumented]
+    delete:
+      summary: Remove zone from deterrent
+      tags: [Undocumented]
+
+  /rentablespace:
+    get:
+      summary: List rentable spaces (hotel rooms)
+      description: Paged. XID lookup. Status sub-resource.
+      tags: [Undocumented]
+
+  /rentablespace/status:
+    get:
+      summary: Get all rentable space statuses
+      description: Paged.
+      tags: [Undocumented]
+    subscribe:
+      summary: Subscribe to rentable space statuses
+      tags: [Undocumented]
+
+  /thirdpartydevice:
+    get:
+      summary: List third-party devices
+      tags: [Undocumented]
+    post:
+      summary: Create third-party device
+      tags: [Undocumented]
+    put:
+      summary: Update third-party device
+      tags: [Undocumented]
+    delete:
+      summary: Delete third-party device
+      tags: [Undocumented]
+
+  /alias:
+    get:
+      summary: List aliases
+      tags: [Undocumented]
+    post:
+      summary: Create alias
+      tags: [Undocumented]
+
+  /alias/{aliasId}:
+    get:
+      summary: Read alias
+      tags: [Undocumented]
+    put:
+      summary: Update alias
+      tags: [Undocumented]
+    delete:
+      summary: Delete alias
+      tags: [Undocumented]
+
+  /facade:
+    get:
+      summary: List facades
+      tags: [Undocumented]
+
+  /facade/{facadeId}:
+    get:
+      summary: Read facade
+      tags: [Undocumented]
+
+  /detectiongroup/{groupId}:
+    get:
+      summary: Read detection group (camera)
+      tags: [Undocumented]
+    put:
+      summary: Update detection group
+      tags: [Undocumented]
+    delete:
+      summary: Delete detection group
+      tags: [Undocumented]
+
+  /detectiongroup/{groupId}/camera:
+    get:
+      summary: List cameras in detection group
+      tags: [Undocumented]
+
+  /daliemergencytestgroup:
+    get:
+      summary: List DALI emergency test groups
+      tags: [Undocumented]
+    command:
+      summary: DALI emergency test group commands
+      tags: [Undocumented]
+
+  /daliemergencytestgroup/{groupId}/durationtestsession:
+    command:
+      summary: Start DALI duration test session
+      tags: [Undocumented]
+
+  /daliemergencytestgroup/{groupId}/functiontestsession:
+    command:
+      summary: Start DALI function test session
+      tags: [Undocumented]
+
+  /device/{deviceId}/daliemergencydurationtestsession:
+    command:
+      summary: Start DALI duration test on device
+      tags: [Undocumented]
+
+  /device/{deviceId}/daliemergencyfunctiontestsession:
+    command:
+      summary: Start DALI function test on device
+      tags: [Undocumented]
+
+  /paireddeviceextractionsession/{sessionId}/status:
+    get:
+      summary: Get paired device extraction session status
+      tags: [Undocumented]
+    command:
+      summary: Paired device extraction commands
+      tags: [Undocumented]
+
+  /firmwareupdatesession/device/{deviceId}:
+    command:
+      summary: Firmware session device command
+      tags: [Operations]
+
+  /firmwareupdatesession/processor/{processorId}:
+    command:
+      summary: Firmware session processor command
+      tags: [Operations]
+
+  /service/bacnet/areasettings/{settingsId}:
+    get:
+      summary: Get BACnet area instance settings
+      tags: [Integration]
+    put:
+      summary: Update BACnet area instance settings
+      tags: [Integration]
+
+  /system/away/{awayId}/associatedresource:
+    post:
+      summary: Add resource to system away
+      tags: [System]
+
+  /fanspeedconfiguration/{configId}:
+    get:
+      summary: Read fan speed configuration
+      description: XID lookup available.
+      tags: [Load Control]
+    put:
+      summary: Update fan speed configuration
+      tags: [Load Control]
+
+  /certpoolsubsystem:
+    command:
+      summary: Certificate pool subsystem commands
+      tags: [Network]
+
+  /certpoolsubsystem/replacementsession:
+    command:
+      summary: Certificate replacement session
+      tags: [Network]
+
+  /server/pair:
+    command:
+      summary: LEAP pairing commands (CSR, wipe)
+      tags: [Server]
+
+  /nloaffectedresource/{resourceId}/fadefighterproppreset:
+    get:
+      summary: Get NLO fade fighter property preset
+      tags: [Lighting]
+
+  /nloaffectedresource/{resourceId}/fadefighterproptiltassignment:
+    get:
+      summary: Get NLO fade fighter tilt assignment
+      tags: [Lighting]
+
+  /device/status/deviceheard:
+    subscribe:
+      summary: Subscribe to device heard events
+      description: Notifies when a device is heard on the radio link.
+      tags: [Device]
+
+  /colortuningassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /spectrumtuninglevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /whitetuninglevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /warmdimassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /ccolevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /fanspeedassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /shadelevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /shadelevelwithtiltassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /shadelevelwithtiltwhenclosedassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /switchedlevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /receptaclelevelassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /raiselowerassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /tiltassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /favoritecycleassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /nexttrackassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /pauseassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /playpausetoggleassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /sonosplayassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /occupancysensorsettingsassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /occupancysettingsassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /startemergencyassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /stopemergencyassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /startsequenceassignment/{assignmentId}:
+    get:
+      tags: [Preset]
+    put:
+      tags: [Preset]
+    delete:
+      tags: [Preset]
+
+  /programmingmodel:
+    get:
+      summary: List programming models
+      tags: [Undocumented]
+
+  /programmingmodel/{modelId}:
+    get:
+      summary: Read programming model
+      tags: [Undocumented]
+
+  /programmingmodel/{modelId}/preset:
+    get:
+      summary: List presets for programming model
+      tags: [Undocumented]
+
+  /assignableresource:
+    get:
+      summary: List assignable resources
+      tags: [Undocumented]
+
+  /assignableresource/associatedarea:
+    get:
+      summary: Get assignable resource area associations
+      tags: [Undocumented]
+
+  /sharedscene/{sceneId}:
+    get:
+      summary: Read shared scene
+      tags: [Undocumented]
+
+  /devicerules:
+    get:
+      summary: List device rules
+      tags: [Undocumented]
+
+  /occupancyaggregationrules:
+    get:
+      summary: List occupancy aggregation rules
+      tags: [Undocumented]
+
+  /occupancyaggregator:
+    get:
+      summary: List occupancy aggregators
+      tags: [Undocumented]
+
+  /unassociateddevicediscoverysession/{sessionId}:
+    get:
+      summary: Get unassociated device discovery session
+      tags: [Undocumented]
+    delete:
+      summary: Cancel discovery session
+      tags: [Undocumented]
+
+  /rssi/discoverysession/{sessionId}:
+    delete:
+      summary: Cancel RSSI discovery session
+      tags: [Undocumented]
+
+tags:
+  - name: Area
+    description: Areas (rooms, floors, buildings) — hierarchical containers for zones and devices
+  - name: Zone
+    description: Zones — individual load control points (lights, shades, fans)
+  - name: Device
+    description: Physical devices — dimmers, switches, keypads, sensors, shades
+  - name: Button
+    description: Physical and virtual buttons on keypads and control stations
+  - name: Virtual Button
+    description: Software-defined buttons for integrations and automations
+  - name: Control Station
+    description: Control stations (wallbox keypads, picos)
+  - name: Link
+    description: Radio/wire links — CCA (433MHz), CCX (Thread), QS (wired), DALI, GreenPHY
+  - name: Load Control
+    description: Load controllers, zone controllers, tuning, phase settings, LEDs, CCIs
+  - name: Occupancy
+    description: Occupancy groups, sensors, and detection settings
+  - name: Preset
+    description: Presets and 32 types of level/action assignments
+  - name: Schedule
+    description: Time clocks, events, daily/weekly schedules, countdown timers, sequences
+  - name: System
+    description: System settings, users, project, login, away mode, emergency, load shedding
+  - name: Server
+    description: Processor server info, LEAP pairing, IPL association, database
+  - name: Lighting
+    description: Emergency lighting, shading, daylighting, natural light, temperature sensors, curves
+  - name: Integration
+    description: Third-party service integrations — Alexa, Google Home, HomeKit, IFTTT, Sonos, BACnet, OpenADR, Ketra
+  - name: Operations
+    description: Firmware updates, database transfers, profile sessions, audit logs
+  - name: Network
+    description: Network interfaces, certificates, link nodes, security
+  - name: Undocumented
+    description: Previously unknown endpoints discovered in firmware — intruder deterrent, rentable spaces, third-party devices, detection groups

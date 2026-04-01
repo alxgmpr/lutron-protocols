@@ -103,7 +103,18 @@
 - CoAP Block1 (RFC 7959), 128-byte blocks, unicast to target device
 - Extractor: `tools/extract-fw-blocks.ts`, capture: `/tmp/ccx-fw-capture/`
 - **Designer never decrypts** — pushes encrypted package to processor via FTP; processor decrypts
-- RA3 SSH port 22 open but auth rejected (need credentials for plaintext access)
+- **RA3 ROOT SSH**: `ssh -i ~/.ssh/id_ed25519_lutron root@10.0.0.1` (injected 2026-04-01 via eval vuln)
+- SSH port 22 pubkey only, `support` user has Lutron employee key `abhat@PC0008690`
+
+## Phoenix Rootfs Analysis — See `docs/phoenix-rootfs-analysis.md`
+- **Rootfs decrypted and extracted** at `data/firmware/phoenix/v26.01.13f000/`
+- Radio: Silicon Labs EFR32 coprocessor(s) via UART/HDLC/CLAP at 230400 baud — NOT CC-series
+- Thread stack is fully proprietary (NOT OpenThread) — "Pegasus" internally
+- Janus variant = dual-radio (CCX + CCA coprocessors) — how RA3 bridges legacy devices
+- LEAP API: 384 endpoints, 773 object types — full inventory in the doc
+- Firmware decryption keys stored plaintext in `/etc/lutron.d/secure_element_external_keys/`
+- ATECC608 secure element (I2C 0xC0): 16 slots for ECC keys, AES keys, secrets
+- Device codenames: dart=Diva Smart, thin-mint=Sunnata, powerbird=Sunnata toggle, hercules=sensor, lorikeet/omnikeet=repeaters
 
 ## Sunnata Hardware — See `memory/sunnata-hardware.md`
 - **EFR32MG12P432** (Silicon Labs Cortex-M4), NOT nRF52840
