@@ -52,6 +52,7 @@ extern "C" {
 #define STREAM_CMD_CCA_VIVE_DIM    0x14
 #define STREAM_CMD_CCA_VIVE_PAIR   0x15
 #define STREAM_CMD_TX_RAW_CCX_CBOR 0x16
+#define STREAM_CMD_CCA_HYBRID_PAIR 0x17
 #define STREAM_CMD_TEXT            0x20
 
 /**
@@ -75,6 +76,10 @@ void stream_send_ccx_packet(const uint8_t* data, size_t len);
 
 /** Send a raw 802.15.4 frame to all registered UDP clients (promiscuous mode) */
 void stream_send_raw_frame(const uint8_t* data, size_t len);
+
+/** Broadcast a text message to all UDP stream clients (async, any task).
+ *  Appears as RESP_TEXT (0xFD) to the host — same as shell command output. */
+void stream_broadcast_text(const char* text, size_t len);
 
 /** Check if any UDP client is registered */
 bool stream_client_connected(void);

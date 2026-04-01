@@ -126,6 +126,21 @@ void stream_send_raw_frame(const uint8_t* data, size_t len)
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
 
+void stream_broadcast_text(const char* text, size_t len)
+{
+    if (tx_queue == NULL || len == 0) return;
+    /* Cap to TX_ITEM_MAX_DATA - 1 (need 1 byte for RESP_TEXT flag) */
+    if (len > TX_ITEM_MAX_DATA - 1) len = TX_ITEM_MAX_DATA - 1;
+
+    StreamTxItem item;
+    item.flags = STREAM_RESP_TEXT;
+    memcpy(item.data, text, len);
+    item.len = static_cast<uint8_t>(len);
+    item.timestamp_ms = HAL_GetTick();
+
+    if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
+}
+
 bool stream_client_connected(void)
 {
     return num_clients > 0;
@@ -605,6 +620,24 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
         break;
     }
 
+    case STREAM_CMD_CCA_HYBRID_PAIR: {
+        if (data_len >= 12) {
+            CcaCmdItem item = {};
+            item.cmd = CCA_CMD_HYBRID_PAIR;
+            item.device_id = ((uint32_t)buf[2] << 24) | ((uint32_t)buf[3] << 16) | ((uint32_t)buf[4] << 8) | buf[5];
+            item.target_id = ((uint32_t)buf[6] << 24) | ((uint32_t)buf[7] << 16) | ((uint32_t)buf[8] << 8) | buf[9];
+            item.raw_payload[0] = buf[10];
+            item.raw_payload[1] = buf[11];
+            item.zone_byte = buf[12];
+            item.duration_sec = buf[13];
+            cca_cmd_enqueue(&item);
+            printf("[stream] CCA hybrid pair: bridge=%08X class=%08X subnet=%04X zone=0x%02X dur=%u\r\n",
+                   (unsigned)item.device_id, (unsigned)item.target_id,
+                   (unsigned)((buf[10] << 8) | buf[11]), item.zone_byte, item.duration_sec);
+        }
+        break;
+    }
+
     case STREAM_CMD_STATUS_QUERY:
         printf("[stream] Status query\r\n");
         send_status_response(src_addr, src_port);
@@ -680,12 +713,20 @@ static void stream_task_func(void* param)
          * are non-blocking to flush the entire burst immediately. */
         if (xQueueReceive(tx_queue, &tx_item, pdMS_TO_TICKS(1)) == pdTRUE) {
             do {
-                uint8_t frame[TX_ITEM_MAX_DATA + 6]; /* FLAGS + LEN + TS(4) + DATA */
-                frame[0] = tx_item.flags;
-                frame[1] = tx_item.len;
-                put_le32(frame + 2, tx_item.timestamp_ms);
-                memcpy(frame + 6, tx_item.data, tx_item.len);
-                broadcast_frame(frame, (uint16_t)(6 + tx_item.len));
+                if (tx_item.flags == STREAM_RESP_TEXT) {
+                    /* Async text broadcast: [0xFD][text...] */
+                    uint8_t frame[TX_ITEM_MAX_DATA + 1];
+                    frame[0] = STREAM_RESP_TEXT;
+                    memcpy(frame + 1, tx_item.data, tx_item.len);
+                    broadcast_frame(frame, (uint16_t)(1 + tx_item.len));
+                } else {
+                    uint8_t frame[TX_ITEM_MAX_DATA + 6]; /* FLAGS + LEN + TS(4) + DATA */
+                    frame[0] = tx_item.flags;
+                    frame[1] = tx_item.len;
+                    put_le32(frame + 2, tx_item.timestamp_ms);
+                    memcpy(frame + 6, tx_item.data, tx_item.len);
+                    broadcast_frame(frame, (uint16_t)(6 + tx_item.len));
+                }
             } while (xQueueReceive(tx_queue, &tx_item, 0) == pdTRUE);
         }
 

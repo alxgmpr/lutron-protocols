@@ -49,6 +49,16 @@ bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code,
                    const char* uri_path,
                    const uint8_t* payload, size_t payload_len);
 
+/** Send CoAP to a non-standard port (0 = default 5683) */
+bool ccx_send_coap_port(const uint8_t* dst_addr, uint8_t code,
+                        const char* uri_path,
+                        const uint8_t* payload, size_t payload_len,
+                        uint16_t dst_port);
+
+/** Send CoAP Observe GET (observe_val: 0=register, 1=deregister) */
+bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path,
+                           uint8_t observe_val);
+
 /** Send pre-encoded CBOR bytes as a multicast CCX message */
 bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
 
@@ -155,6 +165,27 @@ typedef struct {
 /** Get last address query result (polled by shell after sending query).
  *  Returns false if no result available. Clears the result after reading. */
 bool ccx_get_address_result(ccx_address_result_t* result);
+
+/* -----------------------------------------------------------------------
+ * CoAP response capture — for synchronous shell commands
+ * ----------------------------------------------------------------------- */
+
+/** Last CoAP response data (set by RX handler, polled by shell) */
+typedef struct {
+    bool     valid;
+    uint8_t  code;          /* CoAP response code (e.g. 0x45 = 2.05 Content) */
+    uint16_t msg_id;
+    uint8_t  src_addr[16];
+    uint8_t  payload[256];
+    size_t   payload_len;
+} ccx_coap_response_t;
+
+/** Arm the CoAP response capture (call before sending request) */
+void ccx_coap_response_arm(void);
+
+/** Get last captured CoAP response. Returns false if none available.
+ *  Clears the capture after reading. */
+bool ccx_coap_response_get(ccx_coap_response_t* result);
 
 /** Check DFU state */
 typedef enum {

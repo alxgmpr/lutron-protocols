@@ -121,6 +121,53 @@ size_t coap_build_request(uint8_t* buf, size_t buf_size,
     return pos;
 }
 
+size_t coap_build_observe_request(uint8_t* buf, size_t buf_size,
+                                   uint16_t msg_id, uint8_t token,
+                                   const char* uri_path, uint8_t observe_val)
+{
+    if (buf_size < 5) return 0;
+
+    size_t pos = 0;
+
+    /* CoAP header: Ver=1, Type=CON, TKL=1, Code=GET (0.01) */
+    buf[pos++] = 0x41;
+    buf[pos++] = COAP_CODE_GET;
+    buf[pos++] = (uint8_t)(msg_id >> 8);
+    buf[pos++] = (uint8_t)(msg_id & 0xFF);
+    buf[pos++] = token;
+
+    /* Observe option (6): 1-byte value */
+    uint16_t prev_option = 0;
+    size_t n = coap_encode_option(buf + pos, buf_size - pos,
+                                  COAP_OPT_OBSERVE - prev_option,
+                                  &observe_val, 1);
+    if (n == 0) return 0;
+    pos += n;
+    prev_option = COAP_OPT_OBSERVE;
+
+    /* URI-Path options (option 11) */
+    if (uri_path) {
+        const char* p = uri_path;
+        if (*p == '/') p++;
+        while (*p) {
+            const char* seg_start = p;
+            while (*p && *p != '/') p++;
+            size_t seg_len = (size_t)(p - seg_start);
+            if (seg_len > 0) {
+                uint16_t delta = COAP_OPT_URI_PATH - prev_option;
+                n = coap_encode_option(buf + pos, buf_size - pos,
+                                       delta, (const uint8_t*)seg_start, seg_len);
+                if (n == 0) return 0;
+                pos += n;
+                prev_option = COAP_OPT_URI_PATH;
+            }
+            if (*p == '/') p++;
+        }
+    }
+
+    return pos;
+}
+
 size_t coap_build_ack(uint8_t* buf, size_t buf_size, uint16_t msg_id)
 {
     if (buf_size < 4) return 0;

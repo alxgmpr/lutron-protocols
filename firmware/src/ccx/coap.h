@@ -37,6 +37,7 @@ extern "C" {
 #define COAP_CODE_CONTENT  69  /* 2.05 */
 
 /* CoAP option numbers */
+#define COAP_OPT_OBSERVE        6
 #define COAP_OPT_URI_PATH       11
 #define COAP_OPT_CONTENT_FORMAT 12
 
@@ -84,6 +85,14 @@ size_t coap_build_ack(uint8_t* buf, size_t buf_size, uint16_t msg_id);
  */
 bool coap_parse_response(const uint8_t* buf, size_t len,
                          uint8_t* type, uint8_t* code, uint16_t* msg_id);
+
+/**
+ * Build a CoAP CON GET with Observe option (register=0 or deregister=1).
+ * Observe option (6) is placed before URI-Path options.
+ */
+size_t coap_build_observe_request(uint8_t* buf, size_t buf_size,
+                                   uint16_t msg_id, uint8_t token,
+                                   const char* uri_path, uint8_t observe_val);
 
 /**
  * Build a CoAP NON-confirmable request (for TMF Address Query etc.).
