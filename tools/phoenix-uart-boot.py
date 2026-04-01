@@ -38,7 +38,7 @@ for d in os.listdir(VENV):
 import serial
 import xmodem
 
-DEFAULT_SPL = "/tmp/phoenix-boot/MLO-patched"  # Lutron SPL patched to set bootdelay=5
+DEFAULT_SPL = "/tmp/phoenix-boot/custom-spl.bin"  # Custom U-Boot SPL with ARM entry stub
 BAUD = 115200
 
 
@@ -158,50 +158,52 @@ def main():
         ser.close()
         sys.exit(1)
 
-    # The patched SPL loads U-Boot from eMMC, patches bootdelay=0 to
-    # bootdelay=5 in RAM, then jumps to U-Boot. No second XMODEM stage.
-    print("SPL sent. Waiting for SPL init + U-Boot load...")
-    print("(Shellcode patches bootdelay=0 -> bootdelay=5 before jumping to U-Boot)")
+    # Stage 2: SPL does DDR init, then sends CCCC for U-Boot via YMODEM.
+    # The stock Lutron SPL detects UART boot source and expects second stage.
+    print("SPL sent. Waiting for SPL to init DDR and request U-Boot...")
     print()
 
-    # Blind mode: SPL serial output is broken after XMODEM, but U-Boot
-    # might reinitialize UART successfully. Spam Enter to catch autoboot.
-    blind = "--blind" in sys.argv
+    uboot_path = "/tmp/phoenix-boot/u-boot-patched.img"
 
-    if blind:
-        print("=== BLIND MODE: spamming Enter to catch U-Boot prompt ===")
-        print("Waiting 8s for SPL to finish DDR init + load U-Boot...")
-        # Drain any output during SPL init
-        ser.timeout = 0.1
-        start = time.time()
-        while time.time() - start < 8:
-            data = ser.read(ser.in_waiting or 1)
-            if data:
-                sys.stdout.buffer.write(data)
-                sys.stdout.buffer.flush()
-
-        # Spam Enter for 10 seconds to interrupt autoboot
-        print("Spamming Enter to interrupt autoboot...", flush=True)
-        start = time.time()
-        buf = b""
-        while time.time() - start < 10:
-            ser.write(b"\n")
-            time.sleep(0.2)
-            data = ser.read(ser.in_waiting or 1)
-            if data:
-                buf += data
-                sys.stdout.buffer.write(data)
-                sys.stdout.buffer.flush()
-                if b"=>" in buf or b"U-Boot>" in buf or b"#" in buf:
-                    print("\n*** GOT PROMPT! ***", flush=True)
-                    break
-
-        if buf:
-            print(f"\nReceived {len(buf)} bytes during blind mode", flush=True)
+    # Wait for second CCCC (SPL requesting U-Boot)
+    if wait_for_cccc(ser, timeout=30):
+        if os.path.exists(uboot_path):
+            if not send_xmodem(ser, uboot_path):
+                print("U-Boot transfer failed")
         else:
-            print("\nNo response. U-Boot may not have started.", flush=True)
-            print("Dropping to interactive console anyway...", flush=True)
+            print(f"U-Boot image not found at {uboot_path}")
+            print("Dropping to interactive console — SPL may try other boot sources")
     else:
+        print("No second CCCC — SPL may have loaded U-Boot from eMMC or crashed")
+        print("Monitoring for output...")
+
+    # Monitor for U-Boot output and spam Enter to catch autoboot
+    print("\nWaiting for U-Boot...", flush=True)
+    ser.timeout = 0.1
+    start = time.time()
+    buf = b""
+    while time.time() - start < 15:
+        ser.write(b"\n")
+        time.sleep(0.3)
+        data = ser.read(ser.in_waiting or 1)
+        if data:
+            buf += data
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+            if b"=>" in buf or b"U-Boot>" in buf or b"#" in buf:
+                print("\n*** GOT PROMPT! ***", flush=True)
+                break
+            if b"Hit any key" in buf:
+                ser.write(b"\n")
+
+    if buf:
+        print(f"\nReceived {len(buf)} bytes", flush=True)
+    else:
+        print("\nNo response from U-Boot.", flush=True)
+        print("Dropping to interactive console...", flush=True)
+
+    blind = False  # skip old blind mode logic
+    if False:
         time.sleep(3)
         # Monitor for output
         ser.timeout = 0.5
