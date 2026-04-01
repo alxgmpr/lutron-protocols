@@ -56,17 +56,35 @@ Key firmware modules:
 
 ### CLI
 
-`cli/nucleo.ts` connects to Nucleo over TCP:9433. Key abstractions:
+`cli/nucleo.ts` connects to Nucleo over **UDP** port 9433. Key abstractions:
 - **Screen** (`cli/tui/screen.ts`) — VT100-based TUI with fixed header/status/input and scrollable packet table region
 - **LineEditor** (`cli/tui/line-editor.ts`) — raw mode stdin with history, tab completion
 - **PacketTable** (`cli/tui/table.ts`) — in-memory packet buffer with visible-line computation
 - Packet identification via `identifyPacket()` from `protocol/protocol-ui.ts`
+
+### CoAP Device Communication
+
+CCX devices expose CoAP endpoints on Thread mesh (port 5683). Address via RLOC:
+- `ccx coap get rloc:<RLOC16> <path>` — synchronous GET with response capture
+- `ccx coap scan <rloc> <basePath>` — scan suffix A-Z with progress
+- `ccx coap observe <rloc> <path>` — subscribe to notifications
+- Device RLOCs from RA3: `ssh root@10.0.0.1 "zcat /var/log/ccx-diagnostics-log.0.gz | head -20"`
+- Trim encoding uses level formula: `raw = percent * 0xFEFF / 100` (NOT `percent * 256 - 256`)
+- Full protocol docs: `docs/ccx-coap-protocol.md`
+
+### Stream Protocol (UDP :9433)
+
+Binary framing: `[FLAGS:1][LEN:1][TS:4 LE][DATA:N]`. Host→STM32: `[CMD:1][LEN:1][DATA:N]`.
+- `CMD 0x20` = text passthrough (shell command), response: `[0xFD][text]`
+- `FLAGS 0x40` = CCX packet, `0x80` = TX echo, `0xFF` = heartbeat
+- Firmware `printf()` in ccx_task goes to UART only — use `stream_broadcast_text()` for UDP clients
 
 ## Commands
 
 ```bash
 # TypeScript tools (all run directly with Bun, no build step)
 bun run cli/nucleo.ts               # Connect to Nucleo interactive shell
+npx tsx tools/nucleo-cmd.ts "cmd"    # Scriptable one-shot command to Nucleo
 bun run tools/codegen.ts            # Regenerate C headers from TS protocol defs
 bun run tools/ccx-sniffer.ts --live # Sniff Thread traffic
 bun run tools/leap-dump.ts          # Dump LEAP device hierarchy
@@ -139,6 +157,9 @@ Biome handles both linting and formatting. Config in `biome.json`:
 - Scope: `cli/`, `tools/`, `ccx/`, `protocol/` (TypeScript only)
 - 2-space indent, spaces not tabs
 - Relaxed rules: `noExplicitAny` off, `noNonNullAssertion` off, `useTemplate` off, `useNodejsImportProtocol` off
+- Pre-push hook (`.githooks/pre-push`) runs lint + typecheck — **CI must be green before push**
+- `npx biome check --write cli/ tools/ ccx/ protocol/` — auto-fix formatting
+- `npx tsc -p tsconfig.typecheck.json --noEmit` — type errors
 
 ## CCX→WiZ Bridge
 
