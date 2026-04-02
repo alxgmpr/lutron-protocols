@@ -1,16 +1,14 @@
 /**
- * Screen — TUI rendering with alternate buffer, scroll regions, and fixed chrome.
+ * Screen — Chat-style TUI with append-only output and pinned footer.
  *
- * Uses VT100 scroll regions to confine packet output to the table area.
- * Header (row 1), column headers (rows 2-3), status bar (row H-1), and
- * input line (row H) are outside the scroll region and never move.
+ * Packets append to the main terminal buffer (no alternate screen),
+ * enabling native scrollback (Shift+PgUp, mouse wheel). A 3-row footer
+ * is pinned at the bottom via a VT100 scroll region.
  *
  * Layout:
- *   Row 1:        Header bar
- *   Row 2:        Column labels
- *   Row 3:        Separator
- *   Rows 4..H-2:  Scroll region (packet table)
- *   Row H-1:      Status bar
+ *   Rows 1..H-3:  Scroll region (append-only packet output)
+ *   Row H-2:      Separator
+ *   Row H-1:      Footer legend (column names left, status/counts right)
  *   Row H:        Input line
  */
 
@@ -36,12 +34,6 @@ function setScrollRegion(top: number, bottom: number): string {
 }
 function resetScrollRegion(): string {
   return `${CSI}r`;
-}
-function altScreenOn(): string {
-  return `${CSI}?1049h`;
-}
-function altScreenOff(): string {
-  return `${CSI}?1049l`;
 }
 function hideCursor(): string {
   return `${CSI}?25l`;
@@ -131,19 +123,16 @@ export class PassthroughScreen implements IScreen {
 }
 
 // ============================================================================
-// Screen — full TUI with scroll regions
+// Screen — chat-style TUI with pinned footer
 // ============================================================================
 export class Screen implements IScreen {
   private _width = 120;
   private _height = 24;
   private headerText = "";
-  private headerSep = "";
   private colLabels = "";
-  private colSeparator = "";
   private statusText = "";
   private inputText = "";
   private inputCursorCol = 0;
-  private overlayActive = false;
   private pendingLines: string[] = [];
   private flushScheduled = false;
 
@@ -154,36 +143,20 @@ export class Screen implements IScreen {
     return this._height;
   }
   get tableHeight(): number {
-    // chrome: header, header sep, col labels, col sep (top) + status, input sep, input (bottom)
-    return Math.max(1, this._height - 7);
+    return Math.max(1, this._height - 3);
   }
   get isTTY(): boolean {
     return true;
   }
 
-  /** Row positions (1-indexed) */
-  private get headerRow(): number {
-    return 1;
-  }
-  private get headerSepRow(): number {
-    return 2;
-  }
-  private get colLabelRow(): number {
-    return 3;
-  }
-  private get colSepRow(): number {
-    return 4;
-  }
-  private get scrollTop(): number {
-    return 5;
-  }
+  /** Row positions (1-indexed). Footer occupies last 3 rows. */
   private get scrollBottom(): number {
     return this._height - 3;
   }
-  private get statusRow(): number {
+  private get separatorRow(): number {
     return this._height - 2;
   }
-  private get inputSepRow(): number {
+  private get legendRow(): number {
     return this._height - 1;
   }
   private get inputRow(): number {
@@ -201,48 +174,34 @@ export class Screen implements IScreen {
     this._width = process.stdout.columns || 120;
     this._height = process.stdout.rows || 24;
 
+    // No alt screen — stay in main buffer for native scrollback.
+    // Scroll region: rows 1..H-3. Footer rows H-2, H-1, H are pinned.
     const buf =
-      altScreenOn() +
-      hideCursor() +
-      disableLineWrap() +
-      `${CSI}2J` + // clear screen
-      setScrollRegion(this.scrollTop, this.scrollBottom);
+      hideCursor() + disableLineWrap() + setScrollRegion(1, this.scrollBottom);
 
     process.stdout.write(buf);
-    this.drawChrome();
+    this.drawFooter();
   }
 
   destroy(): void {
-    const buf =
-      resetScrollRegion() + enableLineWrap() + showCursor() + altScreenOff();
+    const buf = resetScrollRegion() + enableLineWrap() + showCursor() + "\n";
     process.stdout.write(buf);
   }
 
+  /** Header info is displayed in the footer legend bar (right side). */
   setHeader(left: string, right?: string): void {
-    if (right) {
-      const leftLen = stripAnsi(left).length;
-      const rightLen = stripAnsi(right).length;
-      const usable = this._width - 1; // avoid writing to last column
-      const gap = Math.max(2, usable - leftLen - rightLen);
-      this.headerText = left + " ".repeat(gap) + right;
-    } else {
-      this.headerText = left;
-    }
-    this.headerSep = "\x1b[2m" + "─".repeat(this._width - 1) + "\x1b[0m";
-    this.writeAt(this.headerRow, this.headerText);
-    this.writeAt(this.headerSepRow, this.headerSep);
+    this.headerText = right ? `${left}  ${right}` : left;
+    this.drawFooter();
   }
 
-  setColumnHeaders(labels: string, separator: string): void {
+  /** Column labels are displayed in the footer legend bar (left side). */
+  setColumnHeaders(labels: string, _separator: string): void {
     this.colLabels = labels;
-    this.colSeparator = separator;
-    this.writeAt(this.colLabelRow, labels);
-    this.writeAt(this.colSepRow, separator);
+    this.drawFooter();
   }
 
   /** Hot path: append a line at the bottom of the scroll region. */
   appendLine(text: string): void {
-    if (this.overlayActive) return; // don't write behind overlay
     this.pendingLines.push(text);
     if (!this.flushScheduled) {
       this.flushScheduled = true;
@@ -250,33 +209,12 @@ export class Screen implements IScreen {
     }
   }
 
-  /** Full redraw of the table area (resize, scroll-back). */
-  redrawTable(lines: string[]): void {
-    let buf = "";
-    const top = this.scrollTop;
-    const bottom = this.scrollBottom;
-    const maxLines = bottom - top + 1;
-
-    // Clear the scroll region
-    for (let r = top; r <= bottom; r++) {
-      buf += moveTo(r, 1) + eraseLine();
-    }
-
-    // Write visible lines (bottom-aligned)
-    const startRow = bottom - Math.min(lines.length, maxLines) + 1;
-    for (let i = Math.max(0, lines.length - maxLines); i < lines.length; i++) {
-      const row = startRow + (i - Math.max(0, lines.length - maxLines));
-      buf += moveTo(row, 1) + lines[i] + eraseToEOL();
-    }
-
-    // Restore cursor to input
-    buf += moveTo(this.inputRow, this.inputCursorCol + 1) + showCursor();
-    process.stdout.write(buf);
-  }
+  /** No-op in chat mode — packets are already in the terminal buffer. */
+  redrawTable(_lines: string[]): void {}
 
   setStatusBar(text: string): void {
     this.statusText = text;
-    this.writeAt(this.statusRow, text);
+    this.drawFooter();
   }
 
   setInputLine(text: string): void {
@@ -289,43 +227,30 @@ export class Screen implements IScreen {
     process.stdout.write(moveTo(this.inputRow, col + 1) + showCursor());
   }
 
+  /** Append overlay content inline as styled text. */
   showOverlay(lines: string[]): void {
-    this.overlayActive = true;
-    let buf = "";
-    const top = this.scrollTop;
-    const bottom = this.scrollBottom;
-    const maxLines = bottom - top + 1;
-
-    // Clear scroll area
-    for (let r = top; r <= bottom; r++) {
-      buf += moveTo(r, 1) + eraseLine();
+    const sep = "\x1b[2m" + "─".repeat(this._width - 1) + "\x1b[0m";
+    this.pendingLines.push(sep);
+    for (const line of lines) {
+      this.pendingLines.push(line);
     }
-
-    // Write overlay lines from top
-    for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
-      buf += moveTo(top + i, 1) + lines[i] + eraseToEOL();
+    this.pendingLines.push(sep);
+    if (!this.flushScheduled) {
+      this.flushScheduled = true;
+      queueMicrotask(() => this.flushPending());
     }
-
-    buf += moveTo(this.inputRow, this.inputCursorCol + 1) + showCursor();
-    process.stdout.write(buf);
   }
 
-  clearOverlay(): void {
-    if (!this.overlayActive) return;
-    this.overlayActive = false;
-    // Caller should redrawTable with current visible lines
-  }
+  clearOverlay(): void {}
 
   handleResize(onResize: () => void): void {
     process.stdout.on("resize", () => {
       this._width = process.stdout.columns || 120;
       this._height = process.stdout.rows || 24;
 
-      // Re-establish scroll region and redraw chrome
-      process.stdout.write(
-        setScrollRegion(this.scrollTop, this.scrollBottom) + `${CSI}2J`,
-      );
-      this.drawChrome();
+      // Re-establish scroll region with new dimensions and redraw footer
+      process.stdout.write(setScrollRegion(1, this.scrollBottom));
+      this.drawFooter();
       onResize();
     });
   }
@@ -333,14 +258,30 @@ export class Screen implements IScreen {
   // ============================================================================
   // Internal helpers
   // ============================================================================
-  private drawChrome(): void {
+
+  /** Compose and draw the 3-row pinned footer. */
+  private drawFooter(): void {
     const dimSep = "\x1b[2m" + "─".repeat(this._width - 1) + "\x1b[0m";
-    if (this.headerText) this.writeAt(this.headerRow, this.headerText);
-    if (this.headerSep) this.writeAt(this.headerSepRow, this.headerSep);
-    if (this.colLabels) this.writeAt(this.colLabelRow, this.colLabels);
-    if (this.colSeparator) this.writeAt(this.colSepRow, this.colSeparator);
-    if (this.statusText) this.writeAt(this.statusRow, this.statusText);
-    this.writeAt(this.inputSepRow, dimSep);
+
+    // Legend row: column labels left, header/status info right
+    const rightParts: string[] = [];
+    if (this.statusText) rightParts.push(this.statusText);
+    if (this.headerText) rightParts.push(this.headerText);
+    const right = rightParts.join("  ");
+
+    let legend = "";
+    if (this.colLabels && right) {
+      const leftLen = stripAnsi(this.colLabels).length;
+      const rightLen = stripAnsi(right).length;
+      const usable = this._width - 1;
+      const gap = Math.max(2, usable - leftLen - rightLen);
+      legend = this.colLabels + " ".repeat(gap) + right;
+    } else {
+      legend = this.colLabels || right;
+    }
+
+    this.writeAt(this.separatorRow, dimSep);
+    this.writeAt(this.legendRow, legend);
     if (this.inputText) this.writeAt(this.inputRow, this.inputText);
   }
 
@@ -362,15 +303,12 @@ export class Screen implements IScreen {
 
     let buf = hideCursor();
 
-    // Position cursor at bottom of scroll region, then write lines.
-    // Each line at the bottom causes the scroll region to scroll up.
     for (const line of this.pendingLines) {
       buf += moveTo(this.scrollBottom, 1) + "\n" + line + eraseToEOL();
     }
 
     this.pendingLines.length = 0;
 
-    // Restore cursor to input line
     buf += moveTo(this.inputRow, this.inputCursorCol + 1) + showCursor();
     process.stdout.write(buf);
   }

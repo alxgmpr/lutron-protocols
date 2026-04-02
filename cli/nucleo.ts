@@ -340,7 +340,6 @@ function updateStatusBar(): void {
   if (verbose) parts.push(`${GREEN}[verbose]${RESET}`);
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
-  if (!packetTable.isLive()) parts.push(`${YELLOW}[scroll]${RESET}`);
   if (coapScan) {
     const { sent, received, hits, paths } = coapScan;
     parts.push(
@@ -363,9 +362,7 @@ function emitPacketRow(row: PacketRow): void {
   const layout = getPacketLayout(raw, screen.width, verbose);
   const rendered = renderRow(row, layout);
   packetTable.addRow(row, rendered);
-  if (packetTable.isLive()) {
-    screen.appendLine(rendered);
-  }
+  screen.appendLine(rendered);
   // Emit verbose detail line if present
   if (row.verboseLine) {
     const detailRow: PacketRow = {
@@ -389,7 +386,7 @@ function emitPacketRow(row: PacketRow): void {
     };
     const detailRendered = renderRow(detailRow, layout);
     packetTable.addRow(detailRow, detailRendered);
-    if (packetTable.isLive() && detailRendered) {
+    if (detailRendered) {
       screen.appendLine(detailRendered);
     }
   }
@@ -398,9 +395,6 @@ function emitPacketRow(row: PacketRow): void {
 function fullRedraw(): void {
   updateHeader();
   updateColumnHeaders();
-  packetTable.rerender(raw, screen.width, verbose);
-  const lines = packetTable.getVisibleLines(screen.tableHeight);
-  screen.redrawTable(lines);
   updateStatusBar();
 }
 
@@ -1159,7 +1153,6 @@ function displayStatus(blob: Buffer) {
     );
   }
 
-  lines.push("", `${DIM}Press any key to dismiss${RESET}`);
   screen.showOverlay(lines);
 }
 
@@ -1231,17 +1224,9 @@ function handleDatagram(msg: Buffer) {
       return;
     }
 
-    // Normal text passthrough
+    // Normal text passthrough — always inline
     const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
-    if (lines.length <= 3) {
-      for (const line of lines) screen.appendLine(line);
-    } else {
-      screen.showOverlay([
-        ...lines,
-        "",
-        `${DIM}Press any key to dismiss${RESET}`,
-      ]);
-    }
+    for (const line of lines) screen.appendLine(line);
     return;
   }
 
@@ -1393,8 +1378,7 @@ function showHelp() {
     `  ${MAGENTA}config${RESET}                                    Show flash-stored config`,
     `  ${MAGENTA}save${RESET}                                      Save settings to flash`,
     "",
-    `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Page Up/Down to scroll. Ctrl-L to redraw.${RESET}`,
-    `${DIM}Press any key to dismiss${RESET}`,
+    `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
   ]);
 }
 
@@ -1582,7 +1566,6 @@ function finishCoapScan() {
       const cc = coapCodeColor(c);
       lines.push(`  ${cc}${c.padEnd(6)}${RESET} ${p}`);
     }
-    lines.push("", `${DIM}Press any key to dismiss${RESET}`);
     screen.showOverlay(lines);
   }
   updateStatusBar();
@@ -1869,29 +1852,6 @@ async function startup() {
     screen.setCursorToInput(col);
   };
 
-  lineEditor.onPageUp = () => {
-    packetTable.scrollBack(-1, screen.tableHeight);
-    const lines = packetTable.getVisibleLines(screen.tableHeight);
-    screen.redrawTable(lines);
-    updateStatusBar();
-  };
-
-  lineEditor.onPageDown = () => {
-    packetTable.scrollBack(1, screen.tableHeight);
-    const lines = packetTable.getVisibleLines(screen.tableHeight);
-    screen.redrawTable(lines);
-    updateStatusBar();
-  };
-
-  lineEditor.onEnd = () => {
-    if (!packetTable.isLive()) {
-      packetTable.scrollToLive();
-      const lines = packetTable.getVisibleLines(screen.tableHeight);
-      screen.redrawTable(lines);
-      updateStatusBar();
-    }
-  };
-
   lineEditor.onRedraw = () => fullRedraw();
 
   lineEditor.onQuit = () => {
@@ -1901,9 +1861,6 @@ async function startup() {
 
   lineEditor.onAnyKey = () => {
     screen.clearOverlay();
-    // After clearing overlay, redraw table if we had one
-    const lines = packetTable.getVisibleLines(screen.tableHeight);
-    screen.redrawTable(lines);
   };
 
   // Tab completion candidates
