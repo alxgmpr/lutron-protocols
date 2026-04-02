@@ -49,8 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y clang
-      - run: mkdir -p firmware/build && make -C firmware test
+      - run: sudo apt-get update && sudo apt-get install -y clang clang-format cppcheck
+      - run: make -C firmware test
+      - run: make -C firmware format-check
+      - run: make -C firmware lint
 
   codegen-check:
     runs-on: ubuntu-latest
