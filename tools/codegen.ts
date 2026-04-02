@@ -259,7 +259,7 @@ function generateCCXHeader(): string {
   // Level constants
   out += "\n/* Level constants */\n";
   out += "#define CCX_LEVEL_FULL_ON 0xFEFF\n";
-  out += "#define CCX_LEVEL_OFF     0x0000\n";
+  out += "#define CCX_LEVEL_OFF 0x0000\n";
 
   // UDP port
   out += "\n/* UDP port */\n";
