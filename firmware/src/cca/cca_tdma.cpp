@@ -95,6 +95,7 @@ static CcaTdmaJob jobs_[CCA_TDMA_MAX_JOBS] = {};
 static TdmaFrameSync frame_ = {};
 static bool paused_ = false;
 static bool initialized_ = false;
+static TdmaJobGroup groups_[TDMA_MAX_GROUPS] = {};
 
 /* -----------------------------------------------------------------------
  * Device slot observation (promoted from cca_task.cpp slot-lock code)
@@ -455,12 +456,76 @@ static bool fire_job(CcaTdmaJob* job, uint32_t now_ms)
     return true;
 }
 
+/**
+ * Fire one packet from a job group: update seq/type, TX, advance state.
+ */
+static void fire_group_packet(TdmaJobGroup* g, uint32_t now_ms)
+{
+    TdmaPhase* phase = &g->phases[g->current_phase];
+    uint8_t pkt[53];
+    memcpy(pkt, phase->packet.data, phase->packet.len);
+
+    /* Set sequence byte: low bits = slot, upper bits = counter */
+    if (phase->packet.len > 1) {
+        pkt[1] = g->slot + (uint8_t)(g->current_retransmit * frame_.slot_count);
+    }
+
+    /* Rotate type byte if requested (0x81 → 0x82 → 0x83 → 0x81...) */
+    if (phase->packet.type_rotate && phase->packet.len > 0) {
+        pkt[0] = 0x81 + (uint8_t)(g->current_retransmit % 3);
+    }
+
+    /* Stop RX, transmit, restart RX */
+    cc1101_stop_rx();
+    transmit_one(pkt, phase->packet.len);
+    cc1101_start_rx();
+
+    g->current_retransmit++;
+
+    if (g->current_retransmit >= phase->retransmits) {
+        /* Phase complete — advance to next */
+        g->current_phase++;
+        g->current_retransmit = 0;
+
+        if (g->current_phase >= g->phase_count) {
+            /* All phases done */
+            if (g->on_complete) {
+                g->on_complete(g->ctx);
+            }
+            g->active = false;
+            return;
+        }
+
+        /* Apply post-delay if specified */
+        if (phase->post_delay_ms > 0) {
+            g->next_fire_ms = now_ms + phase->post_delay_ms;
+        }
+        else {
+            g->next_fire_ms = next_slot_time(g->slot, now_ms);
+        }
+    }
+    else {
+        /* Schedule next retransmit one frame period later */
+        uint32_t next = g->next_fire_ms + frame_.period_ms;
+        if ((int32_t)(next - now_ms) < 2 || (int32_t)(next - now_ms) > (int32_t)frame_.period_ms) {
+            next = next_slot_time(g->slot, now_ms);
+        }
+        g->next_fire_ms = next;
+    }
+}
+
 /* -----------------------------------------------------------------------
  * Hot poll — should the task poll at 1ms instead of 2ms?
  * Returns true if any job is due within the next 7ms.
  * ----------------------------------------------------------------------- */
 static bool should_hot_poll(uint32_t now_ms)
 {
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        if (!groups_[i].active) continue;
+        int32_t until = (int32_t)(groups_[i].next_fire_ms - now_ms);
+        if (until >= -2 && until <= 7) return true;
+    }
+
     for (size_t i = 0; i < CCA_TDMA_MAX_JOBS; i++) {
         if (!jobs_[i].active) continue;
         int32_t until = (int32_t)(jobs_[i].next_fire_ms - now_ms);
@@ -568,6 +633,57 @@ void cca_tdma_cancel(CcaTdmaJob* job)
     job->active = false;
 }
 
+bool cca_tdma_submit_group(const TdmaJobGroup* group)
+{
+    if (!initialized_ || !group || group->phase_count == 0) return false;
+
+    TdmaJobGroup* g = nullptr;
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        if (!groups_[i].active) {
+            g = &groups_[i];
+            break;
+        }
+    }
+    if (!g) {
+        printf("[tdma] Job group queue full\r\n");
+        return false;
+    }
+
+    uint32_t now = HAL_GetTick();
+
+    if (!frame_.our_slot_valid) {
+        frame_.our_slot = pick_tx_slot(now);
+        frame_.our_slot_valid = true;
+    }
+
+    memcpy(g, group, sizeof(TdmaJobGroup));
+    g->slot = frame_.our_slot;
+    g->current_phase = 0;
+    g->current_retransmit = 0;
+    g->next_fire_ms = next_slot_time(g->slot, now);
+    g->active = true;
+
+    return true;
+}
+
+void cca_tdma_cancel_groups(void)
+{
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        groups_[i].active = false;
+    }
+}
+
+bool cca_tdma_is_idle(void)
+{
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        if (groups_[i].active) return false;
+    }
+    for (size_t i = 0; i < CCA_TDMA_MAX_JOBS; i++) {
+        if (jobs_[i].active) return false;
+    }
+    return true;
+}
+
 uint32_t cca_tdma_poll(uint32_t now_ms)
 {
     if (!initialized_ || paused_) {
@@ -582,6 +698,18 @@ uint32_t cca_tdma_poll(uint32_t now_ms)
         int32_t until = (int32_t)(job->next_fire_ms - now_ms);
         if (until <= 0) {
             fire_job(job, now_ms);
+        }
+    }
+
+    /* Fire due job group packets */
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        TdmaJobGroup* g = &groups_[i];
+        if (!g->active) continue;
+
+        int32_t until = (int32_t)(g->next_fire_ms - now_ms);
+        if (until <= 0) {
+            fire_group_packet(g, now_ms);
+            break; /* at most one TX per poll cycle */
         }
     }
 
@@ -634,6 +762,9 @@ void cca_tdma_get_state(CcaTdmaFrameState* out)
     for (size_t i = 0; i < CCA_TDMA_MAX_JOBS; i++) {
         if (jobs_[i].active) active_jobs++;
     }
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        if (groups_[i].active) active_jobs++;
+    }
     out->active_jobs = active_jobs;
 }
 
@@ -666,6 +797,9 @@ void cca_tdma_reset(void)
     }
     for (size_t i = 0; i < CCA_TDMA_MAX_JOBS; i++) {
         jobs_[i].active = false;
+    }
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        groups_[i].active = false;
     }
     frame_.confidence = 0;
     frame_.anchor_ms = 0;
