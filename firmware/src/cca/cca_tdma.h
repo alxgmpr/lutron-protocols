@@ -93,6 +93,43 @@ typedef struct CcaTdmaTxRequest {
 typedef struct CcaTdmaJob CcaTdmaJob;
 
 /* -----------------------------------------------------------------------
+ * Job group — multi-phase TX command (non-blocking)
+ *
+ * A command (button, level, pairing) decomposes into phases.
+ * Each phase is a packet retransmitted N times at one-frame intervals.
+ * The TDMA engine fires one packet per poll cycle per group.
+ * ----------------------------------------------------------------------- */
+#define TDMA_MAX_PHASES 8
+#define TDMA_MAX_GROUPS 4
+
+typedef struct {
+    uint8_t data[53];     /* raw payload (pre-CRC, pre-8N1) */
+    uint8_t len;          /* 22 (short) or 51 (long) */
+    uint8_t type_rotate;  /* 0=fixed type byte, 1=rotate 81/82/83 per retransmit */
+} TdmaPacket;
+
+typedef struct {
+    TdmaPacket packet;
+    uint8_t retransmits;     /* frames to repeat (5=normal, 10=pairing) */
+    uint16_t post_delay_ms;  /* delay after phase completes before next (0=immediate) */
+} TdmaPhase;
+
+typedef struct TdmaJobGroup {
+    TdmaPhase phases[TDMA_MAX_PHASES];
+    uint8_t phase_count;
+
+    /* Managed by engine — caller does not set these: */
+    uint8_t slot;
+    uint8_t current_phase;
+    uint8_t current_retransmit;
+    uint32_t next_fire_ms;
+    bool active;
+
+    void (*on_complete)(void* ctx);
+    void* ctx;
+} TdmaJobGroup;
+
+/* -----------------------------------------------------------------------
  * Public API
  * ----------------------------------------------------------------------- */
 
@@ -114,6 +151,18 @@ CcaTdmaJob* cca_tdma_submit(const CcaTdmaTxRequest* req);
 
 /** Cancel a pending TX job. Safe to call with NULL. */
 void cca_tdma_cancel(CcaTdmaJob* job);
+
+/**
+ * Submit a job group for TDMA-scheduled multi-phase transmission.
+ * The engine copies the group. Returns true on success, false if full.
+ */
+bool cca_tdma_submit_group(const TdmaJobGroup* group);
+
+/** Cancel all active job groups. */
+void cca_tdma_cancel_groups(void);
+
+/** Check if all job groups are idle (no active TX). */
+bool cca_tdma_is_idle(void);
 
 /**
  * Poll for due TX jobs. Called from the CCA task main loop.
