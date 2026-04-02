@@ -16,6 +16,8 @@
 #include "cca_encoder.h"
 #include "cca_timer.h"
 #include "cca_types.h"
+#include "cca_tdma.h"
+#include "cca_tx_builder.h"
 #include "cc1101.h"
 #include "stream.h"
 #include "bsp.h"
@@ -55,6 +57,122 @@ bool cca_cmd_enqueue(const CcaCmdItem* item)
  * ----------------------------------------------------------------------- */
 static bool type_alternate_ = false; /* toggles A/B on each button press */
 static uint32_t cmd_tx_count = 0;    /* packets transmitted by commands */
+
+/* -----------------------------------------------------------------------
+ * Job group builders — non-blocking command decomposition
+ * ----------------------------------------------------------------------- */
+
+TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id,
+                                    uint8_t level_pct, uint8_t fade_qs)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+
+    uint16_t level16 = cca_percent_to_level16(level_pct);
+    cca_build_set_level(g.phases[0].packet.data, zone_id, target_id,
+                        QS_ADDR_COMPONENT, level16, fade_qs, 0x81);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].retransmits = CCA_TDMA_RETRIES_LEVEL;
+    g.phases[0].post_delay_ms = 0;
+
+    printf("[cca] JOB bridge_level zone=%08X target=%08X %u%% fade=%uqs\r\n",
+           (unsigned)zone_id, (unsigned)target_id, level_pct, fade_qs);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button)
+{
+    TdmaJobGroup g = {};
+
+    /* A/B alternation */
+    static bool alt = false;
+    uint8_t press_type = alt ? PKT_BTN_LONG_B : PKT_BTN_LONG_A;
+    uint8_t release_type = alt ? PKT_BTN_SHORT_A : PKT_BTN_SHORT_B;
+    alt = !alt;
+
+    /* Map 5-btn raise/lower to 4-btn codes */
+    bool is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
+    if (button == BTN_RAISE) button = 0x09;
+    if (button == BTN_LOWER) button = 0x0A;
+
+    uint8_t press_fmt = is_dimming ? QS_FMT_BEACON : QS_FMT_TAP;
+
+    /* Phase 0: PRESS (short format) */
+    cca_build_button_short(g.phases[0].packet.data, device_id, button,
+                           ACTION_PRESS, press_fmt, press_type);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_rotate = 0;
+    g.phases[0].retransmits = 2;
+    g.phases[0].post_delay_ms = 0;
+
+    /* Phase 1: RELEASE (long format) */
+    cca_build_button_long(g.phases[1].packet.data, device_id, button, release_type);
+    g.phases[1].packet.len = 22;
+    g.phases[1].packet.type_rotate = 0;
+    g.phases[1].retransmits = 12;
+    g.phases[1].post_delay_ms = 0;
+
+    g.phase_count = 2;
+
+    printf("[cca] JOB button dev=%08X btn=%s\r\n",
+           (unsigned)device_id, cca_button_name(button));
+    return g;
+}
+
+TdmaJobGroup cca_jobs_beacon(uint32_t zone_id, uint8_t type_byte)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+
+    cca_build_beacon(g.phases[0].packet.data, zone_id, type_byte);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_rotate = 0;
+    g.phases[0].retransmits = CCA_TDMA_RETRIES_NORMAL;
+    g.phases[0].post_delay_ms = 0;
+
+    printf("[cca] JOB beacon zone=%08X type=0x%02X\r\n",
+           (unsigned)zone_id, type_byte);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_raw(const uint8_t* payload, uint8_t len, uint8_t retransmits)
+{
+    TdmaJobGroup g = {};
+    if (len == 0 || len > 53) return g;
+
+    g.phase_count = 1;
+    memcpy(g.phases[0].packet.data, payload, len);
+    g.phases[0].packet.len = len;
+    g.phases[0].packet.type_rotate = 0;
+    g.phases[0].retransmits = retransmits > 0 ? retransmits : CCA_TDMA_RETRIES_NORMAL;
+    g.phases[0].post_delay_ms = 0;
+
+    return g;
+}
+
+TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
+{
+    TdmaJobGroup empty = {};
+    if (!item) return empty;
+
+    switch (item->cmd) {
+    case CCA_CMD_BUTTON:
+        return cca_jobs_button(item->device_id, item->button);
+    case CCA_CMD_BRIDGE_LEVEL:
+        return cca_jobs_bridge_level(item->device_id, item->target_id,
+                                     item->level_pct, item->fade_qs);
+    case CCA_CMD_BEACON:
+        return cca_jobs_beacon(item->device_id, 0x91);
+    case CCA_CMD_RAW:
+        return cca_jobs_raw(item->raw_payload, item->raw_payload_len,
+                           item->raw_repeat);
+    default:
+        printf("[cca] JOB: unsupported cmd 0x%02X, falling back to blocking\r\n",
+               item->cmd);
+        return empty;
+    }
+}
 
 /* -----------------------------------------------------------------------
  * Transmit one CCA packet (CRC + N81 encode + radio TX).

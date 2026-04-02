@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+#include "cca_tdma.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -89,6 +91,19 @@ void* cca_cmd_queue_handle(void);
 
 /** Get total packets transmitted by command functions */
 uint32_t cca_cmd_tx_count(void);
+
+/* -----------------------------------------------------------------------
+ * Job group builders — decompose commands into TDMA-scheduled phases.
+ * Each returns a TdmaJobGroup ready for cca_tdma_submit_group().
+ * ----------------------------------------------------------------------- */
+TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button);
+TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id,
+                                    uint8_t level_pct, uint8_t fade_qs);
+TdmaJobGroup cca_jobs_beacon(uint32_t zone_id, uint8_t type_byte);
+TdmaJobGroup cca_jobs_raw(const uint8_t* payload, uint8_t len, uint8_t retransmits);
+
+/** Convert a CcaCmdItem to a TdmaJobGroup. Returns group with phase_count=0 on error. */
+TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item);
 
 #ifdef __cplusplus
 }
