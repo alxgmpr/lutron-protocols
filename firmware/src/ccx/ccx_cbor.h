@@ -25,12 +25,12 @@ extern "C" {
 /* -----------------------------------------------------------------------
  * CBOR major types
  * ----------------------------------------------------------------------- */
-#define CBOR_MAJOR_UINT  0
-#define CBOR_MAJOR_NINT  1
-#define CBOR_MAJOR_BSTR  2
-#define CBOR_MAJOR_TSTR  3
+#define CBOR_MAJOR_UINT 0
+#define CBOR_MAJOR_NINT 1
+#define CBOR_MAJOR_BSTR 2
+#define CBOR_MAJOR_TSTR 3
 #define CBOR_MAJOR_ARRAY 4
-#define CBOR_MAJOR_MAP   5
+#define CBOR_MAJOR_MAP 5
 
 /* -----------------------------------------------------------------------
  * Encoder — returns bytes written, 0 on buffer overflow
@@ -56,9 +56,9 @@ size_t cbor_encode_tstr(uint8_t* buf, size_t buf_size, const char* str, size_t l
  * ----------------------------------------------------------------------- */
 
 typedef struct {
-    uint8_t  major;      /* CBOR major type (0-7) */
-    uint32_t value;      /* Additional info value */
-    size_t   header_len; /* Bytes consumed for this header */
+    uint8_t major;     /* CBOR major type (0-7) */
+    uint32_t value;    /* Additional info value */
+    size_t header_len; /* Bytes consumed for this header */
 } cbor_item_t;
 
 /** Decode one CBOR item header. Returns false if buffer too short. */

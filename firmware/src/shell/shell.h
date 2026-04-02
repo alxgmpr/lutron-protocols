@@ -17,7 +17,7 @@ void shell_task_start(void);
 void shell_execute(const char* line);
 
 /** Capture printf output into a buffer (for UDP text response) */
-void   printf_capture_start(uint8_t* buf, size_t buf_size);
+void printf_capture_start(uint8_t* buf, size_t buf_size);
 size_t printf_capture_stop(void);
 
 /**

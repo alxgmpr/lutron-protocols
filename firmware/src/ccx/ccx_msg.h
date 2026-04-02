@@ -47,18 +47,18 @@ uint16_t ccx_percent_to_level(uint8_t percent);
 
 typedef struct {
     uint16_t msg_type;
-    uint8_t  sequence;
+    uint8_t sequence;
 
     /* LEVEL_CONTROL (type 0) */
     uint16_t level;
     uint16_t zone_id;
-    uint8_t  zone_type;
-    uint8_t  fade;  /* quarter-seconds (1=instant, 4=1s) */
-    uint8_t  delay; /* quarter-seconds */
+    uint8_t zone_type;
+    uint8_t fade;  /* quarter-seconds (1=instant, 4=1s) */
+    uint8_t delay; /* quarter-seconds */
 
     /* BUTTON_PRESS / DIM_HOLD / DIM_STEP (types 1/2/3) */
-    uint8_t  device_id[4];
-    uint8_t  action;     /* DIM action (3=raise/lower) */
+    uint8_t device_id[4];
+    uint8_t action;      /* DIM action (3=raise/lower) */
     uint16_t step_value; /* DIM_STEP step size (180-250) */
 
     /* ACK (type 7) */

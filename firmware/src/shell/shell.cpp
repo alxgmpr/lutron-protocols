@@ -42,11 +42,11 @@
 #include <cstdlib>
 
 #define SHELL_TASK_STACK_SIZE 1024
-#define SHELL_TASK_PRIORITY   1
-#define CMD_BUF_SIZE          128
+#define SHELL_TASK_PRIORITY 1
+#define CMD_BUF_SIZE 128
 
 #define HISTORY_SIZE 8
-#define HISTORY_LEN  CMD_BUF_SIZE
+#define HISTORY_LEN CMD_BUF_SIZE
 
 /* -----------------------------------------------------------------------
  * Raw UART helpers — bypass printf/_write to avoid reentrancy
@@ -89,9 +89,9 @@ static void vt100_cursor_forward(size_t n)
  * Command history ring buffer
  * ----------------------------------------------------------------------- */
 static char hist_buf[HISTORY_SIZE][HISTORY_LEN];
-static int  hist_count = 0; /* total entries stored */
-static int  hist_write = 0; /* next write slot */
-static int  hist_nav = 0;   /* navigation index during up/down */
+static int hist_count = 0; /* total entries stored */
+static int hist_write = 0; /* next write slot */
+static int hist_nav = 0;   /* navigation index during up/down */
 
 static void hist_add(const char* line)
 {
@@ -127,11 +127,11 @@ enum esc_state { ESC_NONE, ESC_GOT_ESC, ESC_GOT_CSI };
  * ----------------------------------------------------------------------- */
 static size_t shell_readline(char* buf, size_t max_len)
 {
-    size_t         len = 0;    /* chars in buffer */
-    size_t         cursor = 0; /* cursor position */
+    size_t len = 0;    /* chars in buffer */
+    size_t cursor = 0; /* cursor position */
     enum esc_state esc = ESC_NONE;
-    char           saved_line[CMD_BUF_SIZE] = {0}; /* saved line when navigating history */
-    int            saved_valid = 0;
+    char saved_line[CMD_BUF_SIZE] = {0}; /* saved line when navigating history */
+    int saved_valid = 0;
 
     TaskHandle_t me = xTaskGetCurrentTaskHandle();
 
@@ -476,7 +476,7 @@ static int parse_button_name(const char* name)
 static void cmd_tx(const char* hex)
 {
     uint8_t pkt[64];
-    size_t  len = hex_to_bytes(hex, pkt, sizeof(pkt));
+    size_t len = hex_to_bytes(hex, pkt, sizeof(pkt));
     if (len == 0) {
         printf("Usage: tx <hex bytes>\r\n");
         printf("Example: tx 88014E10A2C703020001\r\n");
@@ -513,7 +513,7 @@ struct CcaTuneSnapshot {
 };
 
 static struct {
-    bool            valid;
+    bool valid;
     CcaTuneSnapshot snap;
 } g_cca_tune_baseline = {false, {}};
 
@@ -564,7 +564,7 @@ static bool next_token(const char** cursor, char* out, size_t out_len)
 static bool parse_u32_token(const char* token, uint32_t* out)
 {
     if (token == nullptr || out == nullptr || token[0] == '\0') return false;
-    char*         endptr = nullptr;
+    char* endptr = nullptr;
     unsigned long v = strtoul(token, &endptr, 0);
     if (endptr == token || *endptr != '\0') return false;
     *out = (uint32_t)v;
@@ -595,7 +595,7 @@ static void cmd_cca_tune_show(void)
     uint32_t freq_word = ((uint32_t)cc1101_read_register(CC1101_FREQ2) << 16) |
                          ((uint32_t)cc1101_read_register(CC1101_FREQ1) << 8) |
                          (uint32_t)cc1101_read_register(CC1101_FREQ0);
-    double   freq_mhz = ((double)freq_word * 26.0) / 65536.0;
+    double freq_mhz = ((double)freq_word * 26.0) / 65536.0;
 
     printf("CCA tune profile: %s\r\n", cc1101_tune_profile_name(cc1101_get_tune_profile()));
     printf("  params: drain_passes=%u max_packets=%u miss_streak=%u miss_ring=%u timeout_ms=%u fifothr=0x%02X\r\n",
@@ -605,7 +605,7 @@ static void cmd_cca_tune_show(void)
            (unsigned)cc1101_read_register(CC1101_CHANNR));
 
     struct RegDef {
-        uint8_t     reg;
+        uint8_t reg;
         const char* name;
     };
     static const RegDef cfg_regs[] = {
@@ -690,7 +690,7 @@ static void cmd_cca_tune_freq(const char* mhz_tok)
         return;
     }
 
-    char*  endptr = nullptr;
+    char* endptr = nullptr;
     double mhz = strtod(mhz_tok, &endptr);
     if (endptr == mhz_tok || *endptr != '\0' || mhz < 300.0 || mhz > 1000.0) {
         printf("Usage: cca tune freq <MHz>\r\n");
@@ -874,20 +874,20 @@ static void cmd_cca_tune_score_show(void)
     }
 
     const CcaTuneSnapshot& base = g_cca_tune_baseline.snap;
-    uint32_t               dt_ms = delta32(now.tick_ms, base.tick_ms);
-    uint32_t               d_rx = delta32(now.rx, base.rx);
-    uint32_t               d_drop = delta32(now.drop, base.drop);
-    uint32_t               d_crc = delta32(now.crc_fail, base.crc_fail);
-    uint32_t               d_n81 = delta32(now.n81_err, base.n81_err);
-    uint32_t               d_ack = delta32(now.ack, base.ack);
-    uint32_t               d_over = delta32(now.overflows, base.overflows);
-    uint32_t               d_restart_timeout = delta32(now.restart_timeout, base.restart_timeout);
-    uint32_t               d_restart_overflow = delta32(now.restart_overflow, base.restart_overflow);
-    uint32_t               d_restart_packet = delta32(now.restart_packet, base.restart_packet);
-    uint32_t               d_sync_hit = delta32(now.sync_hit, base.sync_hit);
-    uint32_t               d_sync_miss = delta32(now.sync_miss, base.sync_miss);
-    uint32_t               d_ring_drop = delta32(now.ring_drop, base.ring_drop);
-    uint32_t               d_irq = delta32(now.irq, base.irq);
+    uint32_t dt_ms = delta32(now.tick_ms, base.tick_ms);
+    uint32_t d_rx = delta32(now.rx, base.rx);
+    uint32_t d_drop = delta32(now.drop, base.drop);
+    uint32_t d_crc = delta32(now.crc_fail, base.crc_fail);
+    uint32_t d_n81 = delta32(now.n81_err, base.n81_err);
+    uint32_t d_ack = delta32(now.ack, base.ack);
+    uint32_t d_over = delta32(now.overflows, base.overflows);
+    uint32_t d_restart_timeout = delta32(now.restart_timeout, base.restart_timeout);
+    uint32_t d_restart_overflow = delta32(now.restart_overflow, base.restart_overflow);
+    uint32_t d_restart_packet = delta32(now.restart_packet, base.restart_packet);
+    uint32_t d_sync_hit = delta32(now.sync_hit, base.sync_hit);
+    uint32_t d_sync_miss = delta32(now.sync_miss, base.sync_miss);
+    uint32_t d_ring_drop = delta32(now.ring_drop, base.ring_drop);
+    uint32_t d_irq = delta32(now.irq, base.irq);
 
     uint32_t sync_total = d_sync_hit + d_sync_miss;
     uint32_t sync_hit_permille = 0;
@@ -930,7 +930,7 @@ static void cmd_cca_tune_score_show(void)
 static void cmd_cca_tune(const char* arg)
 {
     const char* cursor = arg;
-    char        t0[24];
+    char t0[24];
     if (!next_token(&cursor, t0, sizeof(t0))) {
         cmd_cca_tune_print_usage();
         return;
@@ -965,7 +965,7 @@ static void cmd_cca_tune(const char* arg)
             return;
         }
         double mhz = 431.0 + ((double)channel * 0.1);
-        char   mhz_tok[24];
+        char mhz_tok[24];
         snprintf(mhz_tok, sizeof(mhz_tok), "%.1f", mhz);
         cmd_cca_tune_freq(mhz_tok);
         return;
@@ -1078,7 +1078,7 @@ static void cmd_tdma(const char* arg)
     }
     else if (strcmp(arg, "slots") == 0) {
         CcaTdmaDeviceInfo devs[32];
-        size_t            count = cca_tdma_get_devices(devs, 32);
+        size_t count = cca_tdma_get_devices(devs, 32);
         if (count == 0) {
             printf("No tracked devices\r\n");
             return;
@@ -1087,7 +1087,7 @@ static void cmd_tdma(const char* arg)
         uint32_t now = HAL_GetTick();
         for (size_t i = 0; i < count; i++) {
             const CcaTdmaDeviceInfo& d = devs[i];
-            char                     dev_id[9];
+            char dev_id[9];
             snprintf(dev_id, sizeof(dev_id), "%08lX", (unsigned long)d.device_id);
             uint32_t age = now - d.last_rx_ms;
             printf("%-10s %-4u %-6u %-7u%% %-6u %-8lu\r\n", dev_id, d.slot, d.dominant_stride, d.confidence, d.samples,
@@ -1127,7 +1127,7 @@ static void cmd_cca(const char* arg)
 
     /* cca button <device_id> <button_name> */
     if (strncmp(arg, "button ", 7) == 0) {
-        char*    endptr;
+        char* endptr;
         uint32_t dev_id = (uint32_t)strtoul(arg + 7, &endptr, 16);
         if (*endptr != ' ') {
             printf("Usage: cca button <device_id_hex> <on|off|fav|raise|lower|scene1-4>\r\n");
@@ -1155,7 +1155,7 @@ static void cmd_cca(const char* arg)
 
     /* cca level <zone_id> <target_id> <0-100> [fade_qs] */
     if (strncmp(arg, "level ", 6) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca level <zone_id_hex> <target_id_hex> <0-100> [fade_qs]\r\n");
@@ -1187,7 +1187,7 @@ static void cmd_cca(const char* arg)
 
     /* cca broadcast <zone_id> <0-100> [fade_qs] — broadcast level to all devices */
     if (strncmp(arg, "broadcast ", 10) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 10, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca broadcast <zone_id_hex> <0-100> [fade_qs]\r\n");
@@ -1213,7 +1213,7 @@ static void cmd_cca(const char* arg)
 
     /* cca pico-level <device_id> <0-100> */
     if (strncmp(arg, "pico-level ", 11) == 0) {
-        char*    p;
+        char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca pico-level <device_id_hex> <0-100>\r\n");
@@ -1236,7 +1236,7 @@ static void cmd_cca(const char* arg)
 
     /* cca state <device_id> <0-100> */
     if (strncmp(arg, "state ", 6) == 0) {
-        char*    p;
+        char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca state <device_id_hex> <0-100>\r\n");
@@ -1259,9 +1259,9 @@ static void cmd_cca(const char* arg)
 
     /* cca beacon <device_id> [duration] */
     if (strncmp(arg, "beacon ", 7) == 0) {
-        char*    p;
+        char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 7, &p, 16);
-        uint8_t  dur = 5;
+        uint8_t dur = 5;
         if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1279,7 +1279,7 @@ static void cmd_cca(const char* arg)
 
     /* cca unpair <zone_id> <target_id> */
     if (strncmp(arg, "unpair ", 7) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 7, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca unpair <zone_id_hex> <target_id_hex>\r\n");
@@ -1302,7 +1302,7 @@ static void cmd_cca(const char* arg)
 
     /* cca led <zone_id> <target_id> <0-3> */
     if (strncmp(arg, "led ", 4) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 4, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca led <zone_id_hex> <target_id_hex> <0-3>\r\n");
@@ -1331,7 +1331,7 @@ static void cmd_cca(const char* arg)
 
     /* cca fade <zone_id> <target_id> <on_qs> <off_qs> */
     if (strncmp(arg, "fade ", 5) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 5, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca fade <zone_id_hex> <target_id_hex> <on_qs> <off_qs>\r\n");
@@ -1366,7 +1366,7 @@ static void cmd_cca(const char* arg)
 
     /* cca trim <zone_id> <target_id> <high%> <low%> */
     if (strncmp(arg, "trim ", 5) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 5, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca trim <zone_id_hex> <target_id_hex> <high%%> <low%%>\r\n");
@@ -1401,7 +1401,7 @@ static void cmd_cca(const char* arg)
 
     /* cca phase <zone_id> <target_id> <byte_hex> */
     if (strncmp(arg, "phase ", 6) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca phase <zone_id_hex> <target_id_hex> <byte_hex>\r\n");
@@ -1430,7 +1430,7 @@ static void cmd_cca(const char* arg)
 
     /* cca save-fav <device_id> */
     if (strncmp(arg, "save-fav ", 9) == 0) {
-        char*    endptr;
+        char* endptr;
         uint32_t dev_id = (uint32_t)strtoul(arg + 9, &endptr, 16);
         if (*endptr != '\0' && *endptr != ' ') {
             printf("Usage: cca save-fav <device_id_hex>\r\n");
@@ -1450,7 +1450,7 @@ static void cmd_cca(const char* arg)
 
     /* cca vive-level <hub_id> <zone_hex> <0-100> [fade_qs] */
     if (strncmp(arg, "vive-level ", 11) == 0) {
-        char*    p;
+        char* p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-level <hub_id_hex> <zone_hex> <0-100> [fade_qs]\r\n");
@@ -1482,7 +1482,7 @@ static void cmd_cca(const char* arg)
 
     /* cca vive-raise <hub_id> <zone_hex> */
     if (strncmp(arg, "vive-raise ", 11) == 0) {
-        char*    p;
+        char* p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-raise <hub_id_hex> <zone_hex>\r\n");
@@ -1506,7 +1506,7 @@ static void cmd_cca(const char* arg)
 
     /* cca vive-lower <hub_id> <zone_hex> */
     if (strncmp(arg, "vive-lower ", 11) == 0) {
-        char*    p;
+        char* p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-lower <hub_id_hex> <zone_hex>\r\n");
@@ -1530,7 +1530,7 @@ static void cmd_cca(const char* arg)
 
     /* cca vive-pair <hub_id> <zone_hex> [duration] */
     if (strncmp(arg, "vive-pair ", 10) == 0) {
-        char*    p;
+        char* p;
         uint32_t hub_id = (uint32_t)strtoul(arg + 10, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca vive-pair <hub_id_hex> <zone_hex> [duration_sec]\r\n");
@@ -1556,10 +1556,10 @@ static void cmd_cca(const char* arg)
 
     /* cca pair pico <device_id> [5btn|2btn|4btn-rl|4btn-scene] [duration] */
     if (strncmp(arg, "pair pico ", 10) == 0) {
-        char*    p;
+        char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 10, &p, 16);
-        uint8_t  pico_type = 0; /* default 5-button */
-        uint8_t  dur = 10;
+        uint8_t pico_type = 0; /* default 5-button */
+        uint8_t dur = 10;
 
         if (*p == ' ') {
             p++;
@@ -1599,15 +1599,15 @@ static void cmd_cca(const char* arg)
 
     /* cca pair bridge <bridge_id> <target_id> <zone_hex> [beacon_sec] */
     if (strncmp(arg, "pair bridge ", 12) == 0) {
-        char*    p;
+        char* p;
         uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca pair bridge <bridge_id_hex> <target_id_hex> <zone_hex> [beacon_sec]\r\n");
             return;
         }
         uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
-        uint8_t  zone = 0;
-        uint8_t  dur = 5;
+        uint8_t zone = 0;
+        uint8_t dur = 5;
         if (*p == ' ') {
             zone = (uint8_t)strtoul(p + 1, &p, 16);
             if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
@@ -1631,7 +1631,7 @@ static void cmd_cca(const char* arg)
     /* cca announce <serial_hex> <class_hex_4byte> <subnet_hex> [duration_sec]
      * Emits spoofed B0 device announce packets with the given serial and class. */
     if (strncmp(arg, "announce ", 8) == 0) {
-        char*    p;
+        char* p;
         uint32_t serial = (uint32_t)strtoul(arg + 8, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca announce <serial_hex> <class_hex> <subnet_hex> [duration_sec]\r\n");
@@ -1643,7 +1643,7 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint16_t subnet = (uint16_t)strtoul(p + 1, &p, 16);
-        uint8_t  dur = 15;
+        uint8_t dur = 15;
         if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1666,7 +1666,7 @@ static void cmd_cca(const char* arg)
     /* cca hybrid-pair <bridge_id_hex> <class_hex_4byte> <subnet_hex> <zone_hex> [duration]
      * Vive B9 beacon to wake PowPaks, then pair with RA3 bridge ID + B0 announce. */
     if (strncmp(arg, "hybrid-pair ", 12) == 0) {
-        char*    p;
+        char* p;
         uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca hybrid-pair <bridge_id> <class> <subnet> <zone> [dur]\r\n");
@@ -1708,7 +1708,7 @@ static void cmd_cca(const char* arg)
      * Payload starts at byte 13 (first byte is typically addr_mode: FE/EF/FF).
      * Bytes 0-12 are auto-built: [type][seq][zone:4 LE][0x21][fmt][0x00][target:4 BE] */
     if (strncmp(arg, "raw ", 4) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 4, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca raw <zone> <target> <fmt> <payload_bytes...>\r\n");
@@ -1747,7 +1747,7 @@ static void cmd_cca(const char* arg)
 
     /* cca scene <zone_id> <target_id> <level%> [fade_qs] */
     if (strncmp(arg, "scene ", 6) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 6, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca scene <zone_hex> <target_hex> <level%%> [fade_qs]\r\n");
@@ -1779,7 +1779,7 @@ static void cmd_cca(const char* arg)
 
     /* cca dim-config <zone_id> <target_id> <hex_bytes...> */
     if (strncmp(arg, "dim-config ", 11) == 0) {
-        char*    p;
+        char* p;
         uint32_t zone_id = (uint32_t)strtoul(arg + 11, &p, 16);
         if (*p != ' ') {
             printf("Usage: cca dim-config <zone_hex> <target_hex> <hex_bytes...>\r\n");
@@ -1819,7 +1819,7 @@ static void cmd_cca(const char* arg)
 
     /* cca identify <target_id> — QS Link identify (flash LED) */
     if (strncmp(arg, "identify ", 9) == 0) {
-        uint32_t   target_id = (uint32_t)strtoul(arg + 9, NULL, 16);
+        uint32_t target_id = (uint32_t)strtoul(arg + 9, NULL, 16);
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_IDENTIFY;
         item.target_id = target_id;
@@ -1834,7 +1834,7 @@ static void cmd_cca(const char* arg)
 
     /* cca query <target_id> — QS Link component query */
     if (strncmp(arg, "query ", 6) == 0) {
-        uint32_t   target_id = (uint32_t)strtoul(arg + 6, NULL, 16);
+        uint32_t target_id = (uint32_t)strtoul(arg + 6, NULL, 16);
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_QUERY;
         item.target_id = target_id;
@@ -1900,7 +1900,7 @@ static void cmd_rx(const char* arg)
 static void cmd_eth(void)
 {
     extern ETH_HandleTypeDef heth;
-    uint32_t                 reg;
+    uint32_t reg;
 
     printf("--- ETH PHY Debug ---\r\n");
 
@@ -2005,10 +2005,10 @@ static bool parse_ipv6_addr(const char* str, uint8_t out[16])
 
     /* Colon-separated 16-bit groups: fe80:0000:0000:0000:220e:fb79:b4ce:f76f */
     memset(out, 0, 16);
-    int         group = 0;
+    int group = 0;
     const char* p = str;
     while (*p && group < 8) {
-        char*         end;
+        char* end;
         unsigned long val = strtoul(p, &end, 16);
         if (end == p || val > 0xFFFF) return false;
         out[group * 2] = (uint8_t)(val >> 8);
@@ -2031,7 +2031,7 @@ static size_t build_preset_cbor(uint8_t* buf, size_t buf_size, uint16_t device_i
                                 uint8_t fade_qs)
 {
     if (buf_size < 32) return 0;
-    uint8_t*       p = buf;
+    uint8_t* p = buf;
     const uint8_t* end = buf + buf_size;
 
     /* Map(1) */
@@ -2146,7 +2146,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "preset ", 7) == 0) {
         /* ccx coap preset <ipv6_addr> <device_id> <preset_id> <level%> [fade_s] */
         const char* p = arg + 7;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2170,7 +2170,7 @@ static void cmd_ccx_coap(const char* arg)
         if (*endptr != ' ') goto coap_usage;
 
         p = endptr + 1;
-        uint8_t  pct = (uint8_t)strtoul(p, &endptr, 10);
+        uint8_t pct = (uint8_t)strtoul(p, &endptr, 10);
         uint16_t level = ccx_percent_to_level(pct);
 
         uint8_t fade_qs = 1; /* default instant */
@@ -2182,7 +2182,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build the CBOR preset payload */
         uint8_t cbor[64];
-        size_t  cbor_len = build_preset_cbor(cbor, sizeof(cbor), dev_id, preset_id, level, fade_qs);
+        size_t cbor_len = build_preset_cbor(cbor, sizeof(cbor), dev_id, preset_id, level, fade_qs);
         if (cbor_len == 0) {
             printf("CBOR encode failed\r\n");
             return;
@@ -2207,7 +2207,7 @@ static void cmd_ccx_coap(const char* arg)
          * Programs keypad status LED brightness via AHA bucket (0x0070).
          * CBOR: [108, {4: active, 5: inactive}] */
         const char* p = arg + 4;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2229,7 +2229,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build CBOR: [108, {4: active, 5: inactive}] */
         uint8_t cbor[16];
-        size_t  ci = 0;
+        size_t ci = 0;
         cbor[ci++] = 0x82; /* array(2) */
         cbor[ci++] = 0x18; /* uint8 follows */
         cbor[ci++] = 108;  /* opcode 108 */
@@ -2266,7 +2266,7 @@ static void cmd_ccx_coap(const char* arg)
          * CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}]
          * Encoding: raw = percent * 0xFEFF / 100 (same as level encoding) */
         const char* p = arg + 5;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2292,7 +2292,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}] */
         uint8_t cbor[32];
-        size_t  ci = 0;
+        size_t ci = 0;
         cbor[ci++] = 0x82; /* array(2) */
         cbor[ci++] = 0x03; /* opcode 3 */
         cbor[ci++] = 0xA3; /* map(3) */
@@ -2320,7 +2320,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "get ", 4) == 0) {
         /* ccx coap get <ipv6_addr> <uri_path> [port] */
         const char* p = arg + 4;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2336,9 +2336,9 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Parse URI path and optional port */
         const char* uri = space + 1;
-        uint16_t    port = 0; /* 0 = default 5683 */
+        uint16_t port = 0; /* 0 = default 5683 */
         const char* port_space = strchr(uri, ' ');
-        char        uri_buf[64];
+        char uri_buf[64];
         if (port_space) {
             size_t ulen = (size_t)(port_space - uri);
             if (ulen >= sizeof(uri_buf)) goto coap_usage;
@@ -2383,7 +2383,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "observe ", 8) == 0) {
         /* ccx coap observe <ipv6_addr> <uri_path> [dereg] */
         const char* p = arg + 8;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2399,9 +2399,9 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Check for optional "dereg" after path */
         const char* uri = space + 1;
-        uint8_t     observe_val = 0; /* 0 = register */
+        uint8_t observe_val = 0; /* 0 = register */
         const char* dereg = strstr(uri, " dereg");
-        char        uri_buf[64];
+        char uri_buf[64];
         if (dereg) {
             size_t ulen = (size_t)(dereg - uri);
             if (ulen >= sizeof(uri_buf)) goto coap_usage;
@@ -2440,7 +2440,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "probe ", 6) == 0) {
         /* ccx coap probe <ipv6_addr> <uri_path> — fire-and-forget GET (no wait) */
         const char* p = arg + 6;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2466,7 +2466,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "delete ", 7) == 0) {
         /* ccx coap delete <ipv6_addr> <uri_path> */
         const char* p = arg + 7;
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2491,11 +2491,11 @@ static void cmd_ccx_coap(const char* arg)
 
     if (strncmp(arg, "put ", 4) == 0 || strncmp(arg, "post ", 5) == 0) {
         /* ccx coap put/post <ipv6_addr> <uri_path> <payload_hex> */
-        bool        is_put = (arg[1] == 'u');
+        bool is_put = (arg[1] == 'u');
         const char* p = arg + (is_put ? 4 : 5);
 
         /* Parse addr */
-        char        addr_str[64];
+        char addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2513,7 +2513,7 @@ static void cmd_ccx_coap(const char* arg)
         p = space + 1;
         space = strchr(p, ' ');
         if (!space) goto coap_usage;
-        char   uri[64];
+        char uri[64];
         size_t ulen = (size_t)(space - p);
         if (ulen >= sizeof(uri)) goto coap_usage;
         memcpy(uri, p, ulen);
@@ -2521,7 +2521,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Parse hex payload */
         uint8_t payload[128];
-        size_t  plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
+        size_t plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
         if (plen == 0) {
             printf("Invalid hex payload\r\n");
             return;
@@ -2655,13 +2655,13 @@ static void cmd_ccx(const char* arg)
     }
     else if (strncmp(arg, "level ", 6) == 0) {
         /* ccx level <zone> <0-100> */
-        char*    endptr;
+        char* endptr;
         uint16_t zone = (uint16_t)strtoul(arg + 6, &endptr, 10);
         if (zone == 0 || *endptr != ' ') {
             printf("Usage: ccx level <zone> <0-100>\r\n");
             return;
         }
-        uint8_t  pct = (uint8_t)strtoul(endptr + 1, NULL, 10);
+        uint8_t pct = (uint8_t)strtoul(endptr + 1, NULL, 10);
         uint16_t level = ccx_percent_to_level(pct);
         if (ccx_send_level(zone, level, 1, 0)) {
             printf("CCX LEVEL zone=%u %u%% (0x%04X) queued\r\n", zone, pct, level);
@@ -2693,7 +2693,7 @@ static void cmd_ccx(const char* arg)
         for (size_t i = 0; i < count; i++) {
             uint16_t rloc16;
             uint32_t serial;
-            uint8_t  dev_id[4];
+            uint8_t dev_id[4];
             uint16_t last_msg;
             uint32_t age_ms;
             if (!ccx_peer_get(i, &rloc16, &serial, dev_id, &last_msg, &age_ms)) continue;
@@ -2709,7 +2709,7 @@ static void cmd_ccx(const char* arg)
             const char* msg_name = ccx_msg_type_name(last_msg);
 
             uint32_t age_s = age_ms / 1000;
-            char     age_str[16];
+            char age_str[16];
             if (age_s < 60)
                 snprintf(age_str, sizeof(age_str), "%lus", (unsigned long)age_s);
             else if (age_s < 3600)
@@ -2796,7 +2796,7 @@ static void cmd_ot(const char* arg)
         return;
     }
 
-    ccx_spinel_request_t  req;
+    ccx_spinel_request_t req;
     ccx_spinel_response_t resp;
     memset(&req, 0, sizeof(req));
 
@@ -3078,7 +3078,7 @@ static void cmd_spinel(const char* arg)
         return;
     }
 
-    ccx_spinel_request_t  req;
+    ccx_spinel_request_t req;
     ccx_spinel_response_t resp;
     memset(&req, 0, sizeof(req));
 

@@ -33,15 +33,15 @@
 /* -----------------------------------------------------------------------
  * Constants
  * ----------------------------------------------------------------------- */
-#define CCA_TASK_STACK_SIZE  2048
-#define CCA_TASK_PRIORITY    5 /* Must be above lwIP tcpip_thread (4) — CC1101 FIFO overflows in ~27ms */
-#define CCA_TX_QUEUE_LEN     8
-#define CCA_TX_MAX_LEN       64
-#define CCA_RX_PEND_MAX      24 /* enough for a full retransmission train */
+#define CCA_TASK_STACK_SIZE 2048
+#define CCA_TASK_PRIORITY 5 /* Must be above lwIP tcpip_thread (4) — CC1101 FIFO overflows in ~27ms */
+#define CCA_TX_QUEUE_LEN 8
+#define CCA_TX_MAX_LEN 64
+#define CCA_RX_PEND_MAX 24      /* enough for a full retransmission train */
 #define CCA_DRAIN_SILENCE_MS 18 /* absorb short retrans+ACK bursts before flush */
-#define CCA_ISR_LAT_BINS     12
-#define CCA_MAIN_POLL_MS     2
-#define CCA_HOT_POLL_MS      1
+#define CCA_ISR_LAT_BINS 12
+#define CCA_MAIN_POLL_MS 2
+#define CCA_HOT_POLL_MS 1
 
 /* TDMA slot observation and TX scheduling in cca_tdma.h/cpp */
 
@@ -50,36 +50,36 @@
  * ----------------------------------------------------------------------- */
 struct CcaTxItem {
     uint8_t data[CCA_TX_MAX_LEN];
-    size_t  len;
+    size_t len;
 };
 
 /* -----------------------------------------------------------------------
  * Private state
  * ----------------------------------------------------------------------- */
-static TaskHandle_t  cca_task_handle = NULL;
+static TaskHandle_t cca_task_handle = NULL;
 static QueueHandle_t cca_tx_queue = NULL;           /* TDMA-scheduled TX */
 static QueueHandle_t cca_tx_immediate_queue = NULL; /* bypass TDMA (pairing) */
-static CcaDecoder    decoder;
-static uint32_t      rx_count = 0;
-static uint32_t      tx_count = 0;
-static uint32_t      drop_count = 0;         /* decode failures with strong signal */
-static uint32_t      crc_fail_count = 0;     /* decoded but CRC invalid */
-static uint32_t      n81_err_count = 0;      /* decoded with N81 framing errors */
-static uint32_t      ack_count = 0;          /* decoded dimmer ACK packets (0x0B) */
-static uint32_t      crc_optional_count = 0; /* accepted with crc_valid=false */
+static CcaDecoder decoder;
+static uint32_t rx_count = 0;
+static uint32_t tx_count = 0;
+static uint32_t drop_count = 0;         /* decode failures with strong signal */
+static uint32_t crc_fail_count = 0;     /* decoded but CRC invalid */
+static uint32_t n81_err_count = 0;      /* decoded with N81 framing errors */
+static uint32_t ack_count = 0;          /* decoded dimmer ACK packets (0x0B) */
+static uint32_t crc_optional_count = 0; /* accepted with crc_valid=false */
 /* High-rate UART packet logs can disrupt shell interactivity. Keep off by default. */
 static volatile bool cca_uart_log_enabled_ = false;
 
 /* GDO0/latency telemetry */
 static volatile uint32_t gdo0_irq_count = 0;
 static volatile uint32_t gdo0_last_cycle = 0;
-static volatile uint8_t  gdo0_stamp_valid = 0;
-static uint32_t          isr_latency_min_us = 0xFFFFFFFFu;
-static uint32_t          isr_latency_max_us = 0;
-static uint32_t          isr_latency_samples = 0;
-static uint32_t          isr_latency_hist[CCA_ISR_LAT_BINS] = {0};
-static const uint32_t    isr_latency_hist_max_us[CCA_ISR_LAT_BINS] = {10,  20,   40,   80,   160,   320,
-                                                                      640, 1000, 2000, 5000, 10000, 0xFFFFFFFFu};
+static volatile uint8_t gdo0_stamp_valid = 0;
+static uint32_t isr_latency_min_us = 0xFFFFFFFFu;
+static uint32_t isr_latency_max_us = 0;
+static uint32_t isr_latency_samples = 0;
+static uint32_t isr_latency_hist[CCA_ISR_LAT_BINS] = {0};
+static const uint32_t isr_latency_hist_max_us[CCA_ISR_LAT_BINS] = {10,  20,   40,   80,   160,   320,
+                                                                   640, 1000, 2000, 5000, 10000, 0xFFFFFFFFu};
 
 static void reset_isr_latency_stats(void)
 {
@@ -99,15 +99,15 @@ static void reset_isr_latency_stats(void)
  * ----------------------------------------------------------------------- */
 struct CcaRxPending {
     DecodedPacket pkt;
-    int8_t        rssi;
-    uint32_t      timestamp_ms;
-    bool          valid; /* true = decoded packet, false = drop */
-    uint8_t       drop_hex[16];
-    size_t        drop_hex_len;
-    size_t        drop_raw_len;
+    int8_t rssi;
+    uint32_t timestamp_ms;
+    bool valid; /* true = decoded packet, false = drop */
+    uint8_t drop_hex[16];
+    size_t drop_hex_len;
+    size_t drop_raw_len;
 };
 static CcaRxPending rx_pending[CCA_RX_PEND_MAX];
-static size_t       rx_pend_count = 0;
+static size_t rx_pend_count = 0;
 
 /* RX hook — set by pairing engine to intercept handshake challenges */
 static cca_rx_hook_t rx_hook = NULL;
@@ -223,7 +223,7 @@ static void flush_rx_pending(void)
     if (enable_uart_log) {
         /* Build all log lines into one buffer — one _write call */
         char log_buf[CCA_RX_PEND_MAX * 128];
-        int  n = 0;
+        int n = 0;
 
         for (size_t i = 0; i < rx_pend_count; i++) {
             CcaRxPending& p = rx_pending[i];
@@ -321,7 +321,7 @@ static void cca_task_func(void* param)
 
         /* Poll RX frequently; CCA bursts can overflow CC1101 FIFO in a few ms.
          * TDMA engine determines poll interval (1ms near slot edges, 2ms otherwise). */
-        uint32_t   tdma_poll_ms = cca_tdma_poll(HAL_GetTick());
+        uint32_t tdma_poll_ms = cca_tdma_poll(HAL_GetTick());
         TickType_t wait_ticks = pdMS_TO_TICKS(tdma_poll_ms > 0 ? tdma_poll_ms : CCA_MAIN_POLL_MS);
         if (wait_ticks == 0) wait_ticks = 1;
         uint32_t notified = ulTaskNotifyTake(pdTRUE, wait_ticks);
@@ -392,9 +392,9 @@ static void cca_task_func(void* param)
             uint8_t with_crc[CCA_TX_MAX_LEN + 2];
             cca_append_crc(tx_item.data, tx_item.len, with_crc);
 
-            uint8_t    encoded[128];
+            uint8_t encoded[128];
             CcaEncoder encoder;
-            size_t     encoded_len = encoder.encode_packet(with_crc, tx_item.len + 2, encoded, sizeof(encoded));
+            size_t encoded_len = encoder.encode_packet(with_crc, tx_item.len + 2, encoded, sizeof(encoded));
 
             if (encoded_len > 0) {
                 bool ok = cc1101_transmit_raw(encoded, encoded_len);
@@ -412,7 +412,7 @@ static void cca_task_func(void* param)
          * which is fine since they handle stop_rx/start_rx internally. */
         {
             QueueHandle_t cmdq = (QueueHandle_t)cca_cmd_queue_handle();
-            CcaCmdItem    cmd_item;
+            CcaCmdItem cmd_item;
             while (cmdq && xQueueReceive(cmdq, &cmd_item, 0) == pdTRUE) {
                 cca_cmd_execute(&cmd_item);
             }

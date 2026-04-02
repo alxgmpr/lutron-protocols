@@ -53,8 +53,8 @@ bool cca_cmd_enqueue(const CcaCmdItem* item)
 /* -----------------------------------------------------------------------
  * Shared state
  * ----------------------------------------------------------------------- */
-static bool     type_alternate_ = false; /* toggles A/B on each button press */
-static uint32_t cmd_tx_count = 0;        /* packets transmitted by commands */
+static bool type_alternate_ = false; /* toggles A/B on each button press */
+static uint32_t cmd_tx_count = 0;    /* packets transmitted by commands */
 
 /* -----------------------------------------------------------------------
  * Transmit one CCA packet (CRC + N81 encode + radio TX).
@@ -67,9 +67,9 @@ static bool transmit_one(const uint8_t* packet, size_t len)
     cca_append_crc(packet, len, with_crc);
 
     /* N81 encode */
-    uint8_t    encoded[128];
+    uint8_t encoded[128];
     CcaEncoder encoder;
-    size_t     encoded_len = encoder.encode_packet(with_crc, len + 2, encoded, sizeof(encoded));
+    size_t encoded_len = encoder.encode_packet(with_crc, len + 2, encoded, sizeof(encoded));
     if (encoded_len == 0) return false;
 
     bool ok = cc1101_transmit_raw(encoded, encoded_len);
@@ -104,7 +104,7 @@ static void exec_button(uint32_t device_id, uint8_t button)
     bool is_dimming = (button == BTN_RAISE || button == BTN_LOWER);
     if (button == BTN_RAISE) button = 0x09; /* 4-btn raise */
     if (button == BTN_LOWER) button = 0x0A; /* 4-btn lower */
-    uint8_t  seq = 0x00;
+    uint8_t seq = 0x00;
     uint32_t next_fire = 0;
 
     printf("[cca] CMD button dev=%08X btn=%s press=0x%02X release=0x%02X\r\n", (unsigned)device_id,
@@ -513,8 +513,8 @@ static void exec_beacon(uint32_t device_id, uint8_t duration_sec)
 
     cc1101_stop_rx();
 
-    uint8_t  packet[24];
-    uint8_t  seq = 0x01;
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
@@ -671,8 +671,8 @@ static void exec_led_config(uint32_t zone_id, uint32_t target_id, uint8_t led_mo
 
     cc1101_stop_rx();
 
-    uint8_t  packet[53];
-    uint8_t  seq = 0x01;
+    uint8_t packet[53];
+    uint8_t seq = 0x01;
     uint32_t active_zone = zone_id;
 
     for (int rep = 0; rep < 20; rep++) {
@@ -728,8 +728,8 @@ static void exec_fade_config(uint32_t zone_id, uint32_t target_id, uint16_t fade
 
     cc1101_stop_rx();
 
-    uint8_t  packet[53];
-    uint8_t  seq = 0x01;
+    uint8_t packet[53];
+    uint8_t seq = 0x01;
     uint32_t active_zone = zone_id;
 
     for (int rep = 0; rep < 20; rep++) {
@@ -1235,8 +1235,8 @@ static void exec_raw_cmd(uint32_t zone_id, uint32_t target_id, uint8_t format, c
     if (repeat == 0) repeat = 12;
 
     /* Packet length: format < 0x20 → 24 bytes (22 data), format >= 0x20 → 53 bytes (51 data) */
-    bool    is_long = (format >= 0x20);
-    size_t  data_len = is_long ? 51 : 22;
+    bool is_long = (format >= 0x20);
+    size_t data_len = is_long ? 51 : 22;
     uint8_t type_base = is_long ? 0xA1 : 0x81;
 
     printf("[cca] CMD raw zone=%08X target=%08X fmt=0x%02X len=%u repeat=%u\r\n", (unsigned)zone_id,

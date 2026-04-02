@@ -13,10 +13,10 @@ class CcaDecoder {
   public:
     CcaDecoder() = default;
 
-    static const size_t     MAX_DECODE_LEN = 56;
-    static const size_t     MAX_SYNC_SEARCH = 500;
+    static const size_t MAX_DECODE_LEN = 56;
+    static const size_t MAX_SYNC_SEARCH = 500;
     static constexpr size_t CCA_LENGTHS[] = {24, 53};
-    static const size_t     N_CCA_LENGTHS = 2;
+    static const size_t N_CCA_LENGTHS = 2;
 
     static bool decode(const uint8_t* fifo_data, size_t len, DecodedPacket& packet)
     {
@@ -33,14 +33,14 @@ class CcaDecoder {
             }
         }
 
-        size_t        search_from = 0;
-        bool          have_dimmer_ack = false;
+        size_t search_from = 0;
+        bool have_dimmer_ack = false;
         DecodedPacket dimmer_ack;
         dimmer_ack.clear();
 
         /* Track best candidate for CRC-optional fallback */
         uint8_t best_decoded[MAX_DECODE_LEN];
-        size_t  best_decoded_len = 0;
+        size_t best_decoded_len = 0;
         uint8_t best_errors = 255;
         uint8_t best_err_pos[2] = {};
 
@@ -49,7 +49,7 @@ class CcaDecoder {
             if (data_start < 0) break;
 
             uint8_t decoded[MAX_DECODE_LEN];
-            size_t  decoded_len =
+            size_t decoded_len =
                 n81_decode_stream(fifo_data, len, static_cast<size_t>(data_start), MAX_DECODE_LEN, decoded);
 
             if (decoded_len >= 10) {
@@ -69,8 +69,8 @@ class CcaDecoder {
             uint8_t tolerant[MAX_DECODE_LEN];
             uint8_t errors = 0;
             uint8_t err_pos[2] = {};
-            size_t  tolerant_len = n81_decode_stream_tolerant(fifo_data, len, static_cast<size_t>(data_start),
-                                                              MAX_DECODE_LEN, tolerant, &errors, err_pos, 2);
+            size_t tolerant_len = n81_decode_stream_tolerant(fifo_data, len, static_cast<size_t>(data_start),
+                                                             MAX_DECODE_LEN, tolerant, &errors, err_pos, 2);
 
             if (tolerant_len >= 10 && tolerant_len > decoded_len) {
                 int match = cca_check_crc_at_lengths(tolerant, tolerant_len, CCA_LENGTHS, N_CCA_LENGTHS);
@@ -98,7 +98,7 @@ class CcaDecoder {
                 uint8_t tracked[MAX_DECODE_LEN];
                 uint8_t tracked_errors = 0;
                 uint8_t tracked_err_pos[2] = {};
-                size_t  tracked_len =
+                size_t tracked_len =
                     n81_decode_stream_tracked(fifo_data, len, static_cast<size_t>(data_start), MAX_DECODE_LEN, tracked,
                                               &tracked_errors, tracked_err_pos, 2);
                 if (tracked_len >= 10 && tracked_len > best_decoded_len) {
@@ -208,7 +208,7 @@ class CcaDecoder {
     static bool try_decode_at_offset(const uint8_t* fifo_data, size_t len, size_t data_start, DecodedPacket& packet)
     {
         uint8_t decoded[MAX_DECODE_LEN];
-        size_t  decoded_len = n81_decode_stream(fifo_data, len, data_start, MAX_DECODE_LEN, decoded);
+        size_t decoded_len = n81_decode_stream(fifo_data, len, data_start, MAX_DECODE_LEN, decoded);
 
         if (decoded_len >= 10) {
             int match = cca_check_crc_at_lengths(decoded, decoded_len, CCA_LENGTHS, N_CCA_LENGTHS);
@@ -221,7 +221,7 @@ class CcaDecoder {
         uint8_t tolerant[MAX_DECODE_LEN];
         uint8_t errors = 0;
         uint8_t err_pos[2] = {};
-        size_t  tolerant_len =
+        size_t tolerant_len =
             n81_decode_stream_tolerant(fifo_data, len, data_start, MAX_DECODE_LEN, tolerant, &errors, err_pos, 2);
         if (tolerant_len >= 10) {
             int match = cca_check_crc_at_lengths(tolerant, tolerant_len, CCA_LENGTHS, N_CCA_LENGTHS);
@@ -243,8 +243,8 @@ class CcaDecoder {
             uint8_t tracked[MAX_DECODE_LEN];
             uint8_t tracked_errors = 0;
             uint8_t tracked_err_pos[2] = {};
-            size_t  tracked_len = n81_decode_stream_tracked(fifo_data, len, data_start, MAX_DECODE_LEN, tracked,
-                                                            &tracked_errors, tracked_err_pos, 2);
+            size_t tracked_len = n81_decode_stream_tracked(fifo_data, len, data_start, MAX_DECODE_LEN, tracked,
+                                                           &tracked_errors, tracked_err_pos, 2);
             if (tracked_len >= 10) {
                 int match = cca_check_crc_at_lengths(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS);
                 if (match > 0) {
@@ -266,9 +266,9 @@ class CcaDecoder {
         }
 
         /* CRC-optional fallback for fast path */
-        size_t         best_len = (tolerant_len > decoded_len) ? tolerant_len : decoded_len;
+        size_t best_len = (tolerant_len > decoded_len) ? tolerant_len : decoded_len;
         const uint8_t* best = (tolerant_len > decoded_len) ? tolerant : decoded;
-        uint8_t        best_errors = (tolerant_len > decoded_len) ? errors : 0;
+        uint8_t best_errors = (tolerant_len > decoded_len) ? errors : 0;
         if (best_len >= 10) {
             if (parse_bytes(best, best_len, packet)) {
                 packet.n81_errors = best_errors;
@@ -375,7 +375,7 @@ class CcaDecoder {
                 if (len >= 18) {
                     uint16_t raw_level = (static_cast<uint16_t>(bytes[16]) << 8) | bytes[17];
                     uint32_t calc = static_cast<uint32_t>(raw_level) * 100 + 32639;
-                    uint8_t  level = static_cast<uint8_t>(calc / 65279);
+                    uint8_t level = static_cast<uint8_t>(calc / 65279);
                     packet.level = level < 100 ? level : 100;
                 }
                 if (len >= 13) {

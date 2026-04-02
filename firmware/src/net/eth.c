@@ -39,10 +39,10 @@
 /* -----------------------------------------------------------------------
  * ETH handle and lwIP netif
  * ----------------------------------------------------------------------- */
-ETH_HandleTypeDef   heth;
+ETH_HandleTypeDef heth;
 static struct netif gnetif;
-static char         ip_str[16] = "0.0.0.0";
-static bool         link_up = false;
+static char ip_str[16] = "0.0.0.0";
+static bool link_up = false;
 
 /* TX complete semaphore — signals when DMA is done with a frame */
 static SemaphoreHandle_t tx_sem = NULL;
@@ -230,20 +230,20 @@ bool eth_link_is_up(void)
 }
 
 /* LAN8742A PHY register addresses */
-#define PHY_BSR             0x01 /* Basic Status Register */
+#define PHY_BSR 0x01 /* Basic Status Register */
 #define PHY_BSR_LINK_STATUS (1U << 2)
 
 /* LAN8742A Special Control/Status Register */
-#define PHY_SCSR            0x1F
+#define PHY_SCSR 0x1F
 #define PHY_SCSR_SPEED_MASK (0x1CU) /* bits [4:2] */
-#define PHY_SCSR_100BTX_FD  (0x18U) /* 100Base-TX full duplex */
-#define PHY_SCSR_100BTX_HD  (0x08U) /* 100Base-TX half duplex */
-#define PHY_SCSR_10BT_FD    (0x14U) /* 10Base-T full duplex */
-#define PHY_SCSR_10BT_HD    (0x04U) /* 10Base-T half duplex */
+#define PHY_SCSR_100BTX_FD (0x18U)  /* 100Base-TX full duplex */
+#define PHY_SCSR_100BTX_HD (0x08U)  /* 100Base-TX half duplex */
+#define PHY_SCSR_10BT_FD (0x14U)    /* 10Base-T full duplex */
+#define PHY_SCSR_10BT_HD (0x04U)    /* 10Base-T half duplex */
 
 void eth_poll_link(void)
 {
-    uint32_t    regval = 0;
+    uint32_t regval = 0;
     static bool prev_link = false;
 
     if (HAL_ETH_ReadPHYRegister(&heth, LAN8742A_PHY_ADDR, PHY_BSR, &regval) != HAL_OK) {

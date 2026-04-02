@@ -370,22 +370,22 @@ inline void cca_format_device_id(uint32_t device_id, char* buffer, size_t buffer
 
 // Decoded packet structure
 struct DecodedPacket {
-    bool     valid;
-    uint8_t  type;
-    uint8_t  type_byte;
-    uint8_t  sequence;
+    bool valid;
+    uint8_t type;
+    uint8_t type_byte;
+    uint8_t sequence;
     uint32_t device_id;
-    uint8_t  button;
-    uint8_t  action;
-    uint8_t  level;
+    uint8_t button;
+    uint8_t action;
+    uint8_t level;
     uint32_t target_id;
-    uint8_t  format_byte;
-    bool     has_format;
+    uint8_t format_byte;
+    bool has_format;
     uint16_t crc;
-    bool     crc_valid;
-    uint8_t  n81_errors;
-    uint8_t  raw[64];
-    size_t   raw_len;
+    bool crc_valid;
+    uint8_t n81_errors;
+    uint8_t raw[64];
+    size_t raw_len;
 
     void clear()
     {

@@ -41,10 +41,10 @@
  * Constants
  * ----------------------------------------------------------------------- */
 #define STREAM_TASK_STACK_SIZE 2048
-#define STREAM_TASK_PRIORITY   2
-#define TX_RING_SIZE           64
-#define TX_ITEM_MAX_DATA       140 /* 127 max 802.15.4 frame + margin for raw mode */
-#define CLIENT_TIMEOUT_MS      30000
+#define STREAM_TASK_PRIORITY 2
+#define TX_RING_SIZE 64
+#define TX_ITEM_MAX_DATA 140 /* 127 max 802.15.4 frame + margin for raw mode */
+#define CLIENT_TIMEOUT_MS 30000
 
 /* Status blob v2:
  *   bytes 0..47   = legacy fields
@@ -56,9 +56,9 @@
  * TX queue item
  * ----------------------------------------------------------------------- */
 struct StreamTxItem {
-    uint8_t  flags;
-    uint8_t  data[TX_ITEM_MAX_DATA];
-    uint8_t  len;
+    uint8_t flags;
+    uint8_t data[TX_ITEM_MAX_DATA];
+    uint8_t len;
     uint32_t timestamp_ms;
 };
 
@@ -67,18 +67,18 @@ struct StreamTxItem {
  * ----------------------------------------------------------------------- */
 struct UdpClient {
     ip_addr_t addr;
-    uint16_t  port;
-    uint32_t  last_heard;
-    bool      active;
+    uint16_t port;
+    uint32_t last_heard;
+    bool active;
 };
 
 /* -----------------------------------------------------------------------
  * Private state
  * ----------------------------------------------------------------------- */
-static QueueHandle_t   tx_queue = NULL;
+static QueueHandle_t tx_queue = NULL;
 static struct netconn* udp_conn = NULL;
-static UdpClient       clients[MAX_STREAM_CLIENTS];
-static int             num_clients = 0;
+static UdpClient clients[MAX_STREAM_CLIENTS];
+static int num_clients = 0;
 
 static volatile uint32_t tx_drop_count = 0;
 static volatile uint32_t udp_sent_count = 0;
@@ -207,7 +207,7 @@ static void register_client(const ip_addr_t* addr, uint16_t port)
     }
 
     /* Full — evict oldest */
-    int      oldest = 0;
+    int oldest = 0;
     uint32_t oldest_age = 0;
     for (int i = 0; i < MAX_STREAM_CLIENTS; i++) {
         uint32_t age = now - clients[i].last_heard;
@@ -372,7 +372,7 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
         if (data_len >= 5) {
             uint16_t zone_id = ((uint16_t)buf[2] << 8) | buf[3];
             uint16_t level = ((uint16_t)buf[4] << 8) | buf[5];
-            uint8_t  seq = (data_len >= 6) ? buf[6] : 0;
+            uint8_t seq = (data_len >= 6) ? buf[6] : 0;
             printf("[stream] CCX TX: zone=%u level=0x%04X seq=%u\r\n", zone_id, level, seq);
             ccx_send_level(zone_id, level, 1, seq);
         }
@@ -645,7 +645,7 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
 
     case STREAM_CMD_TEXT: {
         if (data_len == 0) break;
-        char   cmd_line[256];
+        char cmd_line[256];
         size_t cmd_len = data_len < sizeof(cmd_line) - 1 ? data_len : sizeof(cmd_line) - 1;
         memcpy(cmd_line, buf + 2, cmd_len);
         cmd_line[cmd_len] = '\0';
@@ -701,8 +701,8 @@ static void stream_task_func(void* param)
     memset(clients, 0, sizeof(clients));
     num_clients = 0;
 
-    uint32_t     last_heartbeat = HAL_GetTick();
-    uint32_t     last_expire = HAL_GetTick();
+    uint32_t last_heartbeat = HAL_GetTick();
+    uint32_t last_expire = HAL_GetTick();
     StreamTxItem tx_item;
 
     for (;;) {
@@ -733,10 +733,10 @@ static void stream_task_func(void* param)
 
         /* --- 2. Receive incoming UDP commands (non-blocking) --- */
         struct netbuf* inbuf = NULL;
-        err_t          err = netconn_recv(udp_conn, &inbuf);
+        err_t err = netconn_recv(udp_conn, &inbuf);
         if (err == ERR_OK && inbuf != NULL) {
             const ip_addr_t* src_addr = netbuf_fromaddr(inbuf);
-            uint16_t         src_port = netbuf_fromport(inbuf);
+            uint16_t src_port = netbuf_fromport(inbuf);
 
             /* Auto-register the sender as a client */
             register_client(src_addr, src_port);

@@ -100,15 +100,15 @@ typedef enum {
 
 typedef struct {
     ccx_spinel_cmd_type_t cmd_type;
-    uint8_t               prop_id;
-    uint8_t               value[128];
-    size_t                value_len;
+    uint8_t prop_id;
+    uint8_t value[128];
+    size_t value_len;
 } ccx_spinel_request_t;
 
 typedef struct {
-    bool    success;
+    bool success;
     uint8_t data[256];
-    size_t  data_len;
+    size_t data_len;
 } ccx_spinel_response_t;
 
 /**
@@ -152,9 +152,9 @@ bool ccx_send_address_query(const uint8_t secondary_mleid[16]);
 
 /** Result of an address query (set by RX handler on /a/an reception) */
 typedef struct {
-    bool     valid;
-    uint8_t  target_eid[16]; /* secondary ML-EID queried */
-    uint8_t  ml_eid[8];      /* primary ML-EID IID (8 bytes) */
+    bool valid;
+    uint8_t target_eid[16]; /* secondary ML-EID queried */
+    uint8_t ml_eid[8];      /* primary ML-EID IID (8 bytes) */
     uint16_t rloc16;
 } ccx_address_result_t;
 
@@ -168,12 +168,12 @@ bool ccx_get_address_result(ccx_address_result_t* result);
 
 /** Last CoAP response data (set by RX handler, polled by shell) */
 typedef struct {
-    bool     valid;
-    uint8_t  code; /* CoAP response code (e.g. 0x45 = 2.05 Content) */
+    bool valid;
+    uint8_t code; /* CoAP response code (e.g. 0x45 = 2.05 Content) */
     uint16_t msg_id;
-    uint8_t  src_addr[16];
-    uint8_t  payload[256];
-    size_t   payload_len;
+    uint8_t src_addr[16];
+    uint8_t payload[256];
+    size_t payload_len;
 } ccx_coap_response_t;
 
 /** Arm the CoAP response capture (call before sending request) */

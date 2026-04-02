@@ -19,21 +19,21 @@
 /* -----------------------------------------------------------------------
  * Accumulation buffer — FIFO drains here, one packet at a time
  * ----------------------------------------------------------------------- */
-#define RX_PKT_LEN       80 /* fixed-length RX: covers all CCA packet types */
+#define RX_PKT_LEN 80       /* fixed-length RX: covers all CCA packet types */
 #define ACCUM_TIMEOUT_MS 25 /* max time to accumulate one packet      */
 
 /* -----------------------------------------------------------------------
  * Private state
  * ----------------------------------------------------------------------- */
-static bool                 initialized_ = false;
-static bool                 rx_active_ = false;
+static bool initialized_ = false;
+static bool rx_active_ = false;
 static cc1101_rx_callback_t rx_callback_ = NULL;
 
-static uint8_t  accum_[RX_PKT_LEN + 4]; /* +4 margin */
-static size_t   accum_len_ = 0;
-static bool     accum_active_ = false;
+static uint8_t accum_[RX_PKT_LEN + 4]; /* +4 margin */
+static size_t accum_len_ = 0;
+static bool accum_active_ = false;
 static uint32_t accum_start_ms_ = 0;
-static int8_t   accum_rssi_ = 0;
+static int8_t accum_rssi_ = 0;
 
 /* Counters */
 static uint32_t overflow_count_ = 0;
@@ -259,7 +259,7 @@ void cc1101_reset_counters(void)
 /* -----------------------------------------------------------------------
  * Tuning stubs — API surface preserved for shell.cpp compatibility
  * ----------------------------------------------------------------------- */
-static cc1101_tune_profile_t   tune_profile_ = CC1101_TUNE_PROFILE_DEFAULT;
+static cc1101_tune_profile_t tune_profile_ = CC1101_TUNE_PROFILE_DEFAULT;
 static cc1101_runtime_tuning_t runtime_tuning_ = {
     .fifo_drain_passes = 1,
     .max_packets_per_check = 1,

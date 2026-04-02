@@ -33,14 +33,14 @@
 #include <cstring>
 
 #define CCX_TASK_STACK_SIZE 2048
-#define CCX_TASK_PRIORITY   2 /* Lower than CCA (3) — CCA is time-critical for CC1101 FIFO */
+#define CCX_TASK_PRIORITY 2 /* Lower than CCA (3) — CCA is time-critical for CC1101 FIFO */
 
 /* -----------------------------------------------------------------------
  * HDLC constants
  * ----------------------------------------------------------------------- */
-#define HDLC_FLAG        0x7E
-#define HDLC_ESCAPE      0x7D
-#define HDLC_ESCAPE_XOR  0x20
+#define HDLC_FLAG 0x7E
+#define HDLC_ESCAPE 0x7D
+#define HDLC_ESCAPE_XOR 0x20
 #define HDLC_RX_BUF_SIZE 512
 
 /* -----------------------------------------------------------------------
@@ -48,28 +48,28 @@
  * ----------------------------------------------------------------------- */
 #define TX_QUEUE_SIZE 8
 
-#define CCX_TX_TYPE_LEVEL    0
-#define CCX_TX_TYPE_SCENE    1
-#define CCX_TX_TYPE_COAP     2
+#define CCX_TX_TYPE_LEVEL 0
+#define CCX_TX_TYPE_SCENE 1
+#define CCX_TX_TYPE_COAP 2
 #define CCX_TX_TYPE_ADDR_QRY 3
 #define CCX_TX_TYPE_RAW_CBOR 4
-#define CCX_TX_TYPE_OBSERVE  5
+#define CCX_TX_TYPE_OBSERVE 5
 
 #define CCX_COAP_MAX_PAYLOAD 128
 
 struct ccx_tx_request_t {
-    uint8_t  type;
+    uint8_t type;
     uint16_t id;    /* zone_id or scene_id (level/scene) */
     uint16_t level; /* for level_control */
-    uint8_t  fade;  /* for level_control (1=instant) */
-    uint8_t  sequence;
+    uint8_t fade;   /* for level_control (1=instant) */
+    uint8_t sequence;
     /* CoAP fields (type == CCX_TX_TYPE_COAP) */
-    uint8_t  dst_addr[16];
-    uint8_t  coap_code;
+    uint8_t dst_addr[16];
+    uint8_t coap_code;
     uint16_t dst_port; /* 0 = default (5683) */
-    char     uri_path[64];
-    uint8_t  coap_payload[CCX_COAP_MAX_PAYLOAD];
-    size_t   coap_payload_len;
+    char uri_path[64];
+    uint8_t coap_payload[CCX_COAP_MAX_PAYLOAD];
+    size_t coap_payload_len;
 };
 
 static QueueHandle_t tx_queue = NULL;
@@ -79,18 +79,18 @@ static volatile bool ccx_rx_uart_log_enabled = false;
 
 /* TMF Address Query result (written by RX handler, read by shell) */
 static ccx_address_result_t addr_query_result = {};
-static volatile bool        addr_query_result_ready = false;
+static volatile bool addr_query_result_ready = false;
 
 /* CoAP response capture (written by RX handler, polled by shell) */
 static ccx_coap_response_t coap_response = {};
-static volatile bool       coap_response_armed = false;
-static volatile bool       coap_response_ready = false;
+static volatile bool coap_response_armed = false;
+static volatile bool coap_response_ready = false;
 
 /* CoAP probe table — maps mid → path for async response correlation */
 #define PROBE_TABLE_SIZE 64
 static struct {
     uint16_t mid;
-    char     path[48];
+    char path[48];
 } probe_table[PROBE_TABLE_SIZE];
 static size_t probe_table_idx = 0;
 
@@ -129,8 +129,8 @@ static uint8_t smp_seq = 0;
 static size_t smp_recv_response(uint8_t* out, size_t out_size, uint32_t timeout_ms)
 {
     uint32_t start = HAL_GetTick();
-    size_t   pos = 0;
-    bool     got_header = false;
+    size_t pos = 0;
+    bool got_header = false;
 
     while ((HAL_GetTick() - start) < timeout_ms) {
         uint8_t byte;
@@ -169,37 +169,37 @@ static size_t smp_recv_response(uint8_t* out, size_t out_size, uint32_t timeout_
  * DFU state machine
  * ----------------------------------------------------------------------- */
 static volatile ccx_dfu_state_t dfu_state = CCX_DFU_IDLE;
-static uint32_t                 dfu_image_size = 0;
-static uint32_t                 dfu_bytes_written = 0;
+static uint32_t dfu_image_size = 0;
+static uint32_t dfu_bytes_written = 0;
 
 /* Chunk buffer: stream task writes here, ccx task drains it */
 #define DFU_CHUNK_BUF_SIZE 256
-static uint8_t           dfu_chunk_buf[DFU_CHUNK_BUF_SIZE];
-static volatile size_t   dfu_chunk_len = 0;
+static uint8_t dfu_chunk_buf[DFU_CHUNK_BUF_SIZE];
+static volatile size_t dfu_chunk_len = 0;
 static SemaphoreHandle_t dfu_chunk_sem = NULL;
 static SemaphoreHandle_t dfu_chunk_ready = NULL;
 
 /* -----------------------------------------------------------------------
  * Shell command passthrough — binary semaphore handshake
  * ----------------------------------------------------------------------- */
-static ccx_spinel_request_t  shell_cmd_req;
+static ccx_spinel_request_t shell_cmd_req;
 static ccx_spinel_response_t shell_cmd_resp;
-static SemaphoreHandle_t     shell_cmd_ready = NULL; /* shell gives, ccx takes */
-static SemaphoreHandle_t     shell_cmd_done = NULL;  /* ccx gives, shell takes */
+static SemaphoreHandle_t shell_cmd_ready = NULL; /* shell gives, ccx takes */
+static SemaphoreHandle_t shell_cmd_done = NULL;  /* ccx gives, shell takes */
 
 /* -----------------------------------------------------------------------
  * Private state
  * ----------------------------------------------------------------------- */
-static bool              running = false;
-static TaskHandle_t      ccx_task_handle = NULL;
-static volatile bool     ncp_detected = false;
-static volatile uint8_t  thread_role = SPINEL_NET_ROLE_DETACHED;
+static bool running = false;
+static TaskHandle_t ccx_task_handle = NULL;
+static volatile bool ncp_detected = false;
+static volatile uint8_t thread_role = SPINEL_NET_ROLE_DETACHED;
 static volatile uint32_t rx_count = 0;
 static volatile uint32_t tx_count = 0;
 static volatile uint32_t raw_rx_count = 0;
-static uint8_t           our_ipv6_addr[16]; /* mesh-local address for TX source */
-static bool              have_ipv6_addr = false;
-static uint8_t           ccx_sequence = 0; /* auto-increment if caller passes 0 */
+static uint8_t our_ipv6_addr[16]; /* mesh-local address for TX source */
+static bool have_ipv6_addr = false;
+static uint8_t ccx_sequence = 0; /* auto-increment if caller passes 0 */
 
 /* -----------------------------------------------------------------------
  * RX deduplication ring buffer
@@ -212,12 +212,12 @@ static uint8_t           ccx_sequence = 0; /* auto-increment if caller passes 0 
 
 struct dedup_entry_t {
     uint16_t msg_type;
-    uint8_t  sequence;
+    uint8_t sequence;
     uint32_t tick;
 };
 
 static dedup_entry_t dedup_ring[DEDUP_RING_SIZE];
-static size_t        dedup_idx = 0;
+static size_t dedup_idx = 0;
 
 static bool dedup_is_duplicate(uint16_t msg_type, uint8_t sequence)
 {
@@ -246,16 +246,16 @@ static bool dedup_is_duplicate(uint16_t msg_type, uint8_t sequence)
 #define CCX_MAX_PEERS 32
 
 struct ccx_peer_t {
-    uint16_t rloc16;       /* RLOC16 from src addr (0 = unused) */
-    uint32_t serial;       /* from DEVICE_REPORT/STATUS (0 = unknown) */
-    uint8_t  device_id[4]; /* from BUTTON_PRESS (all 0 = unknown) */
+    uint16_t rloc16;      /* RLOC16 from src addr (0 = unused) */
+    uint32_t serial;      /* from DEVICE_REPORT/STATUS (0 = unknown) */
+    uint8_t device_id[4]; /* from BUTTON_PRESS (all 0 = unknown) */
     uint16_t last_msg_type;
     uint32_t last_seen_tick;
-    uint8_t  prefix[8]; /* mesh-local prefix from src addr */
+    uint8_t prefix[8]; /* mesh-local prefix from src addr */
 };
 
 static ccx_peer_t peer_table[CCX_MAX_PEERS];
-static size_t     peer_count = 0;
+static size_t peer_count = 0;
 
 /** Extract RLOC16 from an IPv6 address, or 0 if it's not an RLOC address.
  *  RLOC format: fd..::00ff:fe00:XXXX (bytes 8-13 = 00:00:00:ff:fe:00) */
@@ -378,9 +378,9 @@ static void hdlc_send_frame(const uint8_t* data, size_t len)
 static size_t hdlc_recv_frame(uint8_t* out, size_t out_size, uint32_t timeout_ms)
 {
     uint32_t start = HAL_GetTick();
-    size_t   pos = 0;
-    bool     in_frame = false;
-    bool     escaped = false;
+    size_t pos = 0;
+    bool in_frame = false;
+    bool escaped = false;
 
     while ((HAL_GetTick() - start) < timeout_ms) {
         uint8_t byte;
@@ -465,7 +465,7 @@ static size_t spinel_wait_response(uint8_t expect_cmd, uint8_t expect_prop, uint
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < timeout_ms) {
-        uint8_t  rx_buf[HDLC_RX_BUF_SIZE];
+        uint8_t rx_buf[HDLC_RX_BUF_SIZE];
         uint32_t remaining = timeout_ms - (HAL_GetTick() - start);
         if (remaining > timeout_ms) break; /* overflow guard */
 
@@ -533,7 +533,7 @@ static bool spinel_prop_set(uint8_t prop_id, const uint8_t* value, size_t value_
     hdlc_send_frame(frame, 3 + value_len);
 
     uint8_t resp[64];
-    size_t  len = spinel_wait_response(SPINEL_CMD_PROP_IS, prop_id, resp, sizeof(resp), timeout_ms);
+    size_t len = spinel_wait_response(SPINEL_CMD_PROP_IS, prop_id, resp, sizeof(resp), timeout_ms);
     /* PROP_IS echoes back the value; len >= 1 for bool/int props.
      * A LAST_STATUS error returns 0 via the error path in spinel_wait_response. */
     return len > 0;
@@ -589,7 +589,7 @@ static void dfu_enter_bootloader(void)
     /* Probe bootloader with SMP image-list request */
     printf("[ccx] DFU: probing MCUboot with SMP image-list...\r\n");
     uint8_t probe_buf[128];
-    size_t  probe_len = smp_build_image_list(probe_buf, sizeof(probe_buf), smp_seq++);
+    size_t probe_len = smp_build_image_list(probe_buf, sizeof(probe_buf), smp_seq++);
     if (probe_len == 0) {
         printf("[ccx] DFU: failed to build SMP probe frame\r\n");
         dfu_state = CCX_DFU_ERROR;
@@ -600,7 +600,7 @@ static void dfu_enter_bootloader(void)
 
     /* Wait for SMP response */
     uint8_t resp_buf[512];
-    size_t  resp_len = smp_recv_response(resp_buf, sizeof(resp_buf), 3000);
+    size_t resp_len = smp_recv_response(resp_buf, sizeof(resp_buf), 3000);
     if (resp_len == 0) {
         printf("[ccx] DFU: no SMP response — bootloader not running\r\n");
         dfu_state = CCX_DFU_ERROR;
@@ -609,9 +609,9 @@ static void dfu_enter_bootloader(void)
 
     /* Image-list response has no "rc" on success (it returns "images" array).
      * If parse finds rc > 0, that's an error. Otherwise bootloader is alive. */
-    int      rc;
+    int rc;
     uint32_t off;
-    bool     parsed = smp_parse_response(resp_buf, resp_len, &rc, &off);
+    bool parsed = smp_parse_response(resp_buf, resp_len, &rc, &off);
     if (parsed && rc != 0) {
         printf("[ccx] DFU: MCUboot returned error rc=%d\r\n", rc);
         dfu_state = CCX_DFU_ERROR;
@@ -637,8 +637,8 @@ static void dfu_upload_loop(void)
 
         /* Build SMP upload frame */
         uint8_t smp_buf[512];
-        size_t  smp_len = smp_build_upload(smp_buf, sizeof(smp_buf), dfu_bytes_written, dfu_chunk_buf, dfu_chunk_len,
-                                           dfu_image_size, smp_seq++);
+        size_t smp_len = smp_build_upload(smp_buf, sizeof(smp_buf), dfu_bytes_written, dfu_chunk_buf, dfu_chunk_len,
+                                          dfu_image_size, smp_seq++);
         if (smp_len == 0) {
             printf("[ccx] DFU: SMP frame build failed\r\n");
             dfu_state = CCX_DFU_ERROR;
@@ -651,7 +651,7 @@ static void dfu_upload_loop(void)
 
         /* Wait for SMP response confirming the chunk */
         uint8_t resp_buf[256];
-        size_t  resp_len = smp_recv_response(resp_buf, sizeof(resp_buf), 5000);
+        size_t resp_len = smp_recv_response(resp_buf, sizeof(resp_buf), 5000);
         if (resp_len == 0) {
             printf("[ccx] DFU: no response from bootloader\r\n");
             dfu_state = CCX_DFU_ERROR;
@@ -659,7 +659,7 @@ static void dfu_upload_loop(void)
             return;
         }
 
-        int      rc;
+        int rc;
         uint32_t ack_off;
         if (!smp_parse_response(resp_buf, resp_len, &rc, &ack_off)) {
             printf("[ccx] DFU: failed to parse SMP response\r\n");
@@ -709,7 +709,7 @@ static bool ncp_probe(void)
 
     /* Drain any unsolicited boot frame the NCP may have sent */
     uint8_t boot_buf[HDLC_RX_BUF_SIZE];
-    size_t  boot_len = hdlc_recv_frame(boot_buf, sizeof(boot_buf), 1000);
+    size_t boot_len = hdlc_recv_frame(boot_buf, sizeof(boot_buf), 1000);
     if (boot_len > 0) {
         printf("[ccx] NCP boot frame: %u bytes, cmd=0x%02X\r\n", (unsigned)boot_len, boot_len >= 2 ? boot_buf[1] : 0);
     }
@@ -746,7 +746,7 @@ static bool ncp_probe(void)
 
     /* Query protocol version */
     uint8_t ver_buf[16];
-    size_t  ver_len = spinel_prop_get(SPINEL_PROP_PROTOCOL_VERSION, ver_buf, sizeof(ver_buf), 2000);
+    size_t ver_len = spinel_prop_get(SPINEL_PROP_PROTOCOL_VERSION, ver_buf, sizeof(ver_buf), 2000);
 
     if (ver_len >= 2) {
         printf("[ccx] NCP protocol version: %u.%u\r\n", ver_buf[0], ver_buf[1]);
@@ -759,7 +759,7 @@ static bool ncp_probe(void)
 
     /* Query NCP version string */
     uint8_t ncp_ver[128];
-    size_t  ncp_len = spinel_prop_get(SPINEL_PROP_NCP_VERSION, ncp_ver, sizeof(ncp_ver) - 1, 2000);
+    size_t ncp_len = spinel_prop_get(SPINEL_PROP_NCP_VERSION, ncp_ver, sizeof(ncp_ver) - 1, 2000);
     if (ncp_len > 0) {
         ncp_ver[ncp_len] = '\0';
         printf("[ccx] NCP firmware: %s\r\n", (char*)ncp_ver);
@@ -767,7 +767,7 @@ static bool ncp_probe(void)
 
     /* Query EUI-64 */
     uint8_t hwaddr[8];
-    size_t  hw_len = spinel_prop_get(SPINEL_PROP_HWADDR, hwaddr, sizeof(hwaddr), 2000);
+    size_t hw_len = spinel_prop_get(SPINEL_PROP_HWADDR, hwaddr, sizeof(hwaddr), 2000);
     if (hw_len == 8) {
         printf("[ccx] NCP EUI-64: %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X\r\n", hwaddr[0], hwaddr[1], hwaddr[2],
                hwaddr[3], hwaddr[4], hwaddr[5], hwaddr[6], hwaddr[7]);
@@ -847,7 +847,7 @@ static bool thread_join(void)
         vTaskDelay(pdMS_TO_TICKS(500));
 
         uint8_t role_buf[4];
-        size_t  role_len = spinel_prop_get(SPINEL_PROP_NET_ROLE, role_buf, sizeof(role_buf), 1000);
+        size_t role_len = spinel_prop_get(SPINEL_PROP_NET_ROLE, role_buf, sizeof(role_buf), 1000);
         if (role_len >= 1) {
             thread_role = role_buf[0];
             if (thread_role != SPINEL_NET_ROLE_DETACHED) {
@@ -896,7 +896,7 @@ static bool thread_join(void)
      *    Each struct: [IPv6 addr (16)] [prefix_len (1)] [valid_lt (4)] [pref_lt (4)] ...
      *    We want the first fd00::/8 address (mesh-local). */
     uint8_t addr_buf[256];
-    size_t  addr_len = spinel_prop_get(SPINEL_PROP_IPV6_ADDRESS_TABLE, addr_buf, sizeof(addr_buf), 2000);
+    size_t addr_len = spinel_prop_get(SPINEL_PROP_IPV6_ADDRESS_TABLE, addr_buf, sizeof(addr_buf), 2000);
     if (addr_len > 0) {
         size_t pos = 0;
         while (pos + 2 < addr_len) {
@@ -927,9 +927,9 @@ static bool thread_join(void)
  * ----------------------------------------------------------------------- */
 
 /* Retransmit count matching Lutron multicast pattern */
-#define CCX_TX_RETRANSMITS   7
+#define CCX_TX_RETRANSMITS 7
 #define CCX_TX_RETRANSMIT_MS 80
-#define COAP_UDP_PORT        5683
+#define COAP_UDP_PORT 5683
 
 static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
 {
@@ -938,7 +938,7 @@ static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
      *   D = [len_lo][len_hi][metadata]   (we send empty metadata)
      */
     uint8_t frame[HDLC_RX_BUF_SIZE];
-    size_t  frame_len = 3 + 2 + pkt_len + 2; /* hdr+cmd+prop + d_prefix + pkt + empty_D */
+    size_t frame_len = 3 + 2 + pkt_len + 2; /* hdr+cmd+prop + d_prefix + pkt + empty_D */
     if (frame_len > sizeof(frame)) return false;
 
     uint8_t hdr = spinel_header();
@@ -956,7 +956,7 @@ static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
 
     /* Wait for NCP response to verify it accepted the packet */
     uint8_t resp[HDLC_RX_BUF_SIZE];
-    size_t  resp_len = hdlc_recv_frame(resp, sizeof(resp), 500);
+    size_t resp_len = hdlc_recv_frame(resp, sizeof(resp), 500);
     if (resp_len < 3) {
         printf("[ccx] TX: no NCP response (len=%u)\r\n", (unsigned)resp_len);
         return false;
@@ -989,22 +989,22 @@ static void coap_send_empty_ack(const uint8_t* dst_addr, uint16_t src_port, uint
     uint8_t ack[4];
     coap_build_ack(ack, sizeof(ack), mid);
     uint8_t pkt[128];
-    size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, dst_addr, src_port,
-                                     dst_port, ack, sizeof(ack));
+    size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, dst_addr, src_port,
+                                    dst_port, ack, sizeof(ack));
     if (pkt_len == 0) return;
     ccx_transmit_ipv6(pkt, pkt_len);
 }
 
 static uint16_t coap_msg_id_counter = 0x1000;
-static uint8_t  coap_token_counter = 0x01;
+static uint8_t coap_token_counter = 0x01;
 
 static void ccx_process_tx(const ccx_tx_request_t* req)
 {
     if (req->type == CCX_TX_TYPE_COAP) {
         /* --- CoAP unicast TX --- */
-        uint8_t  coap_buf[256];
+        uint8_t coap_buf[256];
         uint16_t mid = coap_msg_id_counter++;
-        uint8_t  tok = coap_token_counter++;
+        uint8_t tok = coap_token_counter++;
 
         size_t coap_len = coap_build_request(coap_buf, sizeof(coap_buf), mid, tok, req->coap_code, req->uri_path,
                                              req->coap_payload, req->coap_payload_len);
@@ -1015,9 +1015,9 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
         /* Wrap in IPv6+UDP → unicast to device */
         uint16_t port = req->dst_port ? req->dst_port : COAP_UDP_PORT;
-        uint8_t  pkt[384];
-        size_t   pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, req->dst_addr, port,
-                                          port, coap_buf, coap_len);
+        uint8_t pkt[384];
+        size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, req->dst_addr, port,
+                                        port, coap_buf, coap_len);
         if (pkt_len == 0) {
             printf("[ccx] CoAP TX: IPv6+UDP build failed\r\n");
             return;
@@ -1046,8 +1046,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
         /* Also broadcast to stream clients */
         {
             char buf[128];
-            int  n = snprintf(buf, sizeof(buf), "[ccx] CoAP %s %s mid=0x%04X tx=%s\r\n", method, req->uri_path, mid,
-                              tx_ok ? "OK" : "FAIL");
+            int n = snprintf(buf, sizeof(buf), "[ccx] CoAP %s %s mid=0x%04X tx=%s\r\n", method, req->uri_path, mid,
+                             tx_ok ? "OK" : "FAIL");
             if (n > 0) stream_broadcast_text(buf, (size_t)n);
         }
         if (req->coap_payload_len > 0) {
@@ -1062,12 +1062,12 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
     if (req->type == CCX_TX_TYPE_OBSERVE) {
         /* --- CoAP Observe GET (register/deregister) --- */
-        uint8_t  coap_buf[256];
+        uint8_t coap_buf[256];
         uint16_t mid = coap_msg_id_counter++;
-        uint8_t  tok = coap_token_counter++;
+        uint8_t tok = coap_token_counter++;
 
         uint8_t observe_val = req->coap_code; /* 0=register, 1=deregister */
-        size_t  coap_len = coap_build_observe_request(coap_buf, sizeof(coap_buf), mid, tok, req->uri_path, observe_val);
+        size_t coap_len = coap_build_observe_request(coap_buf, sizeof(coap_buf), mid, tok, req->uri_path, observe_val);
         if (coap_len == 0) {
             printf("[ccx] CoAP Observe: build failed\r\n");
             return;
@@ -1076,9 +1076,9 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
         probe_table_add(mid, req->uri_path);
 
         uint16_t port = req->dst_port ? req->dst_port : COAP_UDP_PORT;
-        uint8_t  pkt[384];
-        size_t   pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, req->dst_addr, port,
-                                          port, coap_buf, coap_len);
+        uint8_t pkt[384];
+        size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, req->dst_addr, port,
+                                        port, coap_buf, coap_len);
         if (pkt_len == 0) {
             printf("[ccx] CoAP Observe: IPv6+UDP build failed\r\n");
             return;
@@ -1092,8 +1092,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
         {
             char buf[128];
-            int  n = snprintf(buf, sizeof(buf), "[ccx] CoAP Observe %s %s mid=0x%04X\r\n",
-                              observe_val == 0 ? "REG" : "DEREG", req->uri_path, mid);
+            int n = snprintf(buf, sizeof(buf), "[ccx] CoAP Observe %s %s mid=0x%04X\r\n",
+                             observe_val == 0 ? "REG" : "DEREG", req->uri_path, mid);
             if (n > 0) stream_broadcast_text(buf, (size_t)n);
         }
         return;
@@ -1101,9 +1101,9 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
     if (req->type == CCX_TX_TYPE_ADDR_QRY) {
         /* --- TMF Address Query: NON POST to ff03::2 port 61631, path /a/aq --- */
-        uint8_t  coap_buf[64];
+        uint8_t coap_buf[64];
         uint16_t mid = coap_msg_id_counter++;
-        uint8_t  tok = coap_token_counter++;
+        uint8_t tok = coap_token_counter++;
 
         /* Build payload: Target EID TLV (type=0, len=16, value=secondary ML-EID) */
         uint8_t tlv[18];
@@ -1120,8 +1120,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
         /* Wrap in IPv6+UDP → multicast to ff03::2 on TMF port 61631 */
         uint8_t pkt[256];
-        size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, TMF_REALM_ALL_ROUTERS,
-                                         COAP_TMF_PORT, COAP_TMF_PORT, coap_buf, coap_len);
+        size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, TMF_REALM_ALL_ROUTERS,
+                                        COAP_TMF_PORT, COAP_TMF_PORT, coap_buf, coap_len);
         if (pkt_len == 0) {
             printf("[ccx] Address Query: IPv6+UDP build failed\r\n");
             return;
@@ -1143,11 +1143,11 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
     /* --- Raw CBOR TX (pre-encoded by host) --- */
     if (req->type == CCX_TX_TYPE_RAW_CBOR) {
         const uint8_t* cbor = req->coap_payload;
-        size_t         cbor_len = req->coap_payload_len;
+        size_t cbor_len = req->coap_payload_len;
 
         uint8_t pkt[256];
-        size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, CCX_MULTICAST_ADDR,
-                                         CCX_UDP_PORT, CCX_UDP_PORT, cbor, cbor_len);
+        size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, CCX_MULTICAST_ADDR,
+                                        CCX_UDP_PORT, CCX_UDP_PORT, cbor, cbor_len);
         if (pkt_len == 0) {
             printf("[ccx] TX RAW: IPv6+UDP build failed\r\n");
             return;
@@ -1166,7 +1166,7 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
     /* --- Multicast CCX command TX --- */
     uint8_t cbor_buf[64];
-    size_t  cbor_len = 0;
+    size_t cbor_len = 0;
 
     if (req->type == CCX_TX_TYPE_LEVEL) {
         cbor_len = ccx_encode_level_control(cbor_buf, sizeof(cbor_buf), req->id, req->level, req->fade, req->sequence);
@@ -1182,8 +1182,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
 
     /* Wrap in IPv6+UDP */
     uint8_t pkt[256];
-    size_t  pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, CCX_MULTICAST_ADDR,
-                                     CCX_UDP_PORT, CCX_UDP_PORT, cbor_buf, cbor_len);
+    size_t pkt_len = ipv6_udp_build(pkt, sizeof(pkt), have_ipv6_addr ? our_ipv6_addr : NULL, CCX_MULTICAST_ADDR,
+                                    CCX_UDP_PORT, CCX_UDP_PORT, cbor_buf, cbor_len);
     if (pkt_len == 0) {
         printf("[ccx] TX: IPv6+UDP build failed\r\n");
         return;
@@ -1224,9 +1224,9 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
      * (For PROP_INSERTED frames: [header][cmd][prop][ipv6_packet...])
      * The caller already stripped the Spinel header. */
 
-    uint8_t  src_addr[16];
+    uint8_t src_addr[16];
     uint16_t src_port, dst_port;
-    size_t   udp_payload_len;
+    size_t udp_payload_len;
 
     const uint8_t* udp_data =
         ipv6_udp_parse(spinel_payload, payload_len, src_addr, &src_port, &dst_port, &udp_payload_len);
@@ -1237,8 +1237,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
     if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT || src_port == 49136 || dst_port == 49136) {
         stream_send_ccx_packet(udp_data, udp_payload_len);
 
-        uint8_t  coap_type = 0;
-        uint8_t  coap_code = 0;
+        uint8_t coap_type = 0;
+        uint8_t coap_code = 0;
         uint16_t coap_mid = 0;
         if (coap_parse_response(udp_data, udp_payload_len, &coap_type, &coap_code, &coap_mid)) {
             /* CoAP CON response (class 2..5): reply with empty ACK.
@@ -1259,7 +1259,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 memcpy(coap_response.src_addr, src_addr, 16);
                 /* Extract payload */
                 uint8_t r_tkl = udp_data[0] & 0x0F;
-                size_t  r_pos = 4 + r_tkl;
+                size_t r_pos = 4 + r_tkl;
                 while (r_pos < udp_payload_len && udp_data[r_pos] != 0xFF) {
                     uint8_t dn = udp_data[r_pos] >> 4;
                     uint8_t ln = udp_data[r_pos] & 0x0F;
@@ -1299,8 +1299,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
             /* Always broadcast CoAP response to stream (for probe/fuzz) */
             {
                 const char* path = probe_table_lookup(coap_mid);
-                char        buf[128];
-                int         n;
+                char buf[128];
+                int n;
                 if (path) {
                     n = snprintf(buf, sizeof(buf), "[coap] %u.%02u %s mid=0x%04X len=%u\r\n",
                                  (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), path, coap_mid,
@@ -1322,7 +1322,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                        (unsigned)(coap_code & 0x1F), coap_mid, (unsigned)udp_payload_len);
                 /* Find and dump payload (after 0xFF marker) */
                 uint8_t tkl = udp_data[0] & 0x0F;
-                size_t  pos = 4 + tkl;
+                size_t pos = 4 + tkl;
                 /* Skip options */
                 while (pos < udp_payload_len && udp_data[pos] != 0xFF) {
                     uint8_t delta_len = udp_data[pos];
@@ -1366,7 +1366,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         /* CoAP header: ver(2)|type(2)|tkl(4) | code(8) | mid(16) | token(tkl) | options... | 0xFF | payload */
         if (udp_payload_len < 4) return;
         uint8_t tkl = udp_data[0] & 0x0F;
-        size_t  hdr_len = 4 + tkl;
+        size_t hdr_len = 4 + tkl;
         if (hdr_len >= udp_payload_len) return;
 
         /* Skip CoAP options to find payload marker 0xFF */
@@ -1406,7 +1406,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
 
         /* Parse TLVs: type(1) + len(1) + value(len) */
         ccx_address_result_t result = {};
-        bool                 have_target = false, have_mleid = false, have_rloc = false;
+        bool have_target = false, have_mleid = false, have_rloc = false;
 
         while (pos + 2 <= udp_payload_len) {
             uint8_t tlv_type = udp_data[pos++];
@@ -1551,7 +1551,7 @@ bool ccx_set_promiscuous(bool enabled)
     /* Route through ccx_spinel_command so the CCX task handles UART
      * access — calling spinel_prop_set directly from the shell task
      * races with the CCX task's main loop UART reads. */
-    ccx_spinel_request_t  req;
+    ccx_spinel_request_t req;
     ccx_spinel_response_t resp;
 
     req.cmd_type = CCX_SPINEL_PROP_SET;
@@ -1695,7 +1695,7 @@ static void ccx_task_func(void* param)
         /* --- RX: poll for HDLC frames --- */
         if (ncp_detected) {
             uint8_t rx_buf[HDLC_RX_BUF_SIZE];
-            size_t  rx_len = hdlc_recv_frame(rx_buf, sizeof(rx_buf), 50);
+            size_t rx_len = hdlc_recv_frame(rx_buf, sizeof(rx_buf), 50);
 
             if (rx_len >= 3) {
                 uint8_t cmd = rx_buf[1];
@@ -1707,7 +1707,7 @@ static void ccx_task_func(void* param)
                     size_t payload_len = rx_len - 3;
                     if (payload_len >= 2) {
                         const uint8_t* payload = rx_buf + 3;
-                        uint16_t       ipv6_len = (uint16_t)payload[0] | ((uint16_t)payload[1] << 8);
+                        uint16_t ipv6_len = (uint16_t)payload[0] | ((uint16_t)payload[1] << 8);
                         if (ipv6_len <= payload_len - 2) {
                             ccx_process_rx(payload + 2, ipv6_len);
                         }
@@ -1721,15 +1721,15 @@ static void ccx_task_func(void* param)
                      * with security enabled). Skips beacons, ACKs, MLE, etc. */
                     if (promiscuous_enabled) {
                         const uint8_t* payload = rx_buf + 3;
-                        size_t         payload_len = rx_len - 3;
+                        size_t payload_len = rx_len - 3;
                         if (payload_len >= 2) {
                             uint16_t frame_len = (uint16_t)payload[0] | ((uint16_t)payload[1] << 8);
                             if (frame_len >= 15 && frame_len <= payload_len - 2) {
                                 const uint8_t* frame = payload + 2;
-                                uint16_t       fc = (uint16_t)frame[0] | ((uint16_t)frame[1] << 8);
-                                bool           has_security = (fc & 0x08) != 0;
-                                uint8_t        dst_mode = (fc >> 10) & 0x03;
-                                uint8_t        src_mode = (fc >> 14) & 0x03;
+                                uint16_t fc = (uint16_t)frame[0] | ((uint16_t)frame[1] << 8);
+                                bool has_security = (fc & 0x08) != 0;
+                                uint8_t dst_mode = (fc >> 10) & 0x03;
+                                uint8_t src_mode = (fc >> 14) & 0x03;
 
                                 /* Short/short with security = encrypted Thread data */
                                 if (has_security && dst_mode == 2 && src_mode == 2) {

@@ -37,9 +37,9 @@ static bool transmit_one(const uint8_t* packet, size_t len)
     uint8_t with_crc[64 + 2];
     cca_append_crc(packet, len, with_crc);
 
-    uint8_t    encoded[128];
+    uint8_t encoded[128];
     CcaEncoder encoder;
-    size_t     encoded_len = encoder.encode_packet(with_crc, len + 2, encoded, sizeof(encoded));
+    size_t encoded_len = encoder.encode_packet(with_crc, len + 2, encoded, sizeof(encoded));
     if (encoded_len == 0) return false;
 
     bool ok = cc1101_transmit_raw(encoded, encoded_len);
@@ -84,9 +84,9 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
 
     cc1101_stop_rx();
 
-    uint8_t  packet[53];
-    uint8_t  seq = 0x01;
-    bool     use_type_a = true;
+    uint8_t packet[53];
+    uint8_t seq = 0x01;
+    bool use_type_a = true;
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
@@ -188,8 +188,8 @@ static inline void put_be32(uint8_t* dst, uint32_t val)
 
 /* Handshake challenge storage */
 static uint8_t hs_challenges[4][22];
-static bool    hs_received[4];
-static int     hs_count;
+static bool hs_received[4];
+static int hs_count;
 
 /* RX hook for capturing handshake challenges */
 static void bridge_rx_hook(const DecodedPacket* pkt)
@@ -240,8 +240,8 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
     /* ---- Phase 1: BEACON ---- */
     printf("[cca] Bridge pair: beacon phase (%us)\r\n", beacon_sec);
 
-    uint8_t  packet[24];
-    uint8_t  seq = 0x01;
+    uint8_t packet[24];
+    uint8_t seq = 0x01;
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < (uint32_t)beacon_sec * 1000) {
@@ -478,7 +478,7 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
 
 /* B8 detection state */
 static volatile bool vive_device_detected = false;
-static uint32_t      vive_detected_device_id = 0;
+static uint32_t vive_detected_device_id = 0;
 
 /* RX hook for capturing B8 pairing requests */
 static void vive_rx_hook(const DecodedPacket* pkt)
@@ -723,10 +723,10 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
     vive_device_detected = false;
     vive_detected_device_id = 0;
 
-    uint8_t  pkt[51];
-    uint8_t  seq = 0x01;
+    uint8_t pkt[51];
+    uint8_t seq = 0x01;
     uint32_t start = HAL_GetTick();
-    int      devices_paired = 0;
+    int devices_paired = 0;
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
         /* ---- TX: B9 beacon burst (9 packets, ~90ms spacing) ---- */
@@ -852,9 +852,9 @@ static void exec_announce(uint32_t serial, uint32_t device_class, uint16_t subne
 
     cc1101_stop_rx();
 
-    uint8_t  packet[51];
-    uint8_t  seq = 0x00;
-    bool     first = true;
+    uint8_t packet[51];
+    uint8_t seq = 0x00;
+    bool first = true;
     uint32_t start = HAL_GetTick();
     uint32_t count = 0;
 
@@ -932,7 +932,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint1
 
     /* device_id for B0 announce: use bridge_id as placeholder until B8 captured */
     uint32_t announce_serial = 0;
-    bool     have_serial = false;
+    bool have_serial = false;
 
     printf("[cca] CMD hybrid_pair bridge=%08X class=%08X subnet=%04X dur=%us\r\n", (unsigned)bridge_id,
            (unsigned)device_class_32, subnet, duration_sec);
@@ -942,10 +942,10 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint1
     vive_device_detected = false;
     vive_detected_device_id = 0;
 
-    uint8_t  pkt[51];
-    uint8_t  b9_seq = 0x01;
-    uint8_t  b0_seq = 0x00;
-    bool     b0_first = true;
+    uint8_t pkt[51];
+    uint8_t b9_seq = 0x01;
+    uint8_t b0_seq = 0x00;
+    bool b0_first = true;
     uint32_t start = HAL_GetTick();
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {

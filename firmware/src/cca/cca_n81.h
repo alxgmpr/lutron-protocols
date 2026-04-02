@@ -228,9 +228,9 @@ inline int n81_find_sync_offset_from(const uint8_t* bits, size_t bits_len, size_
 
     for (size_t bit_pos = start_bit; bit_pos < search_limit; bit_pos++) {
         uint8_t b1, b2, b3;
-        bool    ok1 = n81_decode_byte(bits, bits_len, bit_pos, &b1);
-        bool    ok2 = n81_decode_byte(bits, bits_len, bit_pos + 10, &b2);
-        bool    ok3 = n81_decode_byte(bits, bits_len, bit_pos + 20, &b3);
+        bool ok1 = n81_decode_byte(bits, bits_len, bit_pos, &b1);
+        bool ok2 = n81_decode_byte(bits, bits_len, bit_pos + 10, &b2);
+        bool ok3 = n81_decode_byte(bits, bits_len, bit_pos + 20, &b3);
 
         if (ok1 && ok2 && ok3 && b1 == 0xFF && b2 == 0xFA && b3 == 0xDE) {
             return static_cast<int>(bit_pos + 30);

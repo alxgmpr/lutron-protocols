@@ -125,7 +125,7 @@ bool flash_store_save(void)
     erase.NbSectors = 1;
     erase.VoltageRange = FLASH_VOLTAGE_RANGE_3; /* 2.7-3.6V */
 
-    uint32_t          sector_error = 0;
+    uint32_t sector_error = 0;
     HAL_StatusTypeDef status = HAL_FLASHEx_Erase(&erase, &sector_error);
     if (status != HAL_OK) {
         printf("[flash] Erase failed (status=%d sector_error=%lu)\r\n", status, (unsigned long)sector_error);
@@ -136,7 +136,7 @@ bool flash_store_save(void)
     /* Program in 32-byte flash words.
      * sizeof(FlashSettings) = 256 = 8 flash words. */
     const uint8_t* src = (const uint8_t*)&settings;
-    uint32_t       addr = FLASH_STORE_ADDR;
+    uint32_t addr = FLASH_STORE_ADDR;
 
     for (size_t offset = 0; offset < sizeof(FlashSettings); offset += 32) {
         status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, addr + offset, (uint32_t)(uintptr_t)(src + offset));

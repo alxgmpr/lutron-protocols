@@ -32,9 +32,9 @@ extern UART_HandleTypeDef huart3;
  * ----------------------------------------------------------------------- */
 #define DMA_TX_BUF_SIZE 512
 
-static uint8_t           dma_tx_buf[2][DMA_TX_BUF_SIZE] __attribute__((aligned(32)));
-static volatile int      dma_buf_idx = 0; /* which buffer _write copies into */
-static SemaphoreHandle_t s_dma_tx_sem;    /* binary semaphore: DMA complete */
+static uint8_t dma_tx_buf[2][DMA_TX_BUF_SIZE] __attribute__((aligned(32)));
+static volatile int dma_buf_idx = 0;   /* which buffer _write copies into */
+static SemaphoreHandle_t s_dma_tx_sem; /* binary semaphore: DMA complete */
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef* huart)
 {
@@ -59,7 +59,7 @@ static void dma_tx_wait(void)
  * the DMA semaphore (or know no DMA is in flight). */
 static void dma_tx_start(const uint8_t* data, uint16_t len)
 {
-    int      idx = dma_buf_idx;
+    int idx = dma_buf_idx;
     uint16_t copy_len = (len > DMA_TX_BUF_SIZE) ? DMA_TX_BUF_SIZE : len;
     memcpy(dma_tx_buf[idx], data, copy_len);
     dma_buf_idx = 1 - idx;
@@ -78,14 +78,14 @@ static void dma_tx_start(const uint8_t* data, uint16_t len)
  * so _write() can save/restore the line for async output.
  * ----------------------------------------------------------------------- */
 typedef struct {
-    TaskHandle_t task;   /* shell task handle (NULL until registered) */
-    const char*  buf;    /* current line buffer */
-    size_t       len;    /* number of chars in buffer */
-    size_t       cursor; /* cursor position within line */
-    int          active; /* non-zero when shell is reading input */
+    TaskHandle_t task; /* shell task handle (NULL until registered) */
+    const char* buf;   /* current line buffer */
+    size_t len;        /* number of chars in buffer */
+    size_t cursor;     /* cursor position within line */
+    int active;        /* non-zero when shell is reading input */
 } shell_state_t;
 
-static shell_state_t     s_shell;
+static shell_state_t s_shell;
 static SemaphoreHandle_t s_uart3_mutex;
 
 /* -----------------------------------------------------------------------
@@ -94,9 +94,9 @@ static SemaphoreHandle_t s_uart3_mutex;
  * ----------------------------------------------------------------------- */
 typedef struct {
     TaskHandle_t task;
-    uint8_t*     buf;
-    size_t       buf_size;
-    size_t       len;
+    uint8_t* buf;
+    size_t buf_size;
+    size_t len;
 } printf_capture_t;
 
 static volatile printf_capture_t s_capture;
@@ -217,10 +217,10 @@ int _write(int fd, char* buf, int len)
     /* Copy to capture buffer if this is the captured task */
     if (s_capture.task == caller && s_capture.buf != NULL) {
         uint8_t* cap_buf = (uint8_t*)s_capture.buf;
-        size_t   cap_len = s_capture.len;
-        size_t   cap_size = s_capture.buf_size;
-        size_t   avail = cap_size - cap_len;
-        size_t   copy = (size_t)len < avail ? (size_t)len : avail;
+        size_t cap_len = s_capture.len;
+        size_t cap_size = s_capture.buf_size;
+        size_t avail = cap_size - cap_len;
+        size_t copy = (size_t)len < avail ? (size_t)len : avail;
         if (copy > 0) {
             memcpy(cap_buf + cap_len, buf, copy);
             s_capture.len = cap_len + copy;
@@ -305,7 +305,7 @@ int _lseek(int fd, int offset, int whence)
 }
 
 /* Heap for newlib malloc (minimal — FreeRTOS uses heap_4) */
-extern char  end; /* Defined in linker script as _end */
+extern char end; /* Defined in linker script as _end */
 static char* heap_ptr = 0;
 
 void* _sbrk(int incr)
@@ -332,7 +332,7 @@ void vApplicationMallocFailedHook(void)
 {
     /* Can't use printf (it might try to malloc). Write directly. */
     extern UART_HandleTypeDef huart3;
-    const char                msg[] = "\r\n*** MALLOC FAILED ***\r\n";
+    const char msg[] = "\r\n*** MALLOC FAILED ***\r\n";
     HAL_UART_Transmit(&huart3, (const uint8_t*)msg, sizeof(msg) - 1, 100);
 
     /* LED_RED_ON — use register write to avoid HAL dependency */
@@ -346,7 +346,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName)
     (void)xTask;
 
     extern UART_HandleTypeDef huart3;
-    const char                prefix[] = "\r\n*** STACK OVERFLOW: ";
+    const char prefix[] = "\r\n*** STACK OVERFLOW: ";
     HAL_UART_Transmit(&huart3, (const uint8_t*)prefix, sizeof(prefix) - 1, 100);
     if (pcTaskName) {
         size_t nlen = 0;

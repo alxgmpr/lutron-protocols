@@ -30,34 +30,34 @@ extern "C" {
 /* -----------------------------------------------------------------------
  * Constants
  * ----------------------------------------------------------------------- */
-#define CCA_TDMA_DEFAULT_SLOT_MASK 7    /* 8 slots (AND #7) — standard CCA */
-#define CCA_TDMA_DEFAULT_FRAME_MS  75   /* 8 slots × ~9.375ms */
-#define CCA_TDMA_SLOT_DURATION_US  9375 /* 75ms / 8 in microseconds */
-#define CCA_TDMA_MAX_SLOTS         64   /* maximum possible (AND #63) */
-#define CCA_TDMA_MAX_DEVICES       32   /* tracked device slots */
-#define CCA_TDMA_MAX_JOBS          4    /* concurrent TX jobs */
+#define CCA_TDMA_DEFAULT_SLOT_MASK 7   /* 8 slots (AND #7) — standard CCA */
+#define CCA_TDMA_DEFAULT_FRAME_MS 75   /* 8 slots × ~9.375ms */
+#define CCA_TDMA_SLOT_DURATION_US 9375 /* 75ms / 8 in microseconds */
+#define CCA_TDMA_MAX_SLOTS 64          /* maximum possible (AND #63) */
+#define CCA_TDMA_MAX_DEVICES 32        /* tracked device slots */
+#define CCA_TDMA_MAX_JOBS 4            /* concurrent TX jobs */
 
 /* Retry counts matching Lutron firmware */
-#define CCA_TDMA_RETRIES_NORMAL       5
-#define CCA_TDMA_RETRIES_LEVEL        20
+#define CCA_TDMA_RETRIES_NORMAL 5
+#define CCA_TDMA_RETRIES_LEVEL 20
 #define CCA_TDMA_RETRIES_BUTTON_SHORT 6
-#define CCA_TDMA_RETRIES_BUTTON_LONG  10
-#define CCA_TDMA_RETRIES_PAIRING      10
-#define CCA_TDMA_RETRIES_SCENE        10
+#define CCA_TDMA_RETRIES_BUTTON_LONG 10
+#define CCA_TDMA_RETRIES_PAIRING 10
+#define CCA_TDMA_RETRIES_SCENE 10
 
 /* -----------------------------------------------------------------------
  * Frame sync state (read-only snapshot for telemetry)
  * ----------------------------------------------------------------------- */
 typedef struct {
-    uint32_t anchor_ms;      /* timestamp of last inferred slot-0 boundary */
-    uint32_t period_ms;      /* observed frame period (default 75) */
-    uint8_t  slot_mask;      /* active mask (7 = 8 slots) */
-    uint8_t  slot_count;     /* slot_mask + 1 */
-    uint8_t  our_slot;       /* slot assigned to our TX */
-    uint8_t  confidence;     /* 0-100 frame sync quality */
-    uint8_t  occupied_count; /* number of slots with active devices */
-    uint8_t  active_jobs;    /* number of pending TX jobs */
-    uint32_t total_devices;  /* tracked devices */
+    uint32_t anchor_ms;     /* timestamp of last inferred slot-0 boundary */
+    uint32_t period_ms;     /* observed frame period (default 75) */
+    uint8_t slot_mask;      /* active mask (7 = 8 slots) */
+    uint8_t slot_count;     /* slot_mask + 1 */
+    uint8_t our_slot;       /* slot assigned to our TX */
+    uint8_t confidence;     /* 0-100 frame sync quality */
+    uint8_t occupied_count; /* number of slots with active devices */
+    uint8_t active_jobs;    /* number of pending TX jobs */
+    uint32_t total_devices; /* tracked devices */
 } CcaTdmaFrameState;
 
 /* -----------------------------------------------------------------------
@@ -66,12 +66,12 @@ typedef struct {
 typedef struct {
     uint32_t device_id;
     uint32_t last_rx_ms;
-    uint8_t  slot;
-    uint8_t  last_seq;
-    uint8_t  dominant_stride;
-    uint8_t  confidence;
+    uint8_t slot;
+    uint8_t last_seq;
+    uint8_t dominant_stride;
+    uint8_t confidence;
     uint16_t samples;
-    bool     active;
+    bool active;
 } CcaTdmaDeviceInfo;
 
 /* -----------------------------------------------------------------------

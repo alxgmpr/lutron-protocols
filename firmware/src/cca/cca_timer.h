@@ -23,10 +23,10 @@ extern "C" {
 #endif
 
 /* Timing constants in ticks (1 tick = 10 µs) */
-#define CCA_TICK_US      10   /* microseconds per tick */
-#define CCA_SLOT_TICKS   1250 /* 12.5 ms */
-#define CCA_FRAME_TICKS  7500 /* 75 ms = 6 slots */
-#define CCA_TICKS_PER_MS 100  /* 1 ms */
+#define CCA_TICK_US 10       /* microseconds per tick */
+#define CCA_SLOT_TICKS 1250  /* 12.5 ms */
+#define CCA_FRAME_TICKS 7500 /* 75 ms = 6 slots */
+#define CCA_TICKS_PER_MS 100 /* 1 ms */
 
 /** Initialize TIM2 as free-running 100 kHz counter. Call once at startup. */
 void cca_timer_init(void);

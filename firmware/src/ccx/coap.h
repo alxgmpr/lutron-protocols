@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define COAP_PORT     5683
+#define COAP_PORT 5683
 #define COAP_TMF_PORT 61631 /* Thread Management Framework port */
 
 /* CoAP message types */
@@ -26,9 +26,9 @@ extern "C" {
 #define COAP_TYPE_RST 3
 
 /* CoAP method codes */
-#define COAP_CODE_GET    1 /* 0.01 */
-#define COAP_CODE_POST   2 /* 0.02 */
-#define COAP_CODE_PUT    3 /* 0.03 */
+#define COAP_CODE_GET 1    /* 0.01 */
+#define COAP_CODE_POST 2   /* 0.02 */
+#define COAP_CODE_PUT 3    /* 0.03 */
 #define COAP_CODE_DELETE 4 /* 0.04 */
 
 /* CoAP response codes */
@@ -37,8 +37,8 @@ extern "C" {
 #define COAP_CODE_CONTENT 69 /* 2.05 */
 
 /* CoAP option numbers */
-#define COAP_OPT_OBSERVE        6
-#define COAP_OPT_URI_PATH       11
+#define COAP_OPT_OBSERVE 6
+#define COAP_OPT_URI_PATH 11
 #define COAP_OPT_CONTENT_FORMAT 12
 
 /* Content format IDs */

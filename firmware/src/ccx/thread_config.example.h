@@ -7,7 +7,7 @@
  */
 
 #define LUTRON_THREAD_CHANNEL 25
-#define LUTRON_THREAD_PANID   0x0000
+#define LUTRON_THREAD_PANID 0x0000
 
 static const uint8_t LUTRON_THREAD_XPANID[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 

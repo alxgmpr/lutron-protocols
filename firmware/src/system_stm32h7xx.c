@@ -9,8 +9,8 @@
 #include "stm32h7xx.h"
 
 /* CMSIS global variables required by the HAL */
-uint32_t      SystemCoreClock = 64000000UL; /* Default HSI, updated by bsp_clock_init() */
-uint32_t      SystemD2Clock = 64000000UL;   /* D2 domain clock */
+uint32_t SystemCoreClock = 64000000UL; /* Default HSI, updated by bsp_clock_init() */
+uint32_t SystemD2Clock = 64000000UL;   /* D2 domain clock */
 const uint8_t D1CorePrescTable[16] = {0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 8, 9};
 
 /**

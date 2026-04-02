@@ -7,10 +7,10 @@
  */
 static size_t coap_encode_option(uint8_t* buf, size_t buf_size, uint16_t delta, const uint8_t* value, size_t value_len)
 {
-    size_t  pos = 0;
+    size_t pos = 0;
     uint8_t delta_nibble, len_nibble;
     uint8_t delta_ext = 0, len_ext = 0;
-    size_t  header_size = 1;
+    size_t header_size = 1;
 
     /* Delta encoding */
     if (delta < 13) {
@@ -92,7 +92,7 @@ size_t coap_build_request(uint8_t* buf, size_t buf_size, uint16_t msg_id, uint8_
 
     /* URI-Path options (option 11) — split path on '/' */
     if (uri_path) {
-        uint16_t    prev_option = 0;
+        uint16_t prev_option = 0;
         const char* p = uri_path;
         if (*p == '/') p++; /* skip leading slash */
 
@@ -102,7 +102,7 @@ size_t coap_build_request(uint8_t* buf, size_t buf_size, uint16_t msg_id, uint8_
             size_t seg_len = (size_t)(p - seg_start);
             if (seg_len > 0) {
                 uint16_t delta = COAP_OPT_URI_PATH - prev_option;
-                size_t   n = coap_encode_option(buf + pos, buf_size - pos, delta, (const uint8_t*)seg_start, seg_len);
+                size_t n = coap_encode_option(buf + pos, buf_size - pos, delta, (const uint8_t*)seg_start, seg_len);
                 if (n == 0) return 0;
                 pos += n;
                 prev_option = COAP_OPT_URI_PATH;
@@ -139,7 +139,7 @@ size_t coap_build_observe_request(uint8_t* buf, size_t buf_size, uint16_t msg_id
 
     /* Observe option (6): 1-byte value */
     uint16_t prev_option = 0;
-    size_t   n = coap_encode_option(buf + pos, buf_size - pos, COAP_OPT_OBSERVE - prev_option, &observe_val, 1);
+    size_t n = coap_encode_option(buf + pos, buf_size - pos, COAP_OPT_OBSERVE - prev_option, &observe_val, 1);
     if (n == 0) return 0;
     pos += n;
     prev_option = COAP_OPT_OBSERVE;

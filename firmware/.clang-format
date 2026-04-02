@@ -36,8 +36,8 @@ SpaceInEmptyBlock: false
 SpacesInParentheses: false
 
 # Alignment
-AlignConsecutiveMacros: Consecutive
-AlignConsecutiveDeclarations: Consecutive
+AlignConsecutiveMacros: false
+AlignConsecutiveDeclarations: false
 AlignConsecutiveAssignments: false
 AlignTrailingComments: true
 AlignOperands: true

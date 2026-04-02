@@ -3,14 +3,14 @@
 
 UART_HandleTypeDef huart2; /* nRF52840 NCP */
 UART_HandleTypeDef huart3; /* Shell (ST-LINK VCP) */
-DMA_HandleTypeDef  hdma_usart3_tx;
+DMA_HandleTypeDef hdma_usart3_tx;
 
 /* -----------------------------------------------------------------------
  * USART2 RX interrupt-driven ring buffer
  * ----------------------------------------------------------------------- */
 #define UART2_RX_BUF_SIZE 512
 
-static volatile uint8_t  uart2_rx_buf[UART2_RX_BUF_SIZE];
+static volatile uint8_t uart2_rx_buf[UART2_RX_BUF_SIZE];
 static volatile uint16_t uart2_rx_head = 0; /* ISR writes here */
 static volatile uint16_t uart2_rx_tail = 0; /* reader consumes here */
 
@@ -19,7 +19,7 @@ void uart2_rx_isr(void)
     USART_TypeDef* usart = huart2.Instance;
 
     if (usart->ISR & USART_ISR_RXNE_RXFNE) {
-        uint8_t  byte = (uint8_t)(usart->RDR & 0xFF);
+        uint8_t byte = (uint8_t)(usart->RDR & 0xFF);
         uint16_t next = (uart2_rx_head + 1) % UART2_RX_BUF_SIZE;
         if (next != uart2_rx_tail) {
             uart2_rx_buf[uart2_rx_head] = byte;

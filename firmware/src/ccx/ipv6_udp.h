@@ -19,7 +19,7 @@ extern "C" {
 #endif
 
 #define IPV6_HEADER_SIZE 40
-#define UDP_HEADER_SIZE  8
+#define UDP_HEADER_SIZE 8
 
 /**
  * Build an IPv6+UDP packet wrapping a payload.

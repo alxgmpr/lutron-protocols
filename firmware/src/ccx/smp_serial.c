@@ -88,11 +88,11 @@ static uint16_t crc16_ccitt(uint16_t seed, const uint8_t* data, size_t len)
 /* -----------------------------------------------------------------------
  * SMP header builder
  * ----------------------------------------------------------------------- */
-#define SMP_OP_READ   0x00
-#define SMP_OP_WRITE  0x02
+#define SMP_OP_READ 0x00
+#define SMP_OP_WRITE 0x02
 #define SMP_GROUP_IMG 0x0001
 #define SMP_ID_UPLOAD 0x01
-#define SMP_ID_STATE  0x00
+#define SMP_ID_STATE 0x00
 
 static void smp_build_header(uint8_t* hdr, uint8_t op, uint16_t len, uint16_t group, uint8_t seq, uint8_t id)
 {
@@ -115,7 +115,7 @@ static void smp_build_header(uint8_t* hdr, uint8_t op, uint16_t len, uint16_t gr
 static size_t smp_wrap_frame(uint8_t* out, size_t out_size, const uint8_t* smp_pkt, size_t smp_len)
 {
     /* raw = 2(len) + smp_len + 2(crc) */
-    size_t  raw_len = 2 + smp_len + 2;
+    size_t raw_len = 2 + smp_len + 2;
     uint8_t raw[512];
     if (raw_len > sizeof(raw)) return 0;
 
@@ -160,8 +160,8 @@ size_t smp_build_upload(uint8_t* out, size_t out_size, uint32_t offset, const ui
      *   }
      */
     uint8_t cbor[384];
-    size_t  pos = 0;
-    size_t  n;
+    size_t pos = 0;
+    size_t n;
 
     uint32_t map_count = (offset == 0) ? 3 : 2;
     n = cbor_encode_map(cbor + pos, sizeof(cbor) - pos, map_count);
@@ -208,7 +208,7 @@ size_t smp_build_image_list(uint8_t* out, size_t out_size, uint8_t seq)
 {
     /* Empty CBOR map for image state read */
     uint8_t cbor[4];
-    size_t  pos = cbor_encode_map(cbor, sizeof(cbor), 0);
+    size_t pos = cbor_encode_map(cbor, sizeof(cbor), 0);
     if (pos == 0) return 0;
 
     uint8_t smp_pkt[16];
@@ -226,7 +226,7 @@ bool smp_parse_response(const uint8_t* in, size_t in_len, int* rc, uint32_t* off
     /* Skip 0x06 0x09 prefix */
     if (in_len < 4 || in[0] != 0x06 || in[1] != 0x09) return false;
     const uint8_t* b64_start = in + 2;
-    size_t         b64_len = in_len - 2;
+    size_t b64_len = in_len - 2;
 
     /* Strip trailing \n or \r\n */
     while (b64_len > 0 && (b64_start[b64_len - 1] == '\n' || b64_start[b64_len - 1] == '\r')) {
@@ -236,7 +236,7 @@ bool smp_parse_response(const uint8_t* in, size_t in_len, int* rc, uint32_t* off
 
     /* Base64 decode */
     uint8_t raw[512];
-    size_t  raw_len = base64_decode(raw, sizeof(raw), b64_start, b64_len);
+    size_t raw_len = base64_decode(raw, sizeof(raw), b64_start, b64_len);
     if (raw_len < 12) return false; /* 2(len) + 8(hdr) + 2(crc) minimum */
 
     /* Verify CRC: over everything except last 2 bytes */
@@ -251,7 +251,7 @@ bool smp_parse_response(const uint8_t* in, size_t in_len, int* rc, uint32_t* off
 
     /* Parse CBOR map looking for "rc" and "off" keys */
     const uint8_t* p = raw + cbor_off;
-    size_t         remaining = cbor_len;
+    size_t remaining = cbor_len;
 
     cbor_item_t item;
     if (!cbor_decode_item(p, remaining, &item)) return false;
@@ -280,8 +280,8 @@ bool smp_parse_response(const uint8_t* in, size_t in_len, int* rc, uint32_t* off
             continue;
         }
 
-        size_t         key_hdr = item.header_len;
-        size_t         key_len = item.value;
+        size_t key_hdr = item.header_len;
+        size_t key_len = item.value;
         const uint8_t* key_data = p + key_hdr;
         p += key_hdr + key_len;
         remaining -= key_hdr + key_len;

@@ -23,7 +23,7 @@ size_t ccx_encode_level_control(uint8_t* buf, size_t buf_size, uint16_t zone_id,
      * Known-good hex for ON zone=961 seq=92:
      *   82 00 a3 00 a2 00 19feff 03 01 01 82 10 1903c1 05 185c
      */
-    uint8_t*       p = buf;
+    uint8_t* p = buf;
     const uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
@@ -62,7 +62,7 @@ size_t ccx_encode_scene_recall(uint8_t* buf, size_t buf_size, uint16_t scene_id,
      * Target CBOR structure (matches encoder.ts):
      *   [36, { 0: {0: [4]}, 1: [0], 3: {0: scene_id}, 5: sequence }]
      */
-    uint8_t*       p = buf;
+    uint8_t* p = buf;
     const uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
@@ -171,7 +171,7 @@ static bool read_uint(const uint8_t* buf, size_t len, size_t* pos, uint32_t* val
 static void decode_level_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -198,7 +198,7 @@ static void decode_level_command(const uint8_t* buf, size_t len, ccx_decoded_msg
 static void decode_zone(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_ARRAY) return;
@@ -213,7 +213,7 @@ static void decode_zone(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 static void decode_device(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_ARRAY) return;
@@ -233,7 +233,7 @@ static void decode_device(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out
 static void decode_extra(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -287,7 +287,7 @@ static void decode_extra(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 static void decode_button_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -337,7 +337,7 @@ static void decode_button_command(const uint8_t* buf, size_t len, ccx_decoded_ms
 static void decode_ack_command(const uint8_t* buf, size_t len, ccx_decoded_msg_t* out)
 {
     cbor_item_t item;
-    size_t      pos = 0;
+    size_t pos = 0;
 
     if (!cbor_decode_item(buf + pos, len - pos, &item)) return;
     if (item.major != CBOR_MAJOR_MAP) return;
@@ -400,7 +400,7 @@ bool ccx_decode_message(const uint8_t* cbor, size_t len, ccx_decoded_msg_t* out)
 {
     memset(out, 0, sizeof(*out));
 
-    size_t      pos = 0;
+    size_t pos = 0;
     cbor_item_t item;
 
     /* Outer array(2): [msg_type, body_map] */
@@ -461,7 +461,7 @@ bool ccx_decode_message(const uint8_t* cbor, size_t len, ccx_decoded_msg_t* out)
 
         case CCX_KEY_STATUS: {
             uint32_t val;
-            size_t   dummy;
+            size_t dummy;
             if (cbor_decode_uint(cbor + val_start, val_size, &val, &dummy)) {
                 out->status_value = (uint8_t)val;
             }
@@ -470,7 +470,7 @@ bool ccx_decode_message(const uint8_t* cbor, size_t len, ccx_decoded_msg_t* out)
 
         case CCX_KEY_SEQUENCE: {
             uint32_t seq;
-            size_t   dummy;
+            size_t dummy;
             if (cbor_decode_uint(cbor + val_start, val_size, &seq, &dummy)) {
                 out->sequence = (uint8_t)seq;
             }

@@ -217,7 +217,7 @@ void sys_mbox_set_invalid(sys_mbox_t* mbox)
 sys_thread_t sys_thread_new(const char* name, lwip_thread_fn thread, void* arg, int stacksize, int prio)
 {
     TaskHandle_t handle;
-    BaseType_t   ret = xTaskCreate(thread, name, (uint16_t)stacksize, arg, (UBaseType_t)prio, &handle);
+    BaseType_t ret = xTaskCreate(thread, name, (uint16_t)stacksize, arg, (UBaseType_t)prio, &handle);
     if (ret != pdPASS) {
         return NULL;
     }
