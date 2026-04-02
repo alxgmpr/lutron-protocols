@@ -38,11 +38,12 @@ monitor:
 test:
 	@mkdir -p $(BUILD_DIR)
 	clang++ -std=c++17 -Wall -Wextra -Wno-unused-parameter \
-	    -I src/cca -I src/ccx \
+	    -I src/cca -I src/ccx -I tests/stubs \
 	    tests/test_main.cpp tests/test_crc.cpp tests/test_n81.cpp \
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
 	    tests/test_tdma.cpp tests/test_encoder.cpp \
-	    tests/test_tdma_jobs.cpp \
+	    tests/test_tdma_jobs.cpp tests/test_cmd_builders.cpp \
+	    tests/test_cmd_stubs.cpp src/cca/cca_commands.cpp \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    -o $(BUILD_DIR)/test_runner && ./$(BUILD_DIR)/test_runner
 
