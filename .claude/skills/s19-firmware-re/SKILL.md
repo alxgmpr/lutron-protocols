@@ -149,10 +149,10 @@ Search for SPI write sequences — the CC1101 config is written as register-addr
 
 ## Existing RE Documentation
 
-- `docs/qsm-firmware-re.md` — QSM (Smart Bridge) complete analysis: trampoline table, TDMA timing, 8N1 codec, CRC, CC1101 config, packet dispatch, frequency hopping
-- `docs/claude-context/esn-firmware-analysis.md` — ESN (Energi Savr Node) analysis
-- `docs/cca-protocol.md` — CCA protocol reference built from RE findings
-- `docs/firmware-update-infra.md` — How firmware update delivery works
+- `docs/firmware-re/qsm.md` — QSM (Smart Bridge) complete analysis: trampoline table, TDMA timing, 8N1 codec, CRC, CC1101 config, packet dispatch, frequency hopping
+- `docs/firmware-re/esn.md` — ESN (Energi Savr Node) analysis
+- `docs/protocols/cca.md` — CCA protocol reference built from RE findings
+- `docs/infrastructure/firmware-updates.md` — How firmware update delivery works
 
 ## Workflow
 

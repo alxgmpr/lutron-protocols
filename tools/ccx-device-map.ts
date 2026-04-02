@@ -189,8 +189,8 @@ interface ManualEntry {
 }
 
 function loadManualMap(): ManualEntry[] {
-  // Parse from docs/ccx-device-map.md (the markdown table)
-  const mdFile = join(__dir, "../docs/ccx-device-map.md");
+  // Parse from docs/reference/ccx-device-map.md (the markdown table)
+  const mdFile = join(__dir, "../docs/reference/ccx-device-map.md");
   if (!existsSync(mdFile)) return [];
 
   const content = readFileSync(mdFile, "utf-8");

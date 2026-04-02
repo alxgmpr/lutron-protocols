@@ -4,7 +4,7 @@
  * Unified zone state model with a single tick loop (50ms / 20 Hz).
  * No per-zone timers, no echo suppression, wall-clock fade interpolation.
  *
- * See docs/bridge-state-spec.md for the governing spec.
+ * See docs/infrastructure/bridge.md for the governing spec.
  */
 
 import { createSocket, type Socket } from "dgram";

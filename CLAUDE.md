@@ -70,7 +70,7 @@ CCX devices expose CoAP endpoints on Thread mesh (port 5683). Address via RLOC:
 - `ccx coap observe <rloc> <path>` — subscribe to notifications
 - Device RLOCs from RA3: `ssh root@10.0.0.1 "zcat /var/log/ccx-diagnostics-log.0.gz | head -20"`
 - Trim encoding uses level formula: `raw = percent * 0xFEFF / 100` (NOT `percent * 256 - 256`)
-- Full protocol docs: `docs/ccx-coap-protocol.md`
+- Full protocol docs: `docs/protocols/ccx-coap.md`
 
 ### Stream Protocol (UDP :9433)
 
@@ -195,9 +195,9 @@ The bridge captures Lutron Thread traffic and forwards level/scene/button comman
 | Home Assistant | 10.0.0.4 | CCX→WiZ bridge add-on, SMB, SSH |
 | Designer VM | 10.0.0.5 | UTM/NAT, key auth |
 
-## Claude Context
+## Documentation
 
-Operational knowledge, deployment notes, and reverse engineering findings are in `docs/claude-context/`. The `MEMORY.md` index there describes all files. These supplement the protocol docs in `docs/`.
+Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `security/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents.
 
 ## Environment Notes
 
