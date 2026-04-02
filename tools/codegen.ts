@@ -278,10 +278,10 @@ function generateCCXHeader(): string {
 // ============================================================================
 
 try {
-  writeFileSync(CCA_OUTPUT, generateCCAHeader());
+  writeFileSync(CCA_OUTPUT, generateCCAHeader(), { mode: 0o644 });
   console.log("Generated: " + CCA_OUTPUT);
 
-  writeFileSync(CCX_OUTPUT, generateCCXHeader());
+  writeFileSync(CCX_OUTPUT, generateCCXHeader(), { mode: 0o644 });
   console.log("Generated: " + CCX_OUTPUT);
 } catch (e) {
   console.error("Codegen failed:", e);
