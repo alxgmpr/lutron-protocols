@@ -461,7 +461,7 @@ static bool fire_job(CcaTdmaJob* job, uint32_t now_ms)
  */
 static void fire_group_packet(TdmaJobGroup* g, uint32_t now_ms)
 {
-    TdmaPhase* phase = &g->phases[g->current_phase];
+    const TdmaPhase* phase = &g->phases[g->current_phase];
     uint8_t pkt[53];
     memcpy(pkt, phase->packet.data, phase->packet.len);
 

@@ -103,15 +103,15 @@ typedef struct CcaTdmaJob CcaTdmaJob;
 #define TDMA_MAX_GROUPS 4
 
 typedef struct {
-    uint8_t data[53];     /* raw payload (pre-CRC, pre-8N1) */
-    uint8_t len;          /* 22 (short) or 51 (long) */
-    uint8_t type_rotate;  /* 0=fixed type byte, 1=rotate 81/82/83 per retransmit */
+    uint8_t data[53];    /* raw payload (pre-CRC, pre-8N1) */
+    uint8_t len;         /* 22 (short) or 51 (long) */
+    uint8_t type_rotate; /* 0=fixed type byte, 1=rotate 81/82/83 per retransmit */
 } TdmaPacket;
 
 typedef struct {
     TdmaPacket packet;
-    uint8_t retransmits;     /* frames to repeat (5=normal, 10=pairing) */
-    uint16_t post_delay_ms;  /* delay after phase completes before next (0=immediate) */
+    uint8_t retransmits;    /* frames to repeat (5=normal, 10=pairing) */
+    uint16_t post_delay_ms; /* delay after phase completes before next (0=immediate) */
 } TdmaPhase;
 
 typedef struct TdmaJobGroup {

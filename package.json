@@ -5,7 +5,7 @@
   "packageManager": "npm@11.6.1",
   "scripts": {
     "codegen": "npx tsx tools/codegen.ts",
-    "codegen:check": "npm run codegen && clang-format -i firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h && git diff --exit-code -- firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h",
+    "codegen:check": "npm run codegen && clang-format -i firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h && git -c core.fileMode=false diff --exit-code -- firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h",
     "cca:owt": "npx tsx tools/cca-owt-analyze.ts",
     "ccx:sniff": "npx tsx tools/ccx-sniffer.ts",
     "ccx:analyze": "npx tsx tools/ccx-analyzer.ts",
