@@ -25,8 +25,10 @@ import {
   buildDumpData,
   type DeviceInfo,
   fetchLeapData,
+  LEAP_REGISTRY,
   LeapConnection,
   type PresetMapping,
+  walkEndpoints,
   type ZoneInfo,
 } from "./leap-client";
 
@@ -50,6 +52,7 @@ const CERT_NAME = getArg("--certs") ?? "ra3";
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
 const SAVE_OUTPUT = hasFlag("--save");
+const FULL_OUTPUT = hasFlag("--full");
 const DATA_DIR = join(__dir, "../data");
 
 function log(msg: string): void {
@@ -66,8 +69,63 @@ async function main() {
   await leap.connect();
   log("Connected.\n");
 
-  const result = await fetchLeapData(leap, log);
+  if (FULL_OUTPUT) {
+    await runFullDump(leap);
+  } else {
+    await runStandardDump(leap);
+  }
+
   leap.close();
+}
+
+async function runFullDump(leap: LeapConnection) {
+  const startTime = Date.now();
+
+  // Fetch server info for output envelope
+  const serverBody = await leap.readBody("/server");
+  const servers = serverBody?.Servers ?? [];
+  const leapServer =
+    servers.find((s: any) => s.Type === "LEAP") ?? servers[0] ?? {};
+  const protocolVersion: string = leapServer.ProtocolVersion ?? "";
+  let productType = "";
+  if (protocolVersion.startsWith("03.")) productType = "RadioRA3";
+  else if (protocolVersion.startsWith("01.")) productType = "Caseta";
+  else if (protocolVersion.startsWith("02.")) productType = "HomeWorks";
+  const leapVersion = protocolVersion || "unknown";
+
+  const data = await walkEndpoints(leap, LEAP_REGISTRY, { full: true, log });
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  const output = {
+    timestamp: new Date().toISOString(),
+    host: HOST,
+    leapVersion,
+    productType,
+    data,
+  };
+
+  if (SAVE_OUTPUT) {
+    mkdirSync(DATA_DIR, { recursive: true });
+    const filePath = join(DATA_DIR, `leap-${HOST}-full.json`);
+    writeFileSync(filePath, JSON.stringify(output, null, 2) + "\n");
+    log(`Saved to ${filePath}`);
+  }
+
+  if (JSON_OUTPUT) {
+    console.log(JSON.stringify(output, null, 2));
+  } else {
+    log(
+      `\nFull LEAP dump: ${Object.keys(data).length} endpoints in ${elapsed}s`,
+    );
+    for (const [key, value] of Object.entries(data)) {
+      const count = Array.isArray(value) ? value.length : 1;
+      log(`  ${key}: ${count} item${count !== 1 ? "s" : ""}`);
+    }
+  }
+}
+
+async function runStandardDump(leap: LeapConnection) {
+  const result = await fetchLeapData(leap, log);
 
   log("");
   const { zones, devices, presets } = result;
