@@ -984,7 +984,6 @@ static void cmd_cca_tune(const char* arg)
     if (strcmp(t0, "reg") == 0) {
         char op[16];
         char a0[24];
-        char a1[24];
         if (!next_token(&cursor, op, sizeof(op)) || !next_token(&cursor, a0, sizeof(a0))) {
             printf("Usage: cca tune reg get <addr>\r\n");
             printf("       cca tune reg set <addr> <value>\r\n");
@@ -995,6 +994,7 @@ static void cmd_cca_tune(const char* arg)
             return;
         }
         if (strcmp(op, "set") == 0) {
+            char a1[24];
             if (!next_token(&cursor, a1, sizeof(a1))) {
                 printf("Usage: cca tune reg set <addr> <value>\r\n");
                 return;
