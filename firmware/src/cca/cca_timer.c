@@ -12,7 +12,7 @@
 #include "stm32h7xx_hal.h"
 
 /* TIM2 prescaler: 275 MHz / 2750 = 100 kHz */
-#define TIM2_PRESCALER  (2750 - 1)
+#define TIM2_PRESCALER (2750 - 1)
 
 static volatile cca_timer_callback_t pending_callback_ = NULL;
 
@@ -24,21 +24,21 @@ void cca_timer_init(void)
     /* Reset and configure */
     TIM2->CR1 = 0;
     TIM2->PSC = TIM2_PRESCALER;
-    TIM2->ARR = 0xFFFFFFFF;  /* 32-bit free-running */
+    TIM2->ARR = 0xFFFFFFFF; /* 32-bit free-running */
     TIM2->CNT = 0;
 
     /* Channel 1: output compare, no output pin, interrupt on match */
-    TIM2->CCMR1 = 0;  /* frozen mode — no output, just compare */
-    TIM2->CCER = 0;   /* no capture/compare output */
-    TIM2->DIER = 0;   /* no interrupts yet (enabled when scheduled) */
+    TIM2->CCMR1 = 0; /* frozen mode — no output, just compare */
+    TIM2->CCER = 0;  /* no capture/compare output */
+    TIM2->DIER = 0;  /* no interrupts yet (enabled when scheduled) */
 
     /* Generate update event to load prescaler, then start */
     TIM2->EGR = TIM_EGR_UG;
-    TIM2->SR = 0;  /* clear update flag */
-    TIM2->CR1 = TIM_CR1_CEN;  /* start counting */
+    TIM2->SR = 0;            /* clear update flag */
+    TIM2->CR1 = TIM_CR1_CEN; /* start counting */
 
     /* Enable TIM2 IRQ in NVIC (for compare channel callbacks) */
-    HAL_NVIC_SetPriority(TIM2_IRQn, 5, 0);  /* same priority as CCA task */
+    HAL_NVIC_SetPriority(TIM2_IRQn, 5, 0); /* same priority as CCA task */
     HAL_NVIC_EnableIRQ(TIM2_IRQn);
 }
 
@@ -81,8 +81,8 @@ void cca_timer_cancel(void)
 void TIM2_IRQHandler(void)
 {
     if (TIM2->SR & TIM_SR_CC1IF) {
-        TIM2->SR = ~TIM_SR_CC1IF;  /* clear flag */
-        TIM2->DIER &= ~TIM_DIER_CC1IE;  /* one-shot: disable after firing */
+        TIM2->SR = ~TIM_SR_CC1IF;      /* clear flag */
+        TIM2->DIER &= ~TIM_DIER_CC1IE; /* one-shot: disable after firing */
 
         cca_timer_callback_t cb = pending_callback_;
         pending_callback_ = NULL;

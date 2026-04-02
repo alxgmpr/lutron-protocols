@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 #define COAP_PORT     5683
-#define COAP_TMF_PORT 61631  /* Thread Management Framework port */
+#define COAP_TMF_PORT 61631 /* Thread Management Framework port */
 
 /* CoAP message types */
 #define COAP_TYPE_CON 0
@@ -26,15 +26,15 @@ extern "C" {
 #define COAP_TYPE_RST 3
 
 /* CoAP method codes */
-#define COAP_CODE_GET    1  /* 0.01 */
-#define COAP_CODE_POST   2  /* 0.02 */
-#define COAP_CODE_PUT    3  /* 0.03 */
-#define COAP_CODE_DELETE 4  /* 0.04 */
+#define COAP_CODE_GET    1 /* 0.01 */
+#define COAP_CODE_POST   2 /* 0.02 */
+#define COAP_CODE_PUT    3 /* 0.03 */
+#define COAP_CODE_DELETE 4 /* 0.04 */
 
 /* CoAP response codes */
-#define COAP_CODE_CREATED  65  /* 2.01 */
-#define COAP_CODE_CHANGED  68  /* 2.04 */
-#define COAP_CODE_CONTENT  69  /* 2.05 */
+#define COAP_CODE_CREATED 65 /* 2.01 */
+#define COAP_CODE_CHANGED 68 /* 2.04 */
+#define COAP_CODE_CONTENT 69 /* 2.05 */
 
 /* CoAP option numbers */
 #define COAP_OPT_OBSERVE        6
@@ -58,10 +58,8 @@ extern "C" {
  * @param payload_len Payload length
  * @return Total CoAP message length, or 0 on error
  */
-size_t coap_build_request(uint8_t* buf, size_t buf_size,
-                          uint16_t msg_id, uint8_t token, uint8_t code,
-                          const char* uri_path,
-                          const uint8_t* payload, size_t payload_len);
+size_t coap_build_request(uint8_t* buf, size_t buf_size, uint16_t msg_id, uint8_t token, uint8_t code,
+                          const char* uri_path, const uint8_t* payload, size_t payload_len);
 
 /**
  * Build a CoAP empty ACK (for acknowledging CON responses).
@@ -83,25 +81,21 @@ size_t coap_build_ack(uint8_t* buf, size_t buf_size, uint16_t msg_id);
  * @param msg_id   Output: message ID
  * @return true if valid CoAP header parsed
  */
-bool coap_parse_response(const uint8_t* buf, size_t len,
-                         uint8_t* type, uint8_t* code, uint16_t* msg_id);
+bool coap_parse_response(const uint8_t* buf, size_t len, uint8_t* type, uint8_t* code, uint16_t* msg_id);
 
 /**
  * Build a CoAP CON GET with Observe option (register=0 or deregister=1).
  * Observe option (6) is placed before URI-Path options.
  */
-size_t coap_build_observe_request(uint8_t* buf, size_t buf_size,
-                                   uint16_t msg_id, uint8_t token,
-                                   const char* uri_path, uint8_t observe_val);
+size_t coap_build_observe_request(uint8_t* buf, size_t buf_size, uint16_t msg_id, uint8_t token, const char* uri_path,
+                                  uint8_t observe_val);
 
 /**
  * Build a CoAP NON-confirmable request (for TMF Address Query etc.).
  * Same as coap_build_request but with Type=NON instead of CON.
  */
-size_t coap_build_non_request(uint8_t* buf, size_t buf_size,
-                               uint16_t msg_id, uint8_t token, uint8_t code,
-                               const char* uri_path,
-                               const uint8_t* payload, size_t payload_len);
+size_t coap_build_non_request(uint8_t* buf, size_t buf_size, uint16_t msg_id, uint8_t token, uint8_t code,
+                              const char* uri_path, const uint8_t* payload, size_t payload_len);
 
 #ifdef __cplusplus
 }

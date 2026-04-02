@@ -11,10 +11,10 @@ class CcaEncoder {
   public:
     CcaEncoder() = default;
 
-    uint16_t calc_crc(const uint8_t* data, size_t len) { return cca_calc_crc(data, len); }
+    static uint16_t calc_crc(const uint8_t* data, size_t len) { return cca_calc_crc(data, len); }
 
-    size_t encode_packet(const uint8_t* packet, size_t packet_len, uint8_t* output, size_t output_size,
-                         int preamble_bits = 32, int trailing_bits = 16)
+    static size_t encode_packet(const uint8_t* packet, size_t packet_len, uint8_t* output, size_t output_size,
+                                int preamble_bits = 32, int trailing_bits = 16)
     {
         (void)preamble_bits;
         (void)trailing_bits;

@@ -23,10 +23,10 @@ extern "C" {
 #endif
 
 /* Timing constants in ticks (1 tick = 10 µs) */
-#define CCA_TICK_US           10       /* microseconds per tick */
-#define CCA_SLOT_TICKS        1250     /* 12.5 ms */
-#define CCA_FRAME_TICKS       7500     /* 75 ms = 6 slots */
-#define CCA_TICKS_PER_MS      100      /* 1 ms */
+#define CCA_TICK_US      10   /* microseconds per tick */
+#define CCA_SLOT_TICKS   1250 /* 12.5 ms */
+#define CCA_FRAME_TICKS  7500 /* 75 ms = 6 slots */
+#define CCA_TICKS_PER_MS 100  /* 1 ms */
 
 /** Initialize TIM2 as free-running 100 kHz counter. Call once at startup. */
 void cca_timer_init(void);
@@ -35,10 +35,16 @@ void cca_timer_init(void);
 uint32_t cca_timer_ticks(void);
 
 /** Convert ticks to milliseconds. */
-static inline uint32_t cca_ticks_to_ms(uint32_t ticks) { return ticks / CCA_TICKS_PER_MS; }
+static inline uint32_t cca_ticks_to_ms(uint32_t ticks)
+{
+    return ticks / CCA_TICKS_PER_MS;
+}
 
 /** Convert milliseconds to ticks. */
-static inline uint32_t cca_ms_to_ticks(uint32_t ms) { return ms * CCA_TICKS_PER_MS; }
+static inline uint32_t cca_ms_to_ticks(uint32_t ms)
+{
+    return ms * CCA_TICKS_PER_MS;
+}
 
 /** Spin-wait until the specified tick count is reached. Tight loop, no yield. */
 void cca_timer_wait_until(uint32_t target_tick);

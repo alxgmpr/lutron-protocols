@@ -18,7 +18,7 @@ class CcaDecoder {
     static constexpr size_t CCA_LENGTHS[] = {24, 53};
     static const size_t     N_CCA_LENGTHS = 2;
 
-    bool decode(const uint8_t* fifo_data, size_t len, DecodedPacket& packet)
+    static bool decode(const uint8_t* fifo_data, size_t len, DecodedPacket& packet)
     {
         size_t total_bits = len * 8;
         if (total_bits < 200) return false;
@@ -98,9 +98,9 @@ class CcaDecoder {
                 uint8_t tracked[MAX_DECODE_LEN];
                 uint8_t tracked_errors = 0;
                 uint8_t tracked_err_pos[2] = {};
-                size_t  tracked_len = n81_decode_stream_tracked(
-                    fifo_data, len, static_cast<size_t>(data_start),
-                    MAX_DECODE_LEN, tracked, &tracked_errors, tracked_err_pos, 2);
+                size_t  tracked_len =
+                    n81_decode_stream_tracked(fifo_data, len, static_cast<size_t>(data_start), MAX_DECODE_LEN, tracked,
+                                              &tracked_errors, tracked_err_pos, 2);
                 if (tracked_len >= 10 && tracked_len > best_decoded_len) {
                     int match = cca_check_crc_at_lengths(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS);
                     if (match > 0) {
@@ -108,7 +108,7 @@ class CcaDecoder {
                     }
                     if (tracked_errors > 0 && tracked_errors <= 2) {
                         match = cca_recover_n81_errors(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS,
-                                                        tracked_err_pos, tracked_errors);
+                                                       tracked_err_pos, tracked_errors);
                         if (match > 0) {
                             return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
                         }
@@ -156,7 +156,7 @@ class CcaDecoder {
         return false;
     }
 
-    bool parse_bytes(const uint8_t* bytes, size_t len, DecodedPacket& packet)
+    static bool parse_bytes(const uint8_t* bytes, size_t len, DecodedPacket& packet)
     {
         if (len < 10) return false;
 
@@ -205,7 +205,7 @@ class CcaDecoder {
    * Try strict and tolerant decode at a given bit offset.
    * Returns true if a valid packet was decoded.
    */
-    bool try_decode_at_offset(const uint8_t* fifo_data, size_t len, size_t data_start, DecodedPacket& packet)
+    static bool try_decode_at_offset(const uint8_t* fifo_data, size_t len, size_t data_start, DecodedPacket& packet)
     {
         uint8_t decoded[MAX_DECODE_LEN];
         size_t  decoded_len = n81_decode_stream(fifo_data, len, data_start, MAX_DECODE_LEN, decoded);
@@ -243,16 +243,16 @@ class CcaDecoder {
             uint8_t tracked[MAX_DECODE_LEN];
             uint8_t tracked_errors = 0;
             uint8_t tracked_err_pos[2] = {};
-            size_t  tracked_len = n81_decode_stream_tracked(fifo_data, len, data_start, MAX_DECODE_LEN,
-                                                             tracked, &tracked_errors, tracked_err_pos, 2);
+            size_t  tracked_len = n81_decode_stream_tracked(fifo_data, len, data_start, MAX_DECODE_LEN, tracked,
+                                                            &tracked_errors, tracked_err_pos, 2);
             if (tracked_len >= 10) {
                 int match = cca_check_crc_at_lengths(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS);
                 if (match > 0) {
                     return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
                 }
                 if (tracked_errors > 0 && tracked_errors <= 2) {
-                    match = cca_recover_n81_errors(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS,
-                                                    tracked_err_pos, tracked_errors);
+                    match = cca_recover_n81_errors(tracked, tracked_len, CCA_LENGTHS, N_CCA_LENGTHS, tracked_err_pos,
+                                                   tracked_errors);
                     if (match > 0) {
                         return parse_bytes_at_length(tracked, static_cast<size_t>(match), tracked_errors, packet);
                     }
@@ -279,7 +279,7 @@ class CcaDecoder {
         return false;
     }
 
-    bool parse_bytes_at_length(const uint8_t* bytes, size_t len, uint8_t n81_errors, DecodedPacket& packet)
+    static bool parse_bytes_at_length(const uint8_t* bytes, size_t len, uint8_t n81_errors, DecodedPacket& packet)
     {
         if (len < 10) return false;
 
@@ -306,7 +306,7 @@ class CcaDecoder {
         return true;
     }
 
-    bool try_parse_dimmer_ack(const uint8_t* decoded, size_t decoded_len, DecodedPacket& packet)
+    static bool try_parse_dimmer_ack(const uint8_t* decoded, size_t decoded_len, DecodedPacket& packet)
     {
         if (decoded_len < 5 || decoded[0] != 0x0B) return false;
         if (decoded[3] != (decoded[1] ^ 0x26)) return false;
@@ -355,7 +355,7 @@ class CcaDecoder {
                (static_cast<uint32_t>(p[3]) << 24);
     }
 
-    void parse_type_specific(DecodedPacket& packet, const uint8_t* bytes, size_t len)
+    static void parse_type_specific(DecodedPacket& packet, const uint8_t* bytes, size_t len)
     {
         uint8_t type = packet.type_byte;
 
@@ -370,7 +370,7 @@ class CcaDecoder {
             packet.device_id = read_device_id_le(bytes, len);
             uint8_t fmt = packet.has_format ? packet.format_byte : 0;
 
-            if (fmt == QS_FMT_LEVEL) {  /* 0x0E */
+            if (fmt == QS_FMT_LEVEL) { /* 0x0E */
                 packet.type = PKT_LEVEL;
                 if (len >= 18) {
                     uint16_t raw_level = (static_cast<uint16_t>(bytes[16]) << 8) | bytes[17];
@@ -382,43 +382,43 @@ class CcaDecoder {
                     packet.target_id = read_u32_be(bytes + 9);
                 }
             }
-            else if (fmt == QS_FMT_BEACON) {  /* 0x0C: beacon / dim-stop / unpair (multi-purpose) */
+            else if (fmt == QS_FMT_BEACON) { /* 0x0C: beacon / dim-stop / unpair (multi-purpose) */
                 if (len >= 13) {
                     packet.target_id = read_u32_be(bytes + 9);
                 }
             }
-            else if (fmt == QS_FMT_CTRL) {  /* 0x09: device ctrl / hold-start / dim-stop (multi-purpose) */
+            else if (fmt == QS_FMT_CTRL) { /* 0x09: device ctrl / hold-start / dim-stop (multi-purpose) */
                 if (len >= 13) {
                     packet.target_id = read_u32_be(bytes + 9);
                 }
             }
-            else if (fmt == QS_FMT_STATE) {  /* 0x08 */
+            else if (fmt == QS_FMT_STATE) { /* 0x08 */
                 if (len > PKT_OFFSET_LEVEL) {
                     uint8_t raw_level = bytes[PKT_OFFSET_LEVEL];
                     packet.level = static_cast<uint8_t>((static_cast<uint32_t>(raw_level) * 100 + 127) / 254);
                 }
             }
-            else if (fmt == QS_FMT_FINAL) {  /* 0x12: zone bind */
+            else if (fmt == QS_FMT_FINAL) { /* 0x12: zone bind */
                 packet.type = PKT_ZONE_BIND;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_DIM_CAP) {  /* 0x13: dimming config */
+            else if (fmt == QS_FMT_DIM_CAP) { /* 0x13: dimming config */
                 packet.type = PKT_DIM_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_FUNC_MAP) {  /* 0x14: function mapping */
+            else if (fmt == QS_FMT_FUNC_MAP) { /* 0x14: function mapping */
                 packet.type = PKT_FUNC_MAP;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_TRIM) {  /* 0x15: trim / phase config */
+            else if (fmt == QS_FMT_TRIM) { /* 0x15: trim / phase config */
                 packet.type = PKT_TRIM_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_SCENE_CFG) {  /* 0x1A: scene config */
+            else if (fmt == QS_FMT_SCENE_CFG) { /* 0x1A: scene config */
                 packet.type = PKT_SCENE_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_FADE) {  /* 0x1C: fade config */
+            else if (fmt == QS_FMT_FADE) { /* 0x1C: fade config */
                 packet.type = PKT_FADE_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
@@ -427,36 +427,36 @@ class CcaDecoder {
             packet.device_id = read_device_id_le(bytes, len);
             uint8_t fmt = packet.has_format ? packet.format_byte : 0;
 
-            if (fmt == QS_FMT_LED) {  /* 0x11 */
+            if (fmt == QS_FMT_LED) { /* 0x11 */
                 packet.type = PKT_LED_CONFIG;
                 if (len >= 24) packet.level = bytes[23];
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_FINAL) {  /* 0x12: zone bind */
+            else if (fmt == QS_FMT_FINAL) { /* 0x12: zone bind */
                 packet.type = PKT_ZONE_BIND;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_DIM_CAP) {  /* 0x13: dimming config */
+            else if (fmt == QS_FMT_DIM_CAP) { /* 0x13: dimming config */
                 packet.type = PKT_DIM_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_FUNC_MAP) {  /* 0x14: function mapping */
+            else if (fmt == QS_FMT_FUNC_MAP) { /* 0x14: function mapping */
                 packet.type = PKT_FUNC_MAP;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_TRIM) {  /* 0x15: trim / phase config */
+            else if (fmt == QS_FMT_TRIM) { /* 0x15: trim / phase config */
                 packet.type = PKT_TRIM_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_SCENE_CFG) {  /* 0x1A: scene config */
+            else if (fmt == QS_FMT_SCENE_CFG) { /* 0x1A: scene config */
                 packet.type = PKT_SCENE_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_FADE) {  /* 0x1C: fade config */
+            else if (fmt == QS_FMT_FADE) { /* 0x1C: fade config */
                 packet.type = PKT_FADE_CONFIG;
                 if (len >= 13) packet.target_id = read_u32_be(bytes + 9);
             }
-            else if (fmt == QS_FMT_ZONE) {  /* 0x28: zone assignment (format at byte 6) */
+            else if (fmt == QS_FMT_ZONE) { /* 0x28: zone assignment (format at byte 6) */
                 packet.type = PKT_ZONE_ASSIGN;
                 if (len >= 18) packet.target_id = read_u32_be(bytes + 14);
             }

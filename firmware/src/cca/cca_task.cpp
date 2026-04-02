@@ -57,7 +57,7 @@ struct CcaTxItem {
  * Private state
  * ----------------------------------------------------------------------- */
 static TaskHandle_t  cca_task_handle = NULL;
-static QueueHandle_t cca_tx_queue = NULL;          /* TDMA-scheduled TX */
+static QueueHandle_t cca_tx_queue = NULL;           /* TDMA-scheduled TX */
 static QueueHandle_t cca_tx_immediate_queue = NULL; /* bypass TDMA (pairing) */
 static CcaDecoder    decoder;
 static uint32_t      rx_count = 0;
@@ -321,7 +321,7 @@ static void cca_task_func(void* param)
 
         /* Poll RX frequently; CCA bursts can overflow CC1101 FIFO in a few ms.
          * TDMA engine determines poll interval (1ms near slot edges, 2ms otherwise). */
-        uint32_t tdma_poll_ms = cca_tdma_poll(HAL_GetTick());
+        uint32_t   tdma_poll_ms = cca_tdma_poll(HAL_GetTick());
         TickType_t wait_ticks = pdMS_TO_TICKS(tdma_poll_ms > 0 ? tdma_poll_ms : CCA_MAIN_POLL_MS);
         if (wait_ticks == 0) wait_ticks = 1;
         uint32_t notified = ulTaskNotifyTake(pdTRUE, wait_ticks);
@@ -376,10 +376,11 @@ static void cca_task_func(void* param)
             /* State reports (0x81-0x83) rotate type byte across retransmits */
             req.type_rotate = (tx_item.data[0] >= 0x81 && tx_item.data[0] <= 0x83) ? 1 : 0;
             req.priority = 0;
-            CcaTdmaJob* job = cca_tdma_submit(&req);
+            const CcaTdmaJob* job = cca_tdma_submit(&req);
             if (job) {
                 tx_count++;
-            } else {
+            }
+            else {
                 printf("[cca] TDMA queue full, TX dropped\r\n");
             }
         }

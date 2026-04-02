@@ -338,7 +338,7 @@ static err_t ethernetif_linkoutput(struct netif* netif, struct pbuf* p)
 
     /* Copy pbuf chain into contiguous TX buffer (in D2 SRAM) */
     size_t offset = 0;
-    for (struct pbuf* q = p; q != NULL; q = q->next) {
+    for (const struct pbuf* q = p; q != NULL; q = q->next) {
         if (offset + q->len > sizeof(tx_data)) break;
         memcpy(tx_data + offset, q->payload, q->len);
         offset += q->len;

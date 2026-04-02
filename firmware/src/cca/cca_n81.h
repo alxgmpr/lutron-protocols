@@ -137,8 +137,7 @@ inline size_t n81_decode_stream_tracked(const uint8_t* bits, size_t bits_len, si
                 // recoverable when only the stop bit is wrong.
                 b = 0;
                 for (int i = 0; i < 8; i++) {
-                    if (n81_get_bit(bits, bits_len, s + 1 + (size_t)i))
-                        b |= (1 << i);
+                    if (n81_get_bit(bits, bits_len, s + 1 + (size_t)i)) b |= (1 << i);
                 }
                 if (err_pos && *errors < err_pos_max) {
                     err_pos[*errors] = static_cast<uint8_t>(count);

@@ -397,7 +397,7 @@ void cc1101_init(void)
     cc1101_write_register(CC1101_IOCFG0, 0x06);
 
     /* PA table: +10 dBm */
-    uint8_t pa_table[] = {0xC0};
+    const uint8_t pa_table[] = {0xC0};
     cc1101_write_burst(CC1101_PATABLE, pa_table, 1);
 
     initialized_ = true;

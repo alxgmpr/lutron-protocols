@@ -30,20 +30,20 @@ extern "C" {
 /* -----------------------------------------------------------------------
  * Constants
  * ----------------------------------------------------------------------- */
-#define CCA_TDMA_DEFAULT_SLOT_MASK   7     /* 8 slots (AND #7) — standard CCA */
-#define CCA_TDMA_DEFAULT_FRAME_MS    75    /* 8 slots × ~9.375ms */
-#define CCA_TDMA_SLOT_DURATION_US    9375  /* 75ms / 8 in microseconds */
-#define CCA_TDMA_MAX_SLOTS           64    /* maximum possible (AND #63) */
-#define CCA_TDMA_MAX_DEVICES         32    /* tracked device slots */
-#define CCA_TDMA_MAX_JOBS            4     /* concurrent TX jobs */
+#define CCA_TDMA_DEFAULT_SLOT_MASK 7    /* 8 slots (AND #7) — standard CCA */
+#define CCA_TDMA_DEFAULT_FRAME_MS  75   /* 8 slots × ~9.375ms */
+#define CCA_TDMA_SLOT_DURATION_US  9375 /* 75ms / 8 in microseconds */
+#define CCA_TDMA_MAX_SLOTS         64   /* maximum possible (AND #63) */
+#define CCA_TDMA_MAX_DEVICES       32   /* tracked device slots */
+#define CCA_TDMA_MAX_JOBS          4    /* concurrent TX jobs */
 
 /* Retry counts matching Lutron firmware */
-#define CCA_TDMA_RETRIES_NORMAL      5
-#define CCA_TDMA_RETRIES_LEVEL       20
+#define CCA_TDMA_RETRIES_NORMAL       5
+#define CCA_TDMA_RETRIES_LEVEL        20
 #define CCA_TDMA_RETRIES_BUTTON_SHORT 6
-#define CCA_TDMA_RETRIES_BUTTON_LONG 10
-#define CCA_TDMA_RETRIES_PAIRING     10
-#define CCA_TDMA_RETRIES_SCENE       10
+#define CCA_TDMA_RETRIES_BUTTON_LONG  10
+#define CCA_TDMA_RETRIES_PAIRING      10
+#define CCA_TDMA_RETRIES_SCENE        10
 
 /* -----------------------------------------------------------------------
  * Frame sync state (read-only snapshot for telemetry)
@@ -78,15 +78,15 @@ typedef struct {
  * TX request — caller fills this and submits to TDMA engine
  * ----------------------------------------------------------------------- */
 typedef struct CcaTdmaTxRequest {
-    uint8_t  packet[64];     /* raw packet data (pre-CRC, pre-N81) */
-    uint8_t  packet_len;     /* 22 or 51 (before 2-byte CRC) */
-    uint8_t  retries;        /* total retransmissions (5/10/20) */
-    uint8_t  type_rotate;    /* 0=no rotation, 1=rotate type 0x81/82/83 */
-    uint8_t  priority;       /* 0=normal, 1=high (pairing) */
+    uint8_t packet[64];  /* raw packet data (pre-CRC, pre-N81) */
+    uint8_t packet_len;  /* 22 or 51 (before 2-byte CRC) */
+    uint8_t retries;     /* total retransmissions (5/10/20) */
+    uint8_t type_rotate; /* 0=no rotation, 1=rotate type 0x81/82/83 */
+    uint8_t priority;    /* 0=normal, 1=high (pairing) */
 
     /* Optional completion callback (called from CCA task context) */
     void (*on_complete)(struct CcaTdmaTxRequest* req, bool success);
-    void* user_data;         /* opaque pointer for callback */
+    void* user_data; /* opaque pointer for callback */
 } CcaTdmaTxRequest;
 
 /* Opaque job handle */

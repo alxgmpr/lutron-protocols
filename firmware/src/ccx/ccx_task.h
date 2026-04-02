@@ -45,19 +45,15 @@ bool ccx_send_scene(uint16_t scene_id, uint8_t sequence);
  * @param payload_len Payload length
  * @return true if queued
  */
-bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code,
-                   const char* uri_path,
-                   const uint8_t* payload, size_t payload_len);
+bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
+                   size_t payload_len);
 
 /** Send CoAP to a non-standard port (0 = default 5683) */
-bool ccx_send_coap_port(const uint8_t* dst_addr, uint8_t code,
-                        const char* uri_path,
-                        const uint8_t* payload, size_t payload_len,
-                        uint16_t dst_port);
+bool ccx_send_coap_port(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
+                        size_t payload_len, uint16_t dst_port);
 
 /** Send CoAP Observe GET (observe_val: 0=register, 1=deregister) */
-bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path,
-                           uint8_t observe_val);
+bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path, uint8_t observe_val);
 
 /** Send pre-encoded CBOR bytes as a multicast CCX message */
 bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
@@ -130,8 +126,8 @@ bool ccx_spinel_command(const ccx_spinel_request_t* req, ccx_spinel_response_t* 
 size_t ccx_peer_count(void);
 
 /** Get peer info by index. Returns false if index out of range. */
-bool ccx_peer_get(size_t index, uint16_t* rloc16, uint32_t* serial,
-                  uint8_t device_id[4], uint16_t* last_msg_type, uint32_t* age_ms);
+bool ccx_peer_get(size_t index, uint16_t* rloc16, uint32_t* serial, uint8_t device_id[4], uint16_t* last_msg_type,
+                  uint32_t* age_ms);
 
 /** Find a peer's RLOC16 by serial number. Returns false if not found. */
 bool ccx_peer_find_by_serial(uint32_t serial, uint16_t* rloc16);
@@ -158,7 +154,7 @@ bool ccx_send_address_query(const uint8_t secondary_mleid[16]);
 typedef struct {
     bool     valid;
     uint8_t  target_eid[16]; /* secondary ML-EID queried */
-    uint8_t  ml_eid[8];     /* primary ML-EID IID (8 bytes) */
+    uint8_t  ml_eid[8];      /* primary ML-EID IID (8 bytes) */
     uint16_t rloc16;
 } ccx_address_result_t;
 
@@ -173,7 +169,7 @@ bool ccx_get_address_result(ccx_address_result_t* result);
 /** Last CoAP response data (set by RX handler, polled by shell) */
 typedef struct {
     bool     valid;
-    uint8_t  code;          /* CoAP response code (e.g. 0x45 = 2.05 Content) */
+    uint8_t  code; /* CoAP response code (e.g. 0x45 = 2.05 Content) */
     uint16_t msg_id;
     uint8_t  src_addr[16];
     uint8_t  payload[256];

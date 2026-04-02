@@ -35,15 +35,15 @@
 /* -----------------------------------------------------------------------
  * Spinel property IDs — PHY layer (SPINEL_PROP_PHY__BEGIN = 0x20)
  * ----------------------------------------------------------------------- */
-#define SPINEL_PROP_PHY_CHAN           0x21 /* [C] uint8_t channel */
+#define SPINEL_PROP_PHY_CHAN          0x21 /* [C] uint8_t channel */
 #define SPINEL_PROP_PHY_CCA_THRESHOLD 0x24 /* [c] int8_t CCA threshold (dBm) */
 
 /* -----------------------------------------------------------------------
  * Spinel property IDs — MAC layer (SPINEL_PROP_MAC__BEGIN = 0x30)
  * ----------------------------------------------------------------------- */
-#define SPINEL_PROP_MAC_15_4_LADDR 0x34 /* [E] EUI-64 (read-only on NCP) */
-#define SPINEL_PROP_MAC_15_4_SADDR 0x35 /* [S] uint16_t short address */
-#define SPINEL_PROP_MAC_15_4_PANID 0x36 /* [S] uint16_t PAN ID (LE) */
+#define SPINEL_PROP_MAC_15_4_LADDR         0x34 /* [E] EUI-64 (read-only on NCP) */
+#define SPINEL_PROP_MAC_15_4_SADDR         0x35 /* [S] uint16_t short address */
+#define SPINEL_PROP_MAC_15_4_PANID         0x36 /* [S] uint16_t PAN ID (LE) */
 #define SPINEL_PROP_MAC_RAW_STREAM_ENABLED 0x37 /* [b] bool: enable raw frame delivery */
 #define SPINEL_PROP_MAC_PROMISCUOUS_MODE   0x38 /* [C] uint8_t: promiscuous mode */
 

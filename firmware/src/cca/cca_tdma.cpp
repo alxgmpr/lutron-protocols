@@ -26,14 +26,14 @@
 /* -----------------------------------------------------------------------
  * Constants
  * ----------------------------------------------------------------------- */
-#define SLOT_MS_X2           25    /* 12.5ms in half-ms units */
-#define MAX_DSEQ             32    /* max sequence delta to track */
-#define WARMUP_SAMPLES       8     /* samples before full confidence weight */
-#define GOOD_ERR_Q2          5     /* 2.5ms — acceptable timing error */
-#define MAX_DT_MS            400   /* ignore gaps larger than this */
-#define STALE_MS             1200  /* evict devices not heard for this long */
-#define ERR_SCORE_SPAN_Q2    12    /* 6ms — full error range for scoring */
-#define FRAME_SYNC_MIN_CONF  40    /* minimum confidence to use frame sync for TX */
+#define SLOT_MS_X2          25   /* 12.5ms in half-ms units */
+#define MAX_DSEQ            32   /* max sequence delta to track */
+#define WARMUP_SAMPLES      8    /* samples before full confidence weight */
+#define GOOD_ERR_Q2         5    /* 2.5ms — acceptable timing error */
+#define MAX_DT_MS           400  /* ignore gaps larger than this */
+#define STALE_MS            1200 /* evict devices not heard for this long */
+#define ERR_SCORE_SPAN_Q2   12   /* 6ms — full error range for scoring */
+#define FRAME_SYNC_MIN_CONF 40   /* minimum confidence to use frame sync for TX */
 
 /* -----------------------------------------------------------------------
  * Per-device slot observation
@@ -58,20 +58,20 @@ struct TdmaDeviceSlot {
  * ----------------------------------------------------------------------- */
 struct CcaTdmaJob {
     bool     active;
-    uint8_t  packet[64];     /* raw packet (pre-CRC, pre-N81) */
+    uint8_t  packet[64]; /* raw packet (pre-CRC, pre-N81) */
     uint8_t  packet_len;
-    uint8_t  slot;           /* assigned slot for this burst */
-    uint8_t  seq_base;       /* starting sequence (low bits = slot) */
-    uint8_t  seq_stride;     /* = slot_count (8 typical) */
+    uint8_t  slot;       /* assigned slot for this burst */
+    uint8_t  seq_base;   /* starting sequence (low bits = slot) */
+    uint8_t  seq_stride; /* = slot_count (8 typical) */
     uint8_t  retries_total;
     uint8_t  retries_done;
-    uint32_t next_fire_ms;   /* when to fire next retransmit */
-    uint8_t  type_rotate;    /* 0=none, 1=rotate 81/82/83 */
+    uint32_t next_fire_ms; /* when to fire next retransmit */
+    uint8_t  type_rotate;  /* 0=none, 1=rotate 81/82/83 */
     uint8_t  priority;
 
     /* Completion callback */
     void (*on_complete)(CcaTdmaTxRequest* req, bool success);
-    void*    user_data;
+    void* user_data;
 };
 
 /* -----------------------------------------------------------------------
@@ -119,8 +119,7 @@ static uint8_t compute_confidence(const TdmaDeviceSlot& d)
 {
     if (d.samples == 0) return 0;
 
-    uint32_t warmup_pct =
-        (d.samples >= WARMUP_SAMPLES) ? 100u : (uint32_t)d.samples * 100u / WARMUP_SAMPLES;
+    uint32_t warmup_pct = (d.samples >= WARMUP_SAMPLES) ? 100u : (uint32_t)d.samples * 100u / WARMUP_SAMPLES;
     uint32_t good_rate_pct = (uint32_t)d.good_samples * 100u / d.samples;
 
     uint32_t err_score_pct = 0;
@@ -242,7 +241,7 @@ static void update_frame_sync(const DecodedPacket& pkt, uint32_t timestamp_ms)
 {
     if (!pkt.crc_valid || pkt.device_id == 0) return;
 
-    uint8_t slot = pkt.sequence & frame_.slot_mask;
+    uint8_t  slot = pkt.sequence & frame_.slot_mask;
     uint32_t slot_offset_ms = (uint32_t)slot * frame_.period_ms / frame_.slot_count;
     uint32_t inferred_anchor = timestamp_ms - slot_offset_ms;
 
@@ -327,7 +326,7 @@ static uint8_t pick_tx_slot(uint32_t now_ms)
     uint8_t  best_slot = 0;
     uint32_t best_age = 0;
     for (size_t i = 0; i < CCA_TDMA_MAX_DEVICES; i++) {
-        TdmaDeviceSlot& d = devices_[i];
+        const TdmaDeviceSlot& d = devices_[i];
         if (!d.in_use) continue;
         uint32_t age = now_ms - d.last_seen_ms;
         if (age > best_age) {
@@ -470,7 +469,7 @@ static bool should_hot_poll(uint32_t now_ms)
 
     /* Also hot-poll around expected device arrivals for RX quality */
     for (size_t i = 0; i < CCA_TDMA_MAX_DEVICES; i++) {
-        TdmaDeviceSlot& d = devices_[i];
+        const TdmaDeviceSlot& d = devices_[i];
         if (!d.in_use || d.confidence < 60 || d.dominant_stride == 0) continue;
 
         uint32_t age = now_ms - d.last_seen_ms;
