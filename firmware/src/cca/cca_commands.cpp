@@ -62,22 +62,20 @@ static uint32_t cmd_tx_count = 0;    /* packets transmitted by commands */
  * Job group builders — non-blocking command decomposition
  * ----------------------------------------------------------------------- */
 
-TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id,
-                                    uint8_t level_pct, uint8_t fade_qs)
+TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
 
     uint16_t level16 = cca_percent_to_level16(level_pct);
-    cca_build_set_level(g.phases[0].packet.data, zone_id, target_id,
-                        QS_ADDR_COMPONENT, level16, fade_qs, 0x81);
+    cca_build_set_level(g.phases[0].packet.data, zone_id, target_id, QS_ADDR_COMPONENT, level16, fade_qs, 0x81);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].retransmits = CCA_TDMA_RETRIES_LEVEL;
     g.phases[0].post_delay_ms = 0;
 
-    printf("[cca] JOB bridge_level zone=%08X target=%08X %u%% fade=%uqs\r\n",
-           (unsigned)zone_id, (unsigned)target_id, level_pct, fade_qs);
+    printf("[cca] JOB bridge_level zone=%08X target=%08X %u%% fade=%uqs\r\n", (unsigned)zone_id, (unsigned)target_id,
+           level_pct, fade_qs);
     return g;
 }
 
@@ -99,8 +97,7 @@ TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button)
     uint8_t press_fmt = is_dimming ? QS_FMT_BEACON : QS_FMT_TAP;
 
     /* Phase 0: PRESS (short format) */
-    cca_build_button_short(g.phases[0].packet.data, device_id, button,
-                           ACTION_PRESS, press_fmt, press_type);
+    cca_build_button_short(g.phases[0].packet.data, device_id, button, ACTION_PRESS, press_fmt, press_type);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_rotate = 0;
     g.phases[0].retransmits = 2;
@@ -115,8 +112,7 @@ TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button)
 
     g.phase_count = 2;
 
-    printf("[cca] JOB button dev=%08X btn=%s\r\n",
-           (unsigned)device_id, cca_button_name(button));
+    printf("[cca] JOB button dev=%08X btn=%s\r\n", (unsigned)device_id, cca_button_name(button));
     return g;
 }
 
@@ -131,8 +127,7 @@ TdmaJobGroup cca_jobs_beacon(uint32_t zone_id, uint8_t type_byte)
     g.phases[0].retransmits = CCA_TDMA_RETRIES_NORMAL;
     g.phases[0].post_delay_ms = 0;
 
-    printf("[cca] JOB beacon zone=%08X type=0x%02X\r\n",
-           (unsigned)zone_id, type_byte);
+    printf("[cca] JOB beacon zone=%08X type=0x%02X\r\n", (unsigned)zone_id, type_byte);
     return g;
 }
 
@@ -160,16 +155,13 @@ TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
     case CCA_CMD_BUTTON:
         return cca_jobs_button(item->device_id, item->button);
     case CCA_CMD_BRIDGE_LEVEL:
-        return cca_jobs_bridge_level(item->device_id, item->target_id,
-                                     item->level_pct, item->fade_qs);
+        return cca_jobs_bridge_level(item->device_id, item->target_id, item->level_pct, item->fade_qs);
     case CCA_CMD_BEACON:
         return cca_jobs_beacon(item->device_id, 0x91);
     case CCA_CMD_RAW:
-        return cca_jobs_raw(item->raw_payload, item->raw_payload_len,
-                           item->raw_repeat);
+        return cca_jobs_raw(item->raw_payload, item->raw_payload_len, item->raw_repeat);
     default:
-        printf("[cca] JOB: unsupported cmd 0x%02X, falling back to blocking\r\n",
-               item->cmd);
+        printf("[cca] JOB: unsupported cmd 0x%02X, falling back to blocking\r\n", item->cmd);
         return empty;
     }
 }

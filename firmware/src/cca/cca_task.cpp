@@ -58,7 +58,7 @@ struct CcaTxItem {
  * Private state
  * ----------------------------------------------------------------------- */
 static TaskHandle_t cca_task_handle = NULL;
-static QueueHandle_t cca_tx_queue = NULL;           /* TDMA-scheduled TX */
+static QueueHandle_t cca_tx_queue = NULL; /* TDMA-scheduled TX */
 static CcaDecoder decoder;
 static uint32_t rx_count = 0;
 static uint32_t tx_count = 0;
