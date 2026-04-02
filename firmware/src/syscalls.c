@@ -350,7 +350,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName)
     HAL_UART_Transmit(&huart3, (const uint8_t*)prefix, sizeof(prefix) - 1, 100);
     if (pcTaskName) {
         size_t nlen = 0;
-        while (pcTaskName[nlen] && nlen < 16) nlen++;
+        while (nlen < 16 && pcTaskName[nlen]) nlen++;
         HAL_UART_Transmit(&huart3, (const uint8_t*)pcTaskName, (uint16_t)nlen, 100);
     }
     const char suffix[] = " ***\r\n";

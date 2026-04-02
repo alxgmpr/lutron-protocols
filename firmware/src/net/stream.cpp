@@ -632,8 +632,8 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
             item.duration_sec = buf[13];
             cca_cmd_enqueue(&item);
             printf("[stream] CCA hybrid pair: bridge=%08X class=%08X subnet=%04X zone=0x%02X dur=%u\r\n",
-                   (unsigned)item.device_id, (unsigned)item.target_id,
-                   (unsigned)((buf[10] << 8) | buf[11]), item.zone_byte, item.duration_sec);
+                   (unsigned)item.device_id, (unsigned)item.target_id, (unsigned)((buf[10] << 8) | buf[11]),
+                   item.zone_byte, item.duration_sec);
         }
         break;
     }
@@ -719,7 +719,8 @@ static void stream_task_func(void* param)
                     frame[0] = STREAM_RESP_TEXT;
                     memcpy(frame + 1, tx_item.data, tx_item.len);
                     broadcast_frame(frame, (uint16_t)(1 + tx_item.len));
-                } else {
+                }
+                else {
                     uint8_t frame[TX_ITEM_MAX_DATA + 6]; /* FLAGS + LEN + TS(4) + DATA */
                     frame[0] = tx_item.flags;
                     frame[1] = tx_item.len;
@@ -734,8 +735,8 @@ static void stream_task_func(void* param)
         struct netbuf* inbuf = NULL;
         err_t          err = netconn_recv(udp_conn, &inbuf);
         if (err == ERR_OK && inbuf != NULL) {
-            ip_addr_t* src_addr = netbuf_fromaddr(inbuf);
-            uint16_t   src_port = netbuf_fromport(inbuf);
+            const ip_addr_t* src_addr = netbuf_fromaddr(inbuf);
+            uint16_t         src_port = netbuf_fromport(inbuf);
 
             /* Auto-register the sender as a client */
             register_client(src_addr, src_port);
@@ -749,7 +750,7 @@ static void stream_task_func(void* param)
 
         /* --- 3. Heartbeat to all clients every 5s --- */
         if (num_clients > 0 && HAL_GetTick() - last_heartbeat >= STREAM_HEARTBEAT_MS) {
-            uint8_t heartbeat[2] = {0xFF, 0x00};
+            const uint8_t heartbeat[2] = {0xFF, 0x00};
             broadcast_frame(heartbeat, 2);
             last_heartbeat = HAL_GetTick();
         }

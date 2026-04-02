@@ -383,7 +383,7 @@ static size_t hex_to_bytes(const char* hex, uint8_t* out, size_t max_len)
 
     size_t count = 0;
     for (size_t i = 0; i < slen && count < max_len; i += 2) {
-        char byte_str[3] = {hex[i], hex[i + 1], '\0'};
+        const char byte_str[3] = {hex[i], hex[i + 1], '\0'};
         out[count++] = (uint8_t)strtoul(byte_str, NULL, 16);
     }
     return count;
@@ -593,7 +593,8 @@ static void cmd_cca_tune_show(void)
     cc1101_runtime_tuning_t tuning = {};
     cc1101_get_runtime_tuning(&tuning);
     uint32_t freq_word = ((uint32_t)cc1101_read_register(CC1101_FREQ2) << 16) |
-                         ((uint32_t)cc1101_read_register(CC1101_FREQ1) << 8) | (uint32_t)cc1101_read_register(CC1101_FREQ0);
+                         ((uint32_t)cc1101_read_register(CC1101_FREQ1) << 8) |
+                         (uint32_t)cc1101_read_register(CC1101_FREQ0);
     double   freq_mhz = ((double)freq_word * 26.0) / 65536.0;
 
     printf("CCA tune profile: %s\r\n", cc1101_tune_profile_name(cc1101_get_tune_profile()));
@@ -1066,8 +1067,8 @@ static void cmd_tdma(const char* arg)
         cca_tdma_get_state(&st);
         printf("TDMA Frame Sync\r\n");
         printf("  anchor:     %lu ms\r\n", (unsigned long)st.anchor_ms);
-        printf("  period:     %lu ms (%u slots, mask=0x%02X)\r\n",
-               (unsigned long)st.period_ms, st.slot_count, st.slot_mask);
+        printf("  period:     %lu ms (%u slots, mask=0x%02X)\r\n", (unsigned long)st.period_ms, st.slot_count,
+               st.slot_mask);
         printf("  confidence: %u%%\r\n", st.confidence);
         printf("  our slot:   %u\r\n", st.our_slot);
         printf("  occupied:   %u/%u slots\r\n", st.occupied_count, st.slot_count);
@@ -1077,21 +1078,19 @@ static void cmd_tdma(const char* arg)
     }
     else if (strcmp(arg, "slots") == 0) {
         CcaTdmaDeviceInfo devs[32];
-        size_t count = cca_tdma_get_devices(devs, 32);
+        size_t            count = cca_tdma_get_devices(devs, 32);
         if (count == 0) {
             printf("No tracked devices\r\n");
             return;
         }
-        printf("%-10s %-4s %-6s %-8s %-6s %-8s\r\n",
-               "DeviceID", "Slot", "Stride", "Conf", "Samp", "Age(ms)");
+        printf("%-10s %-4s %-6s %-8s %-6s %-8s\r\n", "DeviceID", "Slot", "Stride", "Conf", "Samp", "Age(ms)");
         uint32_t now = HAL_GetTick();
         for (size_t i = 0; i < count; i++) {
-            CcaTdmaDeviceInfo& d = devs[i];
-            char dev_id[9];
+            const CcaTdmaDeviceInfo& d = devs[i];
+            char                     dev_id[9];
             snprintf(dev_id, sizeof(dev_id), "%08lX", (unsigned long)d.device_id);
             uint32_t age = now - d.last_rx_ms;
-            printf("%-10s %-4u %-6u %-7u%% %-6u %-8lu\r\n",
-                   dev_id, d.slot, d.dominant_stride, d.confidence, d.samples,
+            printf("%-10s %-4u %-6u %-7u%% %-6u %-8lu\r\n", dev_id, d.slot, d.dominant_stride, d.confidence, d.samples,
                    (unsigned long)age);
         }
     }
@@ -1204,8 +1203,7 @@ static void cmd_cca(const char* arg)
         item.level_pct = pct;
         item.fade_qs = fade;
         if (cca_cmd_enqueue(&item)) {
-            printf("Broadcast level queued (zone=%08X %u%% fade=%u)\r\n",
-                   (unsigned)zone_id, pct, fade);
+            printf("Broadcast level queued (zone=%08X %u%% fade=%u)\r\n", (unsigned)zone_id, pct, fade);
         }
         else {
             printf("Command queue full!\r\n");
@@ -1656,8 +1654,8 @@ static void cmd_cca(const char* arg)
         item.raw_payload[1] = subnet & 0xFF;
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
-            printf("Announce queued (serial=%08X class=%08X subnet=%04X dur=%us)\r\n",
-                   (unsigned)serial, (unsigned)dev_class, subnet, dur);
+            printf("Announce queued (serial=%08X class=%08X subnet=%04X dur=%us)\r\n", (unsigned)serial,
+                   (unsigned)dev_class, subnet, dur);
         }
         else {
             printf("Command queue full!\r\n");
@@ -1739,8 +1737,7 @@ static void cmd_cca(const char* arg)
         item.raw_payload_len = payload_len;
         if (payload_len > 0) memcpy(item.raw_payload, payload, payload_len);
         if (cca_cmd_enqueue(&item)) {
-            printf("Raw command queued (fmt=0x%02X payload=%u bytes)\r\n",
-                   format, payload_len);
+            printf("Raw command queued (fmt=0x%02X payload=%u bytes)\r\n", format, payload_len);
         }
         else {
             printf("Command queue full!\r\n");
@@ -1762,7 +1759,7 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
-        uint8_t fade = 4;  /* default 1 second */
+        uint8_t fade = 4; /* default 1 second */
         if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
@@ -1822,7 +1819,7 @@ static void cmd_cca(const char* arg)
 
     /* cca identify <target_id> — QS Link identify (flash LED) */
     if (strncmp(arg, "identify ", 9) == 0) {
-        uint32_t target_id = (uint32_t)strtoul(arg + 9, NULL, 16);
+        uint32_t   target_id = (uint32_t)strtoul(arg + 9, NULL, 16);
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_IDENTIFY;
         item.target_id = target_id;
@@ -1837,7 +1834,7 @@ static void cmd_cca(const char* arg)
 
     /* cca query <target_id> — QS Link component query */
     if (strncmp(arg, "query ", 6) == 0) {
-        uint32_t target_id = (uint32_t)strtoul(arg + 6, NULL, 16);
+        uint32_t   target_id = (uint32_t)strtoul(arg + 6, NULL, 16);
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_QUERY;
         item.target_id = target_id;
@@ -1962,21 +1959,32 @@ static size_t parse_hex_bytes(const char* hex, uint8_t* out, size_t max_len)
 {
     size_t pos = 0;
     while (*hex && pos < max_len) {
-        if (*hex == ':') { hex++; continue; }
+        if (*hex == ':') {
+            hex++;
+            continue;
+        }
         char hi = *hex++;
         if (!*hex) break;
         char lo = *hex++;
 
         uint8_t val = 0;
-        if (hi >= '0' && hi <= '9') val = (uint8_t)((hi - '0') << 4);
-        else if (hi >= 'a' && hi <= 'f') val = (uint8_t)((hi - 'a' + 10) << 4);
-        else if (hi >= 'A' && hi <= 'F') val = (uint8_t)((hi - 'A' + 10) << 4);
-        else return pos;
+        if (hi >= '0' && hi <= '9')
+            val = (uint8_t)((hi - '0') << 4);
+        else if (hi >= 'a' && hi <= 'f')
+            val = (uint8_t)((hi - 'a' + 10) << 4);
+        else if (hi >= 'A' && hi <= 'F')
+            val = (uint8_t)((hi - 'A' + 10) << 4);
+        else
+            return pos;
 
-        if (lo >= '0' && lo <= '9') val |= (uint8_t)(lo - '0');
-        else if (lo >= 'a' && lo <= 'f') val |= (uint8_t)(lo - 'a' + 10);
-        else if (lo >= 'A' && lo <= 'F') val |= (uint8_t)(lo - 'A' + 10);
-        else return pos;
+        if (lo >= '0' && lo <= '9')
+            val |= (uint8_t)(lo - '0');
+        else if (lo >= 'a' && lo <= 'f')
+            val |= (uint8_t)(lo - 'a' + 10);
+        else if (lo >= 'A' && lo <= 'F')
+            val |= (uint8_t)(lo - 'A' + 10);
+        else
+            return pos;
 
         out[pos++] = val;
     }
@@ -1997,17 +2005,19 @@ static bool parse_ipv6_addr(const char* str, uint8_t out[16])
 
     /* Colon-separated 16-bit groups: fe80:0000:0000:0000:220e:fb79:b4ce:f76f */
     memset(out, 0, 16);
-    int group = 0;
+    int         group = 0;
     const char* p = str;
     while (*p && group < 8) {
-        char* end;
+        char*         end;
         unsigned long val = strtoul(p, &end, 16);
         if (end == p || val > 0xFFFF) return false;
         out[group * 2] = (uint8_t)(val >> 8);
         out[group * 2 + 1] = (uint8_t)(val & 0xFF);
         group++;
-        if (*end == ':') end++;
-        else if (*end != '\0') return false;
+        if (*end == ':')
+            end++;
+        else if (*end != '\0')
+            return false;
         p = end;
     }
     return group == 8;
@@ -2017,13 +2027,12 @@ static bool parse_ipv6_addr(const char* str, uint8_t out[16])
  * Build CBOR preset payload for CoAP POST to /cg/db/pr/c/<key>.
  * Format: {bstr(4, device_id<<16|0xEF20): [preset_id, {0: level16, 3: fade_qs}]}
  */
-static size_t build_preset_cbor(uint8_t* buf, size_t buf_size,
-                                uint16_t device_id, uint8_t preset_id,
-                                uint16_t level, uint8_t fade_qs)
+static size_t build_preset_cbor(uint8_t* buf, size_t buf_size, uint16_t device_id, uint8_t preset_id, uint16_t level,
+                                uint8_t fade_qs)
 {
     if (buf_size < 32) return 0;
-    uint8_t* p = buf;
-    uint8_t* end = buf + buf_size;
+    uint8_t*       p = buf;
+    const uint8_t* end = buf + buf_size;
 
     /* Map(1) */
     if (p >= end) return 0;
@@ -2045,7 +2054,8 @@ static size_t build_preset_cbor(uint8_t* buf, size_t buf_size,
     if (preset_id < 24) {
         if (p >= end) return 0;
         *p++ = preset_id;
-    } else {
+    }
+    else {
         if (p + 2 > end) return 0;
         *p++ = 0x18;
         *p++ = preset_id;
@@ -2061,11 +2071,13 @@ static size_t build_preset_cbor(uint8_t* buf, size_t buf_size,
     if (level < 24) {
         if (p >= end) return 0;
         *p++ = (uint8_t)level;
-    } else if (level < 256) {
+    }
+    else if (level < 256) {
         if (p + 2 > end) return 0;
         *p++ = 0x18;
         *p++ = (uint8_t)level;
-    } else {
+    }
+    else {
         if (p + 3 > end) return 0;
         *p++ = 0x19;
         *p++ = (uint8_t)(level >> 8);
@@ -2078,7 +2090,8 @@ static size_t build_preset_cbor(uint8_t* buf, size_t buf_size,
     if (fade_qs < 24) {
         if (p >= end) return 0;
         *p++ = fade_qs;
-    } else {
+    }
+    else {
         if (p + 2 > end) return 0;
         *p++ = 0x18;
         *p++ = fade_qs;
@@ -2114,8 +2127,7 @@ static bool resolve_ccx_addr(const char* str, uint8_t out[16])
         uint32_t serial = strtoul(str + 7, NULL, 10);
         uint16_t rloc16;
         if (!ccx_peer_find_by_serial(serial, &rloc16)) {
-            printf("Serial %lu not in peer table (press buttons or wait for traffic)\r\n",
-                   (unsigned long)serial);
+            printf("Serial %lu not in peer table (press buttons or wait for traffic)\r\n", (unsigned long)serial);
             return false;
         }
         if (!ccx_build_rloc_addr(rloc16, out)) {
@@ -2134,7 +2146,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "preset ", 7) == 0) {
         /* ccx coap preset <ipv6_addr> <device_id> <preset_id> <level%> [fade_s] */
         const char* p = arg + 7;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2158,7 +2170,7 @@ static void cmd_ccx_coap(const char* arg)
         if (*endptr != ' ') goto coap_usage;
 
         p = endptr + 1;
-        uint8_t pct = (uint8_t)strtoul(p, &endptr, 10);
+        uint8_t  pct = (uint8_t)strtoul(p, &endptr, 10);
         uint16_t level = ccx_percent_to_level(pct);
 
         uint8_t fade_qs = 1; /* default instant */
@@ -2170,7 +2182,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build the CBOR preset payload */
         uint8_t cbor[64];
-        size_t cbor_len = build_preset_cbor(cbor, sizeof(cbor), dev_id, preset_id, level, fade_qs);
+        size_t  cbor_len = build_preset_cbor(cbor, sizeof(cbor), dev_id, preset_id, level, fade_qs);
         if (cbor_len == 0) {
             printf("CBOR encode failed\r\n");
             return;
@@ -2181,9 +2193,10 @@ static void cmd_ccx_coap(const char* arg)
         snprintf(uri, sizeof(uri), "/cg/db/pr/c/%04X", dev_id);
 
         if (ccx_send_coap(dst, COAP_CODE_POST, uri, cbor, cbor_len)) {
-            printf("CoAP POST preset dev=0x%04X id=%u level=%u%% (0x%04X) fade=%u queued\r\n",
-                   dev_id, preset_id, pct, level, fade_qs);
-        } else {
+            printf("CoAP POST preset dev=0x%04X id=%u level=%u%% (0x%04X) fade=%u queued\r\n", dev_id, preset_id, pct,
+                   level, fade_qs);
+        }
+        else {
             printf("CoAP TX failed (not joined?)\r\n");
         }
         return;
@@ -2194,7 +2207,7 @@ static void cmd_ccx_coap(const char* arg)
          * Programs keypad status LED brightness via AHA bucket (0x0070).
          * CBOR: [108, {4: active, 5: inactive}] */
         const char* p = arg + 4;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2216,21 +2229,32 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build CBOR: [108, {4: active, 5: inactive}] */
         uint8_t cbor[16];
-        size_t ci = 0;
-        cbor[ci++] = 0x82;       /* array(2) */
-        cbor[ci++] = 0x18;       /* uint8 follows */
-        cbor[ci++] = 108;        /* opcode 108 */
-        cbor[ci++] = 0xA2;       /* map(2) */
-        cbor[ci++] = 0x04;       /* key 4 (activated) */
-        if (active < 24) { cbor[ci++] = active; }
-        else { cbor[ci++] = 0x18; cbor[ci++] = active; }
-        cbor[ci++] = 0x05;       /* key 5 (deactivated) */
-        if (inactive < 24) { cbor[ci++] = inactive; }
-        else { cbor[ci++] = 0x18; cbor[ci++] = inactive; }
+        size_t  ci = 0;
+        cbor[ci++] = 0x82; /* array(2) */
+        cbor[ci++] = 0x18; /* uint8 follows */
+        cbor[ci++] = 108;  /* opcode 108 */
+        cbor[ci++] = 0xA2; /* map(2) */
+        cbor[ci++] = 0x04; /* key 4 (activated) */
+        if (active < 24) {
+            cbor[ci++] = active;
+        }
+        else {
+            cbor[ci++] = 0x18;
+            cbor[ci++] = active;
+        }
+        cbor[ci++] = 0x05; /* key 5 (deactivated) */
+        if (inactive < 24) {
+            cbor[ci++] = inactive;
+        }
+        else {
+            cbor[ci++] = 0x18;
+            cbor[ci++] = inactive;
+        }
 
         if (ccx_send_coap(dst, COAP_CODE_PUT, "/cg/db/ct/c/AHA", cbor, ci)) {
             printf("CoAP PUT LED active=%u inactive=%u queued\r\n", active, inactive);
-        } else {
+        }
+        else {
             printf("CoAP TX failed (not joined?)\r\n");
         }
         return;
@@ -2242,7 +2266,7 @@ static void cmd_ccx_coap(const char* arg)
          * CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}]
          * Encoding: raw = percent * 0xFEFF / 100 (same as level encoding) */
         const char* p = arg + 5;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2268,25 +2292,26 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Build CBOR: [3, {2: high_raw, 3: low_raw, 8: 5}] */
         uint8_t cbor[32];
-        size_t ci = 0;
-        cbor[ci++] = 0x82;       /* array(2) */
-        cbor[ci++] = 0x03;       /* opcode 3 */
-        cbor[ci++] = 0xA3;       /* map(3) */
-        cbor[ci++] = 0x02;       /* key 2 (high trim) */
-        cbor[ci++] = 0x19;       /* uint16 */
+        size_t  ci = 0;
+        cbor[ci++] = 0x82; /* array(2) */
+        cbor[ci++] = 0x03; /* opcode 3 */
+        cbor[ci++] = 0xA3; /* map(3) */
+        cbor[ci++] = 0x02; /* key 2 (high trim) */
+        cbor[ci++] = 0x19; /* uint16 */
         cbor[ci++] = (uint8_t)(high_raw >> 8);
         cbor[ci++] = (uint8_t)(high_raw & 0xFF);
-        cbor[ci++] = 0x03;       /* key 3 (low trim) */
-        cbor[ci++] = 0x19;       /* uint16 */
+        cbor[ci++] = 0x03; /* key 3 (low trim) */
+        cbor[ci++] = 0x19; /* uint16 */
         cbor[ci++] = (uint8_t)(low_raw >> 8);
         cbor[ci++] = (uint8_t)(low_raw & 0xFF);
-        cbor[ci++] = 0x08;       /* key 8 (profile) */
-        cbor[ci++] = 0x05;       /* profile = 5 (dimmer) */
+        cbor[ci++] = 0x08; /* key 8 (profile) */
+        cbor[ci++] = 0x05; /* profile = 5 (dimmer) */
 
         if (ccx_send_coap(dst, COAP_CODE_PUT, "/cg/db/ct/c/AAI", cbor, ci)) {
-            printf("CoAP PUT trim high=%.1f%% (%u) low=%.1f%% (%u) queued\r\n",
-                   (double)high_pct, high_raw, (double)low_pct, low_raw);
-        } else {
+            printf("CoAP PUT trim high=%.1f%% (%u) low=%.1f%% (%u) queued\r\n", (double)high_pct, high_raw,
+                   (double)low_pct, low_raw);
+        }
+        else {
             printf("CoAP TX failed (not joined?)\r\n");
         }
         return;
@@ -2295,7 +2320,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "get ", 4) == 0) {
         /* ccx coap get <ipv6_addr> <uri_path> [port] */
         const char* p = arg + 4;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2311,9 +2336,9 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Parse URI path and optional port */
         const char* uri = space + 1;
-        uint16_t port = 0; /* 0 = default 5683 */
+        uint16_t    port = 0; /* 0 = default 5683 */
         const char* port_space = strchr(uri, ' ');
-        char uri_buf[64];
+        char        uri_buf[64];
         if (port_space) {
             size_t ulen = (size_t)(port_space - uri);
             if (ulen >= sizeof(uri_buf)) goto coap_usage;
@@ -2333,8 +2358,8 @@ static void cmd_ccx_coap(const char* arg)
             vTaskDelay(pdMS_TO_TICKS(100));
             ccx_coap_response_t resp;
             if (ccx_coap_response_get(&resp)) {
-                printf("CoAP response code=%u.%02u mid=0x%04X from ",
-                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                printf("CoAP response code=%u.%02u mid=0x%04X from ", (unsigned)(resp.code >> 5),
+                       (unsigned)(resp.code & 0x1F), resp.msg_id);
                 for (int j = 0; j < 16; j += 2) {
                     if (j > 0) printf(":");
                     printf("%02x%02x", resp.src_addr[j], resp.src_addr[j + 1]);
@@ -2344,7 +2369,8 @@ static void cmd_ccx_coap(const char* arg)
                     printf("Payload (%u bytes):", (unsigned)resp.payload_len);
                     for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
                     printf("\r\n");
-                } else {
+                }
+                else {
                     printf("(no payload)\r\n");
                 }
                 return;
@@ -2357,7 +2383,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "observe ", 8) == 0) {
         /* ccx coap observe <ipv6_addr> <uri_path> [dereg] */
         const char* p = arg + 8;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2373,9 +2399,9 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Check for optional "dereg" after path */
         const char* uri = space + 1;
-        uint8_t observe_val = 0; /* 0 = register */
+        uint8_t     observe_val = 0; /* 0 = register */
         const char* dereg = strstr(uri, " dereg");
-        char uri_buf[64];
+        char        uri_buf[64];
         if (dereg) {
             size_t ulen = (size_t)(dereg - uri);
             if (ulen >= sizeof(uri_buf)) goto coap_usage;
@@ -2390,15 +2416,14 @@ static void cmd_ccx_coap(const char* arg)
             printf("CoAP TX failed (not joined?)\r\n");
             return;
         }
-        printf("CoAP Observe %s %s → waiting...\r\n",
-               observe_val == 0 ? "REGISTER" : "DEREGISTER", uri);
+        printf("CoAP Observe %s %s → waiting...\r\n", observe_val == 0 ? "REGISTER" : "DEREGISTER", uri);
         /* Wait up to 5s for initial response */
         for (int i = 0; i < 50; i++) {
             vTaskDelay(pdMS_TO_TICKS(100));
             ccx_coap_response_t resp;
             if (ccx_coap_response_get(&resp)) {
-                printf("CoAP response code=%u.%02u mid=0x%04X\r\n",
-                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                printf("CoAP response code=%u.%02u mid=0x%04X\r\n", (unsigned)(resp.code >> 5),
+                       (unsigned)(resp.code & 0x1F), resp.msg_id);
                 if (resp.payload_len > 0) {
                     printf("Payload (%u bytes):", (unsigned)resp.payload_len);
                     for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
@@ -2415,7 +2440,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "probe ", 6) == 0) {
         /* ccx coap probe <ipv6_addr> <uri_path> — fire-and-forget GET (no wait) */
         const char* p = arg + 6;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2431,7 +2456,8 @@ static void cmd_ccx_coap(const char* arg)
 
         if (ccx_send_coap(dst, COAP_CODE_GET, space + 1, NULL, 0)) {
             printf("OK\r\n");
-        } else {
+        }
+        else {
             printf("FAIL\r\n");
         }
         return;
@@ -2440,7 +2466,7 @@ static void cmd_ccx_coap(const char* arg)
     if (strncmp(arg, "delete ", 7) == 0) {
         /* ccx coap delete <ipv6_addr> <uri_path> */
         const char* p = arg + 7;
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2456,7 +2482,8 @@ static void cmd_ccx_coap(const char* arg)
 
         if (ccx_send_coap(dst, COAP_CODE_DELETE, space + 1, NULL, 0)) {
             printf("CoAP DELETE %s queued\r\n", space + 1);
-        } else {
+        }
+        else {
             printf("CoAP TX failed (not joined?)\r\n");
         }
         return;
@@ -2464,11 +2491,11 @@ static void cmd_ccx_coap(const char* arg)
 
     if (strncmp(arg, "put ", 4) == 0 || strncmp(arg, "post ", 5) == 0) {
         /* ccx coap put/post <ipv6_addr> <uri_path> <payload_hex> */
-        bool is_put = (arg[1] == 'u');
+        bool        is_put = (arg[1] == 'u');
         const char* p = arg + (is_put ? 4 : 5);
 
         /* Parse addr */
-        char addr_str[64];
+        char        addr_str[64];
         const char* space = strchr(p, ' ');
         if (!space) goto coap_usage;
         size_t alen = (size_t)(space - p);
@@ -2486,7 +2513,7 @@ static void cmd_ccx_coap(const char* arg)
         p = space + 1;
         space = strchr(p, ' ');
         if (!space) goto coap_usage;
-        char uri[64];
+        char   uri[64];
         size_t ulen = (size_t)(space - p);
         if (ulen >= sizeof(uri)) goto coap_usage;
         memcpy(uri, p, ulen);
@@ -2494,7 +2521,7 @@ static void cmd_ccx_coap(const char* arg)
 
         /* Parse hex payload */
         uint8_t payload[128];
-        size_t plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
+        size_t  plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
         if (plen == 0) {
             printf("Invalid hex payload\r\n");
             return;
@@ -2511,8 +2538,8 @@ static void cmd_ccx_coap(const char* arg)
             vTaskDelay(pdMS_TO_TICKS(100));
             ccx_coap_response_t resp;
             if (ccx_coap_response_get(&resp)) {
-                printf("CoAP response code=%u.%02u mid=0x%04X\r\n",
-                       resp.code >> 5, resp.code & 0x1F, resp.msg_id);
+                printf("CoAP response code=%u.%02u mid=0x%04X\r\n", (unsigned)(resp.code >> 5),
+                       (unsigned)(resp.code & 0x1F), resp.msg_id);
                 if (resp.payload_len > 0) {
                     printf("Payload (%u bytes):", (unsigned)resp.payload_len);
                     for (size_t k = 0; k < resp.payload_len; k++) printf(" %02X", resp.payload[k]);
@@ -2556,7 +2583,8 @@ static void cmd_ccx(const char* arg)
             return;
         }
         printf("Thread role: %s\r\n", ccx_thread_role_str());
-        printf("RX: %lu  TX: %lu  RAW: %lu\r\n", (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count(), (unsigned long)ccx_raw_rx_count());
+        printf("RX: %lu  TX: %lu  RAW: %lu\r\n", (unsigned long)ccx_rx_count(), (unsigned long)ccx_tx_count(),
+               (unsigned long)ccx_raw_rx_count());
         printf("RX log: %s\r\n", ccx_rx_log_enabled() ? "ON" : "OFF");
         printf("Promiscuous: %s\r\n", ccx_promiscuous_enabled() ? "ON" : "OFF");
         return;
@@ -2565,7 +2593,8 @@ static void cmd_ccx(const char* arg)
     if (strcmp(arg, "promisc on") == 0 || strcmp(arg, "promisc") == 0) {
         if (ccx_set_promiscuous(true)) {
             printf("Promiscuous mode enabled (raw frames → stream)\r\n");
-        } else {
+        }
+        else {
             printf("Failed to enable promiscuous mode\r\n");
         }
         return;
@@ -2574,7 +2603,8 @@ static void cmd_ccx(const char* arg)
     if (strcmp(arg, "promisc off") == 0) {
         if (ccx_set_promiscuous(false)) {
             printf("Promiscuous mode disabled\r\n");
-        } else {
+        }
+        else {
             printf("Failed to disable promiscuous mode\r\n");
         }
         return;
@@ -2673,17 +2703,19 @@ static void cmd_ccx(const char* arg)
 
             char devid_str[16] = "-";
             if (dev_id[0] || dev_id[1] || dev_id[2] || dev_id[3]) {
-                snprintf(devid_str, sizeof(devid_str), "%02X%02X%02X%02X",
-                         dev_id[0], dev_id[1], dev_id[2], dev_id[3]);
+                snprintf(devid_str, sizeof(devid_str), "%02X%02X%02X%02X", dev_id[0], dev_id[1], dev_id[2], dev_id[3]);
             }
 
             const char* msg_name = ccx_msg_type_name(last_msg);
 
             uint32_t age_s = age_ms / 1000;
-            char age_str[16];
-            if (age_s < 60) snprintf(age_str, sizeof(age_str), "%lus", (unsigned long)age_s);
-            else if (age_s < 3600) snprintf(age_str, sizeof(age_str), "%lum", (unsigned long)(age_s / 60));
-            else snprintf(age_str, sizeof(age_str), "%luh", (unsigned long)(age_s / 3600));
+            char     age_str[16];
+            if (age_s < 60)
+                snprintf(age_str, sizeof(age_str), "%lus", (unsigned long)age_s);
+            else if (age_s < 3600)
+                snprintf(age_str, sizeof(age_str), "%lum", (unsigned long)(age_s / 60));
+            else
+                snprintf(age_str, sizeof(age_str), "%luh", (unsigned long)(age_s / 3600));
 
             printf("0x%04X   %-12s %-12s %-16s %s\r\n", rloc16, serial_str, devid_str, msg_name, age_str);
         }

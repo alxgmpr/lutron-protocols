@@ -55,13 +55,12 @@ inline void cca_write_id_le(uint8_t* dst, uint32_t id)
  * Matches exec_bridge_level layout from cca_commands.cpp.
  * Source ID in big-endian (bytes 2-5), target in big-endian (bytes 9-12).
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t target_id,
-                                   uint8_t addr_mode, uint16_t level16, uint8_t fade_qs,
-                                   uint8_t type_byte)
+inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t target_id, uint8_t addr_mode,
+                                  uint16_t level16, uint8_t fade_qs, uint8_t type_byte)
 {
     memset(pkt, 0x00, 22);
 
-    pkt[0] = type_byte;       /* 0x81/82/83 (rotated by TDMA engine if type_rotate=1) */
+    pkt[0] = type_byte; /* 0x81/82/83 (rotated by TDMA engine if type_rotate=1) */
     /* pkt[1] = seq — set by TDMA engine */
 
     /* Source ID (zone/subnet) in big-endian */
@@ -79,7 +78,7 @@ inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t tar
         cca_write_id_be(pkt + 9, target_id);
     }
 
-    pkt[13] = addr_mode;      /* QS_ADDR_COMPONENT / GROUP / BROADCAST */
+    pkt[13] = addr_mode; /* QS_ADDR_COMPONENT / GROUP / BROADCAST */
     pkt[14] = QS_CLASS_LEVEL;
     pkt[15] = QS_TYPE_EXECUTE;
 
@@ -88,7 +87,7 @@ inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t tar
     pkt[17] = level16 & 0xFF;
 
     pkt[18] = 0x00;
-    pkt[19] = fade_qs;        /* fade time in quarter-seconds */
+    pkt[19] = fade_qs; /* fade time in quarter-seconds */
 
     return 22;
 }
@@ -99,17 +98,17 @@ inline size_t cca_build_set_level(uint8_t* pkt, uint32_t source_id, uint32_t tar
  * Matches exec_button Phase 1 layout.
  * Device ID in big-endian (pico convention).
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_button_short(uint8_t* pkt, uint32_t device_id, uint8_t button,
-                                      uint8_t action, uint8_t format, uint8_t type_byte)
+inline size_t cca_build_button_short(uint8_t* pkt, uint32_t device_id, uint8_t button, uint8_t action, uint8_t format,
+                                     uint8_t type_byte)
 {
     memset(pkt, 0x00, 22);
 
-    pkt[0] = type_byte;       /* PKT_BTN_SHORT_A/B */
+    pkt[0] = type_byte; /* PKT_BTN_SHORT_A/B */
     /* pkt[1] = seq — set by TDMA engine */
     cca_write_id_be(pkt + 2, device_id);
 
     pkt[6] = QS_PROTO_RADIO_TX;
-    pkt[7] = format;          /* QS_FMT_TAP (0x04) or QS_FMT_BEACON (0x0C) */
+    pkt[7] = format; /* QS_FMT_TAP (0x04) or QS_FMT_BEACON (0x0C) */
     pkt[8] = QS_PICO_FRAME;
     pkt[9] = 0x00;
     pkt[10] = button;
@@ -132,12 +131,11 @@ inline size_t cca_build_button_short(uint8_t* pkt, uint32_t device_id, uint8_t b
  *
  * Matches exec_button Phase 2 layout.
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_button_long(uint8_t* pkt, uint32_t device_id, uint8_t button,
-                                     uint8_t type_byte)
+inline size_t cca_build_button_long(uint8_t* pkt, uint32_t device_id, uint8_t button, uint8_t type_byte)
 {
     memset(pkt, 0x00, 22);
 
-    pkt[0] = type_byte;       /* PKT_BTN_LONG_A/B */
+    pkt[0] = type_byte; /* PKT_BTN_LONG_A/B */
     /* pkt[1] = seq — set by TDMA engine */
     cca_write_id_be(pkt + 2, device_id);
 
@@ -154,14 +152,14 @@ inline size_t cca_build_button_long(uint8_t* pkt, uint32_t device_id, uint8_t bu
     if (button == BTN_RAISE) {
         pkt[17] = QS_CLASS_DIM;
         pkt[18] = QS_TYPE_EXECUTE;
-        pkt[19] = 0x01;  /* direction: raise */
+        pkt[19] = 0x01; /* direction: raise */
         pkt[20] = 0x00;
         pkt[21] = 0x16;
     }
     else if (button == BTN_LOWER) {
         pkt[17] = QS_CLASS_DIM;
         pkt[18] = QS_TYPE_EXECUTE;
-        pkt[19] = 0x00;  /* direction: lower */
+        pkt[19] = 0x00; /* direction: lower */
         pkt[20] = 0x00;
         pkt[21] = 0x43;
     }
@@ -181,7 +179,7 @@ inline size_t cca_build_beacon(uint8_t* pkt, uint32_t zone_id, uint8_t type_byte
 {
     memset(pkt, 0x00, 22);
 
-    pkt[0] = type_byte;       /* PKT_BEACON_91/92/93 */
+    pkt[0] = type_byte; /* PKT_BEACON_91/92/93 */
     /* pkt[1] = seq */
     cca_write_id_be(pkt + 2, zone_id);
 

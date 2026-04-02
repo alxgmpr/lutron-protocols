@@ -30,13 +30,13 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_VIVE_DIM = 0x0F,
     CCA_CMD_VIVE_PAIR = 0x10,
     CCA_CMD_BROADCAST_LEVEL = 0x11, /* Broadcast SET_LEVEL to all devices */
-    CCA_CMD_IDENTIFY  = 0x12,  /* QS Link device identify (flash LED) */
-    CCA_CMD_QUERY     = 0x13,  /* QS Link component query */
-    CCA_CMD_RAW       = 0x14,  /* Universal raw packet builder */
-    CCA_CMD_SCENE_EXEC = 0x15, /* Scene execute (format 0x0C) */
-    CCA_CMD_DIM_CONFIG = 0x16, /* Dimming config (format 0x13) */
-    CCA_CMD_ANNOUNCE   = 0x17, /* Spoofed B0 device announce */
-    CCA_CMD_HYBRID_PAIR = 0x18, /* Hybrid Vive→RA3 pairing (B9 beacon + bridge ID config) */
+    CCA_CMD_IDENTIFY = 0x12,        /* QS Link device identify (flash LED) */
+    CCA_CMD_QUERY = 0x13,           /* QS Link component query */
+    CCA_CMD_RAW = 0x14,             /* Universal raw packet builder */
+    CCA_CMD_SCENE_EXEC = 0x15,      /* Scene execute (format 0x0C) */
+    CCA_CMD_DIM_CONFIG = 0x16,      /* Dimming config (format 0x13) */
+    CCA_CMD_ANNOUNCE = 0x17,        /* Spoofed B0 device announce */
+    CCA_CMD_HYBRID_PAIR = 0x18,     /* Hybrid Vive→RA3 pairing (B9 beacon + bridge ID config) */
 };
 
 /* -----------------------------------------------------------------------
@@ -61,11 +61,11 @@ struct CcaCmdItem {
     uint8_t  direction;    /* Vive dim direction: 0x03=raise, 0x02=lower */
 
     /* Raw command fields */
-    uint8_t  raw_format;        /* format byte (determines 24 vs 53 byte packet) */
-    uint8_t  raw_addr_mode;     /* QS_ADDR_COMPONENT/GROUP/BROADCAST */
-    uint8_t  raw_payload[40];   /* payload bytes after format byte */
-    uint8_t  raw_payload_len;   /* actual payload length */
-    uint8_t  raw_repeat;        /* burst count (default 12) */
+    uint8_t raw_format;      /* format byte (determines 24 vs 53 byte packet) */
+    uint8_t raw_addr_mode;   /* QS_ADDR_COMPONENT/GROUP/BROADCAST */
+    uint8_t raw_payload[40]; /* payload bytes after format byte */
+    uint8_t raw_payload_len; /* actual payload length */
+    uint8_t raw_repeat;      /* burst count (default 12) */
 };
 
 /* -----------------------------------------------------------------------

@@ -8,23 +8,23 @@
 
 /* Message type IDs */
 #define CCX_MSG_LEVEL_CONTROL 0
-#define CCX_MSG_BUTTON_PRESS 1
-#define CCX_MSG_DIM_HOLD 2
-#define CCX_MSG_DIM_STEP 3
-#define CCX_MSG_ACK 7
+#define CCX_MSG_BUTTON_PRESS  1
+#define CCX_MSG_DIM_HOLD      2
+#define CCX_MSG_DIM_STEP      3
+#define CCX_MSG_ACK           7
 #define CCX_MSG_DEVICE_REPORT 27
-#define CCX_MSG_DEVICE_STATE 34
-#define CCX_MSG_SCENE_RECALL 36
+#define CCX_MSG_DEVICE_STATE  34
+#define CCX_MSG_SCENE_RECALL  36
 #define CCX_MSG_COMPONENT_CMD 40
-#define CCX_MSG_STATUS 41
-#define CCX_MSG_PRESENCE 0xFFFF
+#define CCX_MSG_STATUS        41
+#define CCX_MSG_PRESENCE      0xFFFF
 
 /* Body map keys */
-#define CCX_KEY_COMMAND 0
-#define CCX_KEY_ZONE 1
-#define CCX_KEY_DEVICE 2
-#define CCX_KEY_EXTRA 3
-#define CCX_KEY_STATUS 4
+#define CCX_KEY_COMMAND  0
+#define CCX_KEY_ZONE     1
+#define CCX_KEY_DEVICE   2
+#define CCX_KEY_EXTRA    3
+#define CCX_KEY_STATUS   4
 #define CCX_KEY_SEQUENCE 5
 
 /* Level constants */

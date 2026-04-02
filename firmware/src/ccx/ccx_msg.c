@@ -23,8 +23,8 @@ size_t ccx_encode_level_control(uint8_t* buf, size_t buf_size, uint16_t zone_id,
      * Known-good hex for ON zone=961 seq=92:
      *   82 00 a3 00 a2 00 19feff 03 01 01 82 10 1903c1 05 185c
      */
-    uint8_t* p = buf;
-    uint8_t* end = buf + buf_size;
+    uint8_t*       p = buf;
+    const uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
     EMIT(cbor_encode_array, 2);
@@ -62,8 +62,8 @@ size_t ccx_encode_scene_recall(uint8_t* buf, size_t buf_size, uint16_t scene_id,
      * Target CBOR structure (matches encoder.ts):
      *   [36, { 0: {0: [4]}, 1: [0], 3: {0: scene_id}, 5: sequence }]
      */
-    uint8_t* p = buf;
-    uint8_t* end = buf + buf_size;
+    uint8_t*       p = buf;
+    const uint8_t* end = buf + buf_size;
 
     /* Outer array(2) */
     EMIT(cbor_encode_array, 2);

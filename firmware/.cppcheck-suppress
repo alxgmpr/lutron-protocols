@@ -12,7 +12,7 @@ comparePointers:src/syscalls.c
 
 // extern re-declarations in function scope shadow file-scope externs — HAL pattern
 shadowVariable:src/syscalls.c
-shadowVariable:src/shell/shell.cpp:1517
+shadowVariable:src/shell/shell.cpp:1902
 
 // Bitmask with zero operand is intentional for readability (register field documentation)
 badBitmaskCheck:src/system_stm32h7xx.c
@@ -23,11 +23,19 @@ constParameterPointer:src/net/lwip_arch/sys_arch.c
 // HAL callback signatures cannot be changed
 constParameterPointer:src/syscalls.c:39
 
-// HAL Ethernet callback signature
+// HAL Ethernet callback signatures
 constParameterPointer:src/net/eth.c:108
+constParameterPointer:src/net/eth.c:101
+constParameterCallback:src/net/eth.c
 
 // C-style casts to const uint8_t* are standard embedded pattern
 dangerousTypeCast:src/storage/flash_store.cpp
 
 // False positive: buf is a pointer param, shell_register_state records ptr+len (len=0)
-uninitvar:src/shell/shell.cpp:143
+uninitvar:src/shell/shell.cpp:145
+
+// Intentional defensive guard conditions — redundant but kept for safety
+knownConditionTrueFalse:src/cca/cca_decoder.h
+knownConditionTrueFalse:src/cca/cca_n81.h
+knownConditionTrueFalse:src/cca/cca_generated.h
+knownConditionTrueFalse:src/ccx/ipv6_udp.c
