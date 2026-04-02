@@ -14,6 +14,7 @@
 #include "cca_task.h"
 #include "cca_commands.h"
 #include "cca_tdma.h"
+#include "cca_tx_builder.h"
 #include "cca_timer.h"
 #include "cc1101.h"
 #include "cca_decoder.h"
@@ -58,7 +59,6 @@ struct CcaTxItem {
  * ----------------------------------------------------------------------- */
 static TaskHandle_t cca_task_handle = NULL;
 static QueueHandle_t cca_tx_queue = NULL;           /* TDMA-scheduled TX */
-static QueueHandle_t cca_tx_immediate_queue = NULL; /* bypass TDMA (pairing) */
 static CcaDecoder decoder;
 static uint32_t rx_count = 0;
 static uint32_t tx_count = 0;
@@ -385,36 +385,21 @@ static void cca_task_func(void* param)
             }
         }
 
-        /* Process immediate TX queue — bypasses TDMA (used by pairing) */
-        while (xQueueReceive(cca_tx_immediate_queue, &tx_item, 0) == pdTRUE) {
-            cc1101_stop_rx();
-
-            uint8_t with_crc[CCA_TX_MAX_LEN + 2];
-            cca_append_crc(tx_item.data, tx_item.len, with_crc);
-
-            uint8_t encoded[128];
-            CcaEncoder encoder;
-            size_t encoded_len = encoder.encode_packet(with_crc, tx_item.len + 2, encoded, sizeof(encoded));
-
-            if (encoded_len > 0) {
-                bool ok = cc1101_transmit_raw(encoded, encoded_len);
-                if (ok) {
-                    tx_count++;
-                    stream_send_cca_packet(tx_item.data, tx_item.len, 0, true, HAL_GetTick());
-                }
-            }
-
-            cc1101_start_rx();
-        }
-
-        /* Process command queue (non-blocking).
-         * Commands execute synchronously with delays (blocking this task),
-         * which is fine since they handle stop_rx/start_rx internally. */
+        /* Process command queue — convert to job groups and submit to TDMA */
         {
             QueueHandle_t cmdq = (QueueHandle_t)cca_cmd_queue_handle();
             CcaCmdItem cmd_item;
             while (cmdq && xQueueReceive(cmdq, &cmd_item, 0) == pdTRUE) {
-                cca_cmd_execute(&cmd_item);
+                TdmaJobGroup group = cca_cmd_to_jobs(&cmd_item);
+                if (group.phase_count > 0) {
+                    if (!cca_tdma_submit_group(&group)) {
+                        printf("[cca] TX engine full, command dropped\r\n");
+                    }
+                }
+                else {
+                    /* Unsupported command — fall back to blocking execute */
+                    cca_cmd_execute(&cmd_item);
+                }
             }
         }
     }
@@ -426,7 +411,6 @@ static void cca_task_func(void* param)
 void cca_task_start(void)
 {
     cca_tx_queue = xQueueCreate(CCA_TX_QUEUE_LEN, sizeof(CcaTxItem));
-    cca_tx_immediate_queue = xQueueCreate(CCA_TX_QUEUE_LEN, sizeof(CcaTxItem));
     cca_cmd_queue_init();
 
     xTaskCreate(cca_task_func, "CCA", CCA_TASK_STACK_SIZE, NULL, CCA_TASK_PRIORITY, &cca_task_handle);
@@ -443,16 +427,6 @@ bool cca_tx_enqueue(const uint8_t* packet, size_t len)
     return xQueueSend(cca_tx_queue, &item, pdMS_TO_TICKS(100)) == pdTRUE;
 }
 
-bool cca_tx_enqueue_immediate(const uint8_t* packet, size_t len)
-{
-    if (cca_tx_immediate_queue == NULL || len == 0 || len > CCA_TX_MAX_LEN) return false;
-
-    CcaTxItem item;
-    memcpy(item.data, packet, len);
-    item.len = len;
-
-    return xQueueSend(cca_tx_immediate_queue, &item, pdMS_TO_TICKS(100)) == pdTRUE;
-}
 
 uint32_t cca_rx_count(void)
 {

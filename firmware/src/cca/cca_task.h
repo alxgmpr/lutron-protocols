@@ -16,10 +16,6 @@ void cca_task_start(void);
  *  The TDMA engine manages slot timing, sequence numbers, and retransmission. */
 bool cca_tx_enqueue(const uint8_t* packet, size_t len);
 
-/** Enqueue a raw CCA packet for immediate transmission (bypasses TDMA).
- *  Used by pairing engine which manages its own timing. Thread-safe. */
-bool cca_tx_enqueue_immediate(const uint8_t* packet, size_t len);
-
 /** Get RX packet count */
 uint32_t cca_rx_count(void);
 
