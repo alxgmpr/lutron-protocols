@@ -1,5 +1,11 @@
-# Reverse engineering binaries (extracted frameworks, DLLs)
-re/
+# Reverse engineering binaries (extracted frameworks, Ghidra projects)
+re/app/
+re/designer/
+
+# Legacy RE capture dirs (curated copies in re/processors/)
+re/phoenix/
+re/caseta-uart/
+re/rr-sel-uart/
 
 # Python
 __pycache__/
@@ -47,6 +53,9 @@ node_modules/
 *.cu8
 *.pcapng
 *.log
+
+# RE processor captures (override *.log ignore)
+!re/processors/*.log
 
 # Packet capture / recording output
 *.jsonl
