@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { walkEndpoints, LEAP_REGISTRY } from "../tools/leap-client";
+import { LEAP_REGISTRY, walkEndpoints } from "../tools/leap-client";
 
 // Mock LeapConnection that returns canned responses
 class MockLeap {
@@ -75,7 +75,12 @@ test("walkEndpoints silently skips null responses", async () => {
   const mock = new MockLeap({});
 
   const registry = [
-    { path: "/occupancygroup", key: "occupancyGroups", core: true, itemsField: "OccupancyGroups" },
+    {
+      path: "/occupancygroup",
+      key: "occupancyGroups",
+      core: true,
+      itemsField: "OccupancyGroups",
+    },
   ];
 
   const result = await walkEndpoints(mock as any, registry, {
@@ -189,11 +194,20 @@ test("walkEndpoints handles children returning null gracefully", async () => {
 
 test("LEAP_REGISTRY is a non-empty array with required fields", () => {
   assert.ok(Array.isArray(LEAP_REGISTRY));
-  assert.ok(LEAP_REGISTRY.length > 20, `Expected 20+ entries, got ${LEAP_REGISTRY.length}`);
+  assert.ok(
+    LEAP_REGISTRY.length > 20,
+    `Expected 20+ entries, got ${LEAP_REGISTRY.length}`,
+  );
 
   for (const entry of LEAP_REGISTRY) {
-    assert.ok(typeof entry.path === "string", `Missing path: ${JSON.stringify(entry)}`);
-    assert.ok(typeof entry.key === "string", `Missing key: ${JSON.stringify(entry)}`);
+    assert.ok(
+      typeof entry.path === "string",
+      `Missing path: ${JSON.stringify(entry)}`,
+    );
+    assert.ok(
+      typeof entry.key === "string",
+      `Missing key: ${JSON.stringify(entry)}`,
+    );
     assert.ok(
       entry.itemsField === null || typeof entry.itemsField === "string",
       `Invalid itemsField: ${JSON.stringify(entry)}`,
