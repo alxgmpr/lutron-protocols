@@ -650,3 +650,239 @@ export function buildDumpData(
     presets: presetsMap,
   };
 }
+
+// --- Endpoint Registry & Walker ---
+
+export interface EndpointDef {
+  /** LEAP path, e.g. "/area", "/occupancygroup" */
+  path: string;
+  /** Output JSON key */
+  key: string;
+  /** If true, fetched even without --full */
+  core?: boolean;
+  /** Response body field containing the items array, null for singletons */
+  itemsField: string | null;
+  /** Sub-endpoints fetched per item (appended to item href) */
+  children?: ChildDef[];
+  /** Direct sub-resources fetched per item */
+  perItem?: PerItemDef[];
+}
+
+export interface ChildDef {
+  /** Appended to parent item href, e.g. "/associatedzone" */
+  path: string;
+  /** Nested key in item output */
+  key: string;
+  /** Response field containing child array */
+  itemsField: string;
+}
+
+export interface PerItemDef {
+  /** Appended to item href, e.g. "/status" */
+  path: string;
+  /** Key in item output */
+  key: string;
+}
+
+export const LEAP_REGISTRY: EndpointDef[] = [
+  // --- Core (always fetched) ---
+  { path: "/server", key: "server", core: true, itemsField: "Servers" },
+  { path: "/link", key: "links", core: true, itemsField: "Links" },
+  {
+    path: "/area",
+    key: "areas",
+    core: true,
+    itemsField: "Areas",
+    children: [
+      { path: "/associatedzone", key: "zones", itemsField: "Zones" },
+      {
+        path: "/associatedcontrolstation",
+        key: "controlStations",
+        itemsField: "ControlStations",
+      },
+      { path: "/associatedareascene", key: "scenes", itemsField: "AreaScenes" },
+      {
+        path: "/associatedoccupancygroup",
+        key: "occupancyGroups",
+        itemsField: "OccupancyGroups",
+      },
+    ],
+  },
+  {
+    path: "/zone",
+    key: "zones",
+    core: true,
+    itemsField: "Zones",
+    perItem: [
+      { path: "/status", key: "status" },
+      { path: "/fadesettings", key: "fadeSettings" },
+    ],
+  },
+  {
+    path: "/device",
+    key: "devices",
+    core: true,
+    itemsField: "Devices",
+    perItem: [
+      { path: "/status", key: "status" },
+      { path: "/buttongroup/expanded", key: "buttonGroups" },
+      { path: "/firmwareimage", key: "firmware" },
+      { path: "/addressedstate", key: "addressedState" },
+    ],
+  },
+  { path: "/button", key: "buttons", core: true, itemsField: "Buttons" },
+  { path: "/project", key: "project", core: true, itemsField: null },
+
+  // --- Extended (--full only) ---
+  { path: "/system", key: "system", itemsField: null },
+  {
+    path: "/preset",
+    key: "presets",
+    itemsField: "Presets",
+    perItem: [{ path: "/presetassignment", key: "assignments" }],
+  },
+  {
+    path: "/presetassignment",
+    key: "presetAssignments",
+    itemsField: "PresetAssignments",
+  },
+  {
+    path: "/programmingmodel",
+    key: "programmingModels",
+    itemsField: "ProgrammingModels",
+  },
+  {
+    path: "/virtualbutton",
+    key: "virtualButtons",
+    itemsField: "VirtualButtons",
+  },
+  { path: "/buttongroup", key: "buttonGroups", itemsField: "ButtonGroups" },
+  {
+    path: "/occupancygroup",
+    key: "occupancyGroups",
+    itemsField: "OccupancyGroups",
+    children: [
+      { path: "/associatedzone", key: "zones", itemsField: "Zones" },
+      { path: "/associatedsensor", key: "sensors", itemsField: "Sensors" },
+    ],
+  },
+  { path: "/timeclock", key: "timeClocks", itemsField: "TimeClocks" },
+  {
+    path: "/timeclockevent",
+    key: "timeClockEvents",
+    itemsField: "TimeClockEvents",
+  },
+  { path: "/service", key: "services", itemsField: "Services" },
+  { path: "/firmware", key: "firmwareImages", itemsField: "Firmwares" },
+  { path: "/firmware/status", key: "firmwareStatus", itemsField: null },
+  {
+    path: "/firmwareupdatesession",
+    key: "firmwareUpdateSessions",
+    itemsField: "FirmwareUpdateSessions",
+  },
+  { path: "/operation/status", key: "operationStatus", itemsField: null },
+  { path: "/networkinterface/1", key: "networkInterface", itemsField: null },
+  { path: "/project/contactinfo", key: "projectContactInfo", itemsField: null },
+  {
+    path: "/project/masterdevicelist/devices",
+    key: "masterDeviceList",
+    itemsField: "Devices",
+  },
+  { path: "/server/status/ping", key: "ping", itemsField: null },
+  { path: "/server/leap/pairinglist", key: "pairingList", itemsField: null },
+  { path: "/system/away", key: "awayMode", itemsField: null },
+  {
+    path: "/system/loadshedding/status",
+    key: "loadShedding",
+    itemsField: null,
+  },
+  {
+    path: "/system/naturallightoptimization",
+    key: "naturalLight",
+    itemsField: null,
+  },
+  { path: "/facade", key: "facades", itemsField: "Facades" },
+  {
+    path: "/countdowntimer",
+    key: "countdownTimers",
+    itemsField: "CountdownTimers",
+  },
+  { path: "/favorite", key: "favorites", itemsField: "Favorites" },
+  { path: "/daynightmode", key: "dayNightMode", itemsField: null },
+];
+
+/**
+ * Walk LEAP endpoints defined in the registry and return raw response data.
+ *
+ * @param leap - Connected LeapConnection (or any object with readBody method)
+ * @param registry - Endpoint definitions to walk
+ * @param opts.full - If false, only fetch entries with core=true
+ * @param opts.log - Progress logging function
+ */
+export async function walkEndpoints(
+  leap: { readBody(url: string): Promise<any | null> },
+  registry: EndpointDef[],
+  opts: { full: boolean; log: (msg: string) => void },
+): Promise<Record<string, any>> {
+  const result: Record<string, any> = {};
+  const entries = opts.full ? registry : registry.filter((e) => e.core);
+
+  for (const entry of entries) {
+    opts.log(`Fetching ${entry.path}...`);
+    const body = await leap.readBody(entry.path);
+    if (body === null) {
+      opts.log(`  (skipped — no data)`);
+      continue;
+    }
+
+    // Singleton endpoint (no itemsField)
+    if (entry.itemsField === null) {
+      result[entry.key] = body;
+      opts.log(`  OK (singleton)`);
+      continue;
+    }
+
+    // Collection endpoint
+    const items: any[] = body[entry.itemsField] ?? [];
+    if (items.length === 0) {
+      opts.log(`  0 items`);
+      continue;
+    }
+    opts.log(`  ${items.length} items`);
+
+    // Fetch children and perItem for each item
+    if (entry.children || entry.perItem) {
+      for (const item of items) {
+        const href = item.href;
+        if (!href) continue;
+
+        // Children: associated sub-collections
+        if (entry.children) {
+          for (const child of entry.children) {
+            const childBody = await leap.readBody(`${href}${child.path}`);
+            if (childBody !== null) {
+              const childItems = childBody[child.itemsField];
+              if (childItems !== undefined) {
+                item[child.key] = childItems;
+              }
+            }
+          }
+        }
+
+        // PerItem: direct sub-resources
+        if (entry.perItem) {
+          for (const sub of entry.perItem) {
+            const subBody = await leap.readBody(`${href}${sub.path}`);
+            if (subBody !== null) {
+              item[sub.key] = subBody;
+            }
+          }
+        }
+      }
+    }
+
+    result[entry.key] = items;
+  }
+
+  return result;
+}
