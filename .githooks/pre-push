@@ -1,11 +1,11 @@
 #!/bin/bash
-# Pre-push hook: run lint + typecheck before allowing push
+# Pre-push hook: run all CI checks before allowing push
 
 echo "Running CI checks before push..."
 
-# Lint
+# Lint (TS)
 echo "  Lint..."
-npx biome check cli/ tools/ ccx/ protocol/ 2>&1
+npx biome check . 2>&1
 if [ $? -ne 0 ]; then
   echo "❌ Lint failed. Fix errors before pushing."
   exit 1
@@ -17,6 +17,26 @@ npx tsc --noEmit 2>&1
 if [ $? -ne 0 ]; then
   echo "❌ Typecheck failed. Fix errors before pushing."
   exit 1
+fi
+
+# Firmware format check
+if command -v clang-format &>/dev/null; then
+  echo "  Firmware format..."
+  make -C firmware format-check 2>&1
+  if [ $? -ne 0 ]; then
+    echo "❌ Firmware format-check failed. Run 'make -C firmware format' to fix."
+    exit 1
+  fi
+fi
+
+# Firmware lint
+if command -v cppcheck &>/dev/null; then
+  echo "  Firmware lint..."
+  make -C firmware lint 2>&1
+  if [ $? -ne 0 ]; then
+    echo "❌ Firmware cppcheck failed. Fix errors before pushing."
+    exit 1
+  fi
 fi
 
 echo "✅ All checks passed."

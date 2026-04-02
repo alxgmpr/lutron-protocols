@@ -107,7 +107,7 @@ static void exec_pico_pair(uint32_t device_id, uint8_t pico_type, uint8_t durati
 
         /* [6-12]: header bytes */
         packet[6] = QS_PROTO_RADIO_TX;
-        packet[7] = 0x25;  /* format: pico pairing */
+        packet[7] = 0x25; /* format: pico pairing */
         packet[8] = 0x04;
         packet[9] = 0x00;
         packet[10] = p.byte10;
@@ -229,8 +229,8 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
 {
     if (beacon_sec == 0) beacon_sec = 5;
 
-    printf("[cca] CMD bridge_pair bridge=%08X target=%08X zone=0x%02X beacon=%us\r\n",
-           (unsigned)bridge_id, (unsigned)target_id, zone_byte, beacon_sec);
+    printf("[cca] CMD bridge_pair bridge=%08X target=%08X zone=0x%02X beacon=%us\r\n", (unsigned)bridge_id,
+           (unsigned)target_id, zone_byte, beacon_sec);
 
     /* Reset handshake state */
     memset(hs_challenges, 0, sizeof(hs_challenges));
@@ -262,7 +262,7 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
 
             packet[6] = QS_PROTO_RADIO_TX;
             packet[7] = QS_FMT_BEACON;
-            packet[8] = 0x00;  /* flags */
+            packet[8] = 0x00; /* flags */
 
             /* Broadcast: object_id=0xFFFFFFFF, addr_mode=BROADCAST */
             packet[9] = QS_ADDR_BROADCAST;
@@ -358,8 +358,8 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
             cfg[8] = 0x00;
             put_be32(cfg + 9, target_id);
             cfg[13] = QS_ADDR_COMPONENT;
-            cfg[14] = 0x60;  /* accept class */
-            cfg[15] = 0x0A;  /* accept type */
+            cfg[14] = 0x60; /* accept class */
+            cfg[15] = 0x0A; /* accept type */
             put_be32(cfg + 16, bridge_id);
             put_be32(cfg + 20, bridge_id);
             transmit_one(cfg, 51);
@@ -396,7 +396,7 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
             cfg[0] = 0xA1 + (i % 3);
             cfg[1] = 0x01;
             put_be32(cfg + 2, bridge_id);
-            cfg[6] = QS_FMT_ZONE;        /* format at byte 6 */
+            cfg[6] = QS_FMT_ZONE; /* format at byte 6 */
             cfg[7] = 0x03;
             cfg[8] = 0x01;
             cfg[9] = QS_COMP_DIMMER;
@@ -512,11 +512,11 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     put_be32(pkt + 2, hub_id);
     pkt[6] = QS_PROTO_RADIO_TX;
     pkt[7] = QS_FMT_ACCEPT;
-    pkt[8] = 0x00;  /* flags */
+    pkt[8] = 0x00; /* flags */
     put_be32(pkt + 9, device_id);
     pkt[13] = QS_ADDR_COMPONENT;
-    pkt[14] = 0x60;  /* accept-specific class */
-    pkt[15] = 0x0A;  /* accept-specific type */
+    pkt[14] = 0x60; /* accept-specific class */
+    pkt[15] = 0x0A; /* accept-specific type */
     put_be32(pkt + 16, hub_id);
     put_be32(pkt + 20, hub_id);
     /* [24-50] = 0x00 (already set) */
@@ -531,11 +531,11 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         put_be32(pkt + 1, hub_id); /* byte 1, NOT 2 */
         pkt[5] = QS_PROTO_RADIO_TX;
         pkt[6] = QS_FMT_ACCEPT;
-        pkt[7] = 0x00;  /* flags */
+        pkt[7] = 0x00; /* flags */
         put_be32(pkt + 8, device_id);
         pkt[12] = QS_ADDR_COMPONENT;
-        pkt[13] = 0x60;  /* accept-specific class */
-        pkt[14] = 0x0A;  /* accept-specific type */
+        pkt[13] = 0x60; /* accept-specific class */
+        pkt[14] = 0x0A; /* accept-specific type */
         put_be32(pkt + 15, hub_id);
         put_be32(pkt + 19, hub_id);
         /* [23-50] = 0x00 */
@@ -552,11 +552,11 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         put_be32(pkt + 2, hub_id);
         pkt[6] = QS_PROTO_RADIO_TX;
         pkt[7] = QS_FMT_DIM_CAP;
-        pkt[8] = 0x00;  /* flags */
+        pkt[8] = 0x00; /* flags */
         put_be32(pkt + 9, device_id);
         pkt[13] = QS_ADDR_COMPONENT;
-        pkt[14] = QS_CLASS_LEGACY;   /* 0x06 — original 2009 config class */
-        pkt[15] = QS_COMP_DIMMER;    /* 0x50 — component type: dimmer */
+        pkt[14] = QS_CLASS_LEGACY; /* 0x06 — original 2009 config class */
+        pkt[15] = QS_COMP_DIMMER;  /* 0x50 — component type: dimmer */
         pkt[16] = 0x00;
         pkt[17] = 0x0D;
         pkt[18] = 0x08;
@@ -577,7 +577,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[0] = fmt28a_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = QS_FMT_ZONE;        /* 0x28 — format at byte 6 (no proto byte) */
+        pkt[6] = QS_FMT_ZONE; /* 0x28 — format at byte 6 (no proto byte) */
         pkt[7] = 0x03;
         pkt[8] = 0x01;
         pkt[9] = QS_COMP_DIMMER;     /* 0x50 — component type */
@@ -593,7 +593,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[22] = 0x00;
         pkt[23] = 0x00;
         pkt[24] = 0x01;
-        pkt[25] = QS_ADDR_GROUP;     /* 0xEF — group addressing */
+        pkt[25] = QS_ADDR_GROUP; /* 0xEF — group addressing */
         pkt[26] = 0x20;
         pkt[27] = 0x00;
         pkt[28] = 0x03;
@@ -621,18 +621,18 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         put_be32(pkt + 2, hub_id);
         pkt[6] = QS_PROTO_RADIO_TX;
         pkt[7] = QS_FMT_FUNC_MAP;
-        pkt[8] = 0x00;  /* flags */
+        pkt[8] = 0x00; /* flags */
         put_be32(pkt + 9, device_id);
         pkt[13] = QS_ADDR_COMPONENT;
-        pkt[14] = QS_CLASS_LEGACY;    /* 0x06 — original config class */
-        pkt[15] = QS_COMP_DIMMER;     /* 0x50 — component type */
+        pkt[14] = QS_CLASS_LEGACY; /* 0x06 — original config class */
+        pkt[15] = QS_COMP_DIMMER;  /* 0x50 — component type */
         pkt[16] = 0x00;
         pkt[17] = 0x0B;
         pkt[18] = 0x09;
         pkt[19] = 0xFE;
         pkt[20] = 0xFF;
         pkt[21] = 0x00;
-        pkt[22] = 0x02;  /* dimmer capability flag */
+        pkt[22] = 0x02; /* dimmer capability flag */
         pkt[23] = 0x00;
         /* [24-50] = 0x00 */
         transmit_one(pkt, 51);
@@ -646,11 +646,11 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         pkt[0] = fmt28b_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
-        pkt[6] = QS_FMT_ZONE;        /* 0x28 — format at byte 6 (no proto byte) */
+        pkt[6] = QS_FMT_ZONE; /* 0x28 — format at byte 6 (no proto byte) */
         pkt[7] = 0x03;
         pkt[8] = 0x01;
         pkt[9] = QS_COMP_DIMMER;
-        pkt[10] = zone_byte + 0x23;  /* zone reference */
+        pkt[10] = zone_byte + 0x23; /* zone reference */
         pkt[11] = QS_PROTO_RADIO_TX;
         pkt[12] = 0x1A;
         pkt[13] = 0x00;
@@ -690,11 +690,11 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
         put_be32(pkt + 2, hub_id);
         pkt[6] = QS_PROTO_RADIO_TX;
         pkt[7] = QS_FMT_FINAL;
-        pkt[8] = 0x00;  /* flags */
+        pkt[8] = 0x00; /* flags */
         put_be32(pkt + 9, device_id);
         pkt[13] = QS_ADDR_COMPONENT;
-        pkt[14] = QS_CLASS_LEGACY;    /* 0x06 — original config class */
-        pkt[15] = 0x6E;              /* entity_type: zone binding (?) */
+        pkt[14] = QS_CLASS_LEGACY; /* 0x06 — original config class */
+        pkt[15] = 0x6E;            /* entity_type: zone binding (?) */
         pkt[16] = 0x01;
         pkt[17] = 0x00;
         pkt[18] = 0x07;
@@ -738,8 +738,8 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
             pkt[1] = seq;
             put_be32(pkt + 2, hub_id);
             pkt[6] = QS_PROTO_RADIO_TX;
-            pkt[7] = QS_FMT_LED;    /* 0x11 — pairing beacon format */
-            pkt[8] = 0x00;          /* flags */
+            pkt[7] = QS_FMT_LED; /* 0x11 — pairing beacon format */
+            pkt[8] = 0x00;       /* flags */
             pkt[9] = QS_ADDR_BROADCAST;
             pkt[10] = QS_ADDR_BROADCAST;
             pkt[11] = QS_ADDR_BROADCAST;
@@ -795,7 +795,7 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
         pkt[1] = seq;
         put_be32(pkt + 2, hub_id);
         pkt[6] = QS_PROTO_RADIO_TX;
-        pkt[7] = QS_FMT_LED;  /* 0x11 — stop beacon */
+        pkt[7] = QS_FMT_LED; /* 0x11 — stop beacon */
         pkt[8] = 0x00;
         pkt[9] = QS_ADDR_BROADCAST;
         pkt[10] = QS_ADDR_BROADCAST;
@@ -843,13 +843,12 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
  *   [25-26] 0x00 0x00     padding
  *   [27-50] 0xCC          padding
  * ----------------------------------------------------------------------- */
-static void exec_announce(uint32_t serial, uint32_t device_class,
-                          uint16_t subnet, uint8_t duration_sec)
+static void exec_announce(uint32_t serial, uint32_t device_class, uint16_t subnet, uint8_t duration_sec)
 {
     if (duration_sec == 0) duration_sec = 15;
 
-    printf("[cca] CMD announce serial=%08X class=%08X subnet=%04X dur=%us\r\n",
-           (unsigned)serial, (unsigned)device_class, subnet, duration_sec);
+    printf("[cca] CMD announce serial=%08X class=%08X subnet=%04X dur=%us\r\n", (unsigned)serial,
+           (unsigned)device_class, subnet, duration_sec);
 
     cc1101_stop_rx();
 
@@ -873,7 +872,7 @@ static void exec_announce(uint32_t serial, uint32_t device_class,
         packet[8] = 0x00;
 
         /* broadcast */
-        packet[9]  = 0xFF;
+        packet[9] = 0xFF;
         packet[10] = 0xFF;
         packet[11] = 0xFF;
         packet[12] = 0xFF;
@@ -885,13 +884,13 @@ static void exec_announce(uint32_t serial, uint32_t device_class,
         /* serial (big-endian) */
         packet[16] = (serial >> 24) & 0xFF;
         packet[17] = (serial >> 16) & 0xFF;
-        packet[18] = (serial >> 8)  & 0xFF;
+        packet[18] = (serial >> 8) & 0xFF;
         packet[19] = serial & 0xFF;
 
         /* device class (4 bytes) */
         packet[20] = (device_class >> 24) & 0xFF;
         packet[21] = (device_class >> 16) & 0xFF;
-        packet[22] = (device_class >> 8)  & 0xFF;
+        packet[22] = (device_class >> 8) & 0xFF;
         packet[23] = device_class & 0xFF;
 
         packet[24] = 0xFF;
@@ -926,8 +925,8 @@ static void exec_announce(uint32_t serial, uint32_t device_class,
  *
  * Loop: B9 burst (3 pkts) → B0 burst (3 pkts) → RX window → repeat
  * ----------------------------------------------------------------------- */
-static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
-                              uint16_t subnet, uint8_t zone_byte, uint8_t duration_sec)
+static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint16_t subnet, uint8_t zone_byte,
+                             uint8_t duration_sec)
 {
     if (duration_sec == 0) duration_sec = 60;
 
@@ -935,8 +934,8 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
     uint32_t announce_serial = 0;
     bool     have_serial = false;
 
-    printf("[cca] CMD hybrid_pair bridge=%08X class=%08X subnet=%04X dur=%us\r\n",
-           (unsigned)bridge_id, (unsigned)device_class_32, subnet, duration_sec);
+    printf("[cca] CMD hybrid_pair bridge=%08X class=%08X subnet=%04X dur=%us\r\n", (unsigned)bridge_id,
+           (unsigned)device_class_32, subnet, duration_sec);
     printf("[cca] Interleaved B9 beacon + B0 announce loop\r\n");
     printf("[cca] Put RA3 into pairing mode, then power-cycle the PowPak\r\n");
 
@@ -959,7 +958,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
             pkt[1] = b9_seq;
             put_be32(pkt + 2, bridge_id);
             pkt[6] = QS_PROTO_RADIO_TX;
-            pkt[7] = QS_FMT_LED;    /* 0x11 — Vive pairing beacon */
+            pkt[7] = QS_FMT_LED; /* 0x11 — Vive pairing beacon */
             pkt[8] = 0x00;
             pkt[9] = QS_ADDR_BROADCAST;
             pkt[10] = QS_ADDR_BROADCAST;
@@ -994,7 +993,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
                 pkt[6] = QS_PROTO_RADIO_TX;
                 pkt[7] = 0x13;
                 pkt[8] = 0x00;
-                pkt[9]  = 0xFF;
+                pkt[9] = 0xFF;
                 pkt[10] = 0xFF;
                 pkt[11] = 0xFF;
                 pkt[12] = 0xFF;
@@ -1025,8 +1024,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
             if (vive_device_detected && !have_serial) {
                 announce_serial = vive_detected_device_id;
                 have_serial = true;
-                printf("[cca] Hybrid pair: PowPak serial=%08X — now announcing\r\n",
-                       (unsigned)announce_serial);
+                printf("[cca] Hybrid pair: PowPak serial=%08X — now announcing\r\n", (unsigned)announce_serial);
                 vive_device_detected = false;
             }
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -1069,7 +1067,8 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32,
 
     if (have_serial) {
         printf("[cca] CMD hybrid_pair complete (serial=%08X)\r\n", (unsigned)announce_serial);
-    } else {
+    }
+    else {
         printf("[cca] CMD hybrid_pair complete (no PowPak detected)\r\n");
     }
 }
@@ -1090,16 +1089,12 @@ void cca_pairing_execute(const CcaCmdItem* item)
         exec_vive_pair(item->device_id, item->zone_byte, item->duration_sec);
         break;
     case CCA_CMD_ANNOUNCE:
-        exec_announce(item->device_id,
-                      item->target_id,   /* device class packed as uint32 */
-                      (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
-                      item->duration_sec);
+        exec_announce(item->device_id, item->target_id, /* device class packed as uint32 */
+                      (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->duration_sec);
         break;
     case CCA_CMD_HYBRID_PAIR:
-        exec_hybrid_pair(item->device_id,
-                         item->target_id,   /* device class for B0 announce */
-                         (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
-                         item->zone_byte,
+        exec_hybrid_pair(item->device_id, item->target_id, /* device class for B0 announce */
+                         (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->zone_byte,
                          item->duration_sec);
         break;
     default:
