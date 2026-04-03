@@ -82,6 +82,10 @@ certs/
 # CCX sequence counter
 .ccx-seq
 
+# Designer project tool state
+.designer-project-state.json
+.designer-sysfiles1-page.bin
+
 # SQLite databases
 *.db
 

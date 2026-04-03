@@ -8,7 +8,8 @@
  *
  * This converter: SCP .bak to VM → RESTORE into LocalDB → run conversion SQL
  * → BACKUP → SCP back. Uses the same LocalDB instance as Designer to ensure
- * backup format compatibility (Docker MSSQL produces incompatible backups).
+ * backup format compatibility. See also designer-project.ts for Docker-based
+ * read/write without the VM (uses SQL Server 2022 RTM pinned image).
  */
 
 import "../lib/env"; // load .env
