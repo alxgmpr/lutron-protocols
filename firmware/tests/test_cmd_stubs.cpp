@@ -79,4 +79,12 @@ bool cca_tdma_is_paused(void) { return false; }
 bool cca_tdma_is_idle(void) { return true; }
 void cca_tdma_cancel_groups(void) {}
 
+/* -----------------------------------------------------------------------
+ * cca_auto_pair stubs
+ * ----------------------------------------------------------------------- */
+void cca_auto_pair_start(uint32_t /*hub*/, uint32_t /*cls*/, uint16_t /*sub*/,
+                         uint8_t /*zone*/, uint8_t /*dur*/) {}
+void cca_auto_pair_stop(void) {}
+void cca_auto_pair_poll(void) {}
+
 } /* extern "C" */

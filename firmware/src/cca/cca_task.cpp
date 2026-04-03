@@ -14,6 +14,7 @@
 #include "cca_task.h"
 #include "cca_commands.h"
 #include "cca_tdma.h"
+#include "cca_auto_pair.h"
 #include "cca_tx_builder.h"
 #include "cca_timer.h"
 #include "cc1101.h"
@@ -322,6 +323,13 @@ static void cca_task_func(void* param)
         /* Poll RX frequently; CCA bursts can overflow CC1101 FIFO in a few ms.
          * TDMA engine determines poll interval (1ms near slot edges, 2ms otherwise). */
         uint32_t tdma_poll_ms = cca_tdma_poll(HAL_GetTick());
+
+        /* TDMA TX causes GDO0 to assert (sync word sent), posting a stale
+         * task notification. If we don't clear it, the drain loop burns 18ms
+         * waiting for RX data that doesn't exist — killing all RX windows.
+         * Clear any stale notification left over from TX before waiting. */
+        ulTaskNotifyTake(pdTRUE, 0); /* non-blocking consume */
+
         TickType_t wait_ticks = pdMS_TO_TICKS(tdma_poll_ms > 0 ? tdma_poll_ms : CCA_MAIN_POLL_MS);
         if (wait_ticks == 0) wait_ticks = 1;
         uint32_t notified = ulTaskNotifyTake(pdTRUE, wait_ticks);
@@ -400,6 +408,28 @@ static void cca_task_func(void* param)
                     /* Unsupported command — fall back to blocking execute */
                     cca_cmd_execute(&cmd_item);
                 }
+            }
+        }
+
+        /* Non-blocking auto-pair state machine */
+        cca_auto_pair_poll();
+
+        /* Diagnostic: periodic radio state check (every ~2 seconds) */
+        {
+            static uint32_t diag_next = 0;
+            uint32_t now_diag = HAL_GetTick();
+            if (now_diag >= diag_next) {
+                diag_next = now_diag + 2000;
+                uint8_t marc = cc1101_read_status_register(0x35) & 0x1F; /* MARCSTATE */
+                uint8_t rxb = cc1101_read_status_register(0x3B) & 0x7F;  /* RXBYTES */
+                char buf[160];
+                int n = snprintf(buf, sizeof(buf),
+                    "[diag] rx_active=%d marc=0x%02X rxbytes=%u rx=%lu tx=%lu overflow=%lu restart=%lu",
+                    cc1101_is_rx_active() ? 1 : 0, marc, rxb,
+                    (unsigned long)rx_count, (unsigned long)tx_count,
+                    (unsigned long)cc1101_overflow_count(),
+                    (unsigned long)cc1101_rx_restart_manual_count());
+                stream_broadcast_text(buf, (size_t)n);
             }
         }
     }
@@ -483,6 +513,11 @@ void cca_set_uart_log_enabled(bool enabled)
 bool cca_uart_log_enabled(void)
 {
     return cca_uart_log_enabled_;
+}
+
+void cca_flush_rx(void)
+{
+    flush_rx_pending();
 }
 
 void cca_reset_stats(void)

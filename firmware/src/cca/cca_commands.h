@@ -39,6 +39,8 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_DIM_CONFIG = 0x16,      /* Dimming config (format 0x13) */
     CCA_CMD_ANNOUNCE = 0x17,        /* Spoofed B0 device announce */
     CCA_CMD_HYBRID_PAIR = 0x18,     /* Hybrid Vive→RA3 pairing (B9 beacon + bridge ID config) */
+    CCA_CMD_AUTO_PAIR = 0x19,       /* Non-blocking auto-pair (B9 beacon + B0 announce via TDMA) */
+    CCA_CMD_AUTO_PAIR_STOP = 0x1A,  /* Stop auto-pair engine */
 };
 
 /* -----------------------------------------------------------------------

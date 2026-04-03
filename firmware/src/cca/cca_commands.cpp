@@ -11,6 +11,7 @@
 
 #include "cca_commands.h"
 #include "cca_pairing.h"
+#include "cca_auto_pair.h"
 #include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
@@ -1595,6 +1596,14 @@ void cca_cmd_execute(const CcaCmdItem* item)
     case CCA_CMD_HYBRID_PAIR:
         /* Handled by cca_pairing module */
         cca_pairing_execute(item);
+        break;
+    case CCA_CMD_AUTO_PAIR:
+        cca_auto_pair_start(item->device_id, item->target_id,
+                            (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
+                            item->zone_byte, item->duration_sec);
+        break;
+    case CCA_CMD_AUTO_PAIR_STOP:
+        cca_auto_pair_stop();
         break;
     default:
         printf("[cca] Unknown command type: 0x%02X\r\n", item->cmd);

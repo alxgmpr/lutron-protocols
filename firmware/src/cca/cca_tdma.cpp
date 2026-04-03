@@ -701,15 +701,20 @@ uint32_t cca_tdma_poll(uint32_t now_ms)
         }
     }
 
-    /* Fire due job group packets */
-    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
-        TdmaJobGroup* g = &groups_[i];
-        if (!g->active) continue;
+    /* Fire due job group packets — allow multiple groups to interleave
+     * (e.g. beacon + announce + handshake in the same frame). Cap at 3
+     * to keep the poll cycle short enough for RX responsiveness. */
+    {
+        int fired = 0;
+        for (size_t i = 0; i < TDMA_MAX_GROUPS && fired < 3; i++) {
+            TdmaJobGroup* g = &groups_[i];
+            if (!g->active) continue;
 
-        int32_t until = (int32_t)(g->next_fire_ms - now_ms);
-        if (until <= 0) {
-            fire_group_packet(g, now_ms);
-            break; /* at most one TX per poll cycle */
+            int32_t until = (int32_t)(g->next_fire_ms - now_ms);
+            if (until <= 0) {
+                fire_group_packet(g, now_ms);
+                fired++;
+            }
         }
     }
 

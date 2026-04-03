@@ -598,12 +598,115 @@ bool cc1101_transmit_raw(const uint8_t* data, size_t len)
         }
     }
 
+    /* Wait for TX to finish. Check for ALL non-TX states, not just IDLE/RX.
+     * Critical: infinite-length mode (>64 bytes) ends in TX_UNDERFLOW (0x16),
+     * not IDLE or RX. Missing this state caused a 200ms timeout per long packet. */
     int timeout = 200;
     while (timeout-- > 0) {
         uint8_t s = cc1101_get_state();
-        if (s == 0x01 || s == 0x0D || s == 0x0E) break;
-        HAL_Delay(1);
+        if (s != 0x13 && s != 0x14 && s != 0x15) break; /* not TX/TX_END/SETTLING */
+        delay_us(100);
     }
+
+    /* If we ended in TX_UNDERFLOW (0x16) or RXFIFO_OVERFLOW (0x11),
+     * strobe IDLE to clear the error state before proceeding. */
+    {
+        uint8_t s = cc1101_get_state();
+        if (s == 0x16 || s == 0x11) {
+            cc1101_strobe(CC1101_SIDLE);
+            if (s == 0x16) cc1101_flush_tx();
+            if (s == 0x11) cc1101_flush_rx();
+        }
+    }
+
+    return true;
+}
+
+/* -----------------------------------------------------------------------
+ * Fast TX + immediate RX resume.
+ *
+ * CC1101 config registers MUST only be written in IDLE state (datasheet
+ * Section 10.6). So the sequence is:
+ *   1. IDLE (from RX)
+ *   2. Configure TX mode registers, load FIFO, strobe STX
+ *   3. Spin-wait TX complete (us-granularity — no HAL_Delay)
+ *   4. Radio lands in IDLE (we override MCSM1 TXOFF to IDLE for this)
+ *   5. Write RX config registers (we're in IDLE — safe)
+ *   6. Strobe SRX — listening again
+ *
+ * Dead time after TX = ~0.3ms (5 register writes + SRX strobe).
+ * Compare old path: ~4ms (HAL_Delay + calibration + flush).
+ * ----------------------------------------------------------------------- */
+bool cc1101_transmit_and_resume_rx(const uint8_t* data, size_t len)
+{
+    if (!initialized_ || len == 0) return false;
+
+    /* 1. Exit RX → IDLE */
+    cc1101_strobe(CC1101_SIDLE);
+    for (int i = 0; i < 500; i++) {
+        if ((cc1101_read_status_register(CC1101_MARCSTATE) & 0x1F) == 0x01) break;
+        delay_us(10);
+    }
+
+    /* 2. Override TXOFF to IDLE so we land in a known state after TX.
+     * (Default MCSM1=0x0F has TXOFF=RX which would enter RX with wrong config.) */
+    cc1101_write_register(CC1101_MCSM1, 0x0C); /* RXOFF=stay-in-RX, TXOFF=IDLE */
+
+    /* Configure for TX: no hardware sync (N81 encoder includes preamble+sync) */
+    cc1101_write_register(CC1101_MDMCFG2, 0x00);
+    cc1101_flush_tx();
+
+    /* Load FIFO and strobe TX */
+    if (len <= 64) {
+        cc1101_write_register(CC1101_PKTCTRL0, 0x00);
+        cc1101_write_register(CC1101_PKTLEN, (uint8_t)len);
+        cc1101_write_burst(CC1101_TXFIFO, data, len);
+        cc1101_strobe(CC1101_STX);
+    }
+    else {
+        cc1101_write_register(CC1101_PKTCTRL0, 0x02); /* infinite length */
+        cc1101_write_burst(CC1101_TXFIFO, data, 64);
+        size_t written = 64;
+        cc1101_strobe(CC1101_STX);
+        uint32_t refill_start = DWT->CYCCNT;
+        uint32_t refill_limit = 100 * (SystemCoreClock / 1000);
+        while (written < len) {
+            uint8_t tx_r = cc1101_read_status_register(CC1101_TXBYTES);
+            if (tx_r & 0x80) break;
+            if ((tx_r & 0x7F) < 48) {
+                size_t to_w = (len - written < 16) ? len - written : 16;
+                cc1101_write_burst(CC1101_TXFIFO, data + written, to_w);
+                written += to_w;
+            }
+            if ((DWT->CYCCNT - refill_start) > refill_limit) break;
+            delay_us(10);
+        }
+    }
+
+    /* 3. Spin-wait for TX complete → IDLE (us-granularity, no HAL_Delay) */
+    for (int i = 0; i < 20000; i++) {
+        uint8_t s = cc1101_read_status_register(CC1101_MARCSTATE) & 0x1F;
+        if (s == 0x01) break; /* IDLE — TX done */
+        delay_us(10);
+    }
+
+    /* 4. Now in IDLE — safe to write config registers.
+     * Restore MCSM1 to normal (TXOFF=RX, RXOFF=stay-in-RX). */
+    cc1101_write_register(CC1101_MCSM1, 0x0F);
+
+    /* 5. Configure for RX */
+    cc1101_write_register(CC1101_SYNC1, 0xAA);
+    cc1101_write_register(CC1101_SYNC0, 0xAA);
+    cc1101_write_register(CC1101_MDMCFG2, 0x01); /* 2-FSK, 15/16 sync match */
+    cc1101_write_register(CC1101_PKTCTRL0, 0x00); /* fixed-length */
+    cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
+
+    /* 6. Enter RX — no calibration needed (MCSM0 FS_AUTOCAL=01 handles
+     * IDLE→RX calibration automatically on the SRX strobe). */
+    accum_len_ = 0;
+    accum_active_ = false;
+    cc1101_strobe(CC1101_SRX);
+    rx_active_ = true;
 
     return true;
 }
