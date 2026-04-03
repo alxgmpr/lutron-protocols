@@ -11,7 +11,7 @@ user_invocable: true
 
 Makes all devices available across all product platforms in the Designer toolbox. Adds HW platform bits to all families/overrides, adds cross-platform models to the HW ProductMasterList, and adds HW LinkTypes to all link nodes.
 
-**CRITICAL**: Both SQLMODELINFO.MDF and SQLREFERENCEINFO.MDF reset on every Designer restart. Run this AFTER Designer starts, BEFORE opening a project (at the "remote services" prompt).
+**CRITICAL**: Both SQLMODELINFO.MDF and SQLREFERENCEINFO.MDF reset on every Designer restart. Run this AFTER Designer starts. Works with or without a project open — queries use fully-qualified `[dbname].dbo.table` syntax so any DB context works.
 
 ## Step 1: Discover Database Names
 
