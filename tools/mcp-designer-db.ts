@@ -4,7 +4,7 @@
  * MCP Server: Lutron Designer LocalDB
  *
  * Queries Designer's LocalDB via HTTP API running on the VM (sql-http-api.ps1).
- * Endpoints: /query (project DB), /query-modelinfo (SQLMODELINFO), /databases
+ * Endpoints: /query (project DB), /query-master (master DB), /query-modelinfo (SQLMODELINFO), /databases
  *
  * Falls back to SSH → PowerShell → sqlcmd if HTTP API is unreachable.
  */
@@ -175,10 +175,7 @@ if (-not $foundServer) {
 $sql = "SET NOCOUNT ON; SELECT TOP 1 name FROM sys.databases WHERE name = 'Project' OR name LIKE 'Project[_]%' ORDER BY CASE WHEN name = 'Project' THEN 0 ELSE 1 END, create_date DESC;"
 $db = (& sqlcmd -S $foundServer -E -No -d master -Q $sql -h -1 -W 2>$null | Select-Object -First 1)
 if ($db) { $db = $db.Trim() }
-if (-not $db) {
-  Write-Error "No project database found."
-  exit 1
-}
+if (-not $db) { $db = "master" }
 
 Write-Output "$foundServer"
 Write-Output "$db"
@@ -232,11 +229,15 @@ async function runSQL(
   timeout = DEFAULT_TIMEOUT,
   retried = false,
 ): Promise<string> {
-  // Try HTTP API first
+  // Try HTTP API first (project DB, then master fallback)
   try {
     return await httpQuery("/query", sql, timeout);
   } catch {
-    // Fall through to SSH
+    try {
+      return await httpQuery("/query-master", sql, timeout);
+    } catch {
+      // Fall through to SSH
+    }
   }
 
   const { pipe, database } = await discover();
@@ -269,16 +270,19 @@ async function runSQLFile(
   timeout = DEFAULT_TIMEOUT,
   retried = false,
 ): Promise<string> {
-  // Try HTTP API first
+  // Try HTTP API first (project DB, then master fallback)
+  const fileContent = readFileSync(filePath, "utf8");
   try {
-    const fileContent = readFileSync(filePath, "utf8");
     return await httpQuery("/query", fileContent, timeout);
   } catch {
-    // Fall through to SSH
+    try {
+      return await httpQuery("/query-master", fileContent, timeout);
+    } catch {
+      // Fall through to SSH
+    }
   }
 
   const { pipe, database } = await discover();
-  const fileContent = readFileSync(filePath, "utf8");
 
   const script = `
 $ErrorActionPreference = "Continue"
@@ -321,7 +325,7 @@ const server = new McpServer({
 // Tool: query
 server.tool(
   "query",
-  "Run arbitrary SQL against the Designer LocalDB project database. Returns pipe-delimited results. Uses HTTP API (fast) with SSH fallback.",
+  "Run arbitrary SQL against the Designer LocalDB. Returns pipe-delimited results. Uses project DB when available, falls back to master for cross-DB queries. HTTP API (fast) with SSH fallback.",
   {
     sql: z.string().describe("SQL query to execute"),
     timeout: z
@@ -532,4 +536,4 @@ server.tool(
 // ── Start ───────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
-await server.connect(transport);
+server.connect(transport);

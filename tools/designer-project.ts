@@ -20,6 +20,7 @@
  *   npx tsx tools/designer-project.ts close                     Drop database, stop container
  *   npx tsx tools/designer-project.ts status                    Show container/database status
  *   npx tsx tools/designer-project.ts run-sql <file.sql>        Run SQL script file
+ *   npx tsx tools/designer-project.ts add-device <area> <name> [--model <id>]  Add a device to an area
  */
 
 import { execFileSync, execSync } from "child_process";
@@ -785,6 +786,568 @@ function cmdRunSql(filePath: string): void {
   console.log(result);
 }
 
+// ── Add device ─────────────────────────────────────────────────────
+
+// Known CCA dimmer models. ModelInfoID comes from Designer's SQLMODELINFO DB.
+// BallastInfoModelInfoID is the fixture lighting reference for that model class.
+const CCA_DIMMER_MODELS: Record<
+  number,
+  { name: string; ballastInfoId: number }
+> = {
+  730: { name: "HQR-3LD", ballastInfoId: 3345 },
+  729: { name: "HQR-6LD", ballastInfoId: 3345 },
+  1300: { name: "RRD-6NA", ballastInfoId: 3345 },
+  1288: { name: "RRD-6CL", ballastInfoId: 3345 },
+  1294: { name: "RRD-10ND", ballastInfoId: 3345 },
+};
+
+function sqlVal(v: string | number | null): string {
+  if (v === null) return "NULL";
+  if (typeof v === "number") return String(v);
+  return `N'${v.replace(/'/g, "''")}'`;
+}
+
+function generateXid(): string {
+  // Base64url-encoded 16-byte UUID, matching Designer's Xid format
+  const bytes = Buffer.from(randomUUID().replace(/-/g, ""), "hex");
+  return bytes.toString("base64url");
+}
+
+function allocateIds(count: number): { firstId: number; nextId: number } {
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT NextObjectID FROM tblNextObjectID`,
+  );
+  const firstId = parseInt(result.trim(), 10);
+  if (isNaN(firstId)) throw new Error("Failed to read NextObjectID");
+  const nextId = firstId + count;
+  sqlcmd(`SET NOCOUNT ON; UPDATE tblNextObjectID SET NextObjectID = ${nextId}`);
+  return { firstId, nextId };
+}
+
+function findCcaLink(): { linkId: number; linkInfoId: number } {
+  // CCA link has LinkInfoID = 11
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT LinkID, LinkInfoID FROM tblLink WHERE LinkInfoID = 11`,
+  );
+  const line = result.trim();
+  if (!line) throw new Error("No CCA link (LinkInfoID=11) found in project");
+  const [linkId, linkInfoId] = line.split("\t").map((s) => parseInt(s, 10));
+  return { linkId, linkInfoId };
+}
+
+function findNextLinkAddress(linkId: number): number {
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT AddressOnLink FROM tblLinkNode WHERE LinkAssignedToID = ${linkId} ORDER BY AddressOnLink`,
+  );
+  const used = new Set(
+    result
+      .trim()
+      .split("\n")
+      .filter((l) => l.trim())
+      .map((l) => parseInt(l.trim(), 10)),
+  );
+  // Addresses start at 1, skip 255 (reserved for link owner)
+  for (let addr = 1; addr < 255; addr++) {
+    if (!used.has(addr)) return addr;
+  }
+  throw new Error("No available link addresses");
+}
+
+function findNextZoneNumber(areaId: number): number {
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT ISNULL(MAX(ZoneNumber), 0) FROM tblZone WHERE ParentID = ${areaId}`,
+  );
+  return parseInt(result.trim(), 10) + 1;
+}
+
+function findNextIntegrationId(): number {
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT ISNULL(MAX(IntegrationID), 0) FROM tblIntegrationID`,
+  );
+  return parseInt(result.trim(), 10) + 1;
+}
+
+function getAreaScenes(
+  areaId: number,
+): Array<{ sceneId: number; name: string }> {
+  const result = sqlcmd(
+    `SET NOCOUNT ON;
+SELECT s.SceneID, s.Name
+FROM tblScene s
+JOIN tblSceneController sc ON s.ParentSceneControllerID = sc.SceneControllerID
+WHERE sc.ParentID = ${areaId}
+ORDER BY s.SceneID`,
+  );
+  return result
+    .trim()
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => {
+      const [id, name] = l.split("\t");
+      return { sceneId: parseInt(id, 10), name: name?.trim() ?? "" };
+    });
+}
+
+function getSceneAssignmentCount(sceneId: number): number {
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT COUNT(*) FROM tblPresetAssignment WHERE ParentID = ${sceneId} AND ParentType = 41`,
+  );
+  return parseInt(result.trim(), 10);
+}
+
+function resolveArea(nameOrId: string): { areaId: number; areaName: string } {
+  // Try as numeric ID first
+  const asNum = parseInt(nameOrId, 10);
+  if (!isNaN(asNum)) {
+    const result = sqlcmd(
+      `SET NOCOUNT ON; SELECT AreaID, Name FROM tblArea WHERE AreaID = ${asNum}`,
+    );
+    const line = result.trim();
+    if (!line) throw new Error(`Area ID ${asNum} not found`);
+    const [id, name] = line.split("\t");
+    return { areaId: parseInt(id, 10), areaName: name?.trim() ?? "" };
+  }
+  // Try name match
+  const result = sqlcmd(
+    `SET NOCOUNT ON; SELECT AreaID, Name FROM tblArea WHERE Name = ${sqlVal(nameOrId)}`,
+  );
+  const lines = result
+    .trim()
+    .split("\n")
+    .filter((l) => l.trim());
+  if (lines.length === 0) throw new Error(`Area "${nameOrId}" not found`);
+  if (lines.length > 1)
+    throw new Error(`Multiple areas named "${nameOrId}" — use area ID instead`);
+  const [id, name] = lines[0].split("\t");
+  return { areaId: parseInt(id, 10), areaName: name?.trim() ?? "" };
+}
+
+// Default scene levels: Off=0, Scene001=100, 002=75, 003=50, 004=25, others=100
+function defaultSceneLevel(sceneName: string): number {
+  if (/off/i.test(sceneName)) return 0;
+  const m = sceneName.match(/Scene\s*0*(\d+)/i);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    if (num === 1) return 100;
+    if (num === 2) return 75;
+    if (num === 3) return 50;
+    if (num === 4) return 25;
+  }
+  return 100;
+}
+
+function cmdAddDevice(areaName: string, deviceName: string): void {
+  requireState();
+
+  const getArg = (name: string) => {
+    const i = args.indexOf(name);
+    return i !== -1 ? args[i + 1] : undefined;
+  };
+
+  const modelId = parseInt(getArg("--model") ?? "730", 10);
+  const model = CCA_DIMMER_MODELS[modelId];
+  if (!model)
+    throw new Error(
+      `Unknown model ID ${modelId}. Known: ${Object.entries(CCA_DIMMER_MODELS)
+        .map(([k, v]) => `${k}=${v.name}`)
+        .join(", ")}`,
+    );
+
+  const { areaId, areaName: resolvedAreaName } = resolveArea(areaName);
+  console.log(
+    `Adding ${model.name} (${modelId}) to area "${resolvedAreaName}" (${areaId}) as "${deviceName}"...`,
+  );
+
+  // Find CCA link
+  const { linkId } = findCcaLink();
+  const linkAddress = findNextLinkAddress(linkId);
+  const zoneNumber = findNextZoneNumber(areaId);
+  const nextIID = findNextIntegrationId();
+  const scenes = getAreaScenes(areaId);
+
+  // Count IDs needed:
+  // CS, ES_cs, CSD, ES_csd, LN, SLC, ZCUI, SFPAM, BG, KB, PM,
+  // Preset×4, Zone, shared(Zonable/SL/DL), FA, Fixture(+FL),
+  // PA for scenes + PA for 4 button presets
+  const sceneCount = scenes.length;
+  const paCount = sceneCount + 4; // scene PAs + button preset PAs
+  const idCount = 19 + paCount; // 19 fixed objects + preset assignments
+  const { firstId } = allocateIds(idCount);
+
+  let id = firstId;
+  const csId = id++;
+  const esCSId = id++;
+  const csdId = id++;
+  const esCSDId = id++;
+  const lnId = id++;
+  const slcId = id++;
+  const zcuiId = id++;
+  const sfpamId = id++;
+  const bgId = id++;
+  const kbId = id++;
+  const pmId = id++;
+  const presetOnId = id++;
+  const presetOffId = id++;
+  const presetDtId = id++;
+  const presetHoldId = id++;
+  const zoneId = id++;
+  const sharedId = id++; // ZonableID = SwitchLegID = DaylightableID
+  const faId = id++;
+  const fixtureId = id++;
+  // Remaining IDs for preset assignments
+  const scenePaIds = scenes.map(() => id++);
+  const buttonPaOnId = id++;
+  const buttonPaDtId = id++;
+  const buttonPaOffId = id++;
+  const buttonPaHoldId = id++;
+
+  // Get existing CS SortOrder max for this area
+  const csSortResult = sqlcmd(
+    `SET NOCOUNT ON; SELECT ISNULL(MAX(SortOrder), -1) FROM tblControlStation WHERE ParentId = ${areaId}`,
+  );
+  const csSortOrder = parseInt(csSortResult.trim(), 10) + 1;
+
+  // Get existing Zone SortOrder max for this area
+  const zoneSortResult = sqlcmd(
+    `SET NOCOUNT ON; SELECT ISNULL(MAX(SortOrder), -1) FROM tblZone WHERE ParentID = ${areaId}`,
+  );
+  const zoneSortOrder = parseInt(zoneSortResult.trim(), 10) + 1;
+
+  // Build all INSERTs as a single transaction
+  const statements: string[] = [];
+  const s = (sql: string) => statements.push(sql);
+
+  const guid = () => randomUUID().toUpperCase();
+  const xid = () => generateXid();
+  const WUI = 2147483647; // WhereUsedId sentinel
+
+  // 1. ControlStation
+  s(`INSERT INTO tblControlStation (ControlStationID, ParentId, ParentType, Name, ColorInfoId,
+    DesignRevision, DatabaseRevision, BoxNumber, SortOrder, CustomSortOrder, ShadeGroupCount,
+    HasTranslucentCover, UsePicoPedestal, PicoAdapterKitRequired, CustomFaceplateModelNumber,
+    WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, Guid, Xid)
+    VALUES (${csId}, ${areaId}, 2, ${sqlVal(deviceName)}, 18,
+    1, 0, N'', ${csSortOrder}, ${csSortOrder}, 0,
+    0, 0, 1, N'',
+    ${WUI}, NULL, NULL, NULL, NULL, ${sqlVal(guid())}, ${sqlVal(xid())})`);
+
+  // 2. EngravingStyle for CS
+  s(`INSERT INTO tblEngravingStyle (EngravingStyleID, Name, DesignRevision, DatabaseRevision,
+    SortOrder, FontType, FontSize, FontAlignment, ParentID, ParentDeviceType, WhereUsedId,
+    TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, EngravingStyleType, Xid)
+    VALUES (${esCSId}, N'Faceplate Engraving', 0, 0,
+    0, 1, 12, 2, ${csId}, 4, ${WUI},
+    NULL, NULL, NULL, NULL, 2, ${sqlVal(xid())})`);
+
+  // 3. ControlStationDevice
+  s(`INSERT INTO tblControlStationDevice (ControlStationDeviceID, Name, DesignRevision, DatabaseRevision,
+    SortOrder, ModelInfoID, ModelIsLocked, ProgrammingID, RFDeviceSlot, SerialNumber, SerialNumberState,
+    GangPosition, NumberOfFinsBroken, IsManuallyProgrammed, ParentControlStationID, HardwareRevision,
+    IsAuto, Notes, AppliedEngravingType, PowerSupplyOutputAssignedToID, OrderOnCommunicationLink,
+    IsSceneSaveEnabled, MasterSliderID, CustomButtonKitModelNumber, Comments, AssociatedTemplateId,
+    WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber,
+    BacklightLevel, QuickTestStatus, InputReceived, AssociatedFixtureAssignmentID,
+    IsEmergencyController, ProcessorAssignedViaEthernet, Guid, Xid)
+    VALUES (${csdId}, N'Device 1', 1, 0,
+    0, ${modelId}, 0, 0, 0, 0, 0,
+    0, 0, 0, ${csId}, 0,
+    0, N'', 0, NULL, 27,
+    0, 0, N'', N'', 545,
+    ${WUI}, NULL, NULL, NULL, NULL,
+    0, 0, 0, NULL,
+    0, NULL, ${sqlVal(guid())}, ${sqlVal(xid())})`);
+
+  // 4. EngravingStyle for CSD
+  s(`INSERT INTO tblEngravingStyle (EngravingStyleID, Name, DesignRevision, DatabaseRevision,
+    SortOrder, FontType, FontSize, FontAlignment, ParentID, ParentDeviceType, WhereUsedId,
+    TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, EngravingStyleType, Xid)
+    VALUES (${esCSDId}, N'Button Engraving', 0, 0,
+    0, 1, 10, 1, ${csdId}, 5, ${WUI},
+    NULL, NULL, NULL, NULL, 1, ${sqlVal(xid())})`);
+
+  // 5. LinkNode
+  s(`INSERT INTO tblLinkNode (LinkNodeID, Name, DesignRevision, DatabaseRevision, SortOrder,
+    AddressOnLink, LinkAssignedToID, LinkNodeNumber, ModelInfoID, LinkType, ParentDeviceID,
+    ParentDeviceType, IsLinkOwner, IsLinkMaster, WhereUsedId, ObjectActivationState,
+    TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, IsBallastAddressed, Xid)
+    VALUES (${lnId}, N'Link Node 001', 1, 0, 0,
+    ${linkAddress}, ${linkId}, 1, ${modelId}, 11, ${csdId},
+    5, 0, 0, ${WUI}, 0,
+    NULL, NULL, NULL, NULL, 0, ${sqlVal(xid())})`);
+
+  // 6. SwitchLegController
+  s(`INSERT INTO tblSwitchLegController (SwitchLegControllerID, Name, DesignRevision, DatabaseRevision,
+    SortOrder, AccessoryControlType, IsSpare, OutputNumber, ParentDeviceID, ParentDeviceType,
+    PowerBoosterModelInfoId, PowerBoosterChainCount, ObjectType, NumberOfChannels, AChannel, BChannel,
+    CChannel, DaliEmergencyTestGroupId, NeedsTransfer, IsInvalidLoadInterfaceSolution, CustomSortOrder,
+    WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, DimmingCurveType, Xid)
+    VALUES (${slcId}, N'Switch Leg Controller 001', 1, 0,
+    0, 0, 0, 1, ${csdId}, 5,
+    NULL, 0, 3, NULL, NULL, NULL,
+    NULL, NULL, 0, 0, 0,
+    ${WUI}, NULL, NULL, NULL, NULL, 255, ${sqlVal(xid())})`);
+
+  // 7. ZoneControlUI
+  s(`INSERT INTO tblZoneControlUI (ZoneControlUIID, Name, DesignRevision, DatabaseRevision, SortOrder,
+    AssignedZoneID, ControlNumber, DoubleTapFadeTimeOrRateValue, DoubleTapFadeType, IsSpare,
+    LocalButtonDoubleTapPresetLevel, LocalButtonPresetLevel, LongFadeToOffPrefadeTime,
+    LongFadeToOffTimeOrRateValue, LongFadeToOffType, PressFadeOffTimeOrRateValue, PressFadeOffType,
+    PressFadeOnTimeOrRateValue, PressFadeOnType, RaiseLowerRate, SaveAlways, ParentDeviceID,
+    ParentDeviceType, ObjectType, IsRemoteZone, TemperatureUnitType, SeeTempModeLedIntensityType,
+    TemperatureLedIntensityType, SliderLowEndType, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, ZoneOnIndicatorIntensity, ZoneOffIndicatorIntensity, Xid)
+    VALUES (${zcuiId}, N'Zone Control UI 001', 1, 0, 0,
+    ${zoneId}, 1, 2, 2, 0,
+    255, 190, 30,
+    40, 1, 1, 2,
+    1, 1, 20, 0, ${csdId},
+    5, 9, 0, NULL, NULL,
+    NULL, 255, ${WUI}, NULL, NULL,
+    NULL, NULL, 255, 255, ${sqlVal(xid())})`);
+
+  // 8. ShortFormPropertyAddressMap (CCA only)
+  s(`INSERT INTO tblShortFormPropertyAddressMap (ShortFormPropertyAddressMapID, Name, DesignRevision,
+    DatabaseRevision, SortOrder, ShrtFrmPropAddrMapInfoID, PropertyAddress, LinkAssignedToID,
+    ParentDeviceID, ParentDeviceType, WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+    TemplateInstanceNumber)
+    VALUES (${sfpamId}, N'Short Form Property Address Map 001', 1,
+    0, 0, 74, ${linkAddress}, ${linkId},
+    ${csdId}, 5, ${WUI}, NULL, NULL, NULL,
+    NULL)`);
+
+  // 9. ButtonGroup
+  s(`INSERT INTO tblButtonGroup (ButtonGroupID, Name, DatabaseRevision, SortOrder, ButtonGroupInfoID,
+    ButtonGroupProgrammingType, Notes, ParentDeviceID, ParentDeviceType, ButtonGroupObjectType,
+    StndAlnQSTmplBtnGrpInfoID, IsValid, ButtonGroupType, LastButtonPressRaiseLowerEvent, WhereUsedId,
+    TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, Xid)
+    VALUES (${bgId}, N'Button Group 001', 0, 0, 439,
+    1, N'', ${csdId}, 5, 1,
+    NULL, 1, 8, 0, ${WUI},
+    NULL, NULL, NULL, NULL, ${sqlVal(xid())})`);
+
+  // 10. KeypadButton
+  s(`INSERT INTO tblKeypadButton (ButtonID, Name, DatabaseRevision, SortOrder, BacklightLevel,
+    ButtonNumber, ButtonInfoId, CorrespondingLedId, ButtonType, ContactClosureInputNormalState,
+    ProgrammingModelID, ComponentNumber, ParentDeviceID, ParentDeviceType, WhereUsedId,
+    TemplateID, TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, Xid)
+    VALUES (${kbId}, N'Button 0', 0, 0, 255,
+    0, NULL, NULL, 1, 0,
+    ${pmId}, NULL, ${csdId}, 5, ${WUI},
+    NULL, NULL, NULL, NULL, ${sqlVal(xid())})`);
+
+  // 11. ProgrammingModel
+  s(`INSERT INTO tblProgrammingModel (ProgrammingModelID, ObjectType, Name, DatabaseRevision, SortOrder,
+    LedLogic, UseReverseLedLogic, Notes, ReferencePresetIDForLed, AllowDoubleTap, HeldButtonAction,
+    HoldTime, StopQedShadesIfMoving, PresetID, DoubleTapPresetID, HoldPresetId, PressPresetID,
+    ReleasePresetID, OnPresetID, OffPresetID, Direction, ControlType, VariableId, ThreeWayToggle,
+    ParentID, ParentType, NeedsTransfer, WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+    TemplateInstanceNumber, Xid)
+    VALUES (${pmId}, 74, N'ATPM', 0, 0,
+    13, 0, N'', NULL, 1, 0,
+    0, 0, NULL, ${presetDtId}, ${presetHoldId}, NULL,
+    NULL, ${presetOnId}, ${presetOffId}, NULL, 0, NULL, NULL,
+    ${kbId}, 57, 1, ${WUI}, NULL, NULL, NULL,
+    NULL, ${sqlVal(xid())})`);
+
+  // 12-15. Presets (Press On, Off Level, Double Tap, Hold)
+  for (const [pid, pname] of [
+    [presetOnId, "Press On"],
+    [presetOffId, "Off Level"],
+    [presetDtId, "Double Tap"],
+    [presetHoldId, "Hold"],
+  ] as const) {
+    s(`INSERT INTO tblPreset (PresetID, Name, DatabaseRevision, SortOrder, ParentID, ParentType,
+      NeedsTransfer, PresetType, WhereUsedId, TemplateID, TemplateUsedID, TemplateReferenceID,
+      TemplateInstanceNumber, IsGPDPreset, SmartProgrammingDefaultGUID, Xid)
+      VALUES (${pid}, ${sqlVal(pname)}, 0, 0, ${pmId}, 74,
+      1, 1, ${WUI}, NULL, NULL, NULL,
+      NULL, 0, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+  }
+
+  // 16. Zone
+  s(`INSERT INTO tblZone (ZoneID, ParentID, Name, DesignRevision, DatabaseRevision, ZoneNumber,
+    ShadeGroupAssignedToID, SortOrder, AddressOnLink, ZoneDescription, RaiseLowerConfiguration,
+    ControlType, ObjectType, WhereUsedId, ZoneColorInfo, ObjectActivationState, TemplateID,
+    TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, ZoneConfiguration, ZoneLayer, Guid, Xid)
+    VALUES (${zoneId}, ${areaId}, ${sqlVal(deviceName)}, 1, 0, ${zoneNumber},
+    NULL, ${zoneSortOrder}, NULL, N'', 0,
+    1, 15, ${WUI}, 10, 0, NULL,
+    NULL, NULL, NULL, 1, 0, ${sqlVal(guid())}, ${sqlVal(xid())})`);
+
+  // 17a. Zonable (shared ID)
+  s(`INSERT INTO tblZonable (ZonableID, ZonableObjectType, AssociatedZoneID, ControllerID, ControllerType)
+    VALUES (${sharedId}, 10, ${zoneId}, ${slcId}, 3)`);
+
+  // 17b. SwitchLeg (shared ID, ParentID = areaId)
+  s(`INSERT INTO tblSwitchLeg (SwitchLegID, ParentID, Name, DesignRevision, DatabaseRevision,
+    OverrideFixtureID, Gain, SortOrder, OutputNumberOnLink, AbsoluteMinimumLevel, BurnInTime,
+    ElectronicBypassLevel, HighEnd, InrushDelay, LampRunHoursThreshold, LowEnd, ManualOverrideLevel,
+    AbsoluteMaximumLevel, IsNightLight, EmergencyModeType, ProgrammedOffLevel, LoadType,
+    ControllableOutputNumber, Feed, ObjectType, AFCI, BallastInterfaceID, LampLifeExpectancy,
+    LampPreWarningTime, WhereUsedId, ObjectActivationState, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, ELCDModelInfoID, Xid)
+    VALUES (${sharedId}, ${areaId}, ${sqlVal(String(zoneNumber))}, 1, 0,
+    NULL, NULL, ${zoneSortOrder}, 65535, 0, 100,
+    0, 90, 0, 10000, 5, 100,
+    100, 0, 1, 0, 1,
+    NULL, NULL, 10, 0, NULL, 20000,
+    100, ${WUI}, 0, NULL, NULL,
+    NULL, NULL, NULL, ${sqlVal(xid())})`);
+
+  // 17c. Daylightable (shared ID)
+  s(`INSERT INTO tblDaylightable (DaylightableID, DaylightableObjectType, GainGroupID, DaylightingDesignType)
+    VALUES (${sharedId}, 10, NULL, 1)`);
+
+  // 18. Fixture (must be before FixtureAssignment due to FK)
+  s(`INSERT INTO tblFixture (FixtureID, Name, DesignRevision, DatabaseRevision, ManufacturerModel,
+    ManufacturerName, Notes, PriceCurrency, PriceValue, LoadTypePropertyType, LoadType, Voltage,
+    FixtureWattage, SortOrder, ParentID, ParentType, ObjectType, FixtureDescription, FixtureInfoID,
+    PhaseControl, AssociatedFixtureGroupId, FixtureControllerModelInfo, WhereUsedId, TemplateID,
+    TemplateUsedID, TemplateReferenceID, TemplateInstanceNumber, Xid)
+    VALUES (${fixtureId}, N'Override Fixture', 1, 0, N'',
+    N'', N'', N'', 0, 4, 1, 4,
+    10, -1, ${faId}, 7, 6, N'', 0,
+    0, NULL, NULL, ${WUI}, NULL,
+    NULL, NULL, NULL, ${sqlVal(xid())})`);
+
+  // 19. FixtureAssignment
+  s(`INSERT INTO tblFixtureAssignment (FixtureAssignmentID, ParentID, ParentType, Name, DesignRevision,
+    DatabaseRevision, NumberofFixtures, SortOrder, FixtureID, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, Xid)
+    VALUES (${faId}, ${sharedId}, 10, N'FixtureAssignment 001', 1,
+    0, 1, 0, ${fixtureId}, ${WUI}, NULL, NULL,
+    NULL, NULL, ${sqlVal(xid())})`);
+
+  // 20. FixtureLighting
+  s(`INSERT INTO tblFixtureLighting (FixtureID, BallastInfoModelInfoID, BallastInterfaceModelInfoID,
+    BlipTimeOffset, BlipWidth, ElectronicBypassTime, LampQuantity, LampWattage, LoadInterfaceModelInfoID,
+    LoadInterfaceQuantity, Softstart, VoltageCompensationDisabled, VoltageCompensationAlgorithm,
+    BlankingPulse, FrequencyFiltering, SoftwarePll, Slushing, LampType, DimmingRange, LowEnd, HighEnd,
+    PhysicalLowEnd, PhysicalHighEnd, AbsoluteMinimumLevel, BallastFactor, SizeID, DefaultControlsID,
+    MountingTypeID, OptionsID, LampLifeExpectancy, TemplateID, TemplateUsedID, TemplateReferenceID,
+    TemplateInstanceNumber)
+    VALUES (${fixtureId}, ${model.ballastInfoId}, NULL,
+    0, 6, 0, 1, 0, NULL,
+    0, 1, 0, 0,
+    1, 1, 0, 3, 0, 0, 5, 90,
+    2700, 6000, 0, 1.0, 0, 0,
+    0, 0, 20000, NULL, NULL, NULL,
+    NULL)`);
+
+  // 20. DeviceLookup ×3
+  s(`INSERT INTO tblDeviceLookup (DeviceObjectID, ComponentNumber, ObjectID, ObjectType, SystemID)
+    VALUES (${csdId}, 3, ${zcuiId}, 9, NULL)`);
+  s(`INSERT INTO tblDeviceLookup (DeviceObjectID, ComponentNumber, ObjectID, ObjectType, SystemID)
+    VALUES (${csdId}, 5, ${sfpamId}, 138, NULL)`);
+  s(`INSERT INTO tblDeviceLookup (DeviceObjectID, ComponentNumber, ObjectID, ObjectType, SystemID)
+    VALUES (${csdId}, 5, ${sfpamId}, 138, NULL)`);
+
+  // 21. IntegrationID ×2
+  s(`INSERT INTO tblIntegrationID (DomainControlBaseObjectID, IntegrationID, DomainControlBaseObjectType)
+    VALUES (${csdId}, ${nextIID}, 5)`);
+  s(`INSERT INTO tblIntegrationID (DomainControlBaseObjectID, IntegrationID, DomainControlBaseObjectType)
+    VALUES (${zoneId}, ${nextIID + 1}, 15)`);
+
+  // 22. PresetAssignments for area scenes
+  for (let i = 0; i < scenes.length; i++) {
+    const scene = scenes[i];
+    const paId = scenePaIds[i];
+    const sortOrder = getSceneAssignmentCount(scene.sceneId);
+    const level = defaultSceneLevel(scene.name);
+    s(`INSERT INTO tblPresetAssignment (PresetAssignmentID, Name, DatabaseRevision, SortOrder,
+      ParentID, ParentType, AssignableObjectID, AssignableObjectType, AssignmentCommandType,
+      NeedsTransfer, AssignmentCommandGroup, WhereUsedId, TemplateID, TemplateUsedID,
+      TemplateReferenceID, TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+      VALUES (${paId}, N'''', 0, ${sortOrder},
+      ${scene.sceneId}, 41, ${zoneId}, 15, 2,
+      1, 1, ${WUI}, NULL, NULL,
+      NULL, NULL, 0, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+    // 3 command parameters per scene PA: PT1=fade(8), PT2=delay(0), PT3=level
+    s(`INSERT INTO tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+      VALUES (0, ${paId}, 1, 8), (1, ${paId}, 2, 0), (2, ${paId}, 3, ${level})`);
+  }
+
+  // 23. PresetAssignments for button presets (IsDimmerLocalLoad=1)
+  // Press On preset
+  s(`INSERT INTO tblPresetAssignment (PresetAssignmentID, Name, DatabaseRevision, SortOrder,
+    ParentID, ParentType, AssignableObjectID, AssignableObjectType, AssignmentCommandType,
+    NeedsTransfer, AssignmentCommandGroup, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+    VALUES (${buttonPaOnId}, N'''', 0, 0,
+    ${presetOnId}, 43, ${zoneId}, 15, 2,
+    1, 1, ${WUI}, NULL, NULL,
+    NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+  s(`INSERT INTO tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+    VALUES (0, ${buttonPaOnId}, 2, 0), (1, ${buttonPaOnId}, 1, 1), (2, ${buttonPaOnId}, 3, 75)`);
+
+  // Double Tap preset
+  s(`INSERT INTO tblPresetAssignment (PresetAssignmentID, Name, DatabaseRevision, SortOrder,
+    ParentID, ParentType, AssignableObjectID, AssignableObjectType, AssignmentCommandType,
+    NeedsTransfer, AssignmentCommandGroup, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+    VALUES (${buttonPaDtId}, N'''', 0, 0,
+    ${presetDtId}, 43, ${zoneId}, 15, 2,
+    1, 1, ${WUI}, NULL, NULL,
+    NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+  s(`INSERT INTO tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+    VALUES (0, ${buttonPaDtId}, 2, 0), (1, ${buttonPaDtId}, 1, 0), (2, ${buttonPaDtId}, 3, 100)`);
+
+  // Off Level preset
+  s(`INSERT INTO tblPresetAssignment (PresetAssignmentID, Name, DatabaseRevision, SortOrder,
+    ParentID, ParentType, AssignableObjectID, AssignableObjectType, AssignmentCommandType,
+    NeedsTransfer, AssignmentCommandGroup, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+    VALUES (${buttonPaOffId}, N'''', 0, 0,
+    ${presetOffId}, 43, ${zoneId}, 15, 2,
+    1, 1, ${WUI}, NULL, NULL,
+    NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+  s(`INSERT INTO tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+    VALUES (0, ${buttonPaOffId}, 2, 0), (1, ${buttonPaOffId}, 1, 1), (2, ${buttonPaOffId}, 3, 0)`);
+
+  // Hold preset
+  s(`INSERT INTO tblPresetAssignment (PresetAssignmentID, Name, DatabaseRevision, SortOrder,
+    ParentID, ParentType, AssignableObjectID, AssignableObjectType, AssignmentCommandType,
+    NeedsTransfer, AssignmentCommandGroup, WhereUsedId, TemplateID, TemplateUsedID,
+    TemplateReferenceID, TemplateInstanceNumber, IsDimmerLocalLoad, SmartProgrammingDefaultGUID, Xid)
+    VALUES (${buttonPaHoldId}, N'''', 0, 0,
+    ${presetHoldId}, 43, ${zoneId}, 15, 2,
+    1, 1, ${WUI}, NULL, NULL,
+    NULL, NULL, 1, '00000000-0000-0000-0000-000000000000', ${sqlVal(xid())})`);
+  s(`INSERT INTO tblAssignmentCommandParameter (SortOrder, ParentId, ParameterType, ParameterValue)
+    VALUES (0, ${buttonPaHoldId}, 2, 30), (1, ${buttonPaHoldId}, 1, 40), (2, ${buttonPaHoldId}, 3, 0)`);
+
+  // Execute all statements in a transaction
+  const fullSql = `SET NOCOUNT ON;
+BEGIN TRANSACTION;
+BEGIN TRY
+${statements.join(";\n")};
+COMMIT;
+SELECT 'OK' AS result;
+END TRY
+BEGIN CATCH
+ROLLBACK;
+SELECT ERROR_MESSAGE() AS result;
+END CATCH`;
+
+  console.log(`Executing ${statements.length} INSERT statements...`);
+  const result = sqlcmd(fullSql, { timeout: 120_000 });
+  const resultLine = result.trim().split("\n").pop()?.trim();
+  if (resultLine !== "OK") {
+    throw new Error(`Transaction failed: ${result.trim()}`);
+  }
+
+  console.log(`\nDevice added successfully:`);
+  console.log(`  ControlStation:  ${csId} ("${deviceName}")`);
+  console.log(`  Device (CSD):    ${csdId} (${model.name})`);
+  console.log(
+    `  Zone:            ${zoneId} ("${deviceName}", zone #${zoneNumber})`,
+  );
+  console.log(`  Link address:    ${linkAddress} on link ${linkId}`);
+  console.log(`  Integration IDs: ${nextIID} (device), ${nextIID + 1} (zone)`);
+  console.log(`  Scene presets:   ${scenes.length} scenes updated`);
+  console.log(`  NextObjectID:    ${firstId + idCount}`);
+}
+
 // ── Main dispatch ───────────────────────────────────────────────────
 
 try {
@@ -825,6 +1388,11 @@ try {
     case "run-sql":
       if (!args[1]) throw new Error("Usage: run-sql <file.sql>");
       cmdRunSql(args[1]);
+      break;
+    case "add-device":
+      if (!args[1] || !args[2])
+        throw new Error("Usage: add-device <area> <name> [--model <id>]");
+      cmdAddDevice(args[1], args[2]);
       break;
     default:
       console.error(`Unknown command: ${command}`);

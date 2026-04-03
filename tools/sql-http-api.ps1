@@ -66,7 +66,7 @@ try {
 }
 
 Write-Host "SQL HTTP API listening on http://+:$port/"
-Write-Host "Endpoints: /query (project DB), /query-modelinfo (SQLMODELINFO), /databases"
+Write-Host "Endpoints: /query (project DB), /query-master (master DB), /query-modelinfo (SQLMODELINFO), /databases"
 
 while ($listener.IsListening) {
     try {
@@ -105,6 +105,11 @@ while ($listener.IsListening) {
                 if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
             }
         }
+        elseif ($path -eq "/query-master") {
+            $r = Run-Query $server "master" $body
+            $output = $r.Output
+            if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
+        }
         elseif ($path -eq "/query-modelinfo") {
             $db = Find-ModelInfoDB $server
             if (-not $db) {
@@ -117,7 +122,7 @@ while ($listener.IsListening) {
             }
         }
         else {
-            $output = "Endpoints: POST /query, POST /query-modelinfo, GET /databases"
+            $output = "Endpoints: POST /query, POST /query-master, POST /query-modelinfo, GET /databases"
             $response.StatusCode = 404
         }
 
