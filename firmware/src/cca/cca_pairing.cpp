@@ -480,11 +480,13 @@ static void exec_bridge_pair(uint32_t bridge_id, uint32_t target_id, uint8_t zon
 static volatile bool vive_device_detected = false;
 static uint32_t vive_detected_device_id = 0;
 
-/* RX hook for capturing B8 pairing requests */
+/* RX hook for capturing device pairing announces.
+ * RMJS sends B9 (format 0x23), other devices may use B8 or BA. */
 static void vive_rx_hook(const DecodedPacket* pkt)
 {
     if (!pkt || !pkt->valid) return;
-    if (pkt->type_byte != 0xB8) return;
+    uint8_t t = pkt->type_byte;
+    if (t != 0xB8 && t != 0xB9 && t != 0xBA) return;
 
     /* Extract device_id from raw[2..5] big-endian */
     uint32_t dev_id = ((uint32_t)pkt->raw[2] << 24) | ((uint32_t)pkt->raw[3] << 16) | ((uint32_t)pkt->raw[4] << 8) |
@@ -493,7 +495,7 @@ static void vive_rx_hook(const DecodedPacket* pkt)
     vive_detected_device_id = dev_id;
     vive_device_detected = true;
 
-    printf("[cca] Vive B8 detected: device=%08X\r\n", (unsigned)dev_id);
+    printf("[cca] Vive 0x%02X detected: device=%08X\r\n", t, (unsigned)dev_id);
 }
 
 /* Send all accept + config phases for a detected device */
@@ -505,9 +507,9 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
 
     cc1101_stop_rx();
 
-    /* ---- Phase 1: BA Accept (1 packet, 53 bytes) ---- */
-    memset(pkt, 0x00, sizeof(pkt));
-    pkt[0] = 0xBA;
+    /* ---- Phase 1: B9 Accept (real hub uses B9 not BA for accept) ---- */
+    memset(pkt, 0xCC, sizeof(pkt));
+    pkt[0] = 0xB9;
     pkt[1] = 0x01;
     put_be32(pkt + 2, hub_id);
     pkt[6] = QS_PROTO_RADIO_TX;
@@ -526,7 +528,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 2: Accept retransmissions (no seq byte, fields shift left) ---- */
     static const uint8_t accept_retx_types[] = {0x87, 0x8D, 0x93, 0x9F, 0xAB, 0xB1};
     for (int i = 0; i < 6; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = accept_retx_types[i];
         put_be32(pkt + 1, hub_id); /* byte 1, NOT 2 */
         pkt[5] = QS_PROTO_RADIO_TX;
@@ -546,7 +548,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 2b: Format 0x13 — Dimming Capability (5 packets) ---- */
     static const uint8_t fmt13_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = fmt13_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
@@ -573,7 +575,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 3: Format 0x28 — Zone Assignment A (5 packets) ---- */
     static const uint8_t fmt28a_types[] = {0xA9, 0x9F, 0xAB, 0xB7, 0xBD};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = fmt28a_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
@@ -615,7 +617,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 4: Format 0x14 — Function Mapping (5 packets) ---- */
     static const uint8_t fmt14_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = fmt14_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
@@ -642,7 +644,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 4b: Format 0x28 — Zone Assignment B (5 packets) ---- */
     static const uint8_t fmt28b_types[] = {0xAB, 0xA9, 0xAA, 0x9F, 0xB7};
     for (int i = 0; i < 5; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = fmt28b_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
@@ -684,7 +686,7 @@ static void send_vive_accept_config(uint32_t hub_id, uint32_t device_id, uint8_t
     /* ---- Phase 5: Format 0x12 — Final Config with Zone ID (8 packets, 50ms) ---- */
     static const uint8_t fmt12_types[] = {0xA9, 0x8D, 0x93, 0x9F, 0xAB, 0xB7, 0xBD, 0xC3};
     for (int i = 0; i < 8; i++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = fmt12_types[i];
         pkt[1] = 0x01;
         put_be32(pkt + 2, hub_id);
@@ -729,12 +731,12 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
     int devices_paired = 0;
 
     while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
-        /* ---- TX: B9 beacon burst (9 packets, ~90ms spacing) ---- */
+        /* ---- TX: BB beacon burst (9 packets, ~90ms spacing) ---- */
         cc1101_stop_rx();
 
         for (int b = 0; b < 9; b++) {
-            memset(pkt, 0x00, sizeof(pkt));
-            pkt[0] = 0xB9;
+            memset(pkt, 0xCC, sizeof(pkt));
+            pkt[0] = 0xBB; /* BB = Vive beacon (not B9 — B9 is accept) */
             pkt[1] = seq;
             put_be32(pkt + 2, hub_id);
             pkt[6] = QS_PROTO_RADIO_TX;
@@ -768,6 +770,7 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
 
         for (int poll = 0; poll < 500; poll++) { /* 500 * 10ms = 5s */
             cc1101_check_rx();
+            cca_flush_rx(); /* process pending packets + fire RX hook */
             if (vive_device_detected) break;
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -790,8 +793,8 @@ static void exec_vive_pair(uint32_t hub_id, uint8_t zone_byte, uint8_t duration_
     /* ---- Send stop beacon (timer=0x00) ---- */
     cc1101_stop_rx();
     for (int b = 0; b < 3; b++) {
-        memset(pkt, 0x00, sizeof(pkt));
-        pkt[0] = 0xB9;
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = 0xBB; /* BB stop beacon */
         pkt[1] = seq;
         put_be32(pkt + 2, hub_id);
         pkt[6] = QS_PROTO_RADIO_TX;
@@ -953,7 +956,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint1
 
         /* ---- TX: B9 Vive beacon burst (3 packets) ---- */
         for (int b = 0; b < 3; b++) {
-            memset(pkt, 0x00, sizeof(pkt));
+            memset(pkt, 0xCC, sizeof(pkt));
             pkt[0] = 0xB9;
             pkt[1] = b9_seq;
             put_be32(pkt + 2, bridge_id);
@@ -1036,7 +1039,7 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint1
     /* ---- Stop beacon ---- */
     cc1101_stop_rx();
     for (int b = 0; b < 3; b++) {
-        memset(pkt, 0x00, sizeof(pkt));
+        memset(pkt, 0xCC, sizeof(pkt));
         pkt[0] = 0xB9;
         pkt[1] = b9_seq;
         put_be32(pkt + 2, bridge_id);

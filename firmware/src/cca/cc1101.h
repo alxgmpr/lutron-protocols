@@ -161,6 +161,10 @@ bool cc1101_check_rx(void);
 /** Transmit raw bytes (blocks until TX complete) */
 bool cc1101_transmit_raw(const uint8_t* data, size_t len);
 
+/** Transmit then immediately resume RX with minimal dead time.
+ *  Caller must NOT call cc1101_stop_rx/start_rx around this. */
+bool cc1101_transmit_and_resume_rx(const uint8_t* data, size_t len);
+
 /** Set RX callback */
 void cc1101_set_rx_callback(cc1101_rx_callback_t callback);
 

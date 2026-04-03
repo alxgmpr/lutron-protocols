@@ -62,6 +62,11 @@ typedef void (*cca_rx_hook_t)(const struct DecodedPacket* pkt);
 /** Set/clear the RX hook. Called from pairing engine (CCA task context). */
 void cca_set_rx_hook(cca_rx_hook_t hook);
 
+/** Flush pending RX packets — processes hooks, sends to stream.
+ *  Must be called from CCA task context. Blocking pairing code needs
+ *  this since the main task loop isn't running during blocking commands. */
+void cca_flush_rx(void);
+
 #ifdef __cplusplus
 }
 #endif

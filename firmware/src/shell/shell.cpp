@@ -1704,6 +1704,60 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca auto-pair <hub_id> <class> <subnet> <zone> [dur]
+     * Non-blocking Vive B9 beacon + B0 announce via TDMA — everything interleaves. */
+    if (strncmp(arg, "auto-pair ", 10) == 0) {
+        char* p;
+        uint32_t hub_id = (uint32_t)strtoul(arg + 10, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca auto-pair <hub_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint32_t dev_class = (uint32_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca auto-pair <hub_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint16_t subnet = (uint16_t)strtoul(p + 1, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca auto-pair <hub_id> <class> <subnet> <zone> [dur]\r\n");
+            return;
+        }
+        uint8_t zone = (uint8_t)strtoul(p + 1, &p, 16);
+        uint8_t dur = 60;
+        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_AUTO_PAIR;
+        item.device_id = hub_id;
+        item.target_id = dev_class;
+        item.raw_payload[0] = (subnet >> 8) & 0xFF;
+        item.raw_payload[1] = subnet & 0xFF;
+        item.zone_byte = zone;
+        item.duration_sec = dur;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Auto-pair queued (hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%us)\r\n",
+                   (unsigned)hub_id, (unsigned)dev_class, subnet, zone, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca auto-pair-stop — stop the auto-pair engine */
+    if (strcmp(arg, "auto-pair-stop") == 0) {
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_AUTO_PAIR_STOP;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Auto-pair stop queued\r\n");
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca raw <zone_hex> <target_hex> <format_hex> <payload_hex_bytes...>
      * Payload starts at byte 13 (first byte is typically addr_mode: FE/EF/FF).
      * Bytes 0-12 are auto-built: [type][seq][zone:4 LE][0x21][fmt][0x00][target:4 BE] */
@@ -1870,7 +1924,9 @@ static void cmd_cca(const char* arg)
     printf("  cca pair pico <dev> [type] [dur]      — pico pairing\r\n");
     printf("  cca pair bridge <id> <target> <zone> [dur] — bridge pairing\r\n");
     printf("  cca announce <serial> <class> <subnet> [dur] — spoofed B0 announce\r\n");
-    printf("  cca hybrid-pair <bridge> <class> <subnet> <zone> [dur] — Vive→RA3 pair\r\n");
+    printf("  cca hybrid-pair <bridge> <class> <subnet> <zone> [dur] — Vive→RA3 pair (blocking)\r\n");
+    printf("  cca auto-pair <hub> <class> <subnet> <zone> [dur]   — Vive→RA3 pair (TDMA, interleaved)\r\n");
+    printf("  cca auto-pair-stop                                   — stop auto-pair\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
     printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");
