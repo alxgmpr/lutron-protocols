@@ -700,7 +700,7 @@ CCA devices without a full database transfer. Relevant to CCA pairing reverse en
 - CcaTransferlessActivationSupported (268)
 
 ### Lutron Designer LocalDB Access
-- VM: `alex@10.0.0.5` (SSH, password: alex)
+- VM: `user@10.0.0.5` (SSH, password: alex)
 - Named pipe: `np:\\.\pipe\LOCALDB#CEA130DB\tsql\query` (pipe hash changes per instance start)
 - Instance: `LutronLocalDb2022Gamma`
 - Connect: `sqlcmd -S "np:\\.\pipe\LOCALDB#CEA130DB\tsql\query" -No` (must disable encryption)

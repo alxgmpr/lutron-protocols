@@ -242,7 +242,7 @@ engine has additional checks.
 # ILSpy CLI on macOS with .NET 10 + roll-forward
 export DOTNET_ROOT=/opt/homebrew/Cellar/dotnet/10.0.103/libexec
 export DOTNET_ROLL_FORWARD=LatestMajor
-DESIGNER_DIR="~/Downloads/Lutron Designer 26.0.1.100/QuantumResi"
+DESIGNER_DIR="/Users/user/Downloads/Lutron Designer 26.0.1.100/QuantumResi"
 ilspycmd -t <FullTypeName> "$DESIGNER_DIR/<dll>" -r "$DESIGNER_DIR"
 ```
 
@@ -324,9 +324,9 @@ UPDATE dbo.tblProcessor SET SerialNumberState = 2;
 | Processor IP | `10.0.0.1` |
 | CCA SubnetAddress | `33495` (0x82D7), Channel 26 |
 | CCX Channel | 25 |
-| CCX PanID | 25327 (0xXXXX) |
-| CCX ExtendedPanId | `0x<your-thread-xpanid>` |
-| CCX NetworkMasterKey | `0x<your-thread-master-key>` |
+| CCX PanID | 12345 (0xXXXX) |
+| CCX ExtendedPanId | `<your-thread-xpanid>` |
+| CCX NetworkMasterKey | `<your-thread-master-key>` |
 
 ### What This Achieves
 - Designer treats the RA3 processor as an HW processor
