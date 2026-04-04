@@ -147,6 +147,7 @@ let lastDatagramTime = 0; // wall-clock ms of last received datagram
 let connected = false;
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
+let showDiag = !hasCliFlag("--no-diag");
 
 // ============================================================================
 // CoAP first-class interface state
@@ -338,6 +339,7 @@ function updateStatusBar(): void {
   if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
   if (!raw) parts.push(`${CYAN}[raw off]${RESET}`);
   if (verbose) parts.push(`${GREEN}[verbose]${RESET}`);
+  if (!showDiag) parts.push(`${YELLOW}[diag off]${RESET}`);
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
   if (coapScan) {
@@ -1200,6 +1202,9 @@ function handleDatagram(msg: Buffer) {
       return;
     }
 
+    // Suppress [diag] lines when diag display is off
+    if (!showDiag && text.startsWith("[diag]")) return;
+
     // Suppress [ccx] CoAP TX/Observe broadcast lines (noise during pending/scan)
     if (text.startsWith("[ccx] CoAP") && (coapPending || coapScan)) return;
 
@@ -1318,6 +1323,7 @@ function showHelp() {
     `  ${GREEN}quiet${RESET}             Toggle packet display on/off`,
     `  ${GREEN}raw${RESET}               Toggle raw hex column (on by default)`,
     `  ${GREEN}verbose${RESET}           Toggle verbose detail lines below packets`,
+    `  ${GREEN}diag${RESET}              Toggle [diag] log display (also --no-diag flag)`,
     `  ${GREEN}slot${RESET} [reset]      Toggle slot tracking on/off, or reset tracker`,
     `  ${GREEN}record${RESET} [name]     Start CSV recording to captures/cca-sessions/`,
     `  ${GREEN}stop${RESET}              Stop recording`,
@@ -1647,6 +1653,12 @@ function handleCommand(line: string) {
       updateStatusBar();
       return;
 
+    case "diag":
+      showDiag = !showDiag;
+      screen.appendLine(`Diagnostic logs: ${showDiag ? "on" : "off"}`);
+      updateStatusBar();
+      return;
+
     case "slot":
       if ((args[1] || "").toLowerCase() === "reset") {
         ccaSlotFlows.clear();
@@ -1872,6 +1884,7 @@ async function startup() {
     "quiet",
     "raw",
     "verbose",
+    "diag",
     "slot",
     "help",
     "quit",

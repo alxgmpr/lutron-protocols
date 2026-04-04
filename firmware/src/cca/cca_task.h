@@ -53,6 +53,11 @@ void cca_reset_stats(void);
 void cca_set_uart_log_enabled(bool enabled);
 bool cca_uart_log_enabled(void);
 
+/** Enable/disable periodic radio diag broadcast over stream (UDP).
+ *  Default off — diag goes to UART only. */
+void cca_set_diag_broadcast(bool enabled);
+bool cca_diag_broadcast(void);
+
 /** Get total packets transmitted by command functions */
 uint32_t cca_cmd_tx_count(void);
 
