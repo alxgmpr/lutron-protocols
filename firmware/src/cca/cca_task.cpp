@@ -70,6 +70,8 @@ static uint32_t ack_count = 0;          /* decoded dimmer ACK packets (0x0B) */
 static uint32_t crc_optional_count = 0; /* accepted with crc_valid=false */
 /* High-rate UART packet logs can disrupt shell interactivity. Keep off by default. */
 static volatile bool cca_uart_log_enabled_ = false;
+/* Periodic radio diag broadcast over stream (UDP). Off by default — use printf only. */
+static volatile bool cca_diag_broadcast_ = false;
 
 /* GDO0/latency telemetry */
 static volatile uint32_t gdo0_irq_count = 0;
@@ -428,7 +430,12 @@ static void cca_task_func(void* param)
                              "[diag] rx_active=%d marc=0x%02X rxbytes=%u rx=%lu tx=%lu overflow=%lu restart=%lu",
                              cc1101_is_rx_active() ? 1 : 0, marc, rxb, (unsigned long)rx_count, (unsigned long)tx_count,
                              (unsigned long)cc1101_overflow_count(), (unsigned long)cc1101_rx_restart_manual_count());
-                stream_broadcast_text(buf, (size_t)n);
+                if (cca_diag_broadcast_) {
+                    stream_broadcast_text(buf, (size_t)n);
+                }
+                else {
+                    printf("%s\r\n", buf);
+                }
             }
         }
     }
@@ -512,6 +519,14 @@ void cca_set_uart_log_enabled(bool enabled)
 bool cca_uart_log_enabled(void)
 {
     return cca_uart_log_enabled_;
+}
+void cca_set_diag_broadcast(bool enabled)
+{
+    cca_diag_broadcast_ = enabled;
+}
+bool cca_diag_broadcast(void)
+{
+    return cca_diag_broadcast_;
 }
 
 void cca_flush_rx(void)

@@ -41,28 +41,29 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_HYBRID_PAIR = 0x18,     /* Hybrid Vive→RA3 pairing (B9 beacon + bridge ID config) */
     CCA_CMD_AUTO_PAIR = 0x19,       /* Non-blocking auto-pair (B9 beacon + B0 announce via TDMA) */
     CCA_CMD_AUTO_PAIR_STOP = 0x1A,  /* Stop auto-pair engine */
+    CCA_CMD_SUBNET_PAIR = 0x1B,     /* Hybrid Vive beacon + RA3 subnet config */
 };
 
 /* -----------------------------------------------------------------------
  * Command queue item — passed from shell/stream to CCA task
  * ----------------------------------------------------------------------- */
 struct CcaCmdItem {
-    uint8_t cmd;          /* CcaCmdType */
-    uint32_t device_id;   /* pico/dimmer ID or bridge zone ID */
-    uint32_t target_id;   /* for bridge level: target dimmer ID */
-    uint8_t button;       /* for button press */
-    uint8_t level_pct;    /* 0-100 for level commands */
-    uint8_t fade_qs;      /* fade time in quarter-seconds */
-    uint8_t led_mode;     /* 0-3 for LED config */
-    uint16_t fade_on_qs;  /* fade-on time in quarter-seconds */
-    uint16_t fade_off_qs; /* fade-off time in quarter-seconds */
-    uint8_t high_trim;    /* high trim % */
-    uint8_t low_trim;     /* low trim % */
-    uint8_t phase_byte;   /* phase config byte */
-    uint8_t pico_type;    /* 0=5btn, 1=2btn, 2=4btn-rl, 3=4btn-scene */
-    uint8_t duration_sec; /* pairing/beacon duration */
-    uint8_t zone_byte;    /* Vive single-byte zone ID */
-    uint8_t direction;    /* Vive dim direction: 0x03=raise, 0x02=lower */
+    uint8_t cmd;           /* CcaCmdType */
+    uint32_t device_id;    /* pico/dimmer ID or bridge zone ID */
+    uint32_t target_id;    /* for bridge level: target dimmer ID */
+    uint8_t button;        /* for button press */
+    uint8_t level_pct;     /* 0-100 for level commands */
+    uint8_t fade_qs;       /* fade time in quarter-seconds */
+    uint8_t led_mode;      /* 0-3 for LED config */
+    uint16_t fade_on_qs;   /* fade-on time in quarter-seconds */
+    uint16_t fade_off_qs;  /* fade-off time in quarter-seconds */
+    uint8_t high_trim;     /* high trim % */
+    uint8_t low_trim;      /* low trim % */
+    uint8_t phase_byte;    /* phase config byte */
+    uint8_t pico_type;     /* 0=5btn, 1=2btn, 2=4btn-rl, 3=4btn-scene */
+    uint16_t duration_sec; /* pairing/beacon duration (up to 65535s) */
+    uint8_t zone_byte;     /* Vive single-byte zone ID */
+    uint8_t direction;     /* Vive dim direction: 0x03=raise, 0x02=lower */
 
     /* Raw command fields */
     uint8_t raw_format;      /* format byte (determines 24 vs 53 byte packet) */
