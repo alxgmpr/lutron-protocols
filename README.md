@@ -4,7 +4,7 @@ Reverse-engineering toolkit for Lutron lighting control systems. RF packet captu
 
 Targets RadioRA 3, HomeWorks QSX, Caseta, and Vive product families.
 
-<img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/62802293-b22d-44f7-9c93-74dcf8c0e5a9" />
+<img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/de5c9715-4d1f-4f45-b770-9e668852199d" />
 
 ## Background
 
