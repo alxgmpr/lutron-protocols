@@ -13,6 +13,7 @@ comparePointers:src/syscalls.c
 // extern re-declarations in function scope shadow file-scope externs — HAL pattern
 shadowVariable:src/syscalls.c
 shadowVariable:src/shell/shell.cpp:1902
+shadowVariable:src/shell/shell.cpp:1958
 
 // Bitmask with zero operand is intentional for readability (register field documentation)
 badBitmaskCheck:src/system_stm32h7xx.c
@@ -39,3 +40,7 @@ knownConditionTrueFalse:src/cca/cca_decoder.h
 knownConditionTrueFalse:src/cca/cca_n81.h
 knownConditionTrueFalse:src/cca/cca_generated.h
 knownConditionTrueFalse:src/ccx/ipv6_udp.c
+
+// DWT->CYCCNT wraps — unsigned subtraction for elapsed time is intentional
+compareValueOutOfTypeRangeError:src/cca/cc1101.c
+unsignedLessThanZero:src/cca/cc1101.c
