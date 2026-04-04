@@ -4,6 +4,8 @@ Reverse-engineering toolkit for Lutron lighting control systems. RF packet captu
 
 Targets RadioRA 3, HomeWorks QSX, Caseta, and Vive product families.
 
+<img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/62802293-b22d-44f7-9c93-74dcf8c0e5a9" />
+
 ## Background
 
 This reverse engineering project lead to the discovery of tons of information about the inner workings of Lutron's control systems. Beginning with Caseta CCA radios, then diving into reverse engineering the Lutron Designer binaries and firmwares (publicly accessible files and hardware I purchased myself from eBay and other sources). Through hobby efforts but then some sleepless nights, Claude Code and I unpacked tons of data and made some large discoveries that allowed us to do more 'advanced' things with my own personal Lutron systems. These capabilities include:
