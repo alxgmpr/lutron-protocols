@@ -44,8 +44,7 @@ typedef enum {
  * @param zone_byte    CCA zone byte for the device
  * @param duration_sec How long to beacon (0 = 60s default)
  */
-void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class,
-                         uint16_t subnet, uint8_t zone_byte,
+void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class, uint16_t subnet, uint8_t zone_byte,
                          uint8_t duration_sec);
 
 /** Stop the auto-pair engine (cancel all groups, remove RX hook). */
