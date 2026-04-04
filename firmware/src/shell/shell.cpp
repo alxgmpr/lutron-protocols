@@ -1124,6 +1124,20 @@ static void cmd_cca(const char* arg)
         printf("CCA RX UART log disabled\r\n");
         return;
     }
+    if (strcmp(arg, "diag") == 0) {
+        printf("CCA diag broadcast: %s\r\n", cca_diag_broadcast() ? "ON" : "OFF");
+        return;
+    }
+    if (strcmp(arg, "diag on") == 0) {
+        cca_set_diag_broadcast(true);
+        printf("CCA diag broadcast enabled\r\n");
+        return;
+    }
+    if (strcmp(arg, "diag off") == 0) {
+        cca_set_diag_broadcast(false);
+        printf("CCA diag broadcast disabled\r\n");
+        return;
+    }
 
     /* cca button <device_id> <button_name> */
     if (strncmp(arg, "button ", 7) == 0) {
@@ -1168,7 +1182,7 @@ static void cmd_cca(const char* arg)
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
         uint8_t fade = 4; /* default 1 second */
-        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+        if (*p == ' ') fade = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_BRIDGE_LEVEL;
@@ -1195,7 +1209,7 @@ static void cmd_cca(const char* arg)
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
         uint8_t fade = 4; /* default 1 second */
-        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+        if (*p == ' ') fade = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_BROADCAST_LEVEL;
@@ -1219,7 +1233,7 @@ static void cmd_cca(const char* arg)
             printf("Usage: cca pico-level <device_id_hex> <0-100>\r\n");
             return;
         }
-        uint8_t pct = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint8_t pct = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_PICO_LEVEL;
@@ -1242,7 +1256,7 @@ static void cmd_cca(const char* arg)
             printf("Usage: cca state <device_id_hex> <0-100>\r\n");
             return;
         }
-        uint8_t pct = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint8_t pct = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_STATE_REPORT;
@@ -1261,8 +1275,8 @@ static void cmd_cca(const char* arg)
     if (strncmp(arg, "beacon ", 7) == 0) {
         char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 7, &p, 16);
-        uint8_t dur = 5;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint16_t dur = 5;
+        if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_BEACON;
@@ -1313,7 +1327,7 @@ static void cmd_cca(const char* arg)
             printf("Usage: cca led <zone_id_hex> <target_id_hex> <0-3>\r\n");
             return;
         }
-        uint8_t mode = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint8_t mode = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_LED_CONFIG;
@@ -1382,7 +1396,7 @@ static void cmd_cca(const char* arg)
             printf("Usage: cca trim <zone_id_hex> <target_id_hex> <high%%> <low%%>\r\n");
             return;
         }
-        uint8_t low = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint8_t low = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_TRIM_CONFIG;
@@ -1463,7 +1477,7 @@ static void cmd_cca(const char* arg)
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
         uint8_t fade = 4; /* default 1 second */
-        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+        if (*p == ' ') fade = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_VIVE_LEVEL;
@@ -1537,8 +1551,8 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint8_t zone = (uint8_t)strtoul(p + 1, &p, 16);
-        uint8_t dur = 30;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint16_t dur = 30;
+        if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_VIVE_PAIR;
@@ -1559,7 +1573,7 @@ static void cmd_cca(const char* arg)
         char* p;
         uint32_t dev_id = (uint32_t)strtoul(arg + 10, &p, 16);
         uint8_t pico_type = 0; /* default 5-button */
-        uint8_t dur = 10;
+        uint16_t dur = 10;
 
         if (*p == ' ') {
             p++;
@@ -1580,7 +1594,7 @@ static void cmd_cca(const char* arg)
                 p += 10;
             }
 
-            if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+            if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
         }
 
         CcaCmdItem item = {};
@@ -1607,10 +1621,10 @@ static void cmd_cca(const char* arg)
         }
         uint32_t target_id = (uint32_t)strtoul(p + 1, &p, 16);
         uint8_t zone = 0;
-        uint8_t dur = 5;
+        uint16_t dur = 5;
         if (*p == ' ') {
             zone = (uint8_t)strtoul(p + 1, &p, 16);
-            if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+            if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
         }
 
         CcaCmdItem item = {};
@@ -1643,8 +1657,8 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint16_t subnet = (uint16_t)strtoul(p + 1, &p, 16);
-        uint8_t dur = 15;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint16_t dur = 15;
+        if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_ANNOUNCE;
@@ -1683,8 +1697,8 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint8_t zone = (uint8_t)strtoul(p + 1, &p, 16);
-        uint8_t dur = 30;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint16_t dur = 30;
+        if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_HYBRID_PAIR;
@@ -1697,6 +1711,32 @@ static void cmd_cca(const char* arg)
         if (cca_cmd_enqueue(&item)) {
             printf("Hybrid pair queued (bridge=%08X class=%08X subnet=%04X zone=0x%02X dur=%us)\r\n",
                    (unsigned)bridge_id, (unsigned)dev_class, subnet, zone, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
+    /* cca subnet-pair <bridge_id> <zone_hex> [dur]
+     * Hybrid pairing: BB beacons (Vive) + RA3 subnet config (DEVICE_CTRL + direct 0x1A). */
+    if (strncmp(arg, "subnet-pair ", 12) == 0) {
+        char* p;
+        uint32_t bridge_id = (uint32_t)strtoul(arg + 12, &p, 16);
+        uint8_t zone = 0;
+        uint16_t dur = 30;
+        if (*p == ' ') {
+            zone = (uint8_t)strtoul(p + 1, &p, 16);
+            if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
+        }
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_SUBNET_PAIR;
+        item.device_id = bridge_id;
+        item.zone_byte = zone;
+        item.duration_sec = dur;
+        if (cca_cmd_enqueue(&item)) {
+            printf("Subnet pair queued (bridge=%08X zone=0x%02X dur=%us)\r\n", (unsigned)bridge_id, zone, dur);
         }
         else {
             printf("Command queue full!\r\n");
@@ -1724,8 +1764,8 @@ static void cmd_cca(const char* arg)
             return;
         }
         uint8_t zone = (uint8_t)strtoul(p + 1, &p, 16);
-        uint8_t dur = 60;
-        if (*p == ' ') dur = (uint8_t)strtoul(p + 1, NULL, 10);
+        uint16_t dur = 60;
+        if (*p == ' ') dur = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_AUTO_PAIR;
@@ -1814,7 +1854,7 @@ static void cmd_cca(const char* arg)
         }
         uint8_t pct = (uint8_t)strtoul(p + 1, &p, 10);
         uint8_t fade = 4; /* default 1 second */
-        if (*p == ' ') fade = (uint8_t)strtoul(p + 1, NULL, 10);
+        if (*p == ' ') fade = (uint16_t)strtoul(p + 1, NULL, 10);
 
         CcaCmdItem item = {};
         item.cmd = CCA_CMD_SCENE_EXEC;
@@ -1925,6 +1965,7 @@ static void cmd_cca(const char* arg)
     printf("  cca pair bridge <id> <target> <zone> [dur] — bridge pairing\r\n");
     printf("  cca announce <serial> <class> <subnet> [dur] — spoofed B0 announce\r\n");
     printf("  cca hybrid-pair <bridge> <class> <subnet> <zone> [dur] — Vive→RA3 pair (blocking)\r\n");
+    printf("  cca subnet-pair <bridge> <zone> [dur]  — BB beacon + RA3 subnet config\r\n");
     printf("  cca auto-pair <hub> <class> <subnet> <zone> [dur]   — Vive→RA3 pair (TDMA, interleaved)\r\n");
     printf("  cca auto-pair-stop                                   — stop auto-pair\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");

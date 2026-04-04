@@ -1077,6 +1077,308 @@ static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint1
 }
 
 /* -----------------------------------------------------------------------
+ * Subnet pair — BB beacons (Vive) + RA3 subnet config
+ *
+ * Uses Vive BB beacons to wake the device (RMJS only responds to BB),
+ * then sends RA3-style config packets to program subnet addressing.
+ *
+ * Sequence:
+ *   1. BB beacon burst → wait for B8/B9 response
+ *   2. B9 accept (same as Vive — device needs this to enter config mode)
+ *   3. DEVICE_CTRL format 0x09 (RA3 "join subnet" command)
+ *   4. Format 0x13 dimming capability
+ *   5. Format 0x1A zone assignment (RA3-style direct, not Vive 0x28 wrapper)
+ *   6. Format 0x12 final bind with zone
+ *   7. BB stop beacon
+ * ----------------------------------------------------------------------- */
+static void send_subnet_config(uint32_t bridge_id, uint32_t device_id, uint8_t zone_byte)
+{
+    uint8_t pkt[51];
+    uint16_t subnet = (uint16_t)((bridge_id >> 8) & 0xFFFF);
+
+    printf("[cca] Subnet config: dev=%08X zone=0x%02X subnet=%04X\r\n", (unsigned)device_id, zone_byte, subnet);
+
+    cc1101_stop_rx();
+
+    /* ---- B9 Accept (same as Vive — required to enter config mode) ---- */
+    memset(pkt, 0xCC, sizeof(pkt));
+    pkt[0] = 0xB9;
+    pkt[1] = 0x01;
+    put_be32(pkt + 2, bridge_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_ACCEPT; /* 0x10 */
+    pkt[8] = 0x00;
+    put_be32(pkt + 9, device_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = 0x60;
+    pkt[15] = 0x0A;
+    put_be32(pkt + 16, bridge_id);
+    put_be32(pkt + 20, bridge_id);
+    transmit_one(pkt, 51);
+    vTaskDelay(pdMS_TO_TICKS(70));
+
+    /* Accept retransmissions */
+    static const uint8_t accept_retx_types[] = {0x87, 0x8D, 0x93, 0x9F, 0xAB, 0xB1};
+    for (int i = 0; i < 6; i++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = accept_retx_types[i];
+        put_be32(pkt + 1, bridge_id);
+        pkt[5] = QS_PROTO_RADIO_TX;
+        pkt[6] = QS_FMT_ACCEPT;
+        pkt[7] = 0x00;
+        put_be32(pkt + 8, device_id);
+        pkt[12] = QS_ADDR_COMPONENT;
+        pkt[13] = 0x60;
+        pkt[14] = 0x0A;
+        put_be32(pkt + 15, bridge_id);
+        put_be32(pkt + 19, bridge_id);
+        transmit_one(pkt, 51);
+        vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    /* ---- DEVICE_CTRL format 0x09 (RA3 "join subnet") ----
+     * From real RA3 capture: 81 xx A182D700 21 09 00 [serial] FE 02 02 01 CC...
+     * Short packet (22 bytes). Burst of 12 like the RA3 does. */
+    printf("[cca] Subnet config: sending DEVICE_CTRL 0x09\r\n");
+    static const uint8_t dc_types[] = {0x81, 0x87, 0x8D, 0x93, 0x99, 0x9F, 0xA5, 0xAB, 0xB1, 0xBD, 0xC3};
+    for (int i = 0; i < 11; i++) {
+        uint8_t spkt[22];
+        memset(spkt, 0xCC, sizeof(spkt));
+        spkt[0] = dc_types[i];
+        spkt[1] = 0x01 + (i * 6);
+        put_be32(spkt + 2, bridge_id);
+        spkt[6] = QS_PROTO_RADIO_TX;
+        spkt[7] = 0x09; /* format: device control */
+        spkt[8] = 0x00;
+        put_be32(spkt + 9, device_id);
+        spkt[13] = QS_ADDR_COMPONENT; /* 0xFE */
+        spkt[14] = 0x02;
+        spkt[15] = 0x02;
+        spkt[16] = 0x01;
+        transmit_one(spkt, 22);
+        vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    /* ---- Format 0x13 — Dimming Capability (5 packets) ---- */
+    static const uint8_t fmt13_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
+    for (int i = 0; i < 5; i++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = fmt13_types[i];
+        pkt[1] = 0x01;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_DIM_CAP; /* 0x13 */
+        pkt[8] = 0x00;
+        put_be32(pkt + 9, device_id);
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;
+        pkt[15] = QS_COMP_DIMMER;
+        pkt[16] = 0x00;
+        pkt[17] = 0x0D;
+        pkt[18] = 0x08;
+        pkt[19] = 0x02;
+        pkt[20] = 0x0F;
+        pkt[21] = 0x03;
+        put_be32(pkt + 22, device_id);
+        pkt[26] = 0x00;
+        transmit_one(pkt, 51);
+        vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    /* ---- Format 0x1A — Zone Assignment (RA3-style DIRECT, not Vive 0x28 wrapper) ----
+     * From RA3 capture: a2 01 A182D700 21 1a 00 [serial] FE 06 40 00 00 [level:2] EF 20 00 02 09 1B FE FF 00 08 ... */
+    printf("[cca] Subnet config: sending RA3-style format 0x1A zone assignment\r\n");
+    static const uint8_t fmt1a_types[] = {0xA2, 0xA3, 0xA9, 0x9F, 0xAB};
+    for (int i = 0; i < 5; i++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = fmt1a_types[i];
+        pkt[1] = 0x01;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = 0x1A; /* format: zone assignment (RA3-style direct) */
+        pkt[8] = 0x00;
+        put_be32(pkt + 9, device_id);
+        pkt[13] = QS_ADDR_COMPONENT; /* 0xFE */
+        pkt[14] = QS_CLASS_LEGACY;   /* 0x06 */
+        pkt[15] = QS_CLASS_LEVEL;    /* 0x40 */
+        pkt[16] = 0x00;
+        pkt[17] = 0x00;
+        pkt[18] = 0x00;
+        pkt[19] = 0x01; /* level placeholder */
+        pkt[20] = 0xEF;
+        pkt[21] = 0x20;
+        pkt[22] = 0x00;
+        pkt[23] = 0x02; /* RA3 uses 0x02 here (Vive uses 0x03) */
+        pkt[24] = 0x09;
+        pkt[25] = 0x1B; /* RA3 uses 0x1B (Vive uses 0x2B) */
+        pkt[26] = 0xFE;
+        pkt[27] = 0xFF;
+        pkt[28] = 0x00;
+        pkt[29] = 0x08; /* RA3 uses 0x08 (Vive uses 0x00) */
+        pkt[30] = 0x00;
+        pkt[31] = 0x00;
+        pkt[32] = 0x00;
+        pkt[33] = 0x00;
+        transmit_one(pkt, 51);
+        vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    /* ---- Format 0x14 — Function Mapping (5 packets) ---- */
+    static const uint8_t fmt14_types[] = {0xAB, 0xA9, 0xAA, 0x8D, 0x93};
+    for (int i = 0; i < 5; i++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = fmt14_types[i];
+        pkt[1] = 0x01;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_FUNC_MAP; /* 0x14 */
+        pkt[8] = 0x00;
+        put_be32(pkt + 9, device_id);
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;
+        pkt[15] = QS_COMP_DIMMER;
+        pkt[16] = 0x00;
+        pkt[17] = 0x0B;
+        pkt[18] = 0x09;
+        pkt[19] = 0xFE;
+        pkt[20] = 0xFF;
+        pkt[21] = 0x00;
+        pkt[22] = 0x02;
+        transmit_one(pkt, 51);
+        vTaskDelay(pdMS_TO_TICKS(70));
+    }
+
+    /* ---- Format 0x12 — Final Config with Zone ID (8 packets) ---- */
+    static const uint8_t fmt12_types[] = {0xA9, 0x8D, 0x93, 0x9F, 0xAB, 0xB7, 0xBD, 0xC3};
+    for (int i = 0; i < 8; i++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = fmt12_types[i];
+        pkt[1] = 0x01;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_FINAL; /* 0x12 */
+        pkt[8] = 0x00;
+        put_be32(pkt + 9, device_id);
+        pkt[13] = QS_ADDR_COMPONENT;
+        pkt[14] = QS_CLASS_LEGACY;
+        pkt[15] = 0x6E;
+        pkt[16] = 0x01;
+        pkt[17] = 0x00;
+        pkt[18] = 0x07;
+        pkt[19] = 0x00;
+        pkt[20] = 0x02;
+        pkt[21] = 0x00;
+        pkt[22] = 0x00;
+        pkt[23] = 0x00;
+        pkt[24] = zone_byte;
+        pkt[25] = 0xEF;
+        transmit_one(pkt, 51);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    printf("[cca] Subnet config complete for dev=%08X\r\n", (unsigned)device_id);
+}
+
+static void exec_subnet_pair(uint32_t bridge_id, uint8_t zone_byte, uint8_t duration_sec)
+{
+    if (duration_sec == 0) duration_sec = 30;
+
+    printf("[cca] CMD subnet_pair bridge=%08X zone=0x%02X dur=%us\r\n", (unsigned)bridge_id, zone_byte, duration_sec);
+
+    vive_device_detected = false;
+    vive_detected_device_id = 0;
+
+    uint8_t pkt[51];
+    uint8_t seq = 0x01;
+    uint32_t start = HAL_GetTick();
+    int devices_paired = 0;
+
+    while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
+        /* BB beacon burst (9 packets) */
+        cc1101_stop_rx();
+        for (int b = 0; b < 9; b++) {
+            memset(pkt, 0xCC, sizeof(pkt));
+            pkt[0] = 0xBB;
+            pkt[1] = seq;
+            put_be32(pkt + 2, bridge_id);
+            pkt[6] = QS_PROTO_RADIO_TX;
+            pkt[7] = QS_FMT_LED;
+            pkt[8] = 0x00;
+            pkt[9] = QS_ADDR_BROADCAST;
+            pkt[10] = QS_ADDR_BROADCAST;
+            pkt[11] = QS_ADDR_BROADCAST;
+            pkt[12] = QS_ADDR_BROADCAST;
+            pkt[13] = QS_ADDR_BROADCAST;
+            pkt[14] = 0x60;
+            pkt[15] = 0x00;
+            put_be32(pkt + 16, bridge_id);
+            pkt[20] = 0xFF;
+            pkt[21] = 0xFF;
+            pkt[22] = 0xFF;
+            pkt[23] = 0xFF;
+            pkt[24] = 0x3C;
+            transmit_one(pkt, 51);
+            seq += 8;
+            if (seq >= 0x48) seq = 0x01;
+            vTaskDelay(pdMS_TO_TICKS(90));
+        }
+
+        /* RX: listen for B8/B9 (~5 seconds) */
+        vive_device_detected = false;
+        cca_set_rx_hook(vive_rx_hook);
+        cc1101_start_rx();
+        for (int poll = 0; poll < 500; poll++) {
+            cc1101_check_rx();
+            cca_flush_rx();
+            if (vive_device_detected) break;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        cca_set_rx_hook(NULL);
+
+        if (vive_device_detected) {
+            uint32_t dev_id = vive_detected_device_id;
+            vive_device_detected = false;
+            send_subnet_config(bridge_id, dev_id, zone_byte);
+            devices_paired++;
+            cc1101_start_rx();
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
+    }
+
+    /* Stop beacon */
+    cc1101_stop_rx();
+    for (int b = 0; b < 3; b++) {
+        memset(pkt, 0xCC, sizeof(pkt));
+        pkt[0] = 0xBB;
+        pkt[1] = seq;
+        put_be32(pkt + 2, bridge_id);
+        pkt[6] = QS_PROTO_RADIO_TX;
+        pkt[7] = QS_FMT_LED;
+        pkt[8] = 0x00;
+        pkt[9] = QS_ADDR_BROADCAST;
+        pkt[10] = QS_ADDR_BROADCAST;
+        pkt[11] = QS_ADDR_BROADCAST;
+        pkt[12] = QS_ADDR_BROADCAST;
+        pkt[13] = QS_ADDR_BROADCAST;
+        pkt[14] = 0x60;
+        pkt[15] = 0x00;
+        put_be32(pkt + 16, bridge_id);
+        pkt[20] = 0xFF;
+        pkt[21] = 0xFF;
+        pkt[22] = 0xFF;
+        pkt[23] = 0xFF;
+        pkt[24] = 0x00; /* timer: STOP */
+        transmit_one(pkt, 51);
+        seq += 8;
+        if (seq >= 0x48) seq = 0x01;
+        vTaskDelay(pdMS_TO_TICKS(90));
+    }
+
+    cc1101_start_rx();
+    printf("[cca] CMD subnet_pair complete (%d devices paired)\r\n", devices_paired);
+}
+
+/* -----------------------------------------------------------------------
  * Public dispatcher — called from cca_cmd_execute()
  * ----------------------------------------------------------------------- */
 void cca_pairing_execute(const CcaCmdItem* item)
@@ -1099,6 +1401,9 @@ void cca_pairing_execute(const CcaCmdItem* item)
         exec_hybrid_pair(item->device_id, item->target_id, /* device class for B0 announce */
                          (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->zone_byte,
                          item->duration_sec);
+        break;
+    case CCA_CMD_SUBNET_PAIR:
+        exec_subnet_pair(item->device_id, item->zone_byte, item->duration_sec);
         break;
     default:
         printf("[cca] Unknown pairing command: 0x%02X\r\n", item->cmd);
