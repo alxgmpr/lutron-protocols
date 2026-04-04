@@ -423,12 +423,11 @@ static void cca_task_func(void* param)
                 uint8_t marc = cc1101_read_status_register(0x35) & 0x1F; /* MARCSTATE */
                 uint8_t rxb = cc1101_read_status_register(0x3B) & 0x7F;  /* RXBYTES */
                 char buf[160];
-                int n = snprintf(buf, sizeof(buf),
-                    "[diag] rx_active=%d marc=0x%02X rxbytes=%u rx=%lu tx=%lu overflow=%lu restart=%lu",
-                    cc1101_is_rx_active() ? 1 : 0, marc, rxb,
-                    (unsigned long)rx_count, (unsigned long)tx_count,
-                    (unsigned long)cc1101_overflow_count(),
-                    (unsigned long)cc1101_rx_restart_manual_count());
+                int n =
+                    snprintf(buf, sizeof(buf),
+                             "[diag] rx_active=%d marc=0x%02X rxbytes=%u rx=%lu tx=%lu overflow=%lu restart=%lu",
+                             cc1101_is_rx_active() ? 1 : 0, marc, rxb, (unsigned long)rx_count, (unsigned long)tx_count,
+                             (unsigned long)cc1101_overflow_count(), (unsigned long)cc1101_rx_restart_manual_count());
                 stream_broadcast_text(buf, (size_t)n);
             }
         }

@@ -697,7 +697,7 @@ bool cc1101_transmit_and_resume_rx(const uint8_t* data, size_t len)
     /* 5. Configure for RX */
     cc1101_write_register(CC1101_SYNC1, 0xAA);
     cc1101_write_register(CC1101_SYNC0, 0xAA);
-    cc1101_write_register(CC1101_MDMCFG2, 0x01); /* 2-FSK, 15/16 sync match */
+    cc1101_write_register(CC1101_MDMCFG2, 0x01);  /* 2-FSK, 15/16 sync match */
     cc1101_write_register(CC1101_PKTCTRL0, 0x00); /* fixed-length */
     cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
 

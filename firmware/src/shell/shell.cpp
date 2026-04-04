@@ -1736,8 +1736,8 @@ static void cmd_cca(const char* arg)
         item.zone_byte = zone;
         item.duration_sec = dur;
         if (cca_cmd_enqueue(&item)) {
-            printf("Auto-pair queued (hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%us)\r\n",
-                   (unsigned)hub_id, (unsigned)dev_class, subnet, zone, dur);
+            printf("Auto-pair queued (hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%us)\r\n", (unsigned)hub_id,
+                   (unsigned)dev_class, subnet, zone, dur);
         }
         else {
             printf("Command queue full!\r\n");

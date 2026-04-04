@@ -119,7 +119,11 @@ static void submit_announce_group(void)
     pkt[6] = QS_PROTO_RADIO_TX;
     pkt[7] = 0x13;
     pkt[8] = 0x00;
-    pkt[9] = 0xFF; pkt[10] = 0xFF; pkt[11] = 0xFF; pkt[12] = 0xFF; pkt[13] = 0xFF;
+    pkt[9] = 0xFF;
+    pkt[10] = 0xFF;
+    pkt[11] = 0xFF;
+    pkt[12] = 0xFF;
+    pkt[13] = 0xFF;
     pkt[14] = 0x08;
     pkt[15] = 0x05;
     put_be32(pkt + 16, detected_serial_);
@@ -310,7 +314,7 @@ static void submit_config_group(void)
     p[16] = 0x01;
     p[18] = 0x07;
     p[20] = 0x02;
-    p[24] = zone_byte_; /* THE ZONE ASSIGNMENT */
+    p[24] = zone_byte_;    /* THE ZONE ASSIGNMENT */
     p[25] = QS_ADDR_GROUP; /* 0xEF */
     g.phases[5].packet.len = 51;
     g.phases[5].retransmits = 8;
@@ -380,9 +384,7 @@ static void auto_pair_rx_hook(const DecodedPacket* pkt)
      * Filter out our own hub_id to avoid catching our accept packets. */
     if ((pkt->type_byte == 0xB8 || pkt->type_byte == 0xB9 || pkt->type_byte == 0xBA) &&
         (state_ == AUTO_PAIR_BEACONING || state_ == AUTO_PAIR_ANNOUNCING)) {
-        uint32_t dev_id = ((uint32_t)pkt->raw[2] << 24) |
-                          ((uint32_t)pkt->raw[3] << 16) |
-                          ((uint32_t)pkt->raw[4] << 8) |
+        uint32_t dev_id = ((uint32_t)pkt->raw[2] << 24) | ((uint32_t)pkt->raw[3] << 16) | ((uint32_t)pkt->raw[4] << 8) |
                           (uint32_t)pkt->raw[5];
 
         if (dev_id == hub_id_) return; /* ignore our own accept packets */
@@ -392,8 +394,8 @@ static void auto_pair_rx_hook(const DecodedPacket* pkt)
             detect_time_ms_ = HAL_GetTick();
             state_ = AUTO_PAIR_ANNOUNCING;
 
-            printf("[auto-pair] 0x%02X detected: serial=%08X — accept+config+announce\r\n",
-                   pkt->type_byte, (unsigned)dev_id);
+            printf("[auto-pair] 0x%02X detected: serial=%08X — accept+config+announce\r\n", pkt->type_byte,
+                   (unsigned)dev_id);
 
             submit_announce_group();
             submit_config_group();
@@ -411,8 +413,7 @@ static void auto_pair_rx_hook(const DecodedPacket* pkt)
  * Public API
  * ----------------------------------------------------------------------- */
 
-void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class,
-                         uint16_t subnet, uint8_t zone_byte,
+void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class, uint16_t subnet, uint8_t zone_byte,
                          uint8_t duration_sec)
 {
     if (state_ != AUTO_PAIR_IDLE) cca_auto_pair_stop();
@@ -429,9 +430,8 @@ void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class,
     announce_active_ = false;
     config_submitted_ = false;
 
-    printf("[auto-pair] START hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%lus\r\n",
-           (unsigned)hub_id, (unsigned)device_class, subnet, zone_byte,
-           (unsigned long)(duration_ms_ / 1000));
+    printf("[auto-pair] START hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%lus\r\n", (unsigned)hub_id,
+           (unsigned)device_class, subnet, zone_byte, (unsigned long)(duration_ms_ / 1000));
 
     state_ = AUTO_PAIR_BEACONING;
     cca_set_rx_hook(auto_pair_rx_hook);
@@ -460,8 +460,7 @@ void cca_auto_pair_poll(void)
     uint32_t now = HAL_GetTick();
 
     if ((now - start_ms_) >= duration_ms_) {
-        printf("[auto-pair] Timeout after %lus\r\n",
-               (unsigned long)((now - start_ms_) / 1000));
+        printf("[auto-pair] Timeout after %lus\r\n", (unsigned long)((now - start_ms_) / 1000));
         cca_auto_pair_stop();
         return;
     }

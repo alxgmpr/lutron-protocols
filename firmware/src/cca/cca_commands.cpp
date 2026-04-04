@@ -1599,8 +1599,8 @@ void cca_cmd_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_AUTO_PAIR:
         cca_auto_pair_start(item->device_id, item->target_id,
-                            (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
-                            item->zone_byte, item->duration_sec);
+                            (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->zone_byte,
+                            item->duration_sec);
         break;
     case CCA_CMD_AUTO_PAIR_STOP:
         cca_auto_pair_stop();
