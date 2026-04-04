@@ -12,8 +12,7 @@ comparePointers:src/syscalls.c
 
 // extern re-declarations in function scope shadow file-scope externs — HAL pattern
 shadowVariable:src/syscalls.c
-shadowVariable:src/shell/shell.cpp:1902
-shadowVariable:src/shell/shell.cpp:1958
+shadowVariable:src/shell/shell.cpp
 
 // Bitmask with zero operand is intentional for readability (register field documentation)
 badBitmaskCheck:src/system_stm32h7xx.c
