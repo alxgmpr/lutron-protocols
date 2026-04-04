@@ -48,7 +48,9 @@ async function main() {
     .find((n) => n.endsWith("SQLREFERENCEINFO.MDF"));
 
   if (!modelDb || !refDb) {
-    console.error("ERROR: Could not find SQLMODELINFO or SQLREFERENCEINFO databases");
+    console.error(
+      "ERROR: Could not find SQLMODELINFO or SQLREFERENCEINFO databases",
+    );
     console.error("Is Designer running?");
     process.exit(1);
   }
@@ -134,14 +136,22 @@ WHERE TOOLBOXPLATFORMTYPEID & 4128 <> 4128;`,
       try {
         const out = await query(endpoint, gate.sql);
         const match = out.match(/\((\d+) rows? affected\)/);
-        return { name: gate.name, rows: match ? parseInt(match[1]) : 0, error: null };
+        return {
+          name: gate.name,
+          rows: match ? parseInt(match[1], 10) : 0,
+          error: null,
+        };
       } catch (e: any) {
         // Retry with /query-master if /query failed
         if (endpoint === "/query") {
           try {
             const out = await query("/query-master", gate.sql);
             const match = out.match(/\((\d+) rows? affected\)/);
-            return { name: gate.name, rows: match ? parseInt(match[1]) : 0, error: null };
+            return {
+              name: gate.name,
+              rows: match ? parseInt(match[1], 10) : 0,
+              error: null,
+            };
           } catch (e2: any) {
             return { name: gate.name, rows: 0, error: e2.message };
           }

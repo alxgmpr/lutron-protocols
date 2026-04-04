@@ -818,7 +818,7 @@ function allocateIds(count: number): { firstId: number; nextId: number } {
     `SET NOCOUNT ON; SELECT NextObjectID FROM tblNextObjectID`,
   );
   const firstId = parseInt(result.trim(), 10);
-  if (isNaN(firstId)) throw new Error("Failed to read NextObjectID");
+  if (Number.isNaN(firstId)) throw new Error("Failed to read NextObjectID");
   const nextId = firstId + count;
   sqlcmd(`SET NOCOUNT ON; UPDATE tblNextObjectID SET NextObjectID = ${nextId}`);
   return { firstId, nextId };
@@ -898,7 +898,7 @@ function getSceneAssignmentCount(sceneId: number): number {
 function resolveArea(nameOrId: string): { areaId: number; areaName: string } {
   // Try as numeric ID first
   const asNum = parseInt(nameOrId, 10);
-  if (!isNaN(asNum)) {
+  if (!Number.isNaN(asNum)) {
     const result = sqlcmd(
       `SET NOCOUNT ON; SELECT AreaID, Name FROM tblArea WHERE AreaID = ${asNum}`,
     );
