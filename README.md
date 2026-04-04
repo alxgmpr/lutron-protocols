@@ -31,6 +31,9 @@ This reverse engineering project lead to the discovery of tons of information ab
 
 ## Hardware
 
+<img width="461" alt="image" src="https://github.com/user-attachments/assets/11533b74-ef90-4847-9f7d-609a5c813bd4" />
+
+
 ```
   CC1101 (433 MHz CCA)  ──┐                                ┌── UART shell (ST-LINK VCP)
                           ├── STM32H723 Nucleo (FreeRTOS) ─┤
