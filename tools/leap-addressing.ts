@@ -13,7 +13,10 @@ const cmd = args[0];
 const LINK_ID = 439; // RA3 CCA link
 
 async function main() {
-  const conn = new LeapConnection({ host: "10.0.0.1", certName: "ra3" });
+  const conn = new LeapConnection({
+    host: process.env.RA3_HOST ?? "10.0.0.1",
+    certName: "ra3",
+  });
   await conn.connect();
   console.log("Connected to RA3 processor");
 

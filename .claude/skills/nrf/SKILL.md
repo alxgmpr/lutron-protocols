@@ -63,7 +63,7 @@ The interface name is printed by ot-daemon (e.g., "Thread interface: utun8"). Th
 ```
 dataset clear
 dataset channel 25
-dataset panid 0xXXXX
+dataset panid <your-thread-panid>
 dataset extpanid <your-thread-xpanid>
 dataset networkkey <your-thread-master-key>
 dataset commit active
@@ -79,7 +79,7 @@ Once joined, you can:
 - Discover devices: `ping ff03::1`
 
 ### Key Facts (RCP mode)
-- **Thread credentials**: channel 25, PAN ID 0xXXXX, in .env file
+- **Thread credentials**: channel 25, PAN ID <your-panid>, in .env file
 - **ot-daemon binaries**: `~/bin/ot-daemon`, `~/bin/ot-ctl`
 - **RCP firmware build**: `tools/nrf-ncp/build.sh` (clones ot-nrf528xx, applies patch, builds)
 - **Socket**: `/tmp/openthread-utun<N>.sock` (auto-created by ot-daemon)

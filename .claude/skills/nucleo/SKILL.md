@@ -319,7 +319,7 @@ nrfutil nrf5sdk-tools pkg generate \
 | Designer VM | 10.0.0.5 | SSH (user/pass), Designer + SQL Server |
 
 Thread mesh-local prefix: `fd0d:2ef:a82c:0::/64`
-Thread channel: 25, PAN ID: 0xXXXX
+Thread channel: 25, PAN ID: <your-panid>
 
 ## Common Workflows
 

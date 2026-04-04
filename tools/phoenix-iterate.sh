@@ -7,7 +7,7 @@
 
 set -e
 
-PI="alex@10.0.0.6"
+PI="user@10.0.0.6"
 PI_KEY="$HOME/.ssh/id_ed25519_pi"
 SSH="ssh -i $PI_KEY $PI"
 SCP="scp -i $PI_KEY"

@@ -46,7 +46,10 @@ const apply = args.includes("--apply");
 const unaddress = args.includes("--unaddress");
 
 async function main() {
-  const conn = new LeapConnection({ host: "10.0.0.1", certName: "ra3" });
+  const conn = new LeapConnection({
+    host: process.env.RA3_HOST ?? "10.0.0.1",
+    certName: "ra3",
+  });
   await conn.connect();
   console.log("Connected to RA3 processor\n");
 

@@ -20,7 +20,10 @@ if (!targetSerial || !deviceId) {
 }
 
 async function main() {
-  const conn = new LeapConnection({ host: "10.0.0.1", certName: "ra3" });
+  const conn = new LeapConnection({
+    host: process.env.RA3_HOST ?? "10.0.0.1",
+    certName: "ra3",
+  });
 
   let activated = false;
 

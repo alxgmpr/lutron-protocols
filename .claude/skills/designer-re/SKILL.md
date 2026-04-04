@@ -16,7 +16,7 @@ Decompile and analyze .NET DLLs from Lutron Designer to understand internal syst
 The Designer app is packaged as an MSIX (zip). Extract to get the DLLs:
 
 ```bash
-mkdir -p /tmp/lutron-designer && unzip -o "~/lutron-tools/Lutron Designer 26.0.2.100.msix" -d /tmp/lutron-designer
+mkdir -p /tmp/lutron-designer && unzip -o "/Users/user/lutron-tools/Lutron Designer 26.0.2.100.msix" -d /tmp/lutron-designer
 ```
 
 App DLLs are in `/tmp/lutron-designer/QuantumResi/`. If already extracted, reuse that directory.

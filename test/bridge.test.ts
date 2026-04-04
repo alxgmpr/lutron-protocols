@@ -100,14 +100,14 @@ test("formatAddr: extended address", () => {
 // ── Thread key derivation ────────────────────────────────
 
 test("deriveThreadKeys produces 16-byte MAC and MLE keys", () => {
-  const masterKey = Buffer.from("<your-thread-master-key>", "hex");
+  const masterKey = Buffer.from("0123456789ABCDEF0123456789ABCDEF", "hex");
   const { mleKey, macKey } = deriveThreadKeys(masterKey, 3);
   assert.equal(mleKey.length, 16);
   assert.equal(macKey.length, 16);
 });
 
 test("deriveThreadKeys: different key sequences produce different keys", () => {
-  const masterKey = Buffer.from("<your-thread-master-key>", "hex");
+  const masterKey = Buffer.from("0123456789ABCDEF0123456789ABCDEF", "hex");
   const k0 = deriveThreadKeys(masterKey, 0).macKey;
   const k1 = deriveThreadKeys(masterKey, 1).macKey;
   assert.notDeepEqual(k0, k1);
