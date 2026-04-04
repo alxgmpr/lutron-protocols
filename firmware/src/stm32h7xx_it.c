@@ -80,7 +80,7 @@ void EXTI0_IRQHandler(void)
 }
 
 #if CC1101_GDO2_BACKUP_ENABLE
-void EXTI1_IRQHandler(void)
+void EXTI15_10_IRQHandler(void)
 {
     s_exti_gdo2_count++;
     HAL_GPIO_EXTI_IRQHandler(CC1101_GDO2_PIN);
