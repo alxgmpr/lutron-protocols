@@ -1,6 +1,6 @@
 # Lutron Designer Account Proxy
 
-Intercepts Lutron Designer authentication responses and injects all channel strings to unlock every product type and feature.
+Proxy server that intercepts Lutron Designer authentication responses and injects all channel strings, unlocking all product types and features in the Designer UI.
 
 ## How It Works
 

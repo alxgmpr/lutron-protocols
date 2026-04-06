@@ -1,14 +1,14 @@
 # Lutron Tools
 
-Reverse-engineering toolkit for Lutron lighting control systems. RF packet capture/injection, Thread mesh networking, LEAP processor API, and CoAP device programming — from a single STM32 hardware platform with TypeScript host tooling.
+Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), and LEAP (processor API). Built on an STM32H723 transceiver with TypeScript host tooling.
 
-Targets RadioRA 3, HomeWorks QSX, Caseta, and Vive product families.
+Supports Phoenix, Caseta, and Vive product families.
 
 <img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/de5c9715-4d1f-4f45-b770-9e668852199d" />
 
 ## Background
 
-This reverse engineering project lead to the discovery of tons of information about the inner workings of Lutron's control systems. Beginning with Caseta CCA radios, then diving into reverse engineering the Lutron Designer binaries and firmwares (publicly accessible files and hardware I purchased myself from eBay and other sources). Through hobby efforts but then some sleepless nights, Claude Code and I unpacked tons of data and made some large discoveries that allowed us to do more 'advanced' things with my own personal Lutron systems. These capabilities include:
+This project started with Caseta CCA radios and expanded into reverse engineering Lutron Designer binaries and firmware images (from publicly accessible files and hardware purchased from eBay). Over time, this work produced a detailed understanding of Lutron's control systems and enabled the following capabilities:
 
 - Pairing to devices as a transmitter, aka imitating a Pico (direct control, no bridge required)
 - Imitating a bridge, pairing devices to our own radios and fake CCA subnet.
@@ -21,12 +21,12 @@ This reverse engineering project lead to the discovery of tons of information ab
 - Root exploits in Phoenix and Caseta/RA2 Select bridge firmwares. 
   - Unlocked device limits, change device types
 
-## TLDR:
+## Key Concepts
 
 - CCA = QS Link over radio = 8N1 packets + TDMA slotting. Seq + 6 = 75ms time delta. Seq + 1 = 12.5ms.
 - CCX = 2.4 GHz Thread + CBOR encoding + CoAP port. Code name Pegasus. Credentials are extractable from LEAP or from the Designer database
 - Phoenix = RadioRA3, HomeWorks QSX, Athena, myRoomXc. Designer project determines capabilities. Firmware is identical across this family
-- Sunnata = all the same. RRST = HRST = ARST. RA3 dimmers pair easily to HWQS. Seriously, theres no difference other than the label here.
+- Sunnata variants are identical hardware: RRST = HRST = ARST. RA3 dimmers pair to HWQS without modification. The only difference is the product label.
 - Lutron Designer = .NET app + LocalDB. Project files are just source of truth for the database
 
 ## Hardware
@@ -40,19 +40,18 @@ This reverse engineering project lead to the discovery of tons of information ab
   nRF52840 (Thread CCX) ──┘   Ethernet, UDP :9433          └── Stream → CLI (cli/nucleo.ts)
 ```
 
-The Nucleo drives dual radios — a CC1101 for CCA (Clear Connect Type A, 433 MHz FSK) and an nRF52840 NCP for CCX (Clear Connect Type X, Thread/802.15.4 2.4 GHz). The host CLI connects over UDP for real-time packet display, protocol decoding, and interactive command dispatch.
+The Nucleo board hosts two radios: a CC1101 for CCA (433 MHz FSK) and an nRF52840 NCP for CCX (Thread/802.15.4 at 2.4 GHz). The host CLI connects over UDP for packet display, protocol decoding, and command dispatch.
 
-Really, this is pretty similar to what Lutron actually uses in production for their own bridges. For Caseta/Vive/RA2 Select it's a STM32L100 + CC110L (2 of these on Vive) and EFR32
+This is architecturally similar to Lutron's production bridges. Caseta/Vive/RA2 Select use an STM32L100 with one or two CC110L radios, plus an EFR32 for CCX.
 
 ## Protocol Coverage
 
 
-| Layer    | Transport                 | What It Does                                                      |
+| Layer    | Transport                 | Description                                                       |
 | -------- | ------------------------- | ----------------------------------------------------------------- |
-| **CCA**  | 433 MHz 2-FSK, CC1101     | Legacy RF — dimmer control, pico remotes, pairing, state reports  |
-| **CCX**  | 802.15.4 Thread, nRF52840 | Sunnata/Darter — multicast level/scene, unicast CoAP programming  |
-| **LEAP** | TLS mutual-auth JSON      | Processor API — zone/device/area hierarchy, status, configuration |
-| **CoAP** | UDP :5683 over Thread     | Direct device communication — firmware metadata, trim, LED, DFU   |
+| **CCA**  | 433 MHz 2-FSK, CC1101     | Dimmer control, pico remotes, pairing, state reports              |
+| **CCX**  | 802.15.4 Thread, nRF52840 | Sunnata/Darter multicast level/scene, unicast CoAP programming    |
+| **LEAP** | TLS mutual-auth JSON      | Processor API for zone/device/area hierarchy, status, configuration |
 
 
 ## Quick Start
@@ -88,7 +87,7 @@ Requires `arm-none-eabi-gcc`, CMake, and OpenOCD.
 
 ## CLI
 
-The interactive TUI (`cli/nucleo.ts`) provides live packet display with protocol decoding, CCA/CCX/CoAP command dispatch, and recording.
+The interactive TUI (`cli/nucleo.ts`) displays decoded packets, dispatches CCA/CCX commands, and supports recording.
 
 ```
 ccx coap get rloc:4800 fw/it/md        # CoAP GET with CBOR decode
@@ -121,14 +120,7 @@ status                                  # Radio/network status
 
 ## Documentation
 
-Protocol research and RE findings are in `docs/`:
-
-- `**protocols/ccx-coap.md**` — CoAP endpoint map, firmware metadata format, database buckets
-- `**cca-protocol.md**` — CCA packet structure, field layouts, pairing sequences
-- `**protocols/ccx.md**` — Thread/802.15.4 protocol, CBOR message types, programming plane
-- `**leap-api-exploration.md**` — Full LEAP endpoint enumeration
-- `**coproc-firmware-re.md**` — Kinetis/EFR32 coprocessor firmware reverse engineering
-- `**lutron-pki.md**` — Certificate infrastructure and key extraction
+Protocol research and reverse engineering findings are in `docs/`. See [docs/index.md](docs/index.md) for the full table of contents.
 
 ## Configuration
 
@@ -144,19 +136,14 @@ Thread network parameters in `firmware/src/ccx/thread_config.h`. Both are gitign
 
 LEAP tools require mutual TLS certificates (`lutron-{name}-{cert,key,ca}.pem` in project root).
 
-## Credits and Other Research
+## Prior Work
 
-This project has been something I have tinkered with for a long time since I started reverse engineering with AI (before it was cool). 
-
-However even before that several others did good manual labor. Special thanks to Entropy512, whose work saved me tons of time narrowing the RF parameters and packet structures: [https://github.com/Entropy512/lutron_hacks](https://github.com/Entropy512/lutron_hacks)
-
-Additionally, [https://hackaday.io/project/2291-integrated-room-sunrise-simulator/log/7223-the-wireless-interface](https://hackaday.io/project/2291-integrated-room-sunrise-simulator/log/7223-the-wireless-interface) from Ceady was a great resource. One of my early test harnesses was an ESP32, an array of relays, and Pico with test leads soldered on. 
-
-Thank you for you work.
+- Entropy512's Lutron RF parameter and packet structure research: [github.com/Entropy512/lutron_hacks](https://github.com/Entropy512/lutron_hacks)
+- Ceady's wireless interface documentation: [hackaday.io/project/2291](https://hackaday.io/project/2291-integrated-room-sunrise-simulator/log/7223-the-wireless-interface)
 
 ## Future Work
 
-- One goal is to get full cross compatibility with Vive devices. I have this of course with the custom bridge but it would be cool to flash the Caseta NCP with Vive (type 30) CCA instead of Caseta/HWQS (type 9/11). MRF2/MRF2S devices are the only ones from Vive that I have gotten to 'natively pair'
+- Native Vive cross-compatibility. The custom bridge handles this at the application layer, but native pairing requires flashing the Caseta NCP with Vive (link type 30) CCA instead of Caseta/HWQS (type 9/11). So far only MRF2/MRF2S devices have paired natively.
 
 ## License
 

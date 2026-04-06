@@ -1,6 +1,6 @@
 # Documentation Index
 
-Lutron reverse-engineering toolkit documentation, organized by topic.
+Documentation for the Lutron reverse engineering toolkit, organized by topic.
 
 ## Protocols
 

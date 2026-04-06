@@ -1,8 +1,8 @@
 # Lutron Clear Connect Type X (CCX) Protocol
 
-## Discovery: CCX is Thread
+## CCX is Thread
 
-Analysis of Lutron RadioRA3/Homeworks databases reveals that Clear Connect X (CCX) is based on Thread, not proprietary RF like Clear Connect Type A (CCA).
+Analysis of Lutron RadioRA3/Homeworks databases shows that Clear Connect X (CCX) is based on Thread, not a proprietary RF protocol like CCA.
 
 Evidence:
 - `fd00::` IPv6 prefixes indicate Thread/6LoWPAN Unique Local Addresses
