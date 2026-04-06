@@ -1,13 +1,13 @@
 # LEAP API Exploration Results: RA3 Processor (<ra3-ip>)
 
-Comprehensive documentation of the LEAP API surface on the HWQS (Homeworks QSX) processor,
+Documentation of the LEAP API surface on the HWQS (Homeworks QSX) processor,
 firmware v03.247, explored 2026-03-06 via `ReadRequest` on TLS port 8081.
 
 **Source data**: `data/leap-explore-<ra3-ip>-2026-03-06.json` (main), `data/leap-explore-followup.json` (href followup)
 
 ---
 
-## 1. Executive Summary
+## 1. Summary
 
 | Metric | Count |
 |--------|-------|

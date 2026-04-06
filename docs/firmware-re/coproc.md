@@ -3,8 +3,9 @@
 ## Overview
 
 The `lutron-coproc-firmware-update-app` binary (ARM32 ELF, C++) embeds obfuscated S19 firmware
-images for coprocessor MCUs. We cracked the obfuscation, extracted 10 firmware images from the
-Phoenix build, imported them into Ghidra, and decompiled the CCX (Thread/OpenThread) coprocessor.
+images for coprocessor MCUs. The obfuscation has been reversed, yielding 10 firmware images from
+the Phoenix build. These were imported into Ghidra for analysis, with a focus on the CCX
+(Thread/OpenThread) coprocessor.
 
 ## Obfuscation
 

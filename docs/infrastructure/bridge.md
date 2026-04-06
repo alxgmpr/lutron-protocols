@@ -1,10 +1,10 @@
 # CCX-WiZ Bridge State Machine Spec
 
-Governing spec for the bridge rewrite. Speed and correctness are the two design goals — every design decision optimizes for one without sacrificing the other.
+State machine specification for the CCX-WiZ bridge. Covers message sources, zone state model, deduplication, and dispatch logic.
 
 ## 1. CCX Message Sources
 
-Understanding what generates each message type is critical to the bridge design.
+Each CCX message type has a different source and requires different handling in the bridge.
 
 ### BUTTON_PRESS (type 1) — the fast path
 

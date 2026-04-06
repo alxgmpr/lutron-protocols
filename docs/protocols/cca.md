@@ -1,6 +1,6 @@
 # CCA Protocol Reference
 
-Clear Connect Type A (CCA) is Lutron's proprietary 433 MHz radio protocol used by Picos, dimmers, switches, sensors, and hubs. This doc is organized by topic — see [lutron-rf-overview.md](lutron-rf-overview.md) for the conceptual big picture.
+Clear Connect Type A (CCA) is Lutron's proprietary 433 MHz radio protocol used by Picos, dimmers, switches, sensors, and hubs. Organized by topic. See [hardware/overview.md](../hardware/overview.md) for the system-level context.
 
 ## 1. RF Parameters
 

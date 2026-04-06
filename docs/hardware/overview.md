@@ -1,6 +1,6 @@
 # Lutron RF Transport Overview
 
-Start here. This doc covers the three communication layers in Lutron lighting systems and how they relate to each other.
+Overview of the three communication layers in Lutron lighting systems and how they relate to each other.
 
 ## Three Transport Layers
 

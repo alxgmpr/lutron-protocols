@@ -1,8 +1,8 @@
-# Nucleo H723ZG Firmware — CCA/CCX Coordinator
+# Nucleo H723ZG Firmware
 
 ## Overview
 
-STM32H723ZG-based coordinator that bridges Lutron CCA (CC1101 radio) and CCX (Thread via nRF52840 NCP) to a host application over Ethernet TCP. Replaces the ESP32+ESPHome approach for deterministic SPI/interrupt handling.
+STM32H723ZG firmware that bridges Lutron CCA (CC1101 radio) and CCX (Thread via nRF52840 NCP) to a host application over UDP. Replaces the earlier ESP32+ESPHome approach for deterministic SPI/interrupt handling.
 
 ### Architecture
 
