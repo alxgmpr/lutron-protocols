@@ -1,6 +1,6 @@
 # Lutron Tools
 
-Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), and LEAP (processor API). Built on an STM32H723 transceiver with TypeScript host tooling.
+Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), and LEAP (processor API). Built on an STM32H723 + CC1101 + nRF52840 platform with TypeScript host tooling.
 
 Supports Phoenix, Caseta, and Vive product families.
 
