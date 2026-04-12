@@ -267,6 +267,105 @@ TdmaJobGroup cca_jobs_save_fav(uint32_t device_id)
     return g;
 }
 
+TdmaJobGroup cca_jobs_led_config(uint32_t zone_id, uint32_t target_id, uint8_t led_mode)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_led_config(g.phases[0].packet.data, zone_id, target_id, led_mode);
+    g.phases[0].packet.len = 51;
+    g.phases[0].packet.type_base = 0xA1;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB led_config zone=%08X target=%08X mode=%u\r\n",
+           (unsigned)zone_id, (unsigned)target_id, led_mode);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_fade_config(uint32_t zone_id, uint32_t target_id,
+                                  uint16_t fade_on_qs, uint16_t fade_off_qs)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_fade_config(g.phases[0].packet.data, zone_id, target_id, fade_on_qs, fade_off_qs);
+    g.phases[0].packet.len = 51;
+    g.phases[0].packet.type_base = 0xA1;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB fade_config zone=%08X target=%08X on=%uqs off=%uqs\r\n",
+           (unsigned)zone_id, (unsigned)target_id, fade_on_qs, fade_off_qs);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_trim_config(uint32_t zone_id, uint32_t target_id,
+                                  uint8_t high_trim, uint8_t low_trim)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_trim_config(g.phases[0].packet.data, zone_id, target_id, high_trim, low_trim);
+    g.phases[0].packet.len = 51;
+    g.phases[0].packet.type_base = 0xA1;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB trim_config zone=%08X target=%08X high=%u%% low=%u%%\r\n",
+           (unsigned)zone_id, (unsigned)target_id, high_trim, low_trim);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t phase_byte)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_phase_config(g.phases[0].packet.data, zone_id, target_id, phase_byte);
+    g.phases[0].packet.len = 51;
+    g.phases[0].packet.type_base = 0xA1;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB phase_config zone=%08X target=%08X phase=0x%02X\r\n",
+           (unsigned)zone_id, (unsigned)target_id, phase_byte);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id,
+                                 const uint8_t* config_bytes, uint8_t config_len)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_dim_config(g.phases[0].packet.data, zone_id, target_id, config_bytes, config_len);
+    g.phases[0].packet.len = 51;
+    g.phases[0].packet.type_base = 0xA1;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB dim_config zone=%08X target=%08X\r\n",
+           (unsigned)zone_id, (unsigned)target_id);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_identify(uint32_t target_id)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_identify(g.phases[0].packet.data, target_id);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB identify target=%08X\r\n", (unsigned)target_id);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_query(uint32_t target_id)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    cca_build_query(g.phases[0].packet.data, target_id);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB query target=%08X\r\n", (unsigned)target_id);
+    return g;
+}
+
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
 {
     TdmaJobGroup empty = {};

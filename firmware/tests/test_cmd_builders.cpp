@@ -175,3 +175,25 @@ TEST(cmd_save_fav_group_two_phases)
     ASSERT_EQ(g.phases[1].packet.data[10], BTN_FAVORITE);
     ASSERT_EQ(g.phases[1].packet.data[11], ACTION_SAVE);
 }
+
+TEST(cmd_identify_group)
+{
+    TdmaJobGroup g = cca_jobs_identify(0x00030004);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0x81);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_CTRL);
+    ASSERT_EQ(g.phases[0].packet.data[14], QS_CLASS_DEVICE);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_IDENTIFY);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0x01);
+}
+
+TEST(cmd_query_group)
+{
+    TdmaJobGroup g = cca_jobs_query(0x00030004);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.data[14], QS_CLASS_SELECT);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_EXECUTE);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0x0D);
+}

@@ -410,3 +410,107 @@ inline size_t cca_build_dim_config(uint8_t* pkt, uint32_t zone_id, uint32_t targ
     }
     return 51;
 }
+
+/* -----------------------------------------------------------------------
+ * Build identify packet (format 0x09, 22 bytes)
+ * QS_CLASS_DEVICE + QS_TYPE_IDENTIFY — flashes device LED.
+ * Uses target_id as both source and target (pretending to be processor).
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_identify(uint8_t* pkt, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, target_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_DEVICE;
+    pkt[15] = QS_TYPE_IDENTIFY;
+    pkt[16] = 0x01;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build query packet (format 0x09, 22 bytes)
+ * QS_CLASS_SELECT + QS_TYPE_EXECUTE — requests component info.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_query(uint8_t* pkt, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, target_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_SELECT;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = 0x0D;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive level packet (format 0x0E, 22 bytes, type 0x89+)
+ * Hub ID at [2-5] BE, zone byte at [12], addr_mode=GROUP.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_level(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte,
+                                   uint16_t level16, uint8_t fade_qs)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_LEVEL;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = fade_qs;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive dim start packet (format 0x09, 22 bytes, type 0x89+)
+ * Hold-start: CLASS_DIM + TYPE_HOLD + direction.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_dim_start(uint8_t* pkt, uint32_t hub_id,
+                                       uint8_t zone_byte, uint8_t direction)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_DIM;
+    pkt[15] = QS_TYPE_HOLD;
+    pkt[16] = direction;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive dim stop packet (format 0x0B, 22 bytes, type 0x89+)
+ * Dim-step: CLASS_DIM + TYPE_EXECUTE + direction.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_dim_stop(uint8_t* pkt, uint32_t hub_id,
+                                      uint8_t zone_byte, uint8_t direction)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_DIM_STEP;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_DIM;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = direction;
+    return 22;
+}
