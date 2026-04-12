@@ -5,6 +5,7 @@
  *
  * Usage: npx tsx tools/leap-auto-activate.ts <serial_dec> <device_id> <hex_encoding>
  */
+import { defaultHost } from "../lib/config";
 import { LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
@@ -20,10 +21,7 @@ if (!targetSerial || !deviceId) {
 }
 
 async function main() {
-  const conn = new LeapConnection({
-    host: process.env.RA3_HOST ?? "10.0.0.1",
-    certName: "ra3",
-  });
+  const conn = new LeapConnection({ host: defaultHost });
 
   let activated = false;
 

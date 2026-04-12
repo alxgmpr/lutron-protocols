@@ -19,15 +19,11 @@ import { z } from "zod";
 
 // ── Config ──────────────────────────────────────────────────────────
 
-import {
-  DESIGNER_VM_HOST,
-  DESIGNER_VM_PASS,
-  DESIGNER_VM_USER,
-} from "../lib/env";
+import { config } from "../lib/config";
 
-const VM_HOST = process.env.DESIGNER_VM_HOST ?? DESIGNER_VM_HOST;
-const VM_USER = process.env.DESIGNER_VM_USER ?? DESIGNER_VM_USER;
-const VM_PASS = process.env.DESIGNER_VM_PASS ?? DESIGNER_VM_PASS;
+const VM_HOST = config.designer.host;
+const VM_USER = config.designer.user;
+const VM_PASS = config.designer.pass;
 const HTTP_BASE = `http://${VM_HOST}:9999`;
 const DEFAULT_TIMEOUT = 30_000;
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));

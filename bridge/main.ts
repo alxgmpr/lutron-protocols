@@ -117,7 +117,8 @@ async function main() {
   const pipeline = new FramePipeline({ masterKey, knownDevices: devices });
   // ── Nucleo state reporting ──────────────────────────────────
 
-  const nucleoHost = process.env.NUCLEO_HOST ?? haOptions?.nucleo_host ?? "";
+  const nucleoHost =
+    process.env.OPEN_BRIDGE_HOST ?? haOptions?.nucleo_host ?? "";
   const deviceSerials = new Map<number, number>();
   const serialEntries = haOptions?.device_serials ?? [];
   for (const entry of serialEntries) {

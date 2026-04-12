@@ -29,7 +29,8 @@ const getArg = (name: string) => {
 };
 const hasFlag = (name: string) => args.includes(name);
 
-const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? "10.0.0.3";
+import { config } from "../lib/config";
+const host = getArg("--host") ?? config.openBridge;
 const showRaw = hasFlag("--raw");
 const sessionName =
   args.find((a) => !a.startsWith("--") && a !== getArg("--host")) || "capture";

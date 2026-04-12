@@ -23,9 +23,6 @@ data/
 !data/phoenix-ssl/
 !data/wiz-device-serials.json
 
-# Config (local overrides — templates committed as *.example.yaml)
-config/*
-!config/*.example.yaml
 
 # ESPHome build artifacts
 rf/esphome/.esphome/
@@ -105,7 +102,7 @@ certs/
 .claude/projects/
 .claude/settings.local.json
 .mcp.json
-.env
+config.json
 
 # iOS/Android app binaries
 *.ipa

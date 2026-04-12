@@ -6,13 +6,14 @@
  * Focused for rapid /cg/db/* experimentation (e.g. status LED intensity).
  *
  * Examples:
- *   bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host $NUCLEO_HOST
- *   bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host $NUCLEO_HOST
- *   bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host $NUCLEO_HOST
+ *   bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host openBridge
+ *   bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host openBridge
+ *   bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host openBridge
  *   bun run tools/ccx-coap-send.ts bucket decode AHA
  *   bun run tools/ccx-coap-send.ts bucket encode 0x0070
  */
 
+import { config } from "../lib/config";
 import { randomBytes } from "crypto";
 import { createSocket } from "dgram";
 import {
@@ -443,7 +444,7 @@ async function sendCoap(params: {
   if (transport === "stm32") {
     if (!stm32Host) {
       throw new Error(
-        "Missing --stm32-host (or NUCLEO_HOST) for STM32 transport",
+        "Missing --stm32-host for STM32 transport (or set openBridge in config.json)",
       );
     }
 
@@ -556,10 +557,10 @@ Commands:
   bucket   Encode/decode ct bucket token
 
 Examples:
-  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host $NUCLEO_HOST
-  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AFE --cbor '[107,{1:3}]' --stm32-host $NUCLEO_HOST
-  bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host $NUCLEO_HOST
-  bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host $NUCLEO_HOST
+  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AHA --hex 82186ca20418e5051819 --stm32-host openBridge
+  bun run tools/ccx-coap-send.ts send --dst <dst-ipv6> --src <src-ipv6> --path /cg/db/ct/c/AFE --cbor '[107,{1:3}]' --stm32-host openBridge
+  bun run tools/ccx-coap-send.ts aha --dst <dst-ipv6> --src <src-ipv6> --k4 229 --k5 25 --stm32-host openBridge
+  bun run tools/ccx-coap-send.ts trim --dst <dst-ipv6> --src <src-ipv6> --high16 58685 --low16 2638 --k8 5 --stm32-host openBridge
   bun run tools/ccx-coap-send.ts bucket decode AHA
   bun run tools/ccx-coap-send.ts bucket encode 0x0070
 
@@ -582,7 +583,7 @@ send options:
 
 transport options:
   --stm32-host <ip>    Send via STM32+nRF using raw Spinel STREAM_NET over stream UDP
-                       (default: NUCLEO_HOST env, if set)
+                       (default: openBridge from config.json)
   --stm32-port <n>     STM32 stream UDP port (default: 9433)
   --shell-timeout-ms   STM32 shell response timeout (default: 5000)
   --spinel-stream-prop Spinel stream prop (0x72=NET, 0x73=NET_INSECURE; default: 0x72)
@@ -657,7 +658,7 @@ async function main() {
   const intervalMs = parseInt(getArg("--interval") ?? "120", 10);
   const timeoutMs = parseInt(getArg("--timeout-ms") ?? "2000", 10);
   const dryRun = hasFlag("--dry-run");
-  const stm32Host = getArg("--stm32-host") ?? process.env.NUCLEO_HOST;
+  const stm32Host = getArg("--stm32-host") ?? config.openBridge;
   const stm32Port = parseInt(
     getArg("--stm32-port") ?? String(STREAM_DEFAULT_PORT),
     10,

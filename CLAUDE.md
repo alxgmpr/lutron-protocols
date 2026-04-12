@@ -117,7 +117,7 @@ const getArg = (name: string) => { const i = args.indexOf(name); return i !== -1
 const hasFlag = (name: string) => args.includes(name);
 ```
 
-Environment values load via `import { RA3_HOST } from "../lib/env"` (reads `.env` from project root, environment variables take precedence).
+Configuration loads via `import { config, defaultHost } from "../lib/config"` (reads `config.json` from project root). Processor IPs, cert paths, openBridge IP, and Designer VM credentials all come from config.json. LEAP certs are resolved per-processor by IP. Thread credentials come from LEAP dump data (`data/leap-*.json`), not config.
 
 ### CCX CBOR Encoding
 
@@ -127,11 +127,9 @@ CCX sequence numbers persist to `.ccx-seq` file in project root to survive resta
 
 ### LEAP Client
 
-`tools/leap-client.ts` provides `LeapConnection` class wrapping TLS with request/response pairing via auto-incrementing client tags (`lt-1`, `lt-2`, ...). Messages are newline-delimited JSON. Constructor takes an options object: `new LeapConnection({ host, certName })`.
+`tools/leap-client.ts` provides `LeapConnection` class wrapping TLS with request/response pairing via auto-incrementing client tags (`lt-1`, `lt-2`, ...). Messages are newline-delimited JSON. Constructor takes `{ host }` — certs are resolved from `config.json` by processor IP.
 
 The client auto-detects RA3 vs Caseta by probing the `/zone` endpoint — RA3 uses area-walk (`/area/{id}/associatedzone`), Caseta exposes zones directly.
-
-Certificate paths are auto-resolved: tries `lutron-{certName}-{cert|key|ca}.pem` in the project root.
 
 ### CCX Config Loading
 
@@ -168,7 +166,7 @@ The bridge captures Lutron Thread traffic and forwards level/scene/button comman
 ### Deployment
 
 - **Production**: HA local add-on at 10.0.0.4 — all config (pairings, Thread creds, warm dim) in HA UI
-- **Dev/standalone**: `config/ccx-bridge.yaml` + Docker or local `npx tsx bridge/main.ts --serial`
+- **Dev/standalone**: `bridge/ccx-bridge.example.yaml` + Docker or local `npx tsx bridge/main.ts --serial`
 - **Deploy script**: `./bridge/deploy-ha.sh /Volumes/config /Volumes/addons` (SMB to HA)
 - LEAP data files go to `/config/ccx-bridge/` on HA (separate from add-on source)
 
@@ -187,13 +185,7 @@ The bridge captures Lutron Thread traffic and forwards level/scene/button comman
 
 ## Network Topology
 
-| Host | IP | Purpose |
-|------|-----|---------|
-| RA3 processor | 10.0.0.1 | LEAP API, Thread network |
-| Caseta | 10.0.0.2 | LEAP API |
-| Nucleo | 10.0.0.3 | TCP:9433, CCA+CCX radio |
-| Home Assistant | 10.0.0.4 | CCX→WiZ bridge add-on, SMB, SSH |
-| Designer VM | 10.0.0.5 | UTM/NAT, key auth |
+All IPs configured in `config.json` (processors, openBridge, designer). Processor types are auto-detected from LEAP `/server` ProtocolVersion (03.x=RA3, 01.x=Caseta, 02.x=HomeWorks).
 
 ## Documentation
 

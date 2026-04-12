@@ -29,10 +29,9 @@ function getAllArgs(name: string): string[] {
   return results;
 }
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 
-const host = getArg("--host") ?? RA3_HOST;
-const certName = getArg("--cert") ?? "ra3";
+const host = getArg("--host") ?? defaultHost;
 const zoneArgs = getAllArgs("--zone");
 const pollMs = parseInt(getArg("--poll") ?? "200", 10);
 
@@ -44,7 +43,7 @@ interface ZoneInfo {
 }
 
 async function main() {
-  const conn = new LeapConnection({ host, certName });
+  const conn = new LeapConnection({ host });
   await conn.connect();
   console.log(`Connected to LEAP at ${host}`);
 

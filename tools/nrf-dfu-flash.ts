@@ -36,9 +36,9 @@ const CHUNK_SIZE = 200; // Stay under 255 limit with margin
 
 const firmwarePath = args.find((a) => !a.startsWith("--"));
 
-import { NUCLEO_HOST as DEFAULT_NUCLEO_HOST } from "../lib/env";
+import { config } from "../lib/config";
 
-const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? DEFAULT_NUCLEO_HOST;
+const host = getArg("--host") ?? config.openBridge;
 const port = parseInt(getArg("--port") ?? String(DEFAULT_PORT), 10);
 const chunkDelay = parseInt(getArg("--delay") ?? "250", 10);
 
@@ -50,7 +50,7 @@ Usage:
   bun run tools/nrf-dfu-flash.ts <firmware.bin> [options]
 
 Options:
-  --host <ip>      STM32 IP address (default: NUCLEO_HOST from .env)
+  --host <ip>      STM32 IP address (default: openBridge from config.json)
   --port <n>       Stream UDP port (default: 9433)
   --delay <ms>     Delay between chunks in ms (default: 250)
 

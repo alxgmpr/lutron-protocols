@@ -11,11 +11,10 @@
  *   bun run tools/leap-dump.ts                          # Full human-readable dump (RA3)
  *   bun run tools/leap-dump.ts --json                   # JSON output
  *   bun run tools/leap-dump.ts --config                 # Generate ccx/config.ts updates
- *   bun run tools/leap-dump.ts --host $CASETA_HOST --certs caseta   # Caseta dump
+ *   bun run tools/leap-dump.ts --host 10.x.x.x       # Specific processor
  *   bun run tools/leap-dump.ts --save                   # Save to data/leap-<host>.json
  *
- * Requires TLS certificates in the project root:
- *   lutron-{certName}-cert.pem, lutron-{certName}-key.pem, lutron-{certName}-ca.pem
+ * TLS certificates resolved from config.json per processor IP.
  */
 
 import { mkdirSync, writeFileSync } from "fs";
@@ -43,12 +42,11 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
-const HOST = getArg("--host") ?? RA3_HOST;
-const CERT_NAME = getArg("--certs") ?? "ra3";
+const HOST = getArg("--host") ?? defaultHost;
 const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
 const SAVE_OUTPUT = hasFlag("--save");
@@ -64,8 +62,8 @@ function log(msg: string): void {
 // --- Main ---
 
 async function main() {
-  const leap = new LeapConnection({ host: HOST, certName: CERT_NAME });
-  log(`Connecting to ${HOST}:8081 (certs: ${CERT_NAME})...`);
+  const leap = new LeapConnection({ host: HOST });
+  log(`Connecting to ${HOST}:8081...`);
   await leap.connect();
   log("Connected.\n");
 

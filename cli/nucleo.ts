@@ -8,7 +8,7 @@
  * display using the protocol decoders from protocol/.
  *
  * Usage: npx tsx cli/nucleo.ts <host>
- *        NUCLEO_HOST=10.0.0.3 npx tsx cli/nucleo.ts
+ *        npx tsx cli/nucleo.ts                  # uses openBridge from config.json
  */
 
 import { createSocket, type Socket } from "dgram";
@@ -110,17 +110,16 @@ const hasCliFlag = (name: string) => process.argv.includes(name);
 
 const UPDATE_LEAP = hasCliFlag("--update-leap");
 
-import { RA3_HOST } from "../lib/env";
+import { config, defaultHost } from "../lib/config";
 
-const LEAP_HOST = getCliArg("--leap-host") ?? RA3_HOST;
-const LEAP_CERTS = getCliArg("--leap-certs") ?? "ra3";
+const LEAP_HOST = getCliArg("--leap-host") ?? defaultHost;
 
 // ============================================================================
 // State
 // ============================================================================
 // Find first positional arg (skip flags and their values)
-const FLAG_WITH_VALUE = new Set(["--leap-host", "--leap-certs"]);
-let host = process.env.NUCLEO_HOST || "";
+const FLAG_WITH_VALUE = new Set(["--leap-host"]);
+let host = "";
 {
   const cliArgs = process.argv.slice(2);
   for (let i = 0; i < cliArgs.length; ) {
@@ -135,6 +134,7 @@ let host = process.env.NUCLEO_HOST || "";
     }
   }
 }
+if (!host) host = process.env.OPEN_BRIDGE_HOST || config.openBridge;
 let udpSocket: Socket;
 let quiet = false;
 let raw = true;
@@ -1755,17 +1755,17 @@ function cleanup() {
 
 if (!host) {
   console.error(
-    `Usage: bun cli/nucleo.ts <host> [--update-leap] [--leap-host <ip>] [--leap-certs <name>]`,
+    `Usage: bun cli/nucleo.ts [host] [--update-leap] [--leap-host <ip>]`,
   );
-  console.error(`  or set NUCLEO_HOST environment variable`);
+  console.error(`  or set OPEN_BRIDGE_HOST env var, or configure openBridge in config.json`);
   console.error(`\nFlags:`);
   console.error(
     `  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`,
   );
   console.error(
-    `  --leap-host <ip>      LEAP processor IP (default: $RA3_HOST)`,
+    `  --leap-host <ip>      LEAP processor IP (default: first in config.json)`,
   );
-  console.error(`  --leap-certs <name>   Cert name prefix (default: ra3)`);
+  console.error(`  Certs resolved from config.json by host IP`);
   process.exit(1);
 }
 
@@ -1817,12 +1817,9 @@ async function startup() {
 
       // LEAP fetch happens before TUI init — use console.log
       console.log(
-        `${CYAN}Fetching LEAP data from ${LEAP_HOST} (certs: ${LEAP_CERTS})...${RESET}`,
+        `${CYAN}Fetching LEAP data from ${LEAP_HOST}...${RESET}`,
       );
-      const leap = new LeapConnection({
-        host: LEAP_HOST,
-        certName: LEAP_CERTS,
-      });
+      const leap = new LeapConnection({ host: LEAP_HOST });
       await leap.connect();
       const result = await fetchLeapData(leap);
       leap.close();

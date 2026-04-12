@@ -19,14 +19,13 @@
  */
 
 import { parseArgs } from "util";
-import { CASETA_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 import { hrefId, LeapConnection } from "./leap-client";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   options: {
-    host: { type: "string", short: "h", default: CASETA_HOST },
-    cert: { type: "string", short: "c", default: "caseta" },
+    host: { type: "string", short: "h", default: defaultHost },
     zone: { type: "string", short: "z", default: "73" },
     fade: { type: "string", short: "f" },
     delay: { type: "string", short: "d" },
@@ -94,7 +93,6 @@ function presetSummary(pa: any): string {
 async function main() {
   const conn = new LeapConnection({
     host: values.host!,
-    certName: values.cert!,
   });
   await conn.connect();
 
@@ -499,8 +497,7 @@ Other:
   raw <Type> <url> [body]         Send arbitrary LEAP request
 
 Options:
-  -h, --host <ip>      Processor IP (default: $CASETA_HOST)
-  -c, --cert <name>    Cert name (default: caseta)
+  -h, --host <ip>      Processor IP (default: first in config.json)
   -z, --zone <id|name> Zone ID or name search (default: 73)
   -f, --fade <sec>     Fade time in seconds
   -d, --delay <sec>    Delay time in seconds

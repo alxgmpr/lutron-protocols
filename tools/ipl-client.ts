@@ -32,11 +32,11 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
-const HOST = getArg("--host") ?? RA3_HOST;
+const HOST = getArg("--host") ?? defaultHost;
 const PORT = Number.parseInt(getArg("--port") ?? "8902", 10);
 const SAVE = hasFlag("--save");
 const QUIET = hasFlag("--quiet");

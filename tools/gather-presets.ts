@@ -14,7 +14,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { DESIGNER_VM_HOST } from "../lib/env";
+import { config } from "../lib/config";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -46,7 +46,7 @@ const CURVE_NAMES: Record<number, string> = {
 };
 
 async function queryDesignerDb(sql: string): Promise<string> {
-  const url = `http://${DESIGNER_VM_HOST}:9999/query`;
+  const url = `http://${config.designer.host}:9999/query`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
@@ -82,7 +82,7 @@ function loadLeapPresetNames(): Record<string, string> {
 }
 
 async function main() {
-  console.log(`Querying Designer DB at ${DESIGNER_VM_HOST}...`);
+  console.log(`Querying Designer DB at ${config.designer.host}...`);
   const raw = await queryDesignerDb(SQL);
 
   // Parse pipe-delimited output, skip header rows

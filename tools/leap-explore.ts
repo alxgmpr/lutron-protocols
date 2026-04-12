@@ -8,7 +8,7 @@
  *
  * Usage:
  *   bun run tools/leap-explore.ts                           # RA3 processor
- *   bun run tools/leap-explore.ts --host $CASETA_HOST --cert caseta  # Caseta
+ *   bun run tools/leap-explore.ts --host 10.x.x.x       # Specific processor
  *   bun run tools/leap-explore.ts --save                    # Save full dump to file
  *   bun run tools/leap-explore.ts --section devices         # Only probe devices section
  */
@@ -25,10 +25,9 @@ function hasFlag(name: string): boolean {
   return args.includes(name);
 }
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 
-const HOST = getArg("--host") ?? RA3_HOST;
-const CERT_NAME = getArg("--cert") ?? "ra3";
+const HOST = getArg("--host") ?? defaultHost;
 const SAVE = hasFlag("--save");
 const SECTION = getArg("--section");
 
@@ -399,8 +398,8 @@ async function probeSpeculative() {
 // --- Main ---
 
 async function main() {
-  conn = new LeapConnection({ host: HOST, certName: CERT_NAME });
-  console.log(`Connecting to ${HOST}:8081 (certs: ${CERT_NAME})...`);
+  conn = new LeapConnection({ host: HOST });
+  console.log(`Connecting to ${HOST}:8081...`);
   await conn.connect();
   console.log("Connected.\n");
 

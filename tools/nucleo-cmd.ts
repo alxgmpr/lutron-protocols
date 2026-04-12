@@ -10,7 +10,7 @@
  *
  * Options:
  *   --wait <seconds>   Wait time for responses after last command (default: 3)
- *   --host <ip>        Nucleo IP (default: NUCLEO_HOST env or 10.0.0.3)
+ *   --host <ip>        OpenBridge IP (default: openBridge from config.json)
  *   --stdin            Read commands from stdin (one per line)
  *   --raw              Also print non-text packets as hex
  */
@@ -24,7 +24,8 @@ const getArg = (name: string) => {
 };
 const hasFlag = (name: string) => args.includes(name);
 
-const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? "10.0.0.3";
+import { config } from "../lib/config";
+const host = getArg("--host") ?? config.openBridge;
 const waitSec = Number(getArg("--wait") ?? "3");
 const printRaw = hasFlag("--raw");
 const useStdin = hasFlag("--stdin");

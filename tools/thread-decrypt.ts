@@ -16,13 +16,19 @@
  */
 
 import { execSync } from "child_process";
-import { getAllDevices } from "../ccx/config";
+import { CCX_CONFIG, getAllDevices } from "../ccx/config";
 import { buildPacket, formatMessage, getMessageTypeName } from "../ccx/decoder";
-import { THREAD_MASTER_KEY as THREAD_KEY_HEX, THREAD_PANID } from "../lib/env";
 import { formatAddr, parseFrame } from "../lib/ieee802154";
 import { decryptMacFrame, deriveThreadKeys } from "../lib/thread-crypto";
 
-const MASTER_KEY = Buffer.from(THREAD_KEY_HEX, "hex");
+if (!CCX_CONFIG.masterKey) {
+  console.error(
+    "No Thread master key found — run leap-dump first to populate data/",
+  );
+  process.exit(1);
+}
+const MASTER_KEY = Buffer.from(CCX_CONFIG.masterKey, "hex");
+const THREAD_PANID = CCX_CONFIG.panId;
 const jsonOutput = process.argv.includes("--json");
 
 // ── Pass 1: Build short→EUI-64 address table ──────────────────────
@@ -254,7 +260,7 @@ if (!jsonOutput) {
   console.log(`Thread Frame Decryptor`);
   console.log(`  File: ${pcapFile}`);
   console.log(`  PAN ID: 0x${THREAD_PANID.toString(16).padStart(4, "0")}`);
-  console.log(`  Master key: ${THREAD_KEY_HEX.slice(0, 8)}...`);
+  console.log(`  Master key: ${CCX_CONFIG.masterKey.slice(0, 8)}...`);
   console.log("");
 }
 

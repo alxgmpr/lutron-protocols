@@ -5,12 +5,12 @@
  * Quick test to see what data structure /presetassignment returns.
  */
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 import { hrefId, LeapConnection } from "./leap-client";
 
 async function main() {
-  const leap = new LeapConnection({ host: RA3_HOST, certName: "ra3" });
-  console.log(`Connecting to ${RA3_HOST}...`);
+  const leap = new LeapConnection({ host: defaultHost });
+  console.log(`Connecting to ${defaultHost}...`);
   await leap.connect();
   console.log("Connected.\n");
 
