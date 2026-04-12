@@ -25,6 +25,7 @@ const getArg = (name: string) => {
 const hasFlag = (name: string) => args.includes(name);
 
 import { config } from "../lib/config";
+
 const host = getArg("--host") ?? config.openBridge;
 const waitSec = Number(getArg("--wait") ?? "3");
 const printRaw = hasFlag("--raw");

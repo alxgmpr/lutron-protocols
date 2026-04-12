@@ -13,7 +13,6 @@
  *   bun run tools/ccx-coap-send.ts bucket encode 0x0070
  */
 
-import { config } from "../lib/config";
 import { randomBytes } from "crypto";
 import { createSocket } from "dgram";
 import {
@@ -29,6 +28,7 @@ import {
   encodeCborValue,
   parseCoapHeader,
 } from "../ccx/coap";
+import { config } from "../lib/config";
 
 const STREAM_CMD_KEEPALIVE = 0x00;
 const STREAM_CMD_TEXT = 0x20;

@@ -16,6 +16,7 @@ const getArg = (name: string) => {
 };
 
 import { config } from "../lib/config";
+
 const host = getArg("--host") ?? config.openBridge;
 const singleRloc = getArg("--rloc");
 const PORT = 9433;

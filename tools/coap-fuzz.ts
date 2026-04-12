@@ -17,6 +17,7 @@ const getArg = (name: string) => {
 const wordlist = getArg("--wordlist") ?? "all";
 
 import { config } from "../lib/config";
+
 const host = config.openBridge;
 const PORT = 9433;
 const CMD_TEXT = 0x20;

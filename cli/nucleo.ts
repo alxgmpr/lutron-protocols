@@ -1757,7 +1757,9 @@ if (!host) {
   console.error(
     `Usage: bun cli/nucleo.ts [host] [--update-leap] [--leap-host <ip>]`,
   );
-  console.error(`  or set OPEN_BRIDGE_HOST env var, or configure openBridge in config.json`);
+  console.error(
+    `  or set OPEN_BRIDGE_HOST env var, or configure openBridge in config.json`,
+  );
   console.error(`\nFlags:`);
   console.error(
     `  --update-leap         Fetch LEAP data at startup (save to data/, use for session)`,
@@ -1816,9 +1818,7 @@ async function startup() {
       );
 
       // LEAP fetch happens before TUI init — use console.log
-      console.log(
-        `${CYAN}Fetching LEAP data from ${LEAP_HOST}...${RESET}`,
-      );
+      console.log(`${CYAN}Fetching LEAP data from ${LEAP_HOST}...${RESET}`);
       const leap = new LeapConnection({ host: LEAP_HOST });
       await leap.connect();
       const result = await fetchLeapData(leap);

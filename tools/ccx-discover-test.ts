@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+
 /**
  * Interactive command sender to Nucleo via UDP.
  * Sends commands from argv or stdin, prints responses.
@@ -8,9 +9,9 @@
  *   echo "status" | bun run tools/ccx-discover-test.ts
  */
 
-import { config } from "../lib/config";
 import { createSocket } from "dgram";
 import * as readline from "readline";
+import { config } from "../lib/config";
 
 const NUCLEO_HOST = config.openBridge;
 const UDP_PORT = 9433;

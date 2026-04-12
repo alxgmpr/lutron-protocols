@@ -8,7 +8,8 @@
       "ccx/**/*.ts",
       "protocol/**/*.ts",
       "lib/**/*.ts",
-      "test/**/*.ts"
+      "test/**/*.ts",
+      "!**/._*"
     ],
     "ignoreUnknown": true
   },

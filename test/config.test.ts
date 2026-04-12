@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import test from "node:test";
-import {
-  certsForHost,
-  config,
-  defaultHost,
-  processorIPs,
-} from "../lib/config";
+import { certsForHost, config, defaultHost, processorIPs } from "../lib/config";
 
 // ── Config loading ──────────────────────────────────────────
 

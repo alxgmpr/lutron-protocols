@@ -15,9 +15,7 @@
  */
 
 import * as fs from "fs";
-import * as path from "path";
 import * as tls from "tls";
-import { fileURLToPath } from "url";
 import { certsForHost, defaultHost } from "../lib/config";
 
 const PROCESSOR_HOST = process.argv[2] ?? defaultHost;

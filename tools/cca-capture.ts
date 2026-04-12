@@ -30,6 +30,7 @@ const getArg = (name: string) => {
 const hasFlag = (name: string) => args.includes(name);
 
 import { config } from "../lib/config";
+
 const host = getArg("--host") ?? config.openBridge;
 const showRaw = hasFlag("--raw");
 const sessionName =

@@ -19,6 +19,7 @@ import { fileURLToPath } from "url";
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
 import { config } from "../lib/config";
+
 const DESIGNER_VM_HOST = config.designer.host;
 const QUERY_URL = `http://${DESIGNER_VM_HOST}:9999/query`;
 
