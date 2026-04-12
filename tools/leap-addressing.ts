@@ -6,6 +6,7 @@
  *   npx tsx tools/leap-addressing.ts exit      — exit addressing mode
  *   npx tsx tools/leap-addressing.ts activate <serial_dec> <device_id> <hex_encoding>
  */
+import { defaultHost } from "../lib/config";
 import { LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
@@ -13,10 +14,7 @@ const cmd = args[0];
 const LINK_ID = 439; // RA3 CCA link
 
 async function main() {
-  const conn = new LeapConnection({
-    host: process.env.RA3_HOST ?? "10.0.0.1",
-    certName: "ra3",
-  });
+  const conn = new LeapConnection({ host: defaultHost });
   await conn.connect();
   console.log("Connected to RA3 processor");
 

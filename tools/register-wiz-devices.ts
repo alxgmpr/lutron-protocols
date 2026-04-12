@@ -18,7 +18,8 @@ import { fileURLToPath } from "url";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
-const DESIGNER_VM_HOST = process.env.DESIGNER_VM_HOST ?? "10.0.0.5";
+import { config } from "../lib/config";
+const DESIGNER_VM_HOST = config.designer.host;
 const QUERY_URL = `http://${DESIGNER_VM_HOST}:9999/query`;
 
 // CCX zone IDs for WiZ-bridged zones (ObjectType=370 in Designer DB)

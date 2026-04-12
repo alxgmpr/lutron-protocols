@@ -1,0 +1,15 @@
+{
+  "processors": {
+    "10.x.x.x": {
+      "cert": "lutron-ra3-cert.pem",
+      "key": "lutron-ra3-key.pem",
+      "ca": "lutron-ra3-ca.pem"
+    }
+  },
+  "openBridge": "10.x.x.x",
+  "designer": {
+    "host": "10.x.x.x",
+    "user": "user",
+    "pass": "pass"
+  }
+}

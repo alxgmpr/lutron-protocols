@@ -15,7 +15,8 @@ const getArg = (name: string) => {
   return i !== -1 ? args[i + 1] : undefined;
 };
 
-const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? "10.0.0.3";
+import { config } from "../lib/config";
+const host = getArg("--host") ?? config.openBridge;
 const singleRloc = getArg("--rloc");
 const PORT = 9433;
 const CMD_TEXT = 0x20;

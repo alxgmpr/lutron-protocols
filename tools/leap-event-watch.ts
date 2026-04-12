@@ -21,10 +21,9 @@ function getArg(name: string): string | undefined {
   return idx !== -1 ? args[idx + 1] : undefined;
 }
 
-import { RA3_HOST } from "../lib/env";
+import { defaultHost } from "../lib/config";
 
-const host = getArg("--host") ?? RA3_HOST;
-const certName = getArg("--cert") ?? "ra3";
+const host = getArg("--host") ?? defaultHost;
 const deviceId = getArg("--device") ?? "3681";
 const logFile = getArg("--log");
 const pollInterval = parseInt(getArg("--poll") ?? "2000", 10);
@@ -55,7 +54,7 @@ async function main() {
     log(`Logging to ${logFile}`);
   }
 
-  const conn = new LeapConnection({ host, certName });
+  const conn = new LeapConnection({ host });
   await conn.connect();
   log(`Connected to LEAP at ${host}`);
 

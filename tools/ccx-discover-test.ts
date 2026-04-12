@@ -8,10 +8,11 @@
  *   echo "status" | bun run tools/ccx-discover-test.ts
  */
 
+import { config } from "../lib/config";
 import { createSocket } from "dgram";
 import * as readline from "readline";
 
-const NUCLEO_HOST = "10.0.0.3";
+const NUCLEO_HOST = config.openBridge;
 const UDP_PORT = 9433;
 const CMD_TEXT = 0x20;
 const CMD_KEEPALIVE = 0x00;

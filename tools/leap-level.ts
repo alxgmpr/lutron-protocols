@@ -5,6 +5,7 @@
  * Usage: npx tsx tools/leap-level.ts <zone_id> <level%> [fade_seconds]
  */
 
+import { defaultHost } from "../lib/config";
 import { LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
@@ -22,10 +23,7 @@ if (!zoneId) {
 const fadeTime = `00:00:${String(fadeSec).padStart(2, "0")}`;
 
 async function main() {
-  const conn = new LeapConnection({
-    host: process.env.RA3_HOST ?? "10.0.0.1",
-    certName: "ra3",
-  });
+  const conn = new LeapConnection({ host: defaultHost });
   await conn.connect();
   const body = {
     Command: {

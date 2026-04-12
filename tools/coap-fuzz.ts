@@ -16,7 +16,8 @@ const getArg = (name: string) => {
 };
 const wordlist = getArg("--wordlist") ?? "all";
 
-const host = process.env.NUCLEO_HOST ?? "10.0.0.3";
+import { config } from "../lib/config";
+const host = config.openBridge;
 const PORT = 9433;
 const CMD_TEXT = 0x20;
 const RESP_TEXT = 0xfd;

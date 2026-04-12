@@ -10,9 +10,9 @@
  * Both SQLMODELINFO and SQLREFERENCEINFO reset on every Designer restart.
  */
 
-import { DESIGNER_VM_HOST } from "../lib/env";
+import { config } from "../lib/config";
 
-const VM_HOST = process.env.DESIGNER_VM_HOST ?? DESIGNER_VM_HOST;
+const VM_HOST = config.designer.host;
 const HTTP_BASE = `http://${VM_HOST}:9999`;
 
 async function query(endpoint: string, sql: string): Promise<string> {

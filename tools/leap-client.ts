@@ -7,7 +7,7 @@
  *
  * Usage:
  *   import { LeapConnection, fetchLeapData } from "./leap-client";
- *   const conn = new LeapConnection({ host: process.env.RA3_HOST, certName: "ra3" });
+ *   const conn = new LeapConnection({ host: "10.1.1.133" }); // certs auto-resolved from config.json
  *   await conn.connect();
  *   const data = await fetchLeapData(conn);
  *   conn.close();
@@ -17,6 +17,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as tls from "tls";
 import { fileURLToPath } from "url";
+import { certsForHost } from "../lib/config";
 
 // --- Types ---
 
@@ -92,39 +93,8 @@ export interface LeapDumpData {
   presets: Record<string, { name: string; role: string; device: string }>;
 }
 
-// --- Cert resolver ---
-
 const __dir =
   import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CERT_DIR = path.resolve(__dir, "..");
-
-/**
- * Resolve LEAP TLS certificate paths.
- * Tries `lutron-{name}-cert.pem` then `lutron_{name}-cert.pem`.
- */
-export function resolveCerts(
-  name: string,
-  dir: string = DEFAULT_CERT_DIR,
-): { cert: string; key: string; ca: string } {
-  for (const sep of ["-", "_"]) {
-    const prefix = `lutron${sep}${name}`;
-    const certPath = path.join(dir, `${prefix}-cert.pem`);
-    if (fs.existsSync(certPath)) {
-      return {
-        cert: certPath,
-        key: path.join(dir, `${prefix}-key.pem`),
-        ca: path.join(dir, `${prefix}-ca.pem`),
-      };
-    }
-  }
-  // Fallback to dash variant (will error on connect if missing)
-  const prefix = `lutron-${name}`;
-  return {
-    cert: path.join(dir, `${prefix}-cert.pem`),
-    key: path.join(dir, `${prefix}-key.pem`),
-    ca: path.join(dir, `${prefix}-ca.pem`),
-  };
-}
 
 // --- Helpers ---
 
@@ -138,8 +108,6 @@ export function hrefId(href: string): number {
 export interface LeapConnectionOptions {
   host: string;
   port?: number;
-  certName?: string;
-  certDir?: string;
 }
 
 export type LeapEventHandler = (msg: any) => void;
@@ -163,7 +131,13 @@ export class LeapConnection {
   constructor(opts: LeapConnectionOptions) {
     this.host = opts.host;
     this.port = opts.port ?? 8081;
-    this.certPaths = resolveCerts(opts.certName ?? "ra3", opts.certDir);
+    const certs = certsForHost(opts.host);
+    if (!certs) {
+      throw new Error(
+        `No certs configured for ${opts.host} — add it to config.json`,
+      );
+    }
+    this.certPaths = certs;
   }
 
   async connect(): Promise<void> {

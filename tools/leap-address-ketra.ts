@@ -10,6 +10,7 @@
  *   npx tsx tools/leap-address-ketra.ts --apply       — address all devices
  *   npx tsx tools/leap-address-ketra.ts --unaddress   — unaddress all devices
  */
+import { defaultHost } from "../lib/config";
 import { LeapConnection } from "./leap-client";
 
 const CCX_LINK_ID = 437;
@@ -46,10 +47,7 @@ const apply = args.includes("--apply");
 const unaddress = args.includes("--unaddress");
 
 async function main() {
-  const conn = new LeapConnection({
-    host: process.env.RA3_HOST ?? "10.0.0.1",
-    certName: "ra3",
-  });
+  const conn = new LeapConnection({ host: defaultHost });
   await conn.connect();
   console.log("Connected to RA3 processor\n");
 

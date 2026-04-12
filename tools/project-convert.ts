@@ -12,7 +12,7 @@
  * read/write without the VM (uses SQL Server 2022 RTM pinned image).
  */
 
-import "../lib/env"; // load .env
+import { config } from "../lib/config";
 import { execFileSync } from "child_process";
 import { randomUUID } from "crypto";
 import {
@@ -40,9 +40,9 @@ const { values, positionals } = parseArgs({
     direction: { type: "string" },
     "extract-only": { type: "string" },
     "pack-only": { type: "string" },
-    "vm-host": { type: "string", default: process.env.DESIGNER_VM_HOST },
-    "vm-user": { type: "string", default: process.env.DESIGNER_VM_USER },
-    "vm-pass": { type: "string", default: process.env.DESIGNER_VM_PASS },
+    "vm-host": { type: "string", default: config.designer.host },
+    "vm-user": { type: "string", default: config.designer.user },
+    "vm-pass": { type: "string", default: config.designer.pass },
     diff: { type: "boolean", default: false },
     help: { type: "boolean", default: false },
   },
@@ -64,9 +64,9 @@ Options:
   --direction <RA3_TO_HW|HW_TO_RA3>  Conversion direction (auto-detected from extensions)
   --extract-only <dir>                Extract .bak from project ZIP
   --pack-only <bak>                   Pack .bak into project ZIP
-  --vm-host <host>                    Designer VM IP (default: $DESIGNER_VM_HOST)
-  --vm-user <user>                    VM SSH user (default: $DESIGNER_VM_USER)
-  --vm-pass <pass>                    VM SSH password (default: $DESIGNER_VM_PASS)
+  --vm-host <host>                    Designer VM IP (default: config.json)
+  --vm-user <user>                    VM SSH user (default: config.json)
+  --vm-pass <pass>                    VM SSH password (default: config.json)
   --diff                              Show schema diff between two project files
   --help                              Show this help
 `);

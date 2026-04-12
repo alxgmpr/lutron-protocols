@@ -3,13 +3,11 @@
  * Subscribe to DeviceHeard events from RA3 processor.
  * Run while addressing mode is active to see devices announce.
  */
+import { defaultHost } from "../lib/config";
 import { LeapConnection } from "./leap-client";
 
 async function main() {
-  const conn = new LeapConnection({
-    host: process.env.RA3_HOST ?? "10.0.0.1",
-    certName: "ra3",
-  });
+  const conn = new LeapConnection({ host: defaultHost });
 
   conn.onEvent = (msg: any) => {
     console.log(
