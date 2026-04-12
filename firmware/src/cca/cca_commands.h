@@ -116,6 +116,8 @@ TdmaJobGroup cca_jobs_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t
 TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id, const uint8_t* config_bytes, uint8_t config_len);
 TdmaJobGroup cca_jobs_identify(uint32_t target_id);
 TdmaJobGroup cca_jobs_query(uint32_t target_id);
+TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte, uint8_t level_pct, uint8_t fade_qs);
+TdmaJobGroup cca_jobs_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction);
 
 /** Convert a CcaCmdItem to a TdmaJobGroup. Returns group with phase_count=0 on error. */
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item);

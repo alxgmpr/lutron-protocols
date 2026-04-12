@@ -257,3 +257,33 @@ TEST(cmd_dim_config_group)
     ASSERT_EQ(g.phases[0].packet.data[17], 0x02);
     ASSERT_EQ(g.phases[0].packet.data[18], 0x03);
 }
+
+TEST(cmd_vive_level_group)
+{
+    TdmaJobGroup g = cca_jobs_vive_level(0xDEADBEEF, 0x03, 50, 4);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0x89);
+    ASSERT_EQ(g.phases[0].packet.type_rotate, 1);
+    ASSERT_EQ(g.phases[0].packet.len, 22);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_LEVEL);
+    ASSERT_EQ(g.phases[0].packet.data[12], 0x03);
+    ASSERT_EQ(g.phases[0].packet.data[13], QS_ADDR_GROUP);
+    ASSERT_EQ(g.phases[0].packet.data[19], 4);
+}
+
+TEST(cmd_vive_dim_group_two_phases)
+{
+    TdmaJobGroup g = cca_jobs_vive_dim(0xDEADBEEF, 0x03, 0x03);
+    ASSERT_EQ(g.phase_count, 2);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_BURST);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0x89);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_CTRL);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_HOLD);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0x03);
+    ASSERT_EQ(g.phases[0].post_delay_ms, 50);
+    ASSERT_EQ(g.phases[1].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[1].packet.data[7], QS_FMT_DIM_STEP);
+    ASSERT_EQ(g.phases[1].packet.data[15], QS_TYPE_EXECUTE);
+    ASSERT_EQ(g.phases[1].packet.data[16], 0x03);
+}

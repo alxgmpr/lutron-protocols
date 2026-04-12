@@ -366,6 +366,48 @@ TdmaJobGroup cca_jobs_query(uint32_t target_id)
     return g;
 }
 
+TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte,
+                                 uint8_t level_pct, uint8_t fade_qs)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    uint16_t level16 = cca_percent_to_level16(level_pct);
+    cca_build_vive_level(g.phases[0].packet.data, hub_id, zone_byte, level16, fade_qs);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x89;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB vive_level hub=%08X zone=0x%02X %u%% fade=%uqs\r\n",
+           (unsigned)hub_id, zone_byte, level_pct, fade_qs);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
+{
+    TdmaJobGroup g = {};
+
+    /* Phase 0: hold-start (short burst) */
+    cca_build_vive_dim_start(g.phases[0].packet.data, hub_id, zone_byte, direction);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x89;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_BURST;
+    g.phases[0].post_delay_ms = 50;
+
+    /* Phase 1: dim-step (full burst) */
+    cca_build_vive_dim_stop(g.phases[1].packet.data, hub_id, zone_byte, direction);
+    g.phases[1].packet.len = 22;
+    g.phases[1].packet.type_base = 0x89;
+    g.phases[1].packet.type_rotate = 1;
+    g.phases[1].tx_count = CCA_TX_COUNT_NORMAL;
+    g.phases[1].post_delay_ms = 0;
+
+    g.phase_count = 2;
+    printf("[cca] JOB vive_dim hub=%08X zone=0x%02X dir=%s\r\n",
+           (unsigned)hub_id, zone_byte, direction == 0x03 ? "raise" : "lower");
+    return g;
+}
+
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
 {
     TdmaJobGroup empty = {};
