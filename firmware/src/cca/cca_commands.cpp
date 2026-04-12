@@ -211,6 +211,62 @@ TdmaJobGroup cca_jobs_state_report(uint32_t device_id, uint8_t level_pct)
     return g;
 }
 
+TdmaJobGroup cca_jobs_unpair(uint32_t zone_id, uint32_t target_id)
+{
+    TdmaJobGroup g = {};
+
+    /* Phase 0: prepare (format 0x09) */
+    cca_build_unpair_prepare(g.phases[0].packet.data, zone_id, target_id);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_BURST;
+    g.phases[0].post_delay_ms = 800;
+
+    /* Phase 1: unpair beacon (format 0x0C) */
+    cca_build_unpair_beacon(g.phases[1].packet.data, zone_id, target_id);
+    g.phases[1].packet.len = 22;
+    g.phases[1].packet.type_base = 0x81;
+    g.phases[1].packet.type_rotate = 1;
+    g.phases[1].tx_count = CCA_TX_COUNT_NORMAL;
+    g.phases[1].post_delay_ms = 0;
+
+    g.phase_count = 2;
+    printf("[cca] JOB unpair zone=%08X target=%08X\r\n", (unsigned)zone_id, (unsigned)target_id);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_save_fav(uint32_t device_id)
+{
+    TdmaJobGroup g = {};
+
+    /* A/B alternation (shared with button) */
+    static bool alt = false;
+    uint8_t short_type = alt ? PKT_BTN_SHORT_B : PKT_BTN_SHORT_A;
+    uint8_t long_type = alt ? PKT_BTN_LONG_B : PKT_BTN_LONG_A;
+    alt = !alt;
+
+    /* Phase 0: SHORT format save press */
+    cca_build_button_short(g.phases[0].packet.data, device_id, BTN_FAVORITE,
+                           ACTION_SAVE, QS_FMT_TAP, short_type);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_rotate = 0;
+    g.phases[0].tx_count = CCA_TX_COUNT_BURST;
+    g.phases[0].post_delay_ms = 0;
+
+    /* Phase 1: LONG format save release */
+    cca_build_button_long(g.phases[1].packet.data, device_id, BTN_FAVORITE, long_type);
+    g.phases[1].packet.data[11] = ACTION_SAVE; /* override RELEASE→SAVE */
+    g.phases[1].packet.len = 22;
+    g.phases[1].packet.type_rotate = 0;
+    g.phases[1].tx_count = CCA_TX_COUNT_NORMAL;
+    g.phases[1].post_delay_ms = 0;
+
+    g.phase_count = 2;
+    printf("[cca] JOB save_fav dev=%08X\r\n", (unsigned)device_id);
+    return g;
+}
+
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
 {
     TdmaJobGroup empty = {};
