@@ -151,3 +151,27 @@ TEST(cmd_state_report_group)
     ASSERT_EQ(g.phases[0].packet.data[11], QS_LEVEL_MAX_8);
     ASSERT_EQ(g.phases[0].packet.data[15], QS_LEVEL_MAX_8);
 }
+
+TEST(cmd_unpair_group_two_phases)
+{
+    TdmaJobGroup g = cca_jobs_unpair(0x00010002, 0x00030004);
+    ASSERT_EQ(g.phase_count, 2);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_BURST);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_CTRL);
+    ASSERT_EQ(g.phases[0].post_delay_ms, 800);
+    ASSERT_EQ(g.phases[1].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[1].packet.data[7], QS_FMT_BEACON);
+    ASSERT_EQ(g.phases[1].packet.data[13], QS_ADDR_COMPONENT);
+}
+
+TEST(cmd_save_fav_group_two_phases)
+{
+    TdmaJobGroup g = cca_jobs_save_fav(0x08692D70);
+    ASSERT_EQ(g.phase_count, 2);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_BURST);
+    ASSERT_EQ(g.phases[0].packet.data[10], BTN_FAVORITE);
+    ASSERT_EQ(g.phases[0].packet.data[11], ACTION_SAVE);
+    ASSERT_EQ(g.phases[1].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[1].packet.data[10], BTN_FAVORITE);
+    ASSERT_EQ(g.phases[1].packet.data[11], ACTION_SAVE);
+}

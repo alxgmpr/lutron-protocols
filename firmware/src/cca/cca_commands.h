@@ -107,6 +107,8 @@ TdmaJobGroup cca_jobs_pico_level(uint32_t device_id, uint8_t level_pct);
 TdmaJobGroup cca_jobs_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8_t fade_qs);
 TdmaJobGroup cca_jobs_scene_exec(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs);
 TdmaJobGroup cca_jobs_state_report(uint32_t device_id, uint8_t level_pct);
+TdmaJobGroup cca_jobs_unpair(uint32_t zone_id, uint32_t target_id);
+TdmaJobGroup cca_jobs_save_fav(uint32_t device_id);
 
 /** Convert a CcaCmdItem to a TdmaJobGroup. Returns group with phase_count=0 on error. */
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item);
