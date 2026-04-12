@@ -71,8 +71,9 @@ TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t
     uint16_t level16 = cca_percent_to_level16(level_pct);
     cca_build_set_level(g.phases[0].packet.data, zone_id, target_id, QS_ADDR_COMPONENT, level16, fade_qs, 0x81);
     g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
     g.phases[0].packet.type_rotate = 1;
-    g.phases[0].retransmits = CCA_TDMA_RETRIES_LEVEL;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
     g.phases[0].post_delay_ms = 0;
 
     printf("[cca] JOB bridge_level zone=%08X target=%08X %u%% fade=%uqs\r\n", (unsigned)zone_id, (unsigned)target_id,
@@ -100,15 +101,17 @@ TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button)
     /* Phase 0: PRESS (short format) */
     cca_build_button_short(g.phases[0].packet.data, device_id, button, ACTION_PRESS, press_fmt, press_type);
     g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
     g.phases[0].packet.type_rotate = 0;
-    g.phases[0].retransmits = 2;
+    g.phases[0].tx_count = CCA_TX_COUNT_BURST;
     g.phases[0].post_delay_ms = 0;
 
     /* Phase 1: RELEASE (long format) */
     cca_build_button_long(g.phases[1].packet.data, device_id, button, release_type);
     g.phases[1].packet.len = 22;
+    g.phases[1].packet.type_base = 0x81;
     g.phases[1].packet.type_rotate = 0;
-    g.phases[1].retransmits = 12;
+    g.phases[1].tx_count = CCA_TX_COUNT_NORMAL;
     g.phases[1].post_delay_ms = 0;
 
     g.phase_count = 2;
@@ -125,7 +128,7 @@ TdmaJobGroup cca_jobs_beacon(uint32_t zone_id, uint8_t type_byte)
     cca_build_beacon(g.phases[0].packet.data, zone_id, type_byte);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_rotate = 0;
-    g.phases[0].retransmits = CCA_TDMA_RETRIES_NORMAL;
+    g.phases[0].tx_count = CCA_TX_COUNT_BEACON;
     g.phases[0].post_delay_ms = 0;
 
     printf("[cca] JOB beacon zone=%08X type=0x%02X\r\n", (unsigned)zone_id, type_byte);
@@ -141,7 +144,7 @@ TdmaJobGroup cca_jobs_raw(const uint8_t* payload, uint8_t len, uint8_t retransmi
     memcpy(g.phases[0].packet.data, payload, len);
     g.phases[0].packet.len = len;
     g.phases[0].packet.type_rotate = 0;
-    g.phases[0].retransmits = retransmits > 0 ? retransmits : CCA_TDMA_RETRIES_NORMAL;
+    g.phases[0].tx_count = retransmits > 0 ? retransmits : CCA_TX_COUNT_NORMAL;
     g.phases[0].post_delay_ms = 0;
 
     return g;

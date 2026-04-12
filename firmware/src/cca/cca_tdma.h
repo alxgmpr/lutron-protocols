@@ -37,13 +37,10 @@ extern "C" {
 #define CCA_TDMA_MAX_DEVICES 32        /* tracked device slots */
 #define CCA_TDMA_MAX_JOBS 4            /* concurrent TX jobs */
 
-/* Retry counts matching Lutron firmware */
-#define CCA_TDMA_RETRIES_NORMAL 5
-#define CCA_TDMA_RETRIES_LEVEL 20
-#define CCA_TDMA_RETRIES_BUTTON_SHORT 6
-#define CCA_TDMA_RETRIES_BUTTON_LONG 10
-#define CCA_TDMA_RETRIES_PAIRING 10
-#define CCA_TDMA_RETRIES_SCENE 10
+/* TX counts: total packets fired (1 original + N retransmissions) */
+#define CCA_TX_COUNT_BURST   2   /* short burst (button press, dim start) */
+#define CCA_TX_COUNT_BEACON  6   /* beacon */
+#define CCA_TX_COUNT_NORMAL 11   /* standard (1 + 10 retransmissions) */
 
 /* -----------------------------------------------------------------------
  * Frame sync state (read-only snapshot for telemetry)
@@ -105,12 +102,13 @@ typedef struct CcaTdmaJob CcaTdmaJob;
 typedef struct {
     uint8_t data[53];    /* raw payload (pre-CRC, pre-8N1) */
     uint8_t len;         /* 22 (short) or 51 (long) */
-    uint8_t type_rotate; /* 0=fixed type byte, 1=rotate 81/82/83 per retransmit */
+    uint8_t type_rotate; /* 0=fixed type byte, 1=rotate from type_base */
+    uint8_t type_base;   /* rotation base: 0x81 (short), 0xA1 (long), 0x89 (vive) */
 } TdmaPacket;
 
 typedef struct {
     TdmaPacket packet;
-    uint8_t retransmits;    /* frames to repeat (5=normal, 10=pairing) */
+    uint8_t tx_count;       /* total packets to fire (e.g. 11 = 1 + 10 retransmissions) */
     uint16_t post_delay_ms; /* delay after phase completes before next (0=immediate) */
 } TdmaPhase;
 
