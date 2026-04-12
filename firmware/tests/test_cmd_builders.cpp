@@ -287,3 +287,43 @@ TEST(cmd_vive_dim_group_two_phases)
     ASSERT_EQ(g.phases[1].packet.data[15], QS_TYPE_EXECUTE);
     ASSERT_EQ(g.phases[1].packet.data[16], 0x03);
 }
+
+TEST(cmd_to_jobs_routes_all_commands)
+{
+    uint8_t cmds[] = {
+        CCA_CMD_BUTTON, CCA_CMD_BRIDGE_LEVEL, CCA_CMD_PICO_LEVEL,
+        CCA_CMD_STATE_REPORT, CCA_CMD_BEACON, CCA_CMD_UNPAIR,
+        CCA_CMD_LED_CONFIG, CCA_CMD_FADE_CONFIG, CCA_CMD_TRIM_CONFIG,
+        CCA_CMD_PHASE_CONFIG, CCA_CMD_SAVE_FAV, CCA_CMD_VIVE_LEVEL,
+        CCA_CMD_VIVE_DIM, CCA_CMD_BROADCAST_LEVEL, CCA_CMD_IDENTIFY,
+        CCA_CMD_QUERY, CCA_CMD_RAW, CCA_CMD_SCENE_EXEC, CCA_CMD_DIM_CONFIG,
+    };
+    for (size_t i = 0; i < sizeof(cmds); i++) {
+        CcaCmdItem item = {};
+        item.cmd = cmds[i];
+        item.device_id = 0x00010002;
+        item.target_id = 0x00030004;
+        item.level_pct = 50;
+        item.fade_qs = 4;
+        item.zone_byte = 0x01;
+        item.direction = 0x03;
+        item.raw_payload_len = 4;
+        item.raw_repeat = 5;
+        TdmaJobGroup g = cca_cmd_to_jobs(&item);
+        ASSERT_TRUE(g.phase_count > 0);
+    }
+}
+
+TEST(cmd_to_jobs_pairing_returns_empty)
+{
+    uint8_t pairing_cmds[] = {
+        CCA_CMD_PICO_PAIR, CCA_CMD_BRIDGE_PAIR, CCA_CMD_VIVE_PAIR,
+        CCA_CMD_ANNOUNCE, CCA_CMD_HYBRID_PAIR, CCA_CMD_SUBNET_PAIR,
+    };
+    for (size_t i = 0; i < sizeof(pairing_cmds); i++) {
+        CcaCmdItem item = {};
+        item.cmd = pairing_cmds[i];
+        TdmaJobGroup g = cca_cmd_to_jobs(&item);
+        ASSERT_EQ(g.phase_count, 0);
+    }
+}
