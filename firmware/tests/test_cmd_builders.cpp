@@ -197,3 +197,63 @@ TEST(cmd_query_group)
     ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_EXECUTE);
     ASSERT_EQ(g.phases[0].packet.data[16], 0x0D);
 }
+
+TEST(cmd_led_config_group)
+{
+    TdmaJobGroup g = cca_jobs_led_config(0x00010002, 0x00030004, 2);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.len, 51);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0xA1);
+    ASSERT_EQ(g.phases[0].packet.type_rotate, 1);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_LED);
+    ASSERT_EQ(g.phases[0].packet.data[23], 0x00);
+    ASSERT_EQ(g.phases[0].packet.data[24], 0xFF);
+}
+
+TEST(cmd_fade_config_group)
+{
+    TdmaJobGroup g = cca_jobs_fade_config(0x00010002, 0x00030004, 0x0040, 0x0080);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].packet.len, 51);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_FADE);
+    ASSERT_EQ(g.phases[0].packet.data[23], 0x40);
+    ASSERT_EQ(g.phases[0].packet.data[24], 0x00);
+    ASSERT_EQ(g.phases[0].packet.data[25], 0x80);
+    ASSERT_EQ(g.phases[0].packet.data[26], 0x00);
+}
+
+TEST(cmd_trim_config_group)
+{
+    TdmaJobGroup g = cca_jobs_trim_config(0x00010002, 0x00030004, 100, 10);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].packet.len, 51);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_TRIM);
+    ASSERT_EQ(g.phases[0].packet.data[20], 0xFE);
+    ASSERT_EQ(g.phases[0].packet.data[21], 25);
+}
+
+TEST(cmd_phase_config_group)
+{
+    TdmaJobGroup g = cca_jobs_phase_config(0x00010002, 0x00030004, 0x42);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].packet.len, 51);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_TRIM);
+    ASSERT_EQ(g.phases[0].packet.data[20], QS_LEVEL_MAX_8);
+    ASSERT_EQ(g.phases[0].packet.data[21], 0x03);
+    ASSERT_EQ(g.phases[0].packet.data[22], 0x42);
+}
+
+TEST(cmd_dim_config_group)
+{
+    uint8_t cfg[] = {0x01, 0x02, 0x03};
+    TdmaJobGroup g = cca_jobs_dim_config(0x00010002, 0x00030004, cfg, 3);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].packet.len, 51);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_DIM_CAP);
+    ASSERT_EQ(g.phases[0].packet.data[14], QS_CLASS_LEGACY);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_DIM_CONFIG);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0x01);
+    ASSERT_EQ(g.phases[0].packet.data[17], 0x02);
+    ASSERT_EQ(g.phases[0].packet.data[18], 0x03);
+}
