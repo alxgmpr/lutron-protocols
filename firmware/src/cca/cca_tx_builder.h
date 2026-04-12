@@ -188,3 +188,109 @@ inline size_t cca_build_beacon(uint8_t* pkt, uint32_t zone_id, uint8_t type_byte
 
     return 22;
 }
+
+/* -----------------------------------------------------------------------
+ * Build pico level packet (format 0x0E, 22 bytes)
+ * Pico-specific: fixed target bytes 0x0703C3C6, minimum fade 0.25s.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_pico_level(uint8_t* pkt, uint32_t device_id, uint16_t level16)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, device_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[8] = 0x00;
+    pkt[9] = 0x07;
+    pkt[10] = 0x03;
+    pkt[11] = 0xC3;
+    pkt[12] = 0xC6;
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_LEVEL;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = 0x01;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build state report packet (format 0x08, 22 bytes)
+ * Reports level as 8-bit value at bytes 11 and 15.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_state_report(uint8_t* pkt, uint32_t device_id, uint8_t level_byte)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, device_id);
+    pkt[6] = 0x00;
+    pkt[7] = QS_FMT_STATE;
+    pkt[8] = 0x00;
+    pkt[9] = QS_STATE_ENTITY_COMP;
+    pkt[10] = 0x01;
+    pkt[11] = level_byte;
+    pkt[12] = 0x00;
+    pkt[13] = QS_STATE_ENTITY_COMP;
+    pkt[14] = QS_STATE_STATUS_FLAG;
+    pkt[15] = level_byte;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build scene execute packet (format 0x0E, 22 bytes)
+ * Same as set_level but with QS_CLASS_SCENE instead of QS_CLASS_LEVEL.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_scene_exec(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
+                                   uint16_t level16, uint8_t fade_qs)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_SCENE;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = fade_qs;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build unpair prepare packet (format 0x09, 22 bytes)
+ * Phase 1 of unpair: device control / prepare.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_unpair_prepare(uint8_t* pkt, uint32_t zone_id, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build unpair beacon packet (format 0x0C, 22 bytes)
+ * Phase 2 of unpair: beacon with target address.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_unpair_beacon(uint8_t* pkt, uint32_t zone_id, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_BEACON;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    return 22;
+}

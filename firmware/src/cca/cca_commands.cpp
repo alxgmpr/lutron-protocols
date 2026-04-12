@@ -150,6 +150,67 @@ TdmaJobGroup cca_jobs_raw(const uint8_t* payload, uint8_t len, uint8_t retransmi
     return g;
 }
 
+TdmaJobGroup cca_jobs_pico_level(uint32_t device_id, uint8_t level_pct)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    uint16_t level16 = cca_percent_to_level16(level_pct);
+    cca_build_pico_level(g.phases[0].packet.data, device_id, level16);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB pico_level dev=%08X %u%%\r\n", (unsigned)device_id, level_pct);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8_t fade_qs)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    uint16_t level16 = cca_percent_to_level16(level_pct);
+    cca_build_set_level(g.phases[0].packet.data, zone_id, 0xFFFFFFFF,
+                        QS_ADDR_BROADCAST, level16, fade_qs, 0x81);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB broadcast_level zone=%08X %u%% fade=%uqs\r\n",
+           (unsigned)zone_id, level_pct, fade_qs);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_scene_exec(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    uint16_t level16 = cca_percent_to_level16(level_pct);
+    cca_build_scene_exec(g.phases[0].packet.data, zone_id, target_id, level16, fade_qs);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB scene zone=%08X target=%08X %u%% fade=%uqs\r\n",
+           (unsigned)zone_id, (unsigned)target_id, level_pct, fade_qs);
+    return g;
+}
+
+TdmaJobGroup cca_jobs_state_report(uint32_t device_id, uint8_t level_pct)
+{
+    TdmaJobGroup g = {};
+    g.phase_count = 1;
+    uint8_t level_byte;
+    if (level_pct >= 100) level_byte = QS_LEVEL_MAX_8;
+    else level_byte = (uint8_t)((uint32_t)level_pct * 254 / 100);
+    cca_build_state_report(g.phases[0].packet.data, device_id, level_byte);
+    g.phases[0].packet.len = 22;
+    g.phases[0].packet.type_base = 0x81;
+    g.phases[0].packet.type_rotate = 1;
+    g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
+    printf("[cca] JOB state_report dev=%08X %u%%\r\n", (unsigned)device_id, level_pct);
+    return g;
+}
+
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
 {
     TdmaJobGroup empty = {};

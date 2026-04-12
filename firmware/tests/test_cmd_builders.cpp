@@ -104,3 +104,50 @@ TEST(cmd_to_jobs_unknown_returns_empty)
     TdmaJobGroup g = cca_cmd_to_jobs(&item);
     ASSERT_EQ(g.phase_count, 0);
 }
+
+TEST(cmd_pico_level_group)
+{
+    TdmaJobGroup g = cca_jobs_pico_level(0x08692D70, 50);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.type_rotate, 1);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0x81);
+    ASSERT_EQ(g.phases[0].packet.len, 22);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_LEVEL);
+    ASSERT_EQ(g.phases[0].packet.data[9], 0x07);
+    ASSERT_EQ(g.phases[0].packet.data[14], QS_CLASS_LEVEL);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0x7F);
+    ASSERT_EQ(g.phases[0].packet.data[17], 0x7F);
+}
+
+TEST(cmd_broadcast_level_group)
+{
+    TdmaJobGroup g = cca_jobs_broadcast_level(0x00010002, 100, 4);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.type_base, 0x81);
+    ASSERT_EQ(g.phases[0].packet.data[13], QS_ADDR_BROADCAST);
+    ASSERT_EQ(g.phases[0].packet.data[16], 0xFE);
+    ASSERT_EQ(g.phases[0].packet.data[17], 0xFF);
+}
+
+TEST(cmd_scene_exec_group)
+{
+    TdmaJobGroup g = cca_jobs_scene_exec(0x00010002, 0x00030004, 75, 8);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.data[14], QS_CLASS_SCENE);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_TYPE_EXECUTE);
+    ASSERT_EQ(g.phases[0].packet.data[19], 8);
+}
+
+TEST(cmd_state_report_group)
+{
+    TdmaJobGroup g = cca_jobs_state_report(0x08692D70, 100);
+    ASSERT_EQ(g.phase_count, 1);
+    ASSERT_EQ(g.phases[0].tx_count, CCA_TX_COUNT_NORMAL);
+    ASSERT_EQ(g.phases[0].packet.data[7], QS_FMT_STATE);
+    ASSERT_EQ(g.phases[0].packet.data[9], QS_STATE_ENTITY_COMP);
+    ASSERT_EQ(g.phases[0].packet.data[11], QS_LEVEL_MAX_8);
+    ASSERT_EQ(g.phases[0].packet.data[15], QS_LEVEL_MAX_8);
+}
