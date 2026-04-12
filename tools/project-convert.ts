@@ -12,7 +12,6 @@
  * read/write without the VM (uses SQL Server 2022 RTM pinned image).
  */
 
-import { config } from "../lib/config";
 import { execFileSync } from "child_process";
 import { randomUUID } from "crypto";
 import {
@@ -29,6 +28,7 @@ import { tmpdir } from "os";
 import { basename, dirname, extname, join } from "path";
 import { fileURLToPath } from "url";
 import { parseArgs } from "util";
+import { config } from "../lib/config";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 

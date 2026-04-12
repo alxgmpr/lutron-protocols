@@ -43,6 +43,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: cp config.example.json config.json
       - run: npm run test:ts
 
   test-firmware:
