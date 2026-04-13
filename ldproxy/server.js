@@ -18,6 +18,7 @@ const ALL_CHANNELS = [
   "QTT", "DLSI", "PIDHW013", "RadioRA 3 All", "Design Ketra Legacy",
   "Beta_LutronDesignerPlus_DTDTPhaseOne",
   "Beta_LutronDesignerPlus_DTDT_OQT_Hybrid",
+  "PIDRA012", "PlDe7",
 ];
 
 function injectChannels(channels) {
@@ -29,7 +30,11 @@ function injectChannels(channels) {
 // Route table: path -> { upstream, channelsPath }
 const ROUTES = [
   { path: '/myLutron/myLutron.svc/RefreshToken',      upstream: 'https://designer-relay.lutron.com', get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
+  { path: '/myLutronStaging/myLutron.svc/RefreshToken',      upstream: 'https://designer-relay.lutron.com', get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
   { path: '/myLutron/myLutron.svc/AuthenticateCode',   upstream: 'https://designer-relay.lutron.com', get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
+  { path: '/myLutronStaging/myLutron.svc/AuthenticateCode',   upstream: 'https://designer-relay.lutron.com', get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
+  { path: '/myLutron/myLutron.svc/Authenticate',       upstream: 'https://designeruat.lutron.com',    get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
+  { path: '/myLutronStaging/myLutron.svc/Authenticate',       upstream: 'https://designeruat.lutron.com',    get: b => b?.User?.Channels,                    set: (b, c) => { b.User.Channels = c; } },
   { path: '/api/IdentityService/GetUserFullProfile',   upstream: 'https://umsssoservice.lutron.com',  get: b => b?.Data?.UserBasicProfile?.Channels,  set: (b, c) => { b.Data.UserBasicProfile.Channels = c; } },
 ];
 
