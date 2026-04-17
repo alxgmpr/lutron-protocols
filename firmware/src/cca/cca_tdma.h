@@ -38,9 +38,9 @@ extern "C" {
 #define CCA_TDMA_MAX_JOBS 4            /* concurrent TX jobs */
 
 /* TX counts: total packets fired (1 original + N retransmissions) */
-#define CCA_TX_COUNT_BURST   2   /* short burst (button press, dim start) */
-#define CCA_TX_COUNT_BEACON  6   /* beacon */
-#define CCA_TX_COUNT_NORMAL 11   /* standard (1 + 10 retransmissions) */
+#define CCA_TX_COUNT_BURST 2   /* short burst (button press, dim start) */
+#define CCA_TX_COUNT_BEACON 6  /* beacon */
+#define CCA_TX_COUNT_NORMAL 11 /* standard (1 + 10 retransmissions) */
 
 /* -----------------------------------------------------------------------
  * Frame sync state (read-only snapshot for telemetry)

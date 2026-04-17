@@ -241,8 +241,8 @@ inline size_t cca_build_state_report(uint8_t* pkt, uint32_t device_id, uint8_t l
  * Build scene execute packet (format 0x0E, 22 bytes)
  * Same as set_level but with QS_CLASS_SCENE instead of QS_CLASS_LEVEL.
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_scene_exec(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
-                                   uint16_t level16, uint8_t fade_qs)
+inline size_t cca_build_scene_exec(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint16_t level16,
+                                   uint8_t fade_qs)
 {
     memset(pkt, 0x00, 22);
     pkt[0] = 0x81;
@@ -305,9 +305,16 @@ inline size_t cca_build_led_config(uint8_t* pkt, uint32_t zone_id, uint32_t targ
     memset(pkt, 0x00, 51);
     uint8_t led_off = 0x00, led_on = 0x00;
     switch (led_mode) {
-    case 1: led_off = 0xFF; led_on = 0xFF; break;
-    case 2: led_on = 0xFF; break;
-    case 3: led_off = 0xFF; break;
+    case 1:
+        led_off = 0xFF;
+        led_on = 0xFF;
+        break;
+    case 2:
+        led_on = 0xFF;
+        break;
+    case 3:
+        led_off = 0xFF;
+        break;
     }
     pkt[0] = 0xA1;
     cca_write_id_be(pkt + 2, zone_id);
@@ -325,8 +332,8 @@ inline size_t cca_build_led_config(uint8_t* pkt, uint32_t zone_id, uint32_t targ
  * Build fade config packet (format 0x1C, 51 bytes)
  * Fade times in quarter-seconds, LE16 at [23-26].
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_fade_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
-                                    uint16_t fade_on_qs, uint16_t fade_off_qs)
+inline size_t cca_build_fade_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint16_t fade_on_qs,
+                                    uint16_t fade_off_qs)
 {
     memset(pkt, 0x00, 51);
     pkt[0] = 0xA1;
@@ -347,8 +354,8 @@ inline size_t cca_build_fade_config(uint8_t* pkt, uint32_t zone_id, uint32_t tar
  * Build trim config packet (format 0x15, 51 bytes)
  * Trim values as percentages, converted to 0x00-0xFE scale at [20-21].
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_trim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
-                                    uint8_t high_trim, uint8_t low_trim)
+inline size_t cca_build_trim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint8_t high_trim,
+                                    uint8_t low_trim)
 {
     memset(pkt, 0x00, 51);
     uint8_t high_val = (high_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)high_trim * 254 / 100);
@@ -369,8 +376,7 @@ inline size_t cca_build_trim_config(uint8_t* pkt, uint32_t zone_id, uint32_t tar
  * Build phase config packet (format 0x15, 51 bytes)
  * Neutral trim values at [20-21], phase byte at [22].
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_phase_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
-                                     uint8_t phase_byte)
+inline size_t cca_build_phase_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint8_t phase_byte)
 {
     memset(pkt, 0x00, 51);
     pkt[0] = 0xA1;
@@ -390,8 +396,8 @@ inline size_t cca_build_phase_config(uint8_t* pkt, uint32_t zone_id, uint32_t ta
  * Build dimming config packet (format 0x13, 51 bytes)
  * Config payload bytes starting at [16].
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_dim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id,
-                                   const uint8_t* config_bytes, uint8_t config_len)
+inline size_t cca_build_dim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, const uint8_t* config_bytes,
+                                   uint8_t config_len)
 {
     memset(pkt, 0x00, 51);
     pkt[0] = 0xA1;
@@ -456,8 +462,7 @@ inline size_t cca_build_query(uint8_t* pkt, uint32_t target_id)
  * Build Vive level packet (format 0x0E, 22 bytes, type 0x89+)
  * Hub ID at [2-5] BE, zone byte at [12], addr_mode=GROUP.
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_vive_level(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte,
-                                   uint16_t level16, uint8_t fade_qs)
+inline size_t cca_build_vive_level(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint16_t level16, uint8_t fade_qs)
 {
     memset(pkt, 0x00, 22);
     pkt[0] = 0x89;
@@ -479,8 +484,7 @@ inline size_t cca_build_vive_level(uint8_t* pkt, uint32_t hub_id, uint8_t zone_b
  * Build Vive dim start packet (format 0x09, 22 bytes, type 0x89+)
  * Hold-start: CLASS_DIM + TYPE_HOLD + direction.
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_vive_dim_start(uint8_t* pkt, uint32_t hub_id,
-                                       uint8_t zone_byte, uint8_t direction)
+inline size_t cca_build_vive_dim_start(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
 {
     memset(pkt, 0x00, 22);
     pkt[0] = 0x89;
@@ -499,8 +503,7 @@ inline size_t cca_build_vive_dim_start(uint8_t* pkt, uint32_t hub_id,
  * Build Vive dim stop packet (format 0x0B, 22 bytes, type 0x89+)
  * Dim-step: CLASS_DIM + TYPE_EXECUTE + direction.
  * ----------------------------------------------------------------------- */
-inline size_t cca_build_vive_dim_stop(uint8_t* pkt, uint32_t hub_id,
-                                      uint8_t zone_byte, uint8_t direction)
+inline size_t cca_build_vive_dim_stop(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
 {
     memset(pkt, 0x00, 22);
     pkt[0] = 0x89;

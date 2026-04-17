@@ -52,7 +52,7 @@ bool cca_cmd_enqueue(const CcaCmdItem* item)
 /* -----------------------------------------------------------------------
  * Shared state
  * ----------------------------------------------------------------------- */
-static uint32_t cmd_tx_count = 0;    /* packets transmitted by commands */
+static uint32_t cmd_tx_count = 0; /* packets transmitted by commands */
 
 /* -----------------------------------------------------------------------
  * Job group builders — non-blocking command decomposition
@@ -164,14 +164,12 @@ TdmaJobGroup cca_jobs_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8
     TdmaJobGroup g = {};
     g.phase_count = 1;
     uint16_t level16 = cca_percent_to_level16(level_pct);
-    cca_build_set_level(g.phases[0].packet.data, zone_id, 0xFFFFFFFF,
-                        QS_ADDR_BROADCAST, level16, fade_qs, 0x81);
+    cca_build_set_level(g.phases[0].packet.data, zone_id, 0xFFFFFFFF, QS_ADDR_BROADCAST, level16, fade_qs, 0x81);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_base = 0x81;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB broadcast_level zone=%08X %u%% fade=%uqs\r\n",
-           (unsigned)zone_id, level_pct, fade_qs);
+    printf("[cca] JOB broadcast_level zone=%08X %u%% fade=%uqs\r\n", (unsigned)zone_id, level_pct, fade_qs);
     return g;
 }
 
@@ -185,8 +183,8 @@ TdmaJobGroup cca_jobs_scene_exec(uint32_t zone_id, uint32_t target_id, uint8_t l
     g.phases[0].packet.type_base = 0x81;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB scene zone=%08X target=%08X %u%% fade=%uqs\r\n",
-           (unsigned)zone_id, (unsigned)target_id, level_pct, fade_qs);
+    printf("[cca] JOB scene zone=%08X target=%08X %u%% fade=%uqs\r\n", (unsigned)zone_id, (unsigned)target_id,
+           level_pct, fade_qs);
     return g;
 }
 
@@ -195,8 +193,10 @@ TdmaJobGroup cca_jobs_state_report(uint32_t device_id, uint8_t level_pct)
     TdmaJobGroup g = {};
     g.phase_count = 1;
     uint8_t level_byte;
-    if (level_pct >= 100) level_byte = QS_LEVEL_MAX_8;
-    else level_byte = (uint8_t)((uint32_t)level_pct * 254 / 100);
+    if (level_pct >= 100)
+        level_byte = QS_LEVEL_MAX_8;
+    else
+        level_byte = (uint8_t)((uint32_t)level_pct * 254 / 100);
     cca_build_state_report(g.phases[0].packet.data, device_id, level_byte);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_base = 0x81;
@@ -242,8 +242,7 @@ TdmaJobGroup cca_jobs_save_fav(uint32_t device_id)
     alt = !alt;
 
     /* Phase 0: SHORT format save press */
-    cca_build_button_short(g.phases[0].packet.data, device_id, BTN_FAVORITE,
-                           ACTION_SAVE, QS_FMT_TAP, short_type);
+    cca_build_button_short(g.phases[0].packet.data, device_id, BTN_FAVORITE, ACTION_SAVE, QS_FMT_TAP, short_type);
     g.phases[0].packet.len = 22;
     g.phases[0].packet.type_rotate = 0;
     g.phases[0].tx_count = CCA_TX_COUNT_BURST;
@@ -271,13 +270,11 @@ TdmaJobGroup cca_jobs_led_config(uint32_t zone_id, uint32_t target_id, uint8_t l
     g.phases[0].packet.type_base = 0xA1;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB led_config zone=%08X target=%08X mode=%u\r\n",
-           (unsigned)zone_id, (unsigned)target_id, led_mode);
+    printf("[cca] JOB led_config zone=%08X target=%08X mode=%u\r\n", (unsigned)zone_id, (unsigned)target_id, led_mode);
     return g;
 }
 
-TdmaJobGroup cca_jobs_fade_config(uint32_t zone_id, uint32_t target_id,
-                                  uint16_t fade_on_qs, uint16_t fade_off_qs)
+TdmaJobGroup cca_jobs_fade_config(uint32_t zone_id, uint32_t target_id, uint16_t fade_on_qs, uint16_t fade_off_qs)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
@@ -286,13 +283,12 @@ TdmaJobGroup cca_jobs_fade_config(uint32_t zone_id, uint32_t target_id,
     g.phases[0].packet.type_base = 0xA1;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB fade_config zone=%08X target=%08X on=%uqs off=%uqs\r\n",
-           (unsigned)zone_id, (unsigned)target_id, fade_on_qs, fade_off_qs);
+    printf("[cca] JOB fade_config zone=%08X target=%08X on=%uqs off=%uqs\r\n", (unsigned)zone_id, (unsigned)target_id,
+           fade_on_qs, fade_off_qs);
     return g;
 }
 
-TdmaJobGroup cca_jobs_trim_config(uint32_t zone_id, uint32_t target_id,
-                                  uint8_t high_trim, uint8_t low_trim)
+TdmaJobGroup cca_jobs_trim_config(uint32_t zone_id, uint32_t target_id, uint8_t high_trim, uint8_t low_trim)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
@@ -301,8 +297,8 @@ TdmaJobGroup cca_jobs_trim_config(uint32_t zone_id, uint32_t target_id,
     g.phases[0].packet.type_base = 0xA1;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB trim_config zone=%08X target=%08X high=%u%% low=%u%%\r\n",
-           (unsigned)zone_id, (unsigned)target_id, high_trim, low_trim);
+    printf("[cca] JOB trim_config zone=%08X target=%08X high=%u%% low=%u%%\r\n", (unsigned)zone_id, (unsigned)target_id,
+           high_trim, low_trim);
     return g;
 }
 
@@ -315,13 +311,12 @@ TdmaJobGroup cca_jobs_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t
     g.phases[0].packet.type_base = 0xA1;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB phase_config zone=%08X target=%08X phase=0x%02X\r\n",
-           (unsigned)zone_id, (unsigned)target_id, phase_byte);
+    printf("[cca] JOB phase_config zone=%08X target=%08X phase=0x%02X\r\n", (unsigned)zone_id, (unsigned)target_id,
+           phase_byte);
     return g;
 }
 
-TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id,
-                                 const uint8_t* config_bytes, uint8_t config_len)
+TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id, const uint8_t* config_bytes, uint8_t config_len)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
@@ -330,8 +325,7 @@ TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id,
     g.phases[0].packet.type_base = 0xA1;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB dim_config zone=%08X target=%08X\r\n",
-           (unsigned)zone_id, (unsigned)target_id);
+    printf("[cca] JOB dim_config zone=%08X target=%08X\r\n", (unsigned)zone_id, (unsigned)target_id);
     return g;
 }
 
@@ -361,8 +355,7 @@ TdmaJobGroup cca_jobs_query(uint32_t target_id)
     return g;
 }
 
-TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte,
-                                 uint8_t level_pct, uint8_t fade_qs)
+TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte, uint8_t level_pct, uint8_t fade_qs)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
@@ -372,8 +365,8 @@ TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte,
     g.phases[0].packet.type_base = 0x89;
     g.phases[0].packet.type_rotate = 1;
     g.phases[0].tx_count = CCA_TX_COUNT_NORMAL;
-    printf("[cca] JOB vive_level hub=%08X zone=0x%02X %u%% fade=%uqs\r\n",
-           (unsigned)hub_id, zone_byte, level_pct, fade_qs);
+    printf("[cca] JOB vive_level hub=%08X zone=0x%02X %u%% fade=%uqs\r\n", (unsigned)hub_id, zone_byte, level_pct,
+           fade_qs);
     return g;
 }
 
@@ -398,8 +391,8 @@ TdmaJobGroup cca_jobs_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direc
     g.phases[1].post_delay_ms = 0;
 
     g.phase_count = 2;
-    printf("[cca] JOB vive_dim hub=%08X zone=0x%02X dir=%s\r\n",
-           (unsigned)hub_id, zone_byte, direction == 0x03 ? "raise" : "lower");
+    printf("[cca] JOB vive_dim hub=%08X zone=0x%02X dir=%s\r\n", (unsigned)hub_id, zone_byte,
+           direction == 0x03 ? "raise" : "lower");
     return g;
 }
 
@@ -412,8 +405,7 @@ TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
     case CCA_CMD_BUTTON:
         return cca_jobs_button(item->device_id, item->button);
     case CCA_CMD_BRIDGE_LEVEL:
-        return cca_jobs_bridge_level(item->device_id, item->target_id,
-                                     item->level_pct, item->fade_qs);
+        return cca_jobs_bridge_level(item->device_id, item->target_id, item->level_pct, item->fade_qs);
     case CCA_CMD_PICO_LEVEL:
         return cca_jobs_pico_level(item->device_id, item->level_pct);
     case CCA_CMD_STATE_REPORT:
@@ -425,18 +417,15 @@ TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
     case CCA_CMD_LED_CONFIG:
         return cca_jobs_led_config(item->device_id, item->target_id, item->led_mode);
     case CCA_CMD_FADE_CONFIG:
-        return cca_jobs_fade_config(item->device_id, item->target_id,
-                                    item->fade_on_qs, item->fade_off_qs);
+        return cca_jobs_fade_config(item->device_id, item->target_id, item->fade_on_qs, item->fade_off_qs);
     case CCA_CMD_TRIM_CONFIG:
-        return cca_jobs_trim_config(item->device_id, item->target_id,
-                                    item->high_trim, item->low_trim);
+        return cca_jobs_trim_config(item->device_id, item->target_id, item->high_trim, item->low_trim);
     case CCA_CMD_PHASE_CONFIG:
         return cca_jobs_phase_config(item->device_id, item->target_id, item->phase_byte);
     case CCA_CMD_SAVE_FAV:
         return cca_jobs_save_fav(item->device_id);
     case CCA_CMD_VIVE_LEVEL:
-        return cca_jobs_vive_level(item->device_id, item->zone_byte,
-                                   item->level_pct, item->fade_qs);
+        return cca_jobs_vive_level(item->device_id, item->zone_byte, item->level_pct, item->fade_qs);
     case CCA_CMD_VIVE_DIM:
         return cca_jobs_vive_dim(item->device_id, item->zone_byte, item->direction);
     case CCA_CMD_BROADCAST_LEVEL:
@@ -446,16 +435,13 @@ TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item)
     case CCA_CMD_QUERY:
         return cca_jobs_query(item->target_id);
     case CCA_CMD_SCENE_EXEC:
-        return cca_jobs_scene_exec(item->device_id, item->target_id,
-                                   item->level_pct, item->fade_qs);
+        return cca_jobs_scene_exec(item->device_id, item->target_id, item->level_pct, item->fade_qs);
     case CCA_CMD_DIM_CONFIG:
-        return cca_jobs_dim_config(item->device_id, item->target_id,
-                                   item->raw_payload, item->raw_payload_len);
+        return cca_jobs_dim_config(item->device_id, item->target_id, item->raw_payload, item->raw_payload_len);
     case CCA_CMD_RAW:
         return cca_jobs_raw(item->raw_payload, item->raw_payload_len, item->raw_repeat);
     default:
-        printf("[cca] JOB: unsupported cmd 0x%02X, falling back to blocking\r\n",
-               item->cmd);
+        printf("[cca] JOB: unsupported cmd 0x%02X, falling back to blocking\r\n", item->cmd);
         return empty;
     }
 }
@@ -476,8 +462,8 @@ void cca_cmd_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_AUTO_PAIR:
         cca_auto_pair_start(item->device_id, item->target_id,
-                            (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
-                            item->zone_byte, item->duration_sec);
+                            (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->zone_byte,
+                            item->duration_sec);
         break;
     case CCA_CMD_AUTO_PAIR_STOP:
         cca_auto_pair_stop();
