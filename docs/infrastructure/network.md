@@ -34,14 +34,6 @@ Managed switch supports port mirroring for LAN capture.
 - Known commands: RequestSetLEDState, RequestDatabaseSync, DeviceSetOutputLevel
 - See `memory/ipl-protocol.md` for details
 
-## Designer Model Validation
-
-- **RA3→HW device compat gate = `TBLLINKNODEINFOLINKTYPEMAP` in SQLMODELINFO DB**
-- RA3 devices missing LinkType 36 (HWQS GCU RF) → rejected during CCA pairing
-- Fix: `tools/sql/patch-ra3-to-hw-linktypes.sql` — adds LinkTypes 32/34/36 (idempotent)
-- Must re-run after Designer updates (SQLMODELINFO.MDF gets replaced)
-- See `memory/designer-model-validation.md` for details
-
 ## Designer Project File Format
 
 - .lut file = SQL Server backup (.bak), NOT raw MDF!

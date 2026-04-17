@@ -209,7 +209,9 @@ VM at 192.168.64.4 — `sshpass -p alex ssh -o StrictHostKeyChecking=no -o Prefe
 - **ConnectSyncService.exe** locks DLLs in the MSIX directory — kill it before deploying patched DLLs
 - DLL patcher: `dotnet run --project tools/dll-patcher/DllPatcher/DllPatcher.csproj -- <src-dir> <out-dir>`
 - Original DLLs cached at `/tmp/designer-rox/`, patched output to `/tmp/designer-patched/`
+- Deploy: `scp /tmp/designer-patched/*.dll alex@192.168.64.4:c:/temp-patch/` then `ssh` and run `powershell -ExecutionPolicy Bypass -File C:\temp-patch\deploy.ps1` (kill ConnectSyncService first)
 - dnfile Python venv at `/tmp/dnfile-env/` for .NET metadata inspection
+- Universal cross-platform unlock (RA3 in HW, etc.) is baked into the DLL patcher — no SQL setup needed per launch. See `docs/infrastructure/designer-universal-unlock.md`
 - Jailbreak docs: `docs/security/designer-jailbreak.md`
 
 ## Environment Notes
