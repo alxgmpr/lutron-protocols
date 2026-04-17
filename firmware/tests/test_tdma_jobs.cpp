@@ -39,13 +39,13 @@ extern void test_registry_add(const char *name, void (*func)());
 } while (0)
 
 /* --- Helper: build a simple single-phase group for testing --- */
-static TdmaJobGroup make_test_group(uint8_t retransmits, uint16_t post_delay_ms)
+static TdmaJobGroup make_test_group(uint8_t tx_count, uint16_t post_delay_ms)
 {
     TdmaJobGroup g = {};
     g.phase_count = 1;
     g.phases[0].packet.len = 22;
     g.phases[0].packet.data[0] = 0x81;
-    g.phases[0].retransmits = retransmits;
+    g.phases[0].tx_count = tx_count;
     g.phases[0].post_delay_ms = post_delay_ms;
     g.on_complete = nullptr;
     g.ctx = nullptr;
@@ -58,11 +58,11 @@ static TdmaJobGroup make_two_phase_group(uint8_t r1, uint16_t delay1, uint8_t r2
     g.phase_count = 2;
     g.phases[0].packet.len = 22;
     g.phases[0].packet.data[0] = 0x89;
-    g.phases[0].retransmits = r1;
+    g.phases[0].tx_count = r1;
     g.phases[0].post_delay_ms = delay1;
     g.phases[1].packet.len = 22;
     g.phases[1].packet.data[0] = 0x88;
-    g.phases[1].retransmits = r2;
+    g.phases[1].tx_count = r2;
     g.phases[1].post_delay_ms = 0;
     g.on_complete = nullptr;
     g.ctx = nullptr;
@@ -81,7 +81,7 @@ TEST(job_group_single_phase_init)
 {
     TdmaJobGroup g = make_test_group(5, 0);
     ASSERT_EQ(g.phase_count, 1);
-    ASSERT_EQ(g.phases[0].retransmits, 5);
+    ASSERT_EQ(g.phases[0].tx_count, 5);
     ASSERT_EQ(g.phases[0].post_delay_ms, 0);
     ASSERT_EQ(g.phases[0].packet.len, 22);
     ASSERT_EQ(g.phases[0].packet.data[0], 0x81);
@@ -92,10 +92,10 @@ TEST(job_group_two_phase_init)
 {
     TdmaJobGroup g = make_two_phase_group(2, 75, 7);
     ASSERT_EQ(g.phase_count, 2);
-    ASSERT_EQ(g.phases[0].retransmits, 2);
+    ASSERT_EQ(g.phases[0].tx_count, 2);
     ASSERT_EQ(g.phases[0].post_delay_ms, 75);
     ASSERT_EQ(g.phases[0].packet.data[0], 0x89);
-    ASSERT_EQ(g.phases[1].retransmits, 7);
+    ASSERT_EQ(g.phases[1].tx_count, 7);
     ASSERT_EQ(g.phases[1].post_delay_ms, 0);
     ASSERT_EQ(g.phases[1].packet.data[0], 0x88);
 }

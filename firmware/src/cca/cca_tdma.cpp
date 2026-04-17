@@ -472,7 +472,7 @@ static void fire_group_packet(TdmaJobGroup* g, uint32_t now_ms)
 
     /* Rotate type byte if requested (0x81 → 0x82 → 0x83 → 0x81...) */
     if (phase->packet.type_rotate && phase->packet.len > 0) {
-        pkt[0] = 0x81 + (uint8_t)(g->current_retransmit % 3);
+        pkt[0] = phase->packet.type_base + (uint8_t)(g->current_retransmit % 3);
     }
 
     /* Stop RX, transmit, restart RX */
@@ -482,7 +482,7 @@ static void fire_group_packet(TdmaJobGroup* g, uint32_t now_ms)
 
     g->current_retransmit++;
 
-    if (g->current_retransmit >= phase->retransmits) {
+    if (g->current_retransmit >= phase->tx_count) {
         /* Phase complete — advance to next */
         g->current_phase++;
         g->current_retransmit = 0;
@@ -609,7 +609,7 @@ CcaTdmaJob* cca_tdma_submit(const CcaTdmaTxRequest* req)
     job->slot = frame_.our_slot;
     job->seq_base = frame_.our_slot; /* low bits = slot number */
     job->seq_stride = frame_.slot_count;
-    job->retries_total = req->retries > 0 ? req->retries : CCA_TDMA_RETRIES_NORMAL;
+    job->retries_total = req->retries > 0 ? req->retries : CCA_TX_COUNT_NORMAL;
     job->retries_done = 0;
     job->type_rotate = req->type_rotate;
     job->priority = req->priority;

@@ -80,7 +80,7 @@ static void submit_beacon_group(void)
     pkt[24] = 0x3C; /* timer: active */
 
     g.phases[0].packet.len = 51;
-    g.phases[0].retransmits = 10;
+    g.phases[0].tx_count = 10;
     g.on_complete = beacon_complete;
 
     if (cca_tdma_submit_group(&g)) {
@@ -133,7 +133,7 @@ static void submit_announce_group(void)
     pkt[26] = 0x00;
 
     g.phases[0].packet.len = 51;
-    g.phases[0].retransmits = 10;
+    g.phases[0].tx_count = 10;
     g.on_complete = announce_complete;
 
     if (cca_tdma_submit_group(&g)) {
@@ -186,7 +186,7 @@ static void submit_config_group(void)
     put_be32(p + 16, hub_id_);
     put_be32(p + 20, hub_id_);
     g.phases[0].packet.len = 51;
-    g.phases[0].retransmits = 5;
+    g.phases[0].tx_count = 5;
     g.phases[0].post_delay_ms = 200; /* let device process accept */
 
     /* Phase 1: Format 0x13 — Dimming Capability */
@@ -210,7 +210,7 @@ static void submit_config_group(void)
     p[21] = 0x03;
     put_be32(p + 22, dev);
     g.phases[1].packet.len = 51;
-    g.phases[1].retransmits = 5;
+    g.phases[1].tx_count = 5;
     g.phases[1].post_delay_ms = 200;
 
     /* Phase 2: Format 0x28 — Zone Assignment A */
@@ -242,7 +242,7 @@ static void submit_config_group(void)
     p[33] = 0xFF;
     p[36] = 0xB4;
     g.phases[2].packet.len = 51;
-    g.phases[2].retransmits = 5;
+    g.phases[2].tx_count = 5;
     g.phases[2].post_delay_ms = 200;
 
     /* Phase 3: Format 0x14 — Function Mapping */
@@ -264,7 +264,7 @@ static void submit_config_group(void)
     p[20] = 0xFF;
     p[22] = 0x02;
     g.phases[3].packet.len = 51;
-    g.phases[3].retransmits = 5;
+    g.phases[3].tx_count = 5;
     g.phases[3].post_delay_ms = 200;
 
     /* Phase 4: Format 0x28 — Zone Assignment B */
@@ -295,7 +295,7 @@ static void submit_config_group(void)
     p[33] = 0xFF;
     p[36] = 0xB4;
     g.phases[4].packet.len = 51;
-    g.phases[4].retransmits = 5;
+    g.phases[4].tx_count = 5;
     g.phases[4].post_delay_ms = 200;
 
     /* Phase 5: Format 0x12 — Final Config with Zone Byte */
@@ -317,7 +317,7 @@ static void submit_config_group(void)
     p[24] = zone_byte_;    /* THE ZONE ASSIGNMENT */
     p[25] = QS_ADDR_GROUP; /* 0xEF */
     g.phases[5].packet.len = 51;
-    g.phases[5].retransmits = 8;
+    g.phases[5].tx_count = 8;
     g.phases[5].post_delay_ms = 0;
 
     g.phase_count = 6;
@@ -369,7 +369,7 @@ static void submit_stop_beacon(void)
     pkt[24] = 0x00; /* timer: STOP */
 
     g.phases[0].packet.len = 51;
-    g.phases[0].retransmits = 3;
+    g.phases[0].tx_count = 3;
     cca_tdma_submit_group(&g);
 }
 

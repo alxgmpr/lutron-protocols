@@ -1,4 +1,4 @@
-#!/usr/bin/env node --import tsx
+#!/usr/bin/env npx tsx
 
 /**
  * Nucleo CLI — interactive UDP shell for Nucleo H723ZG
@@ -11,6 +11,7 @@
  *        npx tsx cli/nucleo.ts                  # uses openBridge from config.json
  */
 
+import { decode as cborDecode } from "cbor-x";
 import { createSocket, type Socket } from "dgram";
 import {
   appendFileSync,
@@ -40,8 +41,6 @@ import {
   identifyPacket,
   parseFieldValue,
 } from "../protocol/protocol-ui";
-import { LineEditor } from "./tui/line-editor";
-import { type IScreen, Screen } from "./tui/screen";
 import {
   BLUE,
   BOLD,
@@ -51,14 +50,14 @@ import {
   getPacketLayout,
   MAGENTA,
   type PacketRow,
-  PacketTable,
   RED,
   RESET,
   renderHeader,
   renderRow,
   WHITE,
   YELLOW,
-} from "./tui/table";
+} from "./core/packets";
+import { createScreen, type InkScreen } from "./ui/screen";
 
 // ============================================================================
 // Constants
@@ -195,10 +194,8 @@ interface CcaSlotIndicator {
 
 const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
 
-// TUI instances
-const screen: IScreen = Screen.create();
-const packetTable = new PacketTable();
-const lineEditor = new LineEditor();
+// TUI instance — combined screen + line-editor adapter backed by Ink.
+const screen: InkScreen = createScreen();
 
 // ============================================================================
 // Helpers
@@ -363,7 +360,6 @@ function updateHeader(): void {
 function emitPacketRow(row: PacketRow): void {
   const layout = getPacketLayout(raw, screen.width, verbose);
   const rendered = renderRow(row, layout);
-  packetTable.addRow(row, rendered);
   screen.appendLine(rendered);
   // Emit verbose detail line if present
   if (row.verboseLine) {
@@ -387,7 +383,6 @@ function emitPacketRow(row: PacketRow): void {
       verboseLine: row.verboseLine,
     };
     const detailRendered = renderRow(detailRow, layout);
-    packetTable.addRow(detailRow, detailRendered);
     if (detailRendered) {
       screen.appendLine(detailRendered);
     }
@@ -1394,9 +1389,8 @@ function showHelp() {
 
 function tryDecodeCbor(hex: string): string | null {
   try {
-    const { decode } = require("cbor-x") as typeof import("cbor-x");
     const buf = Buffer.from(hex.replace(/ /g, ""), "hex");
-    const val = decode(buf);
+    const val = cborDecode(buf);
     return JSON.stringify(
       val,
       (_, v) => {
@@ -1734,7 +1728,7 @@ function handleCommand(line: string) {
 // ============================================================================
 
 function cleanup() {
-  lineEditor.stop();
+  screen.stop();
   screen.destroy();
   if (keepaliveTimer) clearInterval(keepaliveTimer);
   if (recording) {
@@ -1846,34 +1840,20 @@ async function startup() {
     loadSavedLeapData();
   }
 
-  // Initialize TUI
+  // Initialize screen state (header/columns/status) before mounting Ink.
   screen.init();
   updateHeader();
   updateColumnHeaders();
   updateStatusBar();
 
-  // Wire up resize handler
-  screen.handleResize(() => fullRedraw());
-
-  // Wire up line editor
-  lineEditor.onRender = (text, col) => {
-    screen.setInputLine(text);
-    screen.setCursorToInput(col);
-  };
-
-  lineEditor.onRedraw = () => fullRedraw();
-
-  lineEditor.onQuit = () => {
+  screen.onRedraw = () => fullRedraw();
+  screen.onQuit = () => {
     cleanup();
     process.exit(0);
   };
 
-  lineEditor.onAnyKey = () => {
-    screen.clearOverlay();
-  };
-
   // Tab completion candidates
-  lineEditor.setCompletions([
+  screen.setCompletions([
     // Local
     "status",
     "record",
@@ -1942,7 +1922,7 @@ async function startup() {
     "save",
   ]);
 
-  lineEditor.start(handleCommand);
+  screen.start(handleCommand);
 
   // Start UDP socket
   setupUdp();

@@ -4,6 +4,7 @@
     "includes": [
       "bridge/**/*.ts",
       "cli/**/*.ts",
+      "cli/**/*.tsx",
       "tools/**/*.ts",
       "ccx/**/*.ts",
       "protocol/**/*.ts",

@@ -103,6 +103,21 @@ TdmaJobGroup cca_jobs_button(uint32_t device_id, uint8_t button);
 TdmaJobGroup cca_jobs_bridge_level(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs);
 TdmaJobGroup cca_jobs_beacon(uint32_t zone_id, uint8_t type_byte);
 TdmaJobGroup cca_jobs_raw(const uint8_t* payload, uint8_t len, uint8_t retransmits);
+TdmaJobGroup cca_jobs_pico_level(uint32_t device_id, uint8_t level_pct);
+TdmaJobGroup cca_jobs_broadcast_level(uint32_t zone_id, uint8_t level_pct, uint8_t fade_qs);
+TdmaJobGroup cca_jobs_scene_exec(uint32_t zone_id, uint32_t target_id, uint8_t level_pct, uint8_t fade_qs);
+TdmaJobGroup cca_jobs_state_report(uint32_t device_id, uint8_t level_pct);
+TdmaJobGroup cca_jobs_unpair(uint32_t zone_id, uint32_t target_id);
+TdmaJobGroup cca_jobs_save_fav(uint32_t device_id);
+TdmaJobGroup cca_jobs_led_config(uint32_t zone_id, uint32_t target_id, uint8_t led_mode);
+TdmaJobGroup cca_jobs_fade_config(uint32_t zone_id, uint32_t target_id, uint16_t fade_on_qs, uint16_t fade_off_qs);
+TdmaJobGroup cca_jobs_trim_config(uint32_t zone_id, uint32_t target_id, uint8_t high_trim, uint8_t low_trim);
+TdmaJobGroup cca_jobs_phase_config(uint32_t zone_id, uint32_t target_id, uint8_t phase_byte);
+TdmaJobGroup cca_jobs_dim_config(uint32_t zone_id, uint32_t target_id, const uint8_t* config_bytes, uint8_t config_len);
+TdmaJobGroup cca_jobs_identify(uint32_t target_id);
+TdmaJobGroup cca_jobs_query(uint32_t target_id);
+TdmaJobGroup cca_jobs_vive_level(uint32_t hub_id, uint8_t zone_byte, uint8_t level_pct, uint8_t fade_qs);
+TdmaJobGroup cca_jobs_vive_dim(uint32_t hub_id, uint8_t zone_byte, uint8_t direction);
 
 /** Convert a CcaCmdItem to a TdmaJobGroup. Returns group with phase_count=0 on error. */
 TdmaJobGroup cca_cmd_to_jobs(const CcaCmdItem* item);
