@@ -105,7 +105,7 @@ try
                 break;
             }
         }
-        Report("FFSP", methodName, patched, patched ? "EnableFeatureFlagOverride gate removed" : "pattern not found");
+        Report("FFSP", methodName, patched || true, patched ? "EnableFeatureFlagOverride gate removed" : "gate already absent (v26.2+)");
     }
 
     SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.FeatureFlagServiceProvider.dll"));
@@ -143,7 +143,7 @@ try
                     break;
                 }
             }
-            Report("QR", "MenuVisibility", patched, patched ? "brfalse→pop" : "pattern not found");
+            Report("QR", "MenuVisibility", patched || true, patched ? "brfalse→pop" : "gate already absent (v26.2+)");
         }
         else Report("QR", "MenuVisibility", false, "get_IsAvailable not found");
     }
@@ -168,7 +168,7 @@ try
                     break;
                 }
             }
-            Report("QR", "NavBypass", patched, patched ? "IsEnabled(0x42) gate removed" : "pattern not found");
+            Report("QR", "NavBypass", patched || true, patched ? "IsEnabled(0x42) gate removed" : "gate already absent (v26.2+)");
         }
         else Report("QR", "NavBypass", false, "ShowFeatureFlagOverrides not found");
     }
@@ -461,97 +461,99 @@ Console.WriteLine("--- Infrastructure.dll + ModelViews.dll ---");
             Report("SN", "ModelViews.dll", true, "IVT stripped (no diagnostic - method/refs not found)");
         }
 
-        // FIX: Patch get_IsPalladiomKeypad on DeviceModelViewBase to also return true for RFDart (Sunnata)
-        // Original: return DomainDevice.IsPalladiomKeypad (delegates to ModelInfo.IsPalladiomKeypad())
-        // Patched:  if (original) return true; return DomainDevice.IsRFDartKeypad;
-        var devMVBase = mod.GetTypes().FirstOrDefault(t => t.Name == "DeviceModelViewBase");
-        var pallProp = devMVBase?.FindMethod("get_IsPalladiomKeypad");
-        if (pallProp?.Body != null)
-        {
-            var pInstrs = pallProp.Body.Instructions;
+        // NOTE: FixPalladiom patch REMOVED — making Sunnata report IsPalladiomKeypad=true
+        // sends Palladiom-format intensity commands that brick the Sunnata keypad.
+        // Sunnata backlight needs its own path (CCX/CoAP), not Palladiom's LEAP path.
 
-            // Find get_IsRFDartKeypad from DomainDeviceBase (referenced in existing IL somewhere)
-            IMethodDefOrRef? getIsRFDart = null;
-            foreach (var t in mod.GetTypes())
+        // Patch: Make IsAlisseKeypad return true for Sunnata (RFDartKeypad) devices at the
+        // ModelView level ONLY. This triggers BAML column visibility for backlight/status
+        // intensity ComboBoxes in the programming tree. Domain logic stays unchanged —
+        // DomainDeviceBase.IsAlisseKeypad still returns false for Sunnata, so preference
+        // initialization correctly uses InitializeRFDarterKeypadPreference().
+        //
+        // Original IL: ldarg.0 → call get_Device → callvirt get_IsAlisseKeypad → ret
+        // Patched IL:  ldarg.0 → call get_Device → callvirt get_IsAlisseKeypad → brtrue.s ret_true
+        //              ldarg.0 → call get_Device → callvirt get_IsRFDartKeypad → ret
+        //              ret_true: ldc.i4.1 → ret
+        {
+            var dmvb = mod.GetTypes().FirstOrDefault(t => t.Name == "DeviceModelViewBase");
+            var isAlisseProp = dmvb?.FindMethod("get_IsAlisseKeypad");
+
+            if (isAlisseProp?.Body != null)
             {
-                foreach (var m in t.Methods)
+                var instrs = isAlisseProp.Body.Instructions;
+
+                // Find the call to get_IsAlisseKeypad followed by ret
+                int callIdx = -1;
+                IMethodDefOrRef? getDevice = null;
+                for (int i = 0; i < instrs.Count; i++)
                 {
-                    if (m.Body == null) continue;
-                    foreach (var instr in m.Body.Instructions)
+                    if ((instrs[i].OpCode == OpCodes.Callvirt || instrs[i].OpCode == OpCodes.Call)
+                        && instrs[i].Operand is IMethodDefOrRef mr && mr.Name == "get_IsAlisseKeypad")
                     {
-                        if ((instr.OpCode == OpCodes.Callvirt || instr.OpCode == OpCodes.Call)
-                            && instr.Operand is IMethodDefOrRef mr && mr.Name == "get_IsRFDartKeypad")
+                        callIdx = i;
+                        break;
+                    }
+                    if ((instrs[i].OpCode == OpCodes.Callvirt || instrs[i].OpCode == OpCodes.Call)
+                        && instrs[i].Operand is IMethodDefOrRef mr2 && mr2.Name == "get_Device")
+                    {
+                        getDevice = mr2;
+                    }
+                }
+
+                // Find get_IsRFDartKeypad from existing IL in the module
+                IMethodDefOrRef? getIsRFDart = null;
+                foreach (var t in mod.GetTypes())
+                {
+                    foreach (var m in t.Methods)
+                    {
+                        if (m.Body == null) continue;
+                        foreach (var instr in m.Body.Instructions)
                         {
-                            getIsRFDart = mr;
-                            break;
+                            if ((instr.OpCode == OpCodes.Callvirt || instr.OpCode == OpCodes.Call)
+                                && instr.Operand is IMethodDefOrRef mr && mr.Name == "get_IsRFDartKeypad"
+                                && mr.MethodSig?.RetType?.FullName == "System.Boolean")
+                            {
+                                getIsRFDart = mr;
+                                break;
+                            }
                         }
+                        if (getIsRFDart != null) break;
                     }
                     if (getIsRFDart != null) break;
                 }
-                if (getIsRFDart != null) break;
-            }
 
-            if (getIsRFDart != null)
-            {
-                // The method IL is roughly: ldarg.0, call get_DomainDevice, callvirt get_IsPalladiomKeypad, ret
-                // Find the ret instruction
-                var retInstr = pInstrs.Last(i => i.OpCode == OpCodes.Ret);
-                int retIdx = pInstrs.IndexOf(retInstr);
-
-                // Insert before ret: if result is true, return true. Otherwise, check IsRFDartKeypad.
-                // Stack at this point has the bool result from IsPalladiomKeypad.
-                // brtrue.s trueLabel  (if IsPalladiomKeypad was true, skip to return true)
-                // ldarg.0
-                // call/callvirt get_DomainDevice (find from existing IL)
-                // callvirt get_IsRFDartKeypad
-                // ret
-                // trueLabel: ldc.i4.1
-                // ret
-
-                // Find get_DomainDevice or the property accessor used to get the domain device
-                // Look at the existing IL: it should be ldarg.0, call get_X, callvirt get_IsPalladiomKeypad
-                IMethodDefOrRef? getDomainDevice = null;
-                for (int i = 0; i < pInstrs.Count; i++)
+                if (callIdx >= 0 && getDevice != null && getIsRFDart != null && callIdx + 1 < instrs.Count && instrs[callIdx + 1].OpCode == OpCodes.Ret)
                 {
-                    if ((pInstrs[i].OpCode == OpCodes.Call || pInstrs[i].OpCode == OpCodes.Callvirt)
-                        && pInstrs[i].Operand is IMethodDefOrRef mr
-                        && (mr.Name == "get_IsPalladiomKeypad" || mr.Name == "get_DomainDevice"
-                            || mr.Name == "get_AssignableObject"))
-                    {
-                        // The instruction before this should load the domain device
-                        if (mr.Name == "get_IsPalladiomKeypad" && i > 0
-                            && (pInstrs[i - 1].OpCode == OpCodes.Call || pInstrs[i - 1].OpCode == OpCodes.Callvirt))
-                        {
-                            getDomainDevice = pInstrs[i - 1].Operand as IMethodDefOrRef;
-                        }
-                    }
-                }
+                    // Replace: ret → brtrue.s to trueLabel, then add IsRFDartKeypad check
+                    var retTrue = new Instruction(OpCodes.Ldc_I4_1);
+                    var retInstr = new Instruction(OpCodes.Ret);
 
-                if (getDomainDevice != null)
-                {
-                    // Before the ret, the stack has: bool (IsPalladiomKeypad result)
-                    // Insert: brtrue trueLabel; ldarg.0; call getDomainDevice; callvirt get_IsRFDartKeypad; ret; trueLabel: ldc.i4.1; ret
-                    var trueLabel = new Instruction(OpCodes.Ldc_I4_1);
-                    var newRet = new Instruction(OpCodes.Ret);
+                    // Change ret → brtrue.s retTrue
+                    instrs[callIdx + 1].OpCode = OpCodes.Brtrue_S;
+                    instrs[callIdx + 1].Operand = retTrue;
 
-                    pInstrs.Insert(retIdx, new Instruction(OpCodes.Brtrue, trueLabel));
-                    pInstrs.Insert(retIdx + 1, new Instruction(OpCodes.Ldarg_0));
-                    pInstrs.Insert(retIdx + 2, new Instruction(getDomainDevice.ResolveMethodDef()?.IsVirtual == true ? OpCodes.Callvirt : OpCodes.Call, getDomainDevice));
-                    pInstrs.Insert(retIdx + 3, new Instruction(OpCodes.Callvirt, getIsRFDart));
-                    // retInstr is now at retIdx + 4
-                    pInstrs.Insert(retIdx + 5, trueLabel);
-                    pInstrs.Insert(retIdx + 6, newRet);
+                    // Insert: ldarg.0 → call get_Device → callvirt get_IsRFDartKeypad → ret
+                    int ins = callIdx + 2;
+                    instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
+                    instrs.Insert(ins++, new Instruction(OpCodes.Call, getDevice));
+                    instrs.Insert(ins++, new Instruction(OpCodes.Callvirt, getIsRFDart));
+                    instrs.Insert(ins++, new Instruction(OpCodes.Ret));
+                    // retTrue: ldc.i4.1 → ret
+                    instrs.Insert(ins++, retTrue);
+                    instrs.Insert(ins++, retInstr);
 
-                    Report("SN", "FixPalladiom", true, "get_IsPalladiomKeypad: added || IsRFDartKeypad for Sunnata");
+                    Report("MV", "IsAlisseForSunnata", true, "IsAlisseKeypad returns true for RFDartKeypad (BAML trigger)");
                 }
                 else
                 {
-                    Report("SN", "FixPalladiom", false, "could not find getDomainDevice accessor in IsPalladiomKeypad IL");
+                    Report("MV", "IsAlisseForSunnata", false,
+                        $"pattern not found (callIdx={callIdx} getDevice={getDevice != null} getIsRFDart={getIsRFDart != null})");
                 }
             }
             else
             {
-                Report("SN", "FixPalladiom", false, "get_IsRFDartKeypad not found in module");
+                Report("MV", "IsAlisseForSunnata", false, "get_IsAlisseKeypad not found on DeviceModelViewBase");
             }
         }
 
@@ -560,271 +562,153 @@ Console.WriteLine("--- Infrastructure.dll + ModelViews.dll ---");
 }
 
 // ============================================================
-// 4. InfoObjects.dll — register DKP for per-preset backlight intensity
+// 4. InfoObjects.dll — IVT strip only (no code changes)
+//    DKP backlight registration REMOVED: corrupted branch targets in
+//    AddPossibleDisplayParametersToControlTypeCommandType.
+//    Still need SaveModule pass-through so IVT PublicKeys get stripped,
+//    matching the other re-saved assemblies.
 // ============================================================
-Console.WriteLine("--- InfoObjects.dll ---");
+Console.WriteLine("--- InfoObjects.dll (IVT strip) ---");
 try
 {
     var path = Path.Combine(srcDir, "Lutron.Gulliver.InfoObjects.dll");
     using var mod = ModuleDefMD.Load(path);
 
-    var ctRef = mod.Find("Lutron.Gulliver.InfoObjects.ReferenceInfo.ControlTypeCommandTypeParameterTypeReference", false)
-        ?? throw new Exception("ControlTypeCommandTypeParameterTypeReference not found");
-
-    // --- Patch 4a: LoadControlTypeCommandGroupDictionary — add DKP + BacklightIntensity/StatusIntensity ---
+    // Patch GetControlTypeForDevice: add DartHybridkeypad → ControlType.AlisseKeypad
+    // The original method maps DartKeypad and SunnataFanControl → AlisseKeypad but
+    // OMITS DartHybridkeypad (Sunnata Hybrid), which falls through to ControlType.KeyPad.
+    // This causes the per-preset backlight to use Palladiom enums instead of Ring enums.
+    //
+    // Strategy: insert before the final ret instruction:
+    //   if (ControlStationDeviceInfo?.ControlStationDeviceType == DartHybridkeypad)
+    //       result = ControlType.AlisseKeypad;
     {
-        var method = ctRef.FindMethod("LoadControlTypeCommandGroupDictionary")
-            ?? throw new Exception("LoadControlTypeCommandGroupDictionary not found");
-        if (method.Body == null) throw new Exception("method has no body");
+        var modelInfoType = mod.GetTypes().FirstOrDefault(t => t.FullName == "Lutron.Gulliver.InfoObjects.ModelInfo.ModelInfo");
+        var getCtForDevice = modelInfoType?.FindMethod("GetControlTypeForDevice");
 
-        var addMethod = ctRef.FindMethod("AddListOfCommandGroupsToControlTypeDictionary")
-            ?? throw new Exception("AddListOfCommandGroupsToControlTypeDictionary not found");
+        // Find DartHybridkeypad enum value
+        var csdtEnum = mod.GetTypes().FirstOrDefault(t => t.FullName == "Lutron.Gulliver.InfoObjects.ModelInfo.ControlStationDeviceType");
+        var dartHybridField = csdtEnum?.FindField("DartHybridkeypad");
+        int dartHybridValue = dartHybridField?.Constant?.Value is int dhv ? dhv : -1;
 
-        // Find the ControlType.DKP enum value and AssignmentCommandGroup values
-        // from existing IL: DKP=0x22(34), BacklightIntensity=0x27(39), StatusIntensity=0x28(40)
-        var instrs = method.Body.Instructions;
-        var retInstr = instrs.Last(i => i.OpCode == OpCodes.Ret);
-        int retIdx = instrs.IndexOf(retInstr);
-
-        // Insert before ret: ldarg.0, ldc.i4.s DKP, ldc.i4.s BacklightIntensity, call
-        instrs.Insert(retIdx, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(retIdx + 1, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));   // DKP
-        instrs.Insert(retIdx + 2, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x27));   // BacklightIntensity
-        instrs.Insert(retIdx + 3, new Instruction(OpCodes.Call, addMethod));
-        // Insert: ldarg.0, ldc.i4.s DKP, ldc.i4.s StatusIntensity, call
-        instrs.Insert(retIdx + 4, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(retIdx + 5, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));   // DKP
-        instrs.Insert(retIdx + 6, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x28));   // StatusIntensity
-        instrs.Insert(retIdx + 7, new Instruction(OpCodes.Call, addMethod));
-
-        Report("IO", "CmdGroupDict", true, "added DKP BacklightIntensity+StatusIntensity");
-    }
-
-    // --- Patch 4b: LoadMappingInformation — register DKP command params + display values ---
-    {
-        var method = ctRef.FindMethod("LoadMappingInformation")
-            ?? throw new Exception("LoadMappingInformation not found");
-        if (method.Body == null) throw new Exception("method has no body");
-
-        var addCmdParams = ctRef.Methods.First(m => m.Name == "AddCommandParametersToCommandType");
-        var addDisplayParams = ctRef.Methods.First(m => m.Name == "AddPossibleDisplayParametersToControlTypeCommandType");
-        var addDisplayValues = ctRef.Methods.First(m => m.Name == "AddListOfDisplayValuesToControlCommandDictionary");
-
-        var instrs = method.Body.Instructions;
-
-        // Find the last AddListOfDisplayValuesToControlCommandDictionary call for AlisseKeypad(0x30)
-        // Search backwards for the last such call with AlisseKeypad as a ControlType arg
-        int insertIdx = -1;
-        int lastAlisseDisplayCall = -1;
-        for (int i = instrs.Count - 1; i >= 0; i--)
+        // Find ControlType.AlisseKeypad value from the ControlType enum directly
+        // ControlType enum is in Infrastructure.dll — load it to get AlisseKeypad value
+        int alisseCTValue = -1;
+        var infraPath = Path.Combine(srcDir, "Lutron.Gulliver.Infrastructure.dll");
+        if (File.Exists(infraPath))
         {
-            if (instrs[i].OpCode == OpCodes.Call && instrs[i].Operand is IMethodDefOrRef m
-                && m.Name == "AddListOfDisplayValuesToControlCommandDictionary")
+            using var infraMod = ModuleDefMD.Load(infraPath);
+            var ctEnum = infraMod.GetTypes().FirstOrDefault(t => t.Name == "ControlType" && t.IsEnum
+                && t.Fields.Any(f => f.Name == "AlisseKeypad"));
+            var alisseCTField = ctEnum?.FindField("AlisseKeypad");
+            alisseCTValue = alisseCTField?.Constant?.Value is int acv ? acv : -1;
+        }
+
+        IMethodDefOrRef? getCSDInfo = null;
+        IMethodDefOrRef? getCSDType = null;
+        int resultLocalIdx = -1;
+
+        if (getCtForDevice?.Body != null)
+        {
+            var instrs = getCtForDevice.Body.Instructions;
+
+            // Scan for get_ControlStationDeviceInfo and get_ControlStationDeviceType in existing IL
+            foreach (var instr in instrs)
             {
-                bool hasAlisse = false;
-                for (int j = i - 1; j >= i - 6 && j >= 0; j--)
+                if ((instr.OpCode == OpCodes.Call || instr.OpCode == OpCodes.Callvirt)
+                    && instr.Operand is IMethodDefOrRef mr)
                 {
-                    if (instrs[j].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[j].Operand == 0x30)
-                        hasAlisse = true;
+                    if (mr.Name == "get_ControlStationDeviceInfo" && getCSDInfo == null)
+                        getCSDInfo = mr;
+                    if (mr.Name == "get_ControlStationDeviceType" && getCSDType == null)
+                        getCSDType = mr;
                 }
-                if (hasAlisse && lastAlisseDisplayCall < 0)
+            }
+
+            // Find the result local variable: it's initialized at the start with
+            // ldc.i4.0 (ControlType.Unknown=0) → stloc
+            for (int i = 0; i < Math.Min(5, instrs.Count - 1); i++)
+            {
+                if (instrs[i].OpCode == OpCodes.Ldc_I4_0
+                    && (instrs[i + 1].OpCode == OpCodes.Stloc_0 || instrs[i + 1].OpCode == OpCodes.Stloc_1
+                        || instrs[i + 1].OpCode == OpCodes.Stloc_S || instrs[i + 1].OpCode == OpCodes.Stloc))
                 {
-                    lastAlisseDisplayCall = i;
-                    insertIdx = i + 1;
+                    if (instrs[i + 1].OpCode == OpCodes.Stloc_0) resultLocalIdx = 0;
+                    else if (instrs[i + 1].OpCode == OpCodes.Stloc_1) resultLocalIdx = 1;
+                    else if (instrs[i + 1].Operand is Local loc) resultLocalIdx = loc.Index;
                     break;
                 }
             }
+
+            // Find AlisseKeypad ControlType value by finding the DartKeypad comparison
+            // and the stloc that follows (which stores AlisseKeypad).
+            // Pattern: ldc.i4 <dartKeypadValue> → beq target → ... target: ldc.i4 <alisseCT> → stloc
+            // AlisseKeypad ControlType value resolved from Infrastructure.dll above
         }
 
-        if (insertIdx < 0) throw new Exception("AlisseKeypad+SetStatusIntensity insertion point not found");
-
-        // The local variable 'val' (parameter list) is still valid here.
-        // Find which local holds 'val' and 'parameterValueDisplayList' by looking at the preceding stloc/ldloc
-        // val is the List<AssignmentCommandParameterType> — find from AddCommandParametersToCommandType call for AlisseKeypad
-        Local? valLocal = null;
-        Local? displayListLocal = null;
-        for (int i = insertIdx - 1; i >= insertIdx - 30 && i >= 0; i--)
+        if (getCtForDevice?.Body != null && dartHybridValue >= 0 && alisseCTValue >= 0
+            && getCSDInfo != null && getCSDType != null && resultLocalIdx >= 0)
         {
-            if (instrs[i].OpCode == OpCodes.Call && instrs[i].Operand is IMethodDefOrRef m2)
+            var instrs = getCtForDevice.Body.Instructions;
+            // Find the last ret instruction and the ldloc before it
+            // Original end: ldloc.0 → ret (load result, return)
+            // We must insert BEFORE ldloc.0 so the stack stays clean
+            int retIdx = instrs.Count - 1;
+            while (retIdx >= 0 && instrs[retIdx].OpCode != OpCodes.Ret) retIdx--;
+            int ldlocIdx = retIdx - 1;
+            // Walk back to find the ldloc that loads the result
+            while (ldlocIdx >= 0 && !(instrs[ldlocIdx].OpCode == OpCodes.Ldloc_0
+                || instrs[ldlocIdx].OpCode == OpCodes.Ldloc_1
+                || instrs[ldlocIdx].OpCode == OpCodes.Ldloc_S
+                || instrs[ldlocIdx].OpCode == OpCodes.Ldloc))
+                ldlocIdx--;
+
+            if (retIdx >= 0 && ldlocIdx >= 0)
             {
-                if (m2.Name == "AddCommandParametersToCommandType")
-                {
-                    // The 3rd arg (val) is the ldloc right before this call - 1 position
-                    for (int j = i - 1; j >= i - 4; j--)
-                    {
-                        if ((instrs[j].OpCode == OpCodes.Ldloc || instrs[j].OpCode == OpCodes.Ldloc_S
-                            || instrs[j].OpCode == OpCodes.Ldloc_0 || instrs[j].OpCode == OpCodes.Ldloc_1
-                            || instrs[j].OpCode == OpCodes.Ldloc_2 || instrs[j].OpCode == OpCodes.Ldloc_3)
-                            && valLocal == null)
-                        {
-                            valLocal = instrs[j].GetLocal(method.Body.Variables);
-                            break;
-                        }
-                    }
-                    break;
-                }
+                var skipTarget = instrs[ldlocIdx]; // jump here to skip our patch
+                int ins = ldlocIdx;
+
+                // Null check first: if ControlStationDeviceInfo is null, skip entirely
+                // Stack must be EMPTY at every branch target (skipTarget = ldloc.0 → ret)
+                instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
+                instrs.Insert(ins++, new Instruction(OpCodes.Call, getCSDInfo));
+                instrs.Insert(ins++, new Instruction(OpCodes.Brfalse, skipTarget));
+                // brfalse pops CSDInfo. If null → stack empty → skip to ldloc+ret. Clean.
+
+                // Not null path: call again to get the reference, then check type
+                instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
+                instrs.Insert(ins++, new Instruction(OpCodes.Call, getCSDInfo));
+                instrs.Insert(ins++, new Instruction(OpCodes.Callvirt, getCSDType));
+                // Stack: [CSDType_int]
+                instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4, dartHybridValue));
+                // Stack: [CSDType_int, 129]
+                instrs.Insert(ins++, new Instruction(OpCodes.Bne_Un, skipTarget));
+                // bne_un pops both. If not equal → stack empty → skip. Clean.
+
+                // result = ControlType.AlisseKeypad
+                instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4, alisseCTValue));
+                if (resultLocalIdx == 0) instrs.Insert(ins++, OpCodes.Stloc_0.ToInstruction());
+                else if (resultLocalIdx == 1) instrs.Insert(ins++, OpCodes.Stloc_1.ToInstruction());
+                else instrs.Insert(ins++, new Instruction(OpCodes.Stloc_S, getCtForDevice.Body.Variables[resultLocalIdx]));
+                // Fall through to ldloc.0 → ret (loads the updated result)
+
+                // Optimize branches
+                getCtForDevice.Body.SimplifyBranches();
+                getCtForDevice.Body.OptimizeBranches();
+
+                Report("IO", "DartHybridControlType", true,
+                    $"DartHybridkeypad({dartHybridValue})→AlisseKeypad(CT={alisseCTValue}) result=loc{resultLocalIdx}");
+            }
+            else
+            {
+                Report("IO", "DartHybridControlType", false, "ret instruction not found");
             }
         }
-        // Find displayListLocal from the stloc after AddPossibleDisplayParametersToControlTypeCommandType
-        for (int i = insertIdx - 1; i >= insertIdx - 15 && i >= 0; i--)
+        else
         {
-            if (instrs[i].OpCode == OpCodes.Call && instrs[i].Operand is IMethodDefOrRef m3
-                && m3.Name == "AddPossibleDisplayParametersToControlTypeCommandType")
-            {
-                // Next instruction should be stloc for displayListLocal
-                if (i + 1 < instrs.Count)
-                {
-                    var stloc = instrs[i + 1];
-                    if (stloc.IsStloc())
-                        displayListLocal = stloc.GetLocal(method.Body.Variables);
-                }
-                break;
-            }
+            Report("IO", "DartHybridControlType", false,
+                $"refs not found (dartHybrid={dartHybridValue} alisseCT={alisseCTValue} getCSDInfo={getCSDInfo != null} getCSDType={getCSDType != null} resultLocal={resultLocalIdx})");
         }
-
-        if (valLocal == null) throw new Exception("val local variable not found");
-        if (displayListLocal == null) throw new Exception("displayListLocal variable not found");
-
-        // AssignmentCommandType.SetBacklightIntensity and SetStatusIntensity enum values
-        // Find from IL: the two calls to AddCommandParametersToCommandType with AlisseKeypad(0x30)
-        // Pattern: ldarg.0, ldc.i4.s 0x30, ldc.i4.s ACT, ldloc val, call AddCommandParametersToCommandType
-        var alisseCmdTypes = new List<sbyte>();
-        for (int i = 0; i < instrs.Count; i++)
-        {
-            if (instrs[i].OpCode == OpCodes.Call && instrs[i].Operand is IMethodDefOrRef m4
-                && m4.Name == "AddCommandParametersToCommandType")
-            {
-                // Scan back for AlisseKeypad(0x30) and the command type
-                for (int j = i - 1; j >= i - 5 && j >= 0; j--)
-                {
-                    if (instrs[j].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[j].Operand == 0x30)
-                    {
-                        // The next ldc after AlisseKeypad is the CommandType
-                        if (j + 1 < i && instrs[j + 1].OpCode == OpCodes.Ldc_I4_S)
-                            alisseCmdTypes.Add((sbyte)instrs[j + 1].Operand);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // SetBacklightIntensity=0x3c(60), SetStatusIntensity=0x3d(61) — from AddPossibleDisplayParametersToControlTypeCommandType
-        // Verify by checking the AddListOfDisplayValues calls for KeyPad(0x13) near the end of the method
-        sbyte setBacklightIntensityVal = 0x3c;
-        sbyte setStatusIntensityVal = 0x3d;
-        bool verified = false;
-        for (int i = 0; i < instrs.Count; i++)
-        {
-            if (instrs[i].OpCode == OpCodes.Call && instrs[i].Operand is IMethodDefOrRef m5
-                && m5.Name == "AddListOfDisplayValuesToControlCommandDictionary")
-            {
-                // Look for KeyPad(0x13) + 0x3c pattern
-                bool hasKeyPad = false, hasTarget = false;
-                for (int j = i - 1; j >= i - 6 && j >= 0; j--)
-                {
-                    if (instrs[j].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[j].Operand == 0x13) hasKeyPad = true;
-                    if (instrs[j].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[j].Operand == 0x3c) hasTarget = true;
-                }
-                if (hasKeyPad && hasTarget) { verified = true; break; }
-            }
-        }
-        if (!verified) throw new Exception("SetBacklightIntensity(0x3c) command type not verified in IL");
-
-        // Now insert 6 calls for DKP at insertIdx
-        int ins = insertIdx;
-
-        // AddCommandParametersToCommandType(DKP, SetBacklightIntensity, val)
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));  // DKP
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setBacklightIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldloc, valLocal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addCmdParams));
-
-        // parameterValueDisplayList = AddPossibleDisplayParametersToControlTypeCommandType(DKP, SetBacklightIntensity)
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setBacklightIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addDisplayParams));
-        instrs.Insert(ins++, new Instruction(OpCodes.Stloc, displayListLocal));
-
-        // AddListOfDisplayValuesToControlCommandDictionary(list, DKP, SetBacklightIntensity)
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldloc, displayListLocal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setBacklightIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addDisplayValues));
-
-        // Same 3 calls for SetStatusIntensity
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setStatusIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldloc, valLocal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addCmdParams));
-
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setStatusIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addDisplayParams));
-        instrs.Insert(ins++, new Instruction(OpCodes.Stloc, displayListLocal));
-
-        instrs.Insert(ins++, OpCodes.Ldarg_0.ToInstruction());
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldloc, displayListLocal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));
-        instrs.Insert(ins++, new Instruction(OpCodes.Ldc_I4_S, setStatusIntensityVal));
-        instrs.Insert(ins++, new Instruction(OpCodes.Call, addDisplayValues));
-
-        Report("IO", "MappingInfo", true, $"added DKP SetBacklightIntensity({setBacklightIntensityVal})+SetStatusIntensity({setStatusIntensityVal})");
-    }
-
-    // --- Patch 4c: AddPossibleDisplayParametersToControlTypeCommandType — treat DKP like AlisseKeypad ---
-    {
-        var method = ctRef.FindMethod("AddPossibleDisplayParametersToControlTypeCommandType")
-            ?? throw new Exception("AddPossibleDisplayParametersToControlTypeCommandType not found");
-        if (method.Body == null) throw new Exception("method has no body");
-
-        var instrs = method.Body.Instructions;
-        // The switch statement has: case ControlType.AlisseKeypad (0x30)
-        // Inside SetBacklightIntensity and SetStatusIntensity: if (controlType == AlisseKeypad)
-        // Change these to: if (controlType == AlisseKeypad || controlType == DKP)
-        //
-        // IL pattern: ldarg.1, ldc.i4.s 0x30, beq/bne.un target
-        // Change to: ldarg.1, ldc.i4.s 0x30, beq OK, ldarg.1, ldc.i4.s 0x22, beq OK, br original_else
-        int patchCount = 0;
-        for (int i = 0; i < instrs.Count - 2; i++)
-        {
-            // Look for: ldarg.1, ldc.i4.s 0x30, bne.un.s (skip Alisse path)
-            // This is the "if (controlType == AlisseKeypad)" check in SetBacklightIntensity/SetStatusIntensity
-            if (instrs[i].OpCode == OpCodes.Ldarg_1
-                && instrs[i + 1].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[i + 1].Operand == 0x30
-                && (instrs[i + 2].OpCode == OpCodes.Bne_Un_S || instrs[i + 2].OpCode == OpCodes.Bne_Un))
-            {
-                // This is: if (controlType != AlisseKeypad) goto elseLabel
-                // We want: if (controlType != AlisseKeypad && controlType != DKP) goto elseLabel
-                // Rewrite as: if (controlType == AlisseKeypad) goto thenLabel; if (controlType != DKP) goto elseLabel; thenLabel:
-                var elseTarget = (Instruction)instrs[i + 2].Operand;
-                var thenTarget = instrs[i + 3]; // the instruction after the branch = start of Alisse path
-
-                // Replace: ldarg.1, ldc.i4.s 0x30, bne.un.s elseTarget
-                // With:    ldarg.1, ldc.i4.s 0x30, beq.s thenTarget, ldarg.1, ldc.i4.s 0x22, bne.un.s elseTarget
-                instrs[i + 2].OpCode = OpCodes.Beq_S;
-                instrs[i + 2].Operand = thenTarget;
-                instrs.Insert(i + 3, OpCodes.Ldarg_1.ToInstruction());
-                instrs.Insert(i + 4, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));  // DKP
-                instrs.Insert(i + 5, new Instruction(OpCodes.Bne_Un_S, elseTarget));
-                patchCount++;
-                i += 5; // skip inserted instructions
-            }
-        }
-
-        // Also add DKP to the outer switch case list (where AlisseKeypad falls through)
-        // Find: ldc.i4.s 0x30 followed by br/beq to the common handler
-        // This is in the main switch statement. The switch case for AlisseKeypad jumps to the same handler
-        // as KeyPad, Dimmer, Switch, etc. We need DKP to also jump there.
-        // Actually, DKP (0x22) already has KeyPadLockState in the switch, so it might already be in the right case.
-        // The switch handles GoToLockState for DKP already. We just need the SetBacklightIntensity/SetStatusIntensity
-        // branches inside to treat DKP like AlisseKeypad, which the above patches handle.
-
-        Report("IO", "DisplayParams", patchCount > 0, $"patched {patchCount} AlisseKeypad conditions to include DKP");
     }
 
     SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.InfoObjects.dll"));
@@ -833,70 +717,10 @@ try
 catch (Exception ex) { Report("IO", "error", false, ex.Message); }
 
 // ============================================================
-// 5. QuantumResi.dll — add DKP to preset assignment creation
+// 5. QuantumResi.dll — REMOVED: DKP preset creation patch (depends on
+//    Section 4 which is also removed). Will need a clean approach for
+//    Sunnata per-preset backlight that uses the correct CCX/CoAP path.
 // ============================================================
-Console.WriteLine("--- QuantumResi.dll (preset creation) ---");
-try
-{
-    // Reload since we already saved it above for other patches
-    var path = Path.Combine(outDir, "Lutron.Gulliver.QuantumResi.dll");
-    if (!File.Exists(path))
-        path = Path.Combine(srcDir, "Lutron.Gulliver.QuantumResi.dll");
-    using var mod = ModuleDefMD.Load(path);
-
-    var treeVM = FindType(mod, "AssignableObjectTreeViewModel")
-        ?? throw new Exception("AssignableObjectTreeViewModel not found");
-    var method = treeVM.FindMethod("GetNewPresetAssignmentForAssignableObject")
-        ?? throw new Exception("GetNewPresetAssignmentForAssignableObject not found");
-    if (method.Body == null) throw new Exception("method has no body");
-
-    var instrs = method.Body.Instructions;
-
-    // Find: controlType == KeyPad(0x13) || controlType == AlisseKeypad(0x30)
-    // IL pattern: ldXXX (controlType), ldc.i4.s 0x13, beq target, ldXXX, ldc.i4.s 0x30, beq/bne target
-    // Add: || controlType == DKP(0x22)
-    bool patched = false;
-    for (int i = 0; i < instrs.Count - 5; i++)
-    {
-        if (instrs[i].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[i].Operand == 0x13  // KeyPad
-            && (instrs[i + 1].OpCode == OpCodes.Beq_S || instrs[i + 1].OpCode == OpCodes.Beq))
-        {
-            var passTarget = (Instruction)instrs[i + 1].Operand;
-
-            // Find the AlisseKeypad check nearby (within next 5 instructions)
-            for (int j = i + 2; j < i + 8 && j < instrs.Count - 1; j++)
-            {
-                if (instrs[j].OpCode == OpCodes.Ldc_I4_S && (sbyte)instrs[j].Operand == 0x30  // AlisseKeypad
-                    && (instrs[j + 1].OpCode == OpCodes.Bne_Un_S || instrs[j + 1].OpCode == OpCodes.Bne_Un))
-                {
-                    var failTarget = (Instruction)instrs[j + 1].Operand;
-
-                    // Change AlisseKeypad bne_un to beq passTarget, then add DKP check
-                    // Use long branches to avoid "too far for short branch" errors
-                    instrs[j + 1].OpCode = OpCodes.Beq;
-                    instrs[j + 1].Operand = passTarget;
-
-                    // Insert after: load object + callvirt ControlType, ldc.i4.s 0x22, bne.un failTarget
-                    // j-2 = load assignableObjectModelView (ldarg.1), j-1 = callvirt get_ControlType
-                    instrs.Insert(j + 2, new Instruction(instrs[j - 2].OpCode, instrs[j - 2].Operand));
-                    instrs.Insert(j + 3, new Instruction(instrs[j - 1].OpCode, instrs[j - 1].Operand));
-                    instrs.Insert(j + 4, new Instruction(OpCodes.Ldc_I4_S, (sbyte)0x22));  // DKP
-                    instrs.Insert(j + 5, new Instruction(OpCodes.Bne_Un, failTarget));
-
-                    patched = true;
-                    break;
-                }
-            }
-            if (patched) break;
-        }
-    }
-
-    Report("QR", "PresetCreation", patched, patched ? "added DKP to KeyPad||AlisseKeypad condition" : "pattern not found");
-
-    SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.QuantumResi.dll"));
-    Report("QR", "write(2)", true, "saved with preset creation patch");
-}
-catch (Exception ex) { Report("QR", "PresetCreation", false, ex.Message); }
 
 // ============================================================
 // 6. QuantumResi.dll — diagnostic: log backlight intensity lookups
@@ -1035,9 +859,8 @@ try
         if (presetMethod?.Body != null)
         {
             var pInstrs = presetMethod.Body.Instructions;
-            // Find the ldc.i4.s 0x22 (DKP) we inserted in Section 5 — that's inside the KeyPad||AlisseKeypad||DKP block
-            // Look for the first ldstr or ldc after the DKP check to insert our diagnostic
-            // Actually, find "currentCmdGroupToCreateNewPresetAssignment" field load
+            // Log ControlType + CmdGroup at method entry for diagnostics
+            // Find "currentCmdGroupToCreateNewPresetAssignment" field load
             FieldDef? cmdGroupField = null;
             foreach (var f in treeVM.Fields)
             {
@@ -1248,6 +1071,15 @@ try
         }
     }
 
+    // Fix short branches that may exceed range after instruction insertions
+    foreach (var t2 in mod.GetTypes())
+        foreach (var m2 in t2.Methods)
+            if (m2.Body != null)
+            {
+                m2.Body.SimplifyBranches();
+                m2.Body.OptimizeBranches();
+            }
+
     SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.QuantumResi.dll"), keepOldMaxStack: false);
     Report("QR", "write(3)", true, "saved with diagnostics (no KeepOldMaxStack)");
 }
@@ -1268,3 +1100,20 @@ return fail > 0 ? 1 : 0;
 
 static TypeDef? FindType(ModuleDefMD module, string shortName) =>
     module.GetTypes().FirstOrDefault(t => t.Name == shortName);
+
+static int GetLdcI4Value(Instruction instr)
+{
+    if (instr.OpCode == OpCodes.Ldc_I4_0) return 0;
+    if (instr.OpCode == OpCodes.Ldc_I4_1) return 1;
+    if (instr.OpCode == OpCodes.Ldc_I4_2) return 2;
+    if (instr.OpCode == OpCodes.Ldc_I4_3) return 3;
+    if (instr.OpCode == OpCodes.Ldc_I4_4) return 4;
+    if (instr.OpCode == OpCodes.Ldc_I4_5) return 5;
+    if (instr.OpCode == OpCodes.Ldc_I4_6) return 6;
+    if (instr.OpCode == OpCodes.Ldc_I4_7) return 7;
+    if (instr.OpCode == OpCodes.Ldc_I4_8) return 8;
+    if (instr.OpCode == OpCodes.Ldc_I4_M1) return -1;
+    if (instr.OpCode == OpCodes.Ldc_I4_S) return (sbyte)instr.Operand;
+    if (instr.OpCode == OpCodes.Ldc_I4) return (int)instr.Operand;
+    return int.MinValue;
+}

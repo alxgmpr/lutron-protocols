@@ -120,3 +120,15 @@ firmware/build*/
 firmware/src/ccx/thread_config.h
 Drivers/
 ._*
+
+# Claude worktrees
+.claude/worktrees/
+
+# .NET build artifacts
+tools/auth-bypass/bin/
+tools/auth-bypass/obj/
+tools/dll-patcher/**/bin/
+tools/dll-patcher/**/obj/
+
+# Session memory
+.remember/

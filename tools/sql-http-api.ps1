@@ -15,15 +15,33 @@
 $ErrorActionPreference = "Continue"
 $port = 9999
 
-function Find-LocalDBPipe {
+function Get-AllLocalDBPipes {
+    $pipes = @()
+    $instances = & SqlLocalDB.exe info 2>$null
+    foreach ($inst in $instances) {
+        $inst = $inst.Trim()
+        if (-not $inst) { continue }
+        $info = & SqlLocalDB.exe info $inst 2>$null
+        $pipeLine = $info | Where-Object { $_ -match "Instance pipe name:\s+(.+)" }
+        $pipe = if ($pipeLine -and $Matches[1].Trim()) { $Matches[1].Trim() } else { $null }
+        $stateLine = $info | Where-Object { $_ -match "State:\s+(\w+)" }
+        $state = if ($stateLine) { $Matches[1] } else { "Unknown" }
+        $pipes += [PSCustomObject]@{ Instance = $inst; Pipe = $pipe; State = $state }
+    }
+    return $pipes
+}
+
+function Find-LocalDBServer {
+    # Scan actual named pipes — sqllocaldb info is unreliable (reports Stopped while pipes are live)
     $pipes = Get-ChildItem "\\.\pipe\" | Select-Object -ExpandProperty Name | Where-Object { $_ -like "*LOCALDB*tsql*" }
-    foreach ($pipe in $pipes) {
-        $connStr = "Server=np:\\.\pipe\$pipe;Integrated Security=true;Database=master;Connect Timeout=5"
+    foreach ($p in $pipes) {
+        $server = "np:\\.\pipe\$p"
+        $connStr = "Server=$server;Integrated Security=true;Database=master;Connect Timeout=5"
         try {
             $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
             $conn.Open()
             $conn.Close()
-            return $pipe
+            return $server
         } catch {
             continue
         }
@@ -31,8 +49,15 @@ function Find-LocalDBPipe {
     return $null
 }
 
-function Find-DB($pipe, $sql) {
-    $connStr = "Server=np:\\.\pipe\$pipe;Integrated Security=true;Database=master;Connect Timeout=10"
+function Resolve-Server($context) {
+    $qs = $context.Request.QueryString
+    $explicit = $qs["pipe"]
+    if ($explicit) { return "np:\\.\pipe\$explicit" }
+    return Find-LocalDBServer
+}
+
+function Find-DB($server, $sql) {
+    $connStr = "Server=$server;Integrated Security=true;Database=master;Connect Timeout=10"
     try {
         $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
         $conn.Open()
@@ -48,16 +73,16 @@ function Find-DB($pipe, $sql) {
     return $null
 }
 
-function Find-ProjectDB($pipe) {
-    return Find-DB $pipe "SELECT TOP 1 name FROM sys.databases WHERE name = 'Project' OR name LIKE 'Project[_]%' ORDER BY CASE WHEN name = 'Project' THEN 0 ELSE 1 END, create_date DESC"
+function Find-ProjectDB($server) {
+    return Find-DB $server "SELECT TOP 1 name FROM sys.databases WHERE name = 'Project' OR name LIKE 'Project[_]%' ORDER BY CASE WHEN name = 'Project' THEN 0 ELSE 1 END, create_date DESC"
 }
 
-function Find-ModelInfoDB($pipe) {
-    return Find-DB $pipe "SELECT TOP 1 name FROM sys.databases WHERE name LIKE '%SQLMODELINFO%' ORDER BY create_date DESC"
+function Find-ModelInfoDB($server) {
+    return Find-DB $server "SELECT TOP 1 name FROM sys.databases WHERE name LIKE '%SQLMODELINFO%' ORDER BY create_date DESC"
 }
 
-function Run-SqlQuery($pipe, $database, $sql) {
-    $connStr = "Server=np:\\.\pipe\$pipe;Integrated Security=true;Database=$database;Connect Timeout=30"
+function Run-SqlQuery($server, $database, $sql) {
+    $connStr = "Server=$server;Integrated Security=true;Database=$database;Connect Timeout=30"
     try {
         $conn = New-Object System.Data.SqlClient.SqlConnection($connStr)
         $conn.Open()
@@ -67,40 +92,35 @@ function Run-SqlQuery($pipe, $database, $sql) {
         $reader = $cmd.ExecuteReader()
 
         $lines = @()
-        # Header
         $cols = @()
         for ($i = 0; $i -lt $reader.FieldCount; $i++) {
             $cols += $reader.GetName($i)
         }
-        $lines += ($cols -join "|")
 
-        # Rows
         $rowCount = 0
-        while ($reader.Read()) {
-            $vals = @()
-            for ($i = 0; $i -lt $reader.FieldCount; $i++) {
-                if ($reader.IsDBNull($i)) { $vals += "NULL" }
-                else { $vals += $reader[$i].ToString() }
+        if ($cols.Count -gt 0) {
+            $lines += ($cols -join "|")
+            while ($reader.Read()) {
+                $vals = @()
+                for ($i = 0; $i -lt $reader.FieldCount; $i++) {
+                    if ($reader.IsDBNull($i)) { $vals += "NULL" }
+                    else { $vals += $reader[$i].ToString() }
+                }
+                $lines += ($vals -join "|")
+                $rowCount++
             }
-            $lines += ($vals -join "|")
-            $rowCount++
         }
+
+        # Must read RecordsAffected before closing the reader. -1 = no DML.
+        $affected = $reader.RecordsAffected
         $reader.Close()
+        $conn.Close()
 
-        # Check for rows affected (non-SELECT)
-        if ($rowCount -eq 0 -and $cols.Count -eq 0) {
-            # Re-run as non-query
-            $conn.Close()
-            $conn.Open()
-            $cmd2 = $conn.CreateCommand()
-            $cmd2.CommandText = $sql
-            $cmd2.CommandTimeout = 30
-            $affected = $cmd2.ExecuteNonQuery()
-            $conn.Close()
-            return @{ Output = "($affected rows affected)"; ExitCode = 0 }
+        if ($cols.Count -eq 0) {
+            $count = if ($affected -lt 0) { 0 } else { $affected }
+            return @{ Output = "($count rows affected)"; ExitCode = 0 }
         }
 
-        $conn.Close()
         $output = $lines -join "`n"
         if ($rowCount -gt 0) { $output += "`n`n($rowCount rows affected)" }
         return @{ Output = $output; ExitCode = 0 }
@@ -121,7 +141,8 @@ try {
 }
 
 Write-Host "SQL HTTP API listening on http://+:$port/"
-Write-Host "Endpoints: /query (project DB), /query-master (master DB), /query-modelinfo (SQLMODELINFO), /databases"
+Write-Host "Endpoints: /query, /query-master, /query-modelinfo, /databases, /pipes"
+Write-Host "Always uses MSSQLLocalDB (never Troubleshooting). Override: ?pipe=<name>"
 
 while ($listener.IsListening) {
     try {
@@ -138,48 +159,62 @@ while ($listener.IsListening) {
         $response.ContentType = "text/plain; charset=utf-8"
         $output = ""
 
-        # Discover pipe on each request (handles pipe changes)
-        $pipe = Find-LocalDBPipe
-        if (-not $pipe) {
-            $output = "ERROR: No LocalDB pipe found"
+        if ($path -eq "/pipes") {
+            # /pipes doesn't need a server connection — just list instances
+            $allPipes = Get-AllLocalDBPipes
+            $lines = @()
+            foreach ($p in $allPipes) {
+                $isTroubleshooting = $p.Instance -like "*Troubleshooting*"
+                $label = if ($isTroubleshooting) { " [Troubleshooting - NEVER use]" } else { "" }
+                $pipeStr = if ($p.Pipe) { $p.Pipe } else { "(no pipe - stopped)" }
+                $lines += "$($p.Instance) | $($p.State) | $pipeStr$label"
+            }
+            $output = $lines -join "`n"
+        }
+        else {
+        # All other endpoints need a server connection
+        $server = Resolve-Server $context
+        if (-not $server) {
+            $output = "ERROR: MSSQLLocalDB not running - start Designer first"
             $response.StatusCode = 503
         }
         elseif ($path -eq "/databases") {
-            $r = Run-SqlQuery $pipe "master" "SELECT name, state_desc, create_date FROM sys.databases ORDER BY name"
+            $r = Run-SqlQuery $server "master" "SELECT name, state_desc, create_date FROM sys.databases ORDER BY name"
             $output = $r.Output
             if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
         }
         elseif ($path -eq "/query") {
-            $db = Find-ProjectDB $pipe
+            $db = Find-ProjectDB $server
             if (-not $db) {
                 $output = "ERROR: No project database found"
                 $response.StatusCode = 404
             } else {
-                $r = Run-SqlQuery $pipe $db $body
+                $r = Run-SqlQuery $server $db $body
                 $output = $r.Output
                 if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
             }
         }
         elseif ($path -eq "/query-master") {
-            $r = Run-SqlQuery $pipe "master" $body
+            $r = Run-SqlQuery $server "master" $body
             $output = $r.Output
             if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
         }
         elseif ($path -eq "/query-modelinfo") {
-            $db = Find-ModelInfoDB $pipe
+            $db = Find-ModelInfoDB $server
             if (-not $db) {
                 $output = "ERROR: No SQLMODELINFO database found"
                 $response.StatusCode = 404
             } else {
-                $r = Run-SqlQuery $pipe $db $body
+                $r = Run-SqlQuery $server $db $body
                 $output = $r.Output
                 if ($r.ExitCode -ne 0) { $response.StatusCode = 500 }
             }
         }
         else {
-            $output = "Endpoints: POST /query, POST /query-master, POST /query-modelinfo, GET /databases"
+            $output = "Endpoints: POST /query, POST /query-master, POST /query-modelinfo, GET /databases, GET /pipes"
             $response.StatusCode = 404
         }
+        } # end server-required block
 
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($output)
         $response.ContentLength64 = $bytes.Length
