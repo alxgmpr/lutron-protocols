@@ -115,7 +115,7 @@ status                                  # Radio/network status
 | `tools/codegen.ts`           | Generate C headers from TS protocol definitions           |
 | `tools/thread-decrypt.ts`    | Decrypt 802.15.4 frames                                   |
 | `tools/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
-| `ldproxy/`                   | Designer auth proxy — unlocks all product types           |
+| `tools/auth-bypass/`         | Designer offline auth bypass — forges LutronData.bin      |
 
 
 ## Documentation

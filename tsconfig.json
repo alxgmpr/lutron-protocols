@@ -15,5 +15,5 @@
     "jsx": "react-jsx"
   },
   "include": ["bridge/**/*.ts", "cli/**/*.ts", "cli/**/*.tsx", "ccx/**/*.ts", "lib/**/*.ts", "protocol/**/*.ts", "tools/**/*.ts"],
-  "exclude": ["node_modules", "firmware", "ldproxy"]
+  "exclude": ["node_modules", "firmware"]
 }

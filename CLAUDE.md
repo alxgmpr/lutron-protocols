@@ -28,7 +28,6 @@ Lutron reverse-engineering toolkit: RF transceiver, protocol analyzer, and contr
 | `protocol/` | TS defs → generated C | CCA/CCX protocol definitions (single source of truth) |
 | `ccx/` | TypeScript | CCX protocol encoder/decoder/config |
 | `lib/` | TypeScript | Shared libraries (env loader, IEEE 802.15.4, Thread crypto) |
-| `ldproxy/` | Node.js (Express) | Designer auth proxy — separate package.json, own deps (express, axios) |
 | `data/` | — | LEAP dumps, device maps, Designer DB exports |
 
 ### Protocol Definitions
