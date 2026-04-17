@@ -11,8 +11,9 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "react-jsx"
   },
-  "include": ["bridge/**/*.ts", "cli/**/*.ts", "ccx/**/*.ts", "lib/**/*.ts", "protocol/**/*.ts", "tools/**/*.ts"],
+  "include": ["bridge/**/*.ts", "cli/**/*.ts", "cli/**/*.tsx", "ccx/**/*.ts", "lib/**/*.ts", "protocol/**/*.ts", "tools/**/*.ts"],
   "exclude": ["node_modules", "firmware", "ldproxy"]
 }

@@ -16,6 +16,7 @@
 
 import { ReadlineParser } from "@serialport/parser-readline";
 import { EventEmitter } from "events";
+import { existsSync, readdirSync } from "fs";
 import { SerialPort } from "serialport";
 
 export interface SerialSnifferOptions {
@@ -216,8 +217,6 @@ export class SerialSniffer extends EventEmitter {
 
 /** Auto-detect nRF sniffer serial device */
 export function detectSnifferPort(): string {
-  const { readdirSync, existsSync } = require("fs") as typeof import("fs");
-
   // Linux defaults
   for (const path of ["/dev/ttyACM0", "/dev/ttyACM1"]) {
     if (existsSync(path)) return path;
