@@ -43,7 +43,7 @@ method.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
 method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
 ```
 
-Deploy via the `designer-deploy` skill. Reversible by restoring `/tmp/designer-rox/Lutron.Gulliver.DomainObjects.dll`.
+Deploy with the DLL patcher workflow documented in CLAUDE.md. Reversible by restoring `/tmp/designer-rox/Lutron.Gulliver.DomainObjects.dll`.
 
 ## Enum reference (26.2.0.113)
 

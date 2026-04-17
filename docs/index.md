@@ -52,7 +52,7 @@ Documentation for the Lutron reverse engineering toolkit, organized by topic.
 | [infrastructure/network.md](infrastructure/network.md) | Network topology, IP assignments, LEAP infrastructure, firmware delivery |
 | [infrastructure/bridge.md](infrastructure/bridge.md) | CCX-WiZ bridge — state management, HA add-on deployment, WiZ integration |
 | [infrastructure/designer-db.md](infrastructure/designer-db.md) | Designer database — schema, file format, HW project injection |
-| [infrastructure/designer-hw-fix.md](infrastructure/designer-hw-fix.md) | Designer RA3 in HW project — model validation fix |
+| [infrastructure/designer-universal-unlock.md](infrastructure/designer-universal-unlock.md) | Designer universal platform-compat unlock — IL patches for cross-platform device compat |
 | [infrastructure/ra3-hw-migration.md](infrastructure/ra3-hw-migration.md) | RA3 to HW migration — validation gates, device migration workflow |
 | [infrastructure/ra3-hw-workflow.md](infrastructure/ra3-hw-workflow.md) | Designer-RA3 roundtrip workflow — export, transfer, reimport |
 | [infrastructure/cycle-dim.md](infrastructure/cycle-dim.md) | RA3 cycle dimming — custom dimming curve specification |
