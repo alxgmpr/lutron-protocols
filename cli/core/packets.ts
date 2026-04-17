@@ -1,14 +1,14 @@
 /**
- * PacketTable — column layout, row rendering, and ring buffer for the TUI.
+ * Packet layout, cell rendering, and row types.
  *
- * Extracted from nucleo.ts. Handles layout calculation, cell clipping/coloring,
- * header rendering, row rendering, and a ring buffer for scroll-back.
+ * Pure helpers migrated from cli/tui/table.ts — no screen coupling.
+ * Used by Ink components to render packet rows into ANSI-colored strings.
  */
 
 import { stripVTControlCharacters } from "util";
 
 // ============================================================================
-// ANSI colors (re-exported for use by other modules)
+// ANSI colors
 // ============================================================================
 export const DIM = "\x1b[2m";
 export const RESET = "\x1b[0m";
@@ -29,7 +29,7 @@ const MIN_PACKET_RAW_WIDTH = 24;
 const MIN_PACKET_DELTA_WIDTH = 6;
 const MIN_PACKET_SEQ_WIDTH = 3;
 
-const RING_BUFFER_SIZE = 5000;
+export const RING_BUFFER_SIZE = 5000;
 
 // ============================================================================
 // Types
@@ -141,11 +141,9 @@ export function getPacketLayout(
     delta: 8,
   };
 
-  // Column count: fixed columns + state + (raw if shown)
   const columns = showRaw ? 11 : 10;
   const spaces = columns - 1;
 
-  // Sum of all fixed-width columns (everything except state and raw)
   const fixed =
     layout.time +
     layout.proto +
@@ -160,7 +158,6 @@ export function getPacketLayout(
 
   let available = width - fixed - spaces;
 
-  // Shrink fixed columns if needed to fit minimum flexibles
   const minFlex = showRaw
     ? MIN_PACKET_STATE_WIDTH + MIN_PACKET_RAW_WIDTH
     : MIN_PACKET_STATE_WIDTH;
@@ -194,7 +191,6 @@ export function getPacketLayout(
   }
 
   if (showRaw) {
-    // Split available space: 40% to state, 60% to raw (hex needs more room)
     const rawShare = Math.max(
       MIN_PACKET_RAW_WIDTH,
       Math.floor(available * 0.6),
@@ -223,9 +219,7 @@ export function getPacketLayout(
   return layout;
 }
 
-/** Compute the indentation width to align with the typeAction column. */
 export function getDetailIndent(layout: PacketLayout): number {
-  // TIME + P + D + dBm + S + OP + 6 separators
   return (
     layout.time +
     layout.proto +
@@ -290,97 +284,4 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
   cells.push(clipCell(row.delta, layout.delta, "right"));
 
   return cells.join(" ");
-}
-
-// ============================================================================
-// PacketTable — ring buffer + layout management
-// ============================================================================
-export class PacketTable {
-  private rows: (PacketRow | null)[] = new Array(RING_BUFFER_SIZE).fill(null);
-  private rendered: (string | null)[] = new Array(RING_BUFFER_SIZE).fill(null);
-  private head = 0; // next write index
-  private _count = 0;
-  private scrollOffset = 0; // 0 = live (bottom), negative = scrolled back
-
-  get count(): number {
-    return this._count;
-  }
-
-  getLayout(showRaw: boolean, termWidth: number): PacketLayout {
-    return getPacketLayout(showRaw, termWidth);
-  }
-
-  renderHeader(layout: PacketLayout): [string, string] {
-    return renderHeader(layout);
-  }
-
-  renderRow(row: PacketRow, layout: PacketLayout): string {
-    return renderRow(row, layout);
-  }
-
-  addRow(row: PacketRow, renderedLine: string): void {
-    this.rows[this.head] = row;
-    this.rendered[this.head] = renderedLine;
-    this.head = (this.head + 1) % RING_BUFFER_SIZE;
-    if (this._count < RING_BUFFER_SIZE) this._count++;
-    // If we're at live position, stay live (offset remains 0).
-    // If scrolled back, shift offset to keep viewing the same rows.
-    if (this.scrollOffset < 0) this.scrollOffset--;
-  }
-
-  /** Get visible lines for the table area. */
-  getVisibleLines(height: number, offset?: number): string[] {
-    const off = offset ?? this.scrollOffset;
-    const lines: string[] = [];
-    const total = this._count;
-    if (total === 0) return lines;
-
-    // "end" is the index of the newest visible row (exclusive)
-    // At live (offset=0), end = _count. Negative offset scrolls back.
-    const end = Math.max(0, total + off);
-    const start = Math.max(0, end - height);
-
-    for (let i = start; i < end; i++) {
-      const bufIdx =
-        this._count < RING_BUFFER_SIZE
-          ? i
-          : (this.head - this._count + i + RING_BUFFER_SIZE) % RING_BUFFER_SIZE;
-      const line = this.rendered[bufIdx];
-      if (line !== null && line !== "") lines.push(line);
-    }
-    return lines;
-  }
-
-  /** Re-render all stored rows with a new layout (e.g. on resize). */
-  rerender(showRaw: boolean, termWidth: number, showVerbose?: boolean): void {
-    const layout = getPacketLayout(showRaw, termWidth, showVerbose);
-    for (let i = 0; i < this._count; i++) {
-      const bufIdx =
-        this._count < RING_BUFFER_SIZE
-          ? i
-          : (this.head - this._count + i + RING_BUFFER_SIZE) % RING_BUFFER_SIZE;
-      const row = this.rows[bufIdx];
-      if (row) {
-        this.rendered[bufIdx] = renderRow(row, layout);
-      }
-    }
-  }
-
-  /** Scroll back by pages. Returns the new offset. */
-  scrollBack(pages: number, pageSize: number): number {
-    const maxBack = -(this._count - pageSize);
-    this.scrollOffset = Math.max(
-      maxBack,
-      Math.min(0, this.scrollOffset + pages * pageSize),
-    );
-    return this.scrollOffset;
-  }
-
-  scrollToLive(): void {
-    this.scrollOffset = 0;
-  }
-
-  isLive(): boolean {
-    return this.scrollOffset === 0;
-  }
 }
