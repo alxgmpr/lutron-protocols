@@ -14,7 +14,7 @@
  *   bun run tools/ccx-device-map.ts --discover       # active discovery via CoAP (requires Nucleo)
  */
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -159,8 +159,7 @@ function loadLeapData(): LeapData {
 
   if (!existsSync(dataDir)) return merged;
 
-  const { readdirSync: readdir } = require("fs");
-  const files = readdir(dataDir)
+  const files = readdirSync(dataDir)
     .filter((f: string) => f.startsWith("leap-") && f.endsWith(".json"))
     .sort();
 

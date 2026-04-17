@@ -109,7 +109,7 @@ function loadModelInfo(): ModelEntry[] {
       `Model info not found: ${path}\nRun: bun run tools/build-model-info.ts`,
     );
   }
-  const data = JSON.parse(require("fs").readFileSync(path, "utf-8"));
+  const data = JSON.parse(readFileSync(path, "utf-8"));
   return data.models;
 }
 

@@ -14,7 +14,7 @@ Lutron reverse-engineering toolkit: RF transceiver, protocol analyzer, and contr
 ```
   CC1101 (CCA)  ──┐                              ┌── Interactive shell (USART3/ST-LINK VCP)
                    ├── STM32H723 (FreeRTOS) ──────┤
-  nRF52840 (CCX) ─┘   TCP :9433 (lwIP)           └── TCP stream → Bun CLI (cli/nucleo.ts)
+  nRF52840 (CCX) ─┘   UDP :9433 (lwIP)           └── UDP stream → Node CLI (cli/nucleo.ts)
 ```
 
 ### Key Directories
@@ -22,13 +22,13 @@ Lutron reverse-engineering toolkit: RF transceiver, protocol analyzer, and contr
 | Directory | Runtime | Purpose |
 |-----------|---------|---------|
 | `firmware/` | STM32 C/C++ (FreeRTOS, lwIP) | Radio drivers, protocol engine, TCP stream, shell |
-| `cli/nucleo.ts` | Bun | Primary UI — TCP client, interactive TUI, packet decoder |
-| `cli/tui/` | Bun | Terminal UI components (VT100 scroll regions, line editor, table) |
-| `tools/` | Bun/TypeScript, Python | CLI utilities (LEAP, CCX, CCA, codegen, analyzers) |
-| `protocol/` | YAML + generated TS/C | CCA/CCX protocol definitions (single source of truth) |
+| `cli/nucleo.ts` | Node.js (tsx) | Primary UI — UDP client, interactive TUI, packet decoder |
+| `cli/tui/` | Node.js (tsx) | Terminal UI components (VT100 scroll regions, line editor, table) |
+| `tools/` | Node.js (tsx), Python | CLI utilities (LEAP, CCX, CCA, codegen, analyzers) |
+| `protocol/` | TS defs → generated C | CCA/CCX protocol definitions (single source of truth) |
 | `ccx/` | TypeScript | CCX protocol encoder/decoder/config |
 | `lib/` | TypeScript | Shared libraries (env loader, IEEE 802.15.4, Thread crypto) |
-| `ldproxy/` | Node.js | Designer auth proxy — injects channel strings to unlock product types |
+| `ldproxy/` | Node.js (Express) | Designer auth proxy — separate package.json, own deps (express, axios) |
 | `data/` | — | LEAP dumps, device maps, Designer DB exports |
 
 ### Protocol Definitions
@@ -98,6 +98,13 @@ npm run lint           # Biome linter (check)
 npm run lint:fix       # Biome auto-fix
 npm run format         # Biome formatter
 
+# Testing & CI
+npm test                       # Run all tests (TS + firmware)
+npm run test:ts                # Node.js native test runner (test/**/*.test.ts)
+npm run test:firmware          # C++ unit tests (CRC, N81, decoder, CBOR)
+npm run typecheck              # tsc --noEmit (strict mode, all TS)
+npm run codegen:check          # Verify generated C headers match TS defs
+
 # Firmware
 cd firmware && cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake && make -C build -j8
 cd firmware && make flash      # OpenOCD + ST-LINK (NEVER use st-flash)
@@ -106,6 +113,10 @@ cd firmware && make monitor    # Serial terminal to ST-LINK VCP (115200)
 cd firmware && make format     # clang-format
 cd firmware && make lint       # cppcheck
 ```
+
+### CI Pipeline
+
+GitHub Actions (`.github/workflows/ci.yml`) runs 5 parallel jobs on push/PR: `lint`, `typecheck`, `test-ts`, `test-firmware`, `codegen-check`. The local `.githooks/pre-push` hook runs the same checks before push.
 
 ## Code Patterns
 
@@ -190,6 +201,17 @@ All IPs configured in `config.json` (processors, openBridge, designer). Processo
 ## Documentation
 
 Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `security/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents.
+
+## Designer VM
+
+VM at 192.168.64.4 — `sshpass -p alex ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password alex@192.168.64.4`
+
+- **NEVER launch Designer automatically** — only the user launches it manually
+- **ConnectSyncService.exe** locks DLLs in the MSIX directory — kill it before deploying patched DLLs
+- DLL patcher: `dotnet run --project tools/dll-patcher/DllPatcher/DllPatcher.csproj -- <src-dir> <out-dir>`
+- Original DLLs cached at `/tmp/designer-rox/`, patched output to `/tmp/designer-patched/`
+- dnfile Python venv at `/tmp/dnfile-env/` for .NET metadata inspection
+- Jailbreak docs: `docs/security/designer-jailbreak.md`
 
 ## Environment Notes
 

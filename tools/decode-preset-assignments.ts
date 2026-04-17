@@ -9,7 +9,7 @@
  *   Key bytes 0-1 = preset ID (BE uint16), bytes 2-3 = 0xEF20
  */
 
-import { readdirSync, readFileSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -268,7 +268,7 @@ if (jsonOut || saveOut) {
   const json = JSON.stringify(bridgeData, null, 2);
   if (saveOut) {
     const outPath = join(dataDir, "preset-zones.json");
-    require("fs").writeFileSync(outPath, json + "\n");
+    writeFileSync(outPath, json + "\n");
     console.error(
       `Saved ${Object.keys(bridgeData).length} presets to ${outPath}`,
     );

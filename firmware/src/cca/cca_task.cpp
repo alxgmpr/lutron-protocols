@@ -382,7 +382,7 @@ static void cca_task_func(void* param)
             CcaTdmaTxRequest req = {};
             memcpy(req.packet, tx_item.data, tx_item.len);
             req.packet_len = (uint8_t)tx_item.len;
-            req.retries = CCA_TDMA_RETRIES_NORMAL;
+            req.retries = CCA_TX_COUNT_NORMAL;
             /* State reports (0x81-0x83) rotate type byte across retransmits */
             req.type_rotate = (tx_item.data[0] >= 0x81 && tx_item.data[0] <= 0x83) ? 1 : 0;
             req.priority = 0;

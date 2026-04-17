@@ -188,3 +188,332 @@ inline size_t cca_build_beacon(uint8_t* pkt, uint32_t zone_id, uint8_t type_byte
 
     return 22;
 }
+
+/* -----------------------------------------------------------------------
+ * Build pico level packet (format 0x0E, 22 bytes)
+ * Pico-specific: fixed target bytes 0x0703C3C6, minimum fade 0.25s.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_pico_level(uint8_t* pkt, uint32_t device_id, uint16_t level16)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, device_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[8] = 0x00;
+    pkt[9] = 0x07;
+    pkt[10] = 0x03;
+    pkt[11] = 0xC3;
+    pkt[12] = 0xC6;
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_LEVEL;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = 0x01;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build state report packet (format 0x08, 22 bytes)
+ * Reports level as 8-bit value at bytes 11 and 15.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_state_report(uint8_t* pkt, uint32_t device_id, uint8_t level_byte)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, device_id);
+    pkt[6] = 0x00;
+    pkt[7] = QS_FMT_STATE;
+    pkt[8] = 0x00;
+    pkt[9] = QS_STATE_ENTITY_COMP;
+    pkt[10] = 0x01;
+    pkt[11] = level_byte;
+    pkt[12] = 0x00;
+    pkt[13] = QS_STATE_ENTITY_COMP;
+    pkt[14] = QS_STATE_STATUS_FLAG;
+    pkt[15] = level_byte;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build scene execute packet (format 0x0E, 22 bytes)
+ * Same as set_level but with QS_CLASS_SCENE instead of QS_CLASS_LEVEL.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_scene_exec(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint16_t level16,
+                                   uint8_t fade_qs)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_SCENE;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = fade_qs;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build unpair prepare packet (format 0x09, 22 bytes)
+ * Phase 1 of unpair: device control / prepare.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_unpair_prepare(uint8_t* pkt, uint32_t zone_id, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build unpair beacon packet (format 0x0C, 22 bytes)
+ * Phase 2 of unpair: beacon with target address.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_unpair_beacon(uint8_t* pkt, uint32_t zone_id, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_BEACON;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build LED config packet (format 0x11, 51 bytes)
+ * LED mode: 0=both off, 1=both on, 2=on-when-on, 3=on-when-off
+ * LED state bytes at [23-24].
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_led_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint8_t led_mode)
+{
+    memset(pkt, 0x00, 51);
+    uint8_t led_off = 0x00, led_on = 0x00;
+    switch (led_mode) {
+    case 1:
+        led_off = 0xFF;
+        led_on = 0xFF;
+        break;
+    case 2:
+        led_on = 0xFF;
+        break;
+    case 3:
+        led_off = 0xFF;
+        break;
+    }
+    pkt[0] = 0xA1;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LED;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[23] = led_off;
+    pkt[24] = led_on;
+    return 51;
+}
+
+/* -----------------------------------------------------------------------
+ * Build fade config packet (format 0x1C, 51 bytes)
+ * Fade times in quarter-seconds, LE16 at [23-26].
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_fade_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint16_t fade_on_qs,
+                                    uint16_t fade_off_qs)
+{
+    memset(pkt, 0x00, 51);
+    pkt[0] = 0xA1;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_FADE;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[23] = fade_on_qs & 0xFF;
+    pkt[24] = (fade_on_qs >> 8) & 0xFF;
+    pkt[25] = fade_off_qs & 0xFF;
+    pkt[26] = (fade_off_qs >> 8) & 0xFF;
+    return 51;
+}
+
+/* -----------------------------------------------------------------------
+ * Build trim config packet (format 0x15, 51 bytes)
+ * Trim values as percentages, converted to 0x00-0xFE scale at [20-21].
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_trim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint8_t high_trim,
+                                    uint8_t low_trim)
+{
+    memset(pkt, 0x00, 51);
+    uint8_t high_val = (high_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)high_trim * 254 / 100);
+    uint8_t low_val = (low_trim >= 100) ? 0xFE : (uint8_t)((uint32_t)low_trim * 254 / 100);
+    pkt[0] = 0xA1;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_TRIM;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[20] = high_val;
+    pkt[21] = low_val;
+    return 51;
+}
+
+/* -----------------------------------------------------------------------
+ * Build phase config packet (format 0x15, 51 bytes)
+ * Neutral trim values at [20-21], phase byte at [22].
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_phase_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, uint8_t phase_byte)
+{
+    memset(pkt, 0x00, 51);
+    pkt[0] = 0xA1;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_TRIM;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[20] = QS_LEVEL_MAX_8;
+    pkt[21] = 0x03;
+    pkt[22] = phase_byte;
+    return 51;
+}
+
+/* -----------------------------------------------------------------------
+ * Build dimming config packet (format 0x13, 51 bytes)
+ * Config payload bytes starting at [16].
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_dim_config(uint8_t* pkt, uint32_t zone_id, uint32_t target_id, const uint8_t* config_bytes,
+                                   uint8_t config_len)
+{
+    memset(pkt, 0x00, 51);
+    pkt[0] = 0xA1;
+    cca_write_id_be(pkt + 2, zone_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_DIM_CAP;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_LEGACY;
+    pkt[15] = QS_TYPE_DIM_CONFIG;
+    size_t max_payload = 51 - 16;
+    size_t copy_len = config_len < max_payload ? config_len : max_payload;
+    if (copy_len > 0) {
+        memcpy(pkt + 16, config_bytes, copy_len);
+    }
+    return 51;
+}
+
+/* -----------------------------------------------------------------------
+ * Build identify packet (format 0x09, 22 bytes)
+ * QS_CLASS_DEVICE + QS_TYPE_IDENTIFY — flashes device LED.
+ * Uses target_id as both source and target (pretending to be processor).
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_identify(uint8_t* pkt, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, target_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_DEVICE;
+    pkt[15] = QS_TYPE_IDENTIFY;
+    pkt[16] = 0x01;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build query packet (format 0x09, 22 bytes)
+ * QS_CLASS_SELECT + QS_TYPE_EXECUTE — requests component info.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_query(uint8_t* pkt, uint32_t target_id)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x81;
+    cca_write_id_be(pkt + 2, target_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[8] = 0x00;
+    cca_write_id_be(pkt + 9, target_id);
+    pkt[13] = QS_ADDR_COMPONENT;
+    pkt[14] = QS_CLASS_SELECT;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = 0x0D;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive level packet (format 0x0E, 22 bytes, type 0x89+)
+ * Hub ID at [2-5] BE, zone byte at [12], addr_mode=GROUP.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_level(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint16_t level16, uint8_t fade_qs)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_LEVEL;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_LEVEL;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = (level16 >> 8) & 0xFF;
+    pkt[17] = level16 & 0xFF;
+    pkt[18] = 0x00;
+    pkt[19] = fade_qs;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive dim start packet (format 0x09, 22 bytes, type 0x89+)
+ * Hold-start: CLASS_DIM + TYPE_HOLD + direction.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_dim_start(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_CTRL;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_DIM;
+    pkt[15] = QS_TYPE_HOLD;
+    pkt[16] = direction;
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Build Vive dim stop packet (format 0x0B, 22 bytes, type 0x89+)
+ * Dim-step: CLASS_DIM + TYPE_EXECUTE + direction.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_build_vive_dim_stop(uint8_t* pkt, uint32_t hub_id, uint8_t zone_byte, uint8_t direction)
+{
+    memset(pkt, 0x00, 22);
+    pkt[0] = 0x89;
+    cca_write_id_be(pkt + 2, hub_id);
+    pkt[6] = QS_PROTO_RADIO_TX;
+    pkt[7] = QS_FMT_DIM_STEP;
+    pkt[12] = zone_byte;
+    pkt[13] = QS_ADDR_GROUP;
+    pkt[14] = QS_CLASS_DIM;
+    pkt[15] = QS_TYPE_EXECUTE;
+    pkt[16] = direction;
+    return 22;
+}
