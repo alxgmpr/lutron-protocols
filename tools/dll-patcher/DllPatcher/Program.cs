@@ -269,6 +269,29 @@ try
         Report("DO", "SunnataBacklight", true, "added IsSunnataOrViertiKeypads check");
     }
 
+    // Patch: ChannelManager.IsProjectCompatibleWithChannel → return true
+    // Neutralizes the 26.2 channel-compatibility gate that rejects the mixed RA3/HW project
+    // because tblLinkNode rows reference ModelInfoID 4890 (NULL family, no platform bits).
+    // Only callers are ProjectTypeConversionManager.ChannelCompatibilityStatus() and
+    // ShowInCompatibleDeviceViewModel — forcing true lets OpenFile return Successful.
+    {
+        var chanMgr = mod.Find("Lutron.Gulliver.DomainObjects.Database.ChannelManager", false);
+        var method = chanMgr?.FindMethod("IsProjectCompatibleWithChannel");
+        if (method?.Body != null)
+        {
+            method.Body.Instructions.Clear();
+            method.Body.ExceptionHandlers.Clear();
+            method.Body.Variables.Clear();
+            method.Body.Instructions.Add(OpCodes.Ldc_I4_1.ToInstruction());
+            method.Body.Instructions.Add(OpCodes.Ret.ToInstruction());
+            Report("DO", "ChannelCompatBypass", true, "IsProjectCompatibleWithChannel → return true");
+        }
+        else
+        {
+            Report("DO", "ChannelCompatBypass", false, "ChannelManager.IsProjectCompatibleWithChannel not found");
+        }
+    }
+
     SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.DomainObjects.dll"));
     Report("DO", "write", true, "saved");
 }
