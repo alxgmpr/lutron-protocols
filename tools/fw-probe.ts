@@ -12,8 +12,8 @@
  *   npx tsx tools/fw-probe.ts --device 1091      # Probe specific device firmware
  */
 
-import { LeapConnection } from "./leap-client";
 import { defaultHost } from "../lib/config";
+import { LeapConnection } from "./leap-client";
 
 const args = process.argv.slice(2);
 const getArg = (name: string) => {
@@ -123,7 +123,7 @@ async function main() {
           needsUpdate.push(entry);
         }
       }
-    } catch (e: any) {
+    } catch {
       // Some devices don't have firmware images (e.g. picos)
     }
   }
@@ -156,9 +156,7 @@ async function main() {
   }
 
   if (needsUpdate.length > 0) {
-    console.log(
-      `\n${needsUpdate.length} device(s) need firmware updates:`,
-    );
+    console.log(`\n${needsUpdate.length} device(s) need firmware updates:`);
     for (const d of needsUpdate) {
       console.log(
         `  ${d.name} (serial ${d.serial}): ${d.currentOS} → ${d.availOS}`,

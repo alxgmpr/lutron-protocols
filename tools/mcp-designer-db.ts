@@ -154,10 +154,7 @@ server.tool(
       .describe(
         "Optional SQL LIKE pattern to filter table names (e.g. '%Zone%')",
       ),
-    pipe: z
-      .string()
-      .optional()
-      .describe("LocalDB pipe name from list_pipes."),
+    pipe: z.string().optional().describe("LocalDB pipe name from list_pipes."),
   },
   async ({ filter, pipe }) => {
     const where = filter
@@ -188,10 +185,7 @@ server.tool(
   "Show column names, types, nullability, and primary key status for a table.",
   {
     table: z.string().describe("Table name to describe"),
-    pipe: z
-      .string()
-      .optional()
-      .describe("LocalDB pipe name from list_pipes."),
+    pipe: z.string().optional().describe("LocalDB pipe name from list_pipes."),
   },
   async ({ table, pipe }) => {
     const sql = `SET NOCOUNT ON;
@@ -261,7 +255,9 @@ server.tool(
     pipe: z
       .string()
       .optional()
-      .describe("LocalDB pipe name from list_pipes. If omitted, uses MSSQLLocalDB."),
+      .describe(
+        "LocalDB pipe name from list_pipes. If omitted, uses MSSQLLocalDB.",
+      ),
   },
   async ({ pipe: pipeOverride }) => {
     try {
@@ -289,10 +285,7 @@ server.tool(
       .describe(
         "SQL filename within tools/sql/ (e.g. 'designer-keypad-led-map.sql')",
       ),
-    pipe: z
-      .string()
-      .optional()
-      .describe("LocalDB pipe name from list_pipes."),
+    pipe: z.string().optional().describe("LocalDB pipe name from list_pipes."),
     timeout: z
       .number()
       .optional()

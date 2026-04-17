@@ -10,7 +10,8 @@
       "protocol/**/*.ts",
       "lib/**/*.ts",
       "test/**/*.ts",
-      "!**/._*"
+      "!**/._*",
+      "!.claude/worktrees"
     ],
     "ignoreUnknown": true
   },
