@@ -147,6 +147,12 @@ export const CommandOp = {
   /** Not in the enum in Infrastructure.dll but observed on RA3: the
    * named-RPC wrapper carrying zlib-JSON payloads (e.g. RequestSetLEDState). */
   NamedRPCWrapper: 349,
+  /** Wraps a telnet-style ASCII string (`#DEVICE,id,btn,action\n` etc.) and
+   * dispatches it through the processor's INTEGRATION_COMMAND_PROCESSOR.
+   * The only path for simulating keypad button presses from an external IPL
+   * client on RA3 (LEIC ButtonPress events are broadcast-only; telnet :23 is
+   * closed). Verified on firmware v26.01.13f000. */
+  IntegrationCommand: 60,
   Init: 65532,
   TestPing: 65533,
   TestFullReset: 65534,
@@ -439,6 +445,88 @@ export function buildCommandFrame(
   const lenPrefix = Buffer.alloc(2);
   lenPrefix.writeUInt16BE(body.length, 0);
   return Buffer.concat([header, lenPrefix, body]);
+}
+
+/**
+ * Build a Version3 Event frame (LEIC, MsgType=3). Same header as a Command
+ * frame but MsgType bits = 3. Used to inject simulated button-press events
+ * (opId 0 = ButtonPress, 1 = ButtonRelease) from an integration client; the
+ * processor routes them through the same programming-model path as a real
+ * keypad press.
+ *
+ * `body` for button events is 6 bytes:
+ *   u32 BE objectId   (button object id from LEAP, e.g. /button/494 → 494)
+ *   u16 BE objectType (57 = ObjectType.Button)
+ */
+export function buildEventFrame(
+  operationId: number,
+  body: Buffer,
+  opts: FrameOpts = {},
+): Buffer {
+  const wantAck = opts.wantAck ?? false;
+  const packed = VERSION3 | (wantAck ? 0x10 : 0x00) | MsgType.Event;
+  const header = Buffer.alloc(12);
+  MAGIC.copy(header, 0);
+  header[3] = packed;
+  header.writeUInt16BE(opts.systemId ?? 1, 4);
+  header[6] = opts.senderId ?? 1;
+  header[7] = opts.receiverId ?? 0xff;
+  header.writeUInt16BE(opts.messageId ?? 0, 8);
+  header.writeUInt16BE(operationId, 10);
+  const lenPrefix = Buffer.alloc(2);
+  lenPrefix.writeUInt16BE(body.length, 0);
+  return Buffer.concat([header, lenPrefix, body]);
+}
+
+/**
+ * Button event body (LEIC events ButtonPress=0 / ButtonRelease=1) — 6 bytes:
+ * `[buttonObjectId:u32][ObjectType.Button=57:u16]`. Observed on RA3 as the
+ * outgoing LEIC payload when a real keypad button is pressed. Sending this
+ * frame INBOUND to the processor is ignored for programming-model routing —
+ * use `bodyIntegrationCommand` with op 60 for that path instead.
+ */
+export function bodyButtonEvent(buttonObjectId: number): Buffer {
+  const b = Buffer.alloc(6);
+  b.writeUInt32BE(buttonObjectId, 0);
+  b.writeUInt16BE(ObjectType.Button, 4);
+  return b;
+}
+
+/**
+ * IntegrationCommand body (Command opId 60) — ASCII string payload accepted
+ * by the processor's INTEGRATION_COMMAND_PROCESSOR, which registers telnet-
+ * style handlers (`#DEVICE`, `#OUTPUT`, `#AREA`, `#SHADEGRP`, `#TIMECLOCK`,
+ * `#SYSTEM`, `#SYSVAR`, `#PARTITIONWALL`, `#EMULATE`, `#MONITORING`, and the
+ * `?` query variants of each) plus a `?HELP` dispatcher.
+ *
+ * Verified on RA3 firmware v26.01.13f000: sending `"#DEVICE,<devObjId>,<btn>,
+ * <action>\n"` as a Command opId 60 body routes through the same code path
+ * as the legacy RA2/HWQS telnet integration port (closed on RA3), which runs
+ * the keypad's programming model (toggle presets, raise/lower, etc.).
+ *
+ * Action codes for `#DEVICE`:
+ *   3 = Press
+ *   4 = Release
+ *   5 = Hold
+ *   6 = MultiTap
+ *   9 = LED state query/set (needs extra arg)
+ *
+ * The trailing newline terminates the line for the string parser.
+ */
+export function bodyIntegrationCommand(text: string): Buffer {
+  const s = text.endsWith("\n") ? text : `${text}\n`;
+  return Buffer.from(s, "ascii");
+}
+
+/** Convenience: `#DEVICE,<deviceObjectId>,<buttonNumber>,<action>\n`. */
+export function bodyDevicePress(
+  deviceObjectId: number,
+  buttonNumber: number,
+  action: 3 | 4 | 5 | 6 = 3,
+): Buffer {
+  return bodyIntegrationCommand(
+    `#DEVICE,${deviceObjectId},${buttonNumber},${action}`,
+  );
 }
 
 // ---------- Body encoders ----------

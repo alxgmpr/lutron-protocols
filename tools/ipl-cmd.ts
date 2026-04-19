@@ -28,6 +28,12 @@
  *   dbsync-info                                -> opId 346 (ReportDatabaseSyncInfo)
  *   dbsync-uri                                 -> opId 344 (ask for DB URI)
  *   telnet-diag-user                           -> opId 92 (RequestTelnetDiagnosticUser)
+ *   press <deviceObjId> <btnNum> [action]      -> opId 60 IntegrationCommand
+ *                                                  `#DEVICE,id,btn,action\n`. Default
+ *                                                  sends Press(3)+Release(4). Actions:
+ *                                                  3=Press 4=Release 5=Hold 6=MultiTap.
+ *   intcmd <telnet-string>                     -> opId 60 raw: `#AREA,32,6,2`,
+ *                                                  `?OUTPUT,518,1`, etc.
  *   raw <opId> <bodyHex>                       -> escape hatch
  *
  * Common flags:
@@ -48,6 +54,7 @@ import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { defaultHost } from "../lib/config";
 import {
+  bodyDevicePress,
   bodyDeviceSetIdentifyState,
   bodyDeviceSetOutputLevel,
   bodyDMXOutputFlash,
@@ -56,6 +63,7 @@ import {
   bodyGoToLevel,
   bodyGoToLoadState,
   bodyGoToScene,
+  bodyIntegrationCommand,
   bodyPingLinkDevice,
   bodyPresetGoToLiftAndTiltLevels,
   bodyProcessorSetDateTime,
@@ -147,6 +155,16 @@ function decodeBody(f: ParsedFrame): string | null {
     }
     return `obj=${t.objectId} type=${t.objectType} ${t.propertyName}(${t.propertyNumber})=${valStr}`;
   }
+  // opId 60 IntegrationCommand — body is printable ASCII terminated with \n
+  if (
+    (f.msgType === MsgType.Command || f.msgType === MsgType.Response) &&
+    f.operationId === 60 &&
+    f.body.length > 0
+  ) {
+    const text = f.body.toString("ascii").replace(/\n$/, "");
+    // Only treat as ASCII if it looks printable.
+    if (/^[\x20-\x7e]*$/.test(text)) return `ascii="${text}"`;
+  }
   if (f.msgType === MsgType.Event && f.body.length >= 6) {
     const objId = f.body.readUInt32BE(0);
     const objType = f.body.readUInt16BE(4);
@@ -224,6 +242,8 @@ async function main() {
   const rest = positional.slice(1);
   let opId: number;
   let body: Buffer;
+  let prebuiltFrames: Buffer[] | null = null;
+  let txDescription: string | null = null;
 
   switch (cmd) {
     case "ping":
@@ -468,16 +488,61 @@ async function main() {
       break;
     }
 
+    case "press": {
+      // `press <deviceObjId> <buttonNumber> [action=3]` — simulate a keypad
+      // button press via opId 60 (IntegrationCommand + `#DEVICE,...` string).
+      // Fires Press (3) then Release (4) by default; pass an explicit action
+      // (3/4/5/6) to send a single frame.
+      const [devStr, btnStr, actStr] = rest;
+      const devId = parseNum(devStr);
+      const btnNum = parseNum(btnStr);
+      opId = CommandOp.IntegrationCommand;
+      if (actStr !== undefined) {
+        const action = parseNum(actStr) as 3 | 4 | 5 | 6;
+        body = bodyDevicePress(devId, btnNum, action);
+        txDescription = `IntegrationCommand #DEVICE,${devId},${btnNum},${action}`;
+        break;
+      }
+      const pressBody = bodyDevicePress(devId, btnNum, 3);
+      const releaseBody = bodyDevicePress(devId, btnNum, 4);
+      prebuiltFrames = [
+        buildCommandFrame(opId, pressBody, { ...frameOpts(), messageId: 1 }),
+        buildCommandFrame(opId, releaseBody, { ...frameOpts(), messageId: 2 }),
+      ];
+      txDescription = `IntegrationCommand #DEVICE,${devId},${btnNum},3 + ,4 (Press+Release)`;
+      body = pressBody;
+      break;
+    }
+
+    case "intcmd": {
+      // Raw escape hatch for the telnet-style integration dispatcher — e.g.
+      // `intcmd "#AREA,32,6,2"` or `intcmd "?OUTPUT,518,1"`.
+      const text = rest.join(",");
+      if (!text) throw new Error("intcmd: missing string payload");
+      opId = CommandOp.IntegrationCommand;
+      body = bodyIntegrationCommand(text);
+      txDescription = `IntegrationCommand ${text}`;
+      break;
+    }
+
     default:
       console.error(`unknown command: ${cmd}`);
       process.exit(2);
   }
 
-  const frame = buildCommandFrame(opId, body, frameOpts());
-  const opName = resolveOpName(MsgType.Command, opId);
-  console.log(
-    `TX ${opName} op=${opId} body=${body.length}B frame=${frame.length}B\n   hex=${frame.toString("hex")}`,
-  );
+  const frames: Buffer[] = prebuiltFrames ?? [
+    buildCommandFrame(opId, body, frameOpts()),
+  ];
+  if (txDescription) {
+    console.log(`TX ${txDescription}`);
+    for (const f of frames)
+      console.log(`   hex=${f.toString("hex")} (${f.length}B)`);
+  } else {
+    const opName = resolveOpName(MsgType.Command, opId);
+    console.log(
+      `TX ${opName} op=${opId} body=${body.length}B frame=${frames[0].length}B\n   hex=${frames[0].toString("hex")}`,
+    );
+  }
 
   const sock = connect({
     host: HOST,
@@ -491,11 +556,14 @@ async function main() {
   // Accumulate RX bytes across TLS reads so multi-chunk frames parse cleanly.
   // Typed as any-Buffer so Buffer.concat / subarray don't fight the TS types.
   let rxBuf: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-  sock.on("secureConnect", () => {
+  sock.on("secureConnect", async () => {
     console.log(
       `Connected ${HOST}:${PORT} [${sock.getCipher()?.name ?? "?"}]; listening ${LISTEN_SECONDS}s\n`,
     );
-    sock.write(frame);
+    for (let i = 0; i < frames.length; i++) {
+      sock.write(frames[i]);
+      if (i < frames.length - 1) await new Promise((r) => setTimeout(r, 150));
+    }
   });
   sock.on("data", (chunk: Buffer) => {
     rxBuf = Buffer.concat([rxBuf, chunk]);
