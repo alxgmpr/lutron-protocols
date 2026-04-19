@@ -17,11 +17,15 @@ venv/
 ENV/
 
 # Data directory (captures, projects, certs)
-data/
+data/*
 # Tracked data exceptions (research artifacts, not system-specific)
 !data/device-fingerprints.json
 !data/phoenix-ssl/
 !data/wiz-device-serials.json
+!data/firmware-re/
+data/firmware-re/*
+!data/firmware-re/leap-routes.json
+!data/firmware-re/leap-types.json
 
 
 # ESPHome build artifacts
