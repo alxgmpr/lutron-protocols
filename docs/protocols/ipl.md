@@ -175,6 +175,7 @@ Highlights (full list decompiled in §6):
 | opId  | Name                          | Direction |
 |-------|-------------------------------|-----------|
 | 11    | Ping                          | Both |
+| 12    | PresetActivate                | Client → Proc |
 | 13    | GoToLevel                     | Client → Proc |
 | 16    | GoToScene                     | Client → Proc |
 | 20/21/22 | Raise / Lower / StopRaiseLower | Client → Proc |
@@ -354,12 +355,113 @@ and has no subclass in the Designer DLLs I decompiled — the concrete body is s
 elsewhere (likely `Lutron.ProcessorTransfer.dll` / processor firmware). Distinct from
 DiagnosticBeacon (28); `InitCommand.GetOperationId()` returns `65532` (0xFFFC), not 28.
 
+### GoToScene (opId 16) — 14 bytes ✅ verified
+
+```
+uint32 BE  objectId          (Area objectId; ObjectType.Area = 2)
+uint16 BE  objectType         (= 2 for Area)
+uint16 BE  sceneNumber        (0 = Off; 1..N = scene index for that area)
+uint16 BE  originatorFeature  (OriginatorFeature.GUI = 9)
+uint16 BE  fadeTime           (quarter-seconds)
+uint16 BE  delay              (quarter-seconds)
+```
+
+Same shape as GoToLevel with `level` replaced by `sceneNumber`. Verified on
+2026-04-19 against RA3 area 32 (Office): sn=0→0%, sn=1→100%, sn=2→75%,
+sn=3→49%, sn=4→24%. Out-of-range scene numbers (e.g. 16 in a 5-scene area)
+are silently dropped — no ack, no level change.
+
+### Raise (20) / Lower (21) / StopRaiseLower (22) — 12 bytes each ✅ verified
+
+```
+uint32 BE  objectId           (Area objectId; ObjectType.Area = 2)
+uint16 BE  objectType          (= 2 for Area)
+uint16 BE  originatorFeature   (OriginatorFeature.GUI = 9)
+uint16 BE  fadeTime            (quarter-seconds; the dimmer's ramp rate cap)
+uint16 BE  delay               (quarter-seconds)
+```
+
+Same shape as GoToLevel/GoToScene minus the level/scene field. All three
+opIds share this 12-byte layout. Raise/Lower begin a continuous ramp at the
+area's programmed rate; StopRaiseLower halts an in-progress ramp. Verified
+2026-04-19 against RA3 area 32 — visible level changes on linked zones with
+matching `Telemetry/Runtime` Level frames; `stoprl` mid-ramp halts the fade
+at the intermediate level (caught one ramp at 74% mid-flight).
+
+### PresetActivate (opId 12) — body shape not yet pinned down
+
+The opId is in the enum and several body shapes get a `LEIA` ack from the
+processor, but no shape tested so far produces the expected zone-level
+side-effect when activating preset 496 (which should drive its three
+affected zones to 75%). Likely needs an additional addressing field
+(parent SceneController objectId, button context, or similar). Use LEAP
+`/zone/{id}/commandprocessor` with `CommandType: "PresetActivate"` for now.
+
 ### Full Command.Operation enum (truncated)
 
 Extracted from `Command.Operation` — 70+ values. See
 `Lutron.Gulliver.Infrastructure.dll!Lutron.Gulliver.Infrastructure.CommunicationFramework.Action.Command.Operation`
 for the complete list (attributed with `[I18NInformation]` resource IDs for
 human-readable names in the Designer UI).
+
+### Bus-internal-only opIds — NOT externally reachable (verified 2026-04-19)
+
+opIds **12 PresetActivate**, **16 GoToScene**, **20 Raise**, **21 Lower**, and
+**22 StopRaiseLower** are declared in `Command.Operation` but the integration
+TLS port (8902) silently drops them. They are bus-internal messages flowing
+between processor halves (master ↔ link processors) over the internal IPC bus,
+not client-facing IPL commands.
+
+**Evidence:**
+
+1. **No Designer marshaller.** Designer's `Infrastructure.dll` has 70+ `Command`
+   subclasses with `MarshalPayload(GulliverProtocolWriter)` overrides; none map
+   to opIds 12/16/20/21/22. Compare to GoToLevel (13) which is implemented in
+   `…ProcessorProtocolActions.CommandType.GoToLevelCommand`.
+
+2. **Designer uses LEAP for these semantics.**
+   `Lutron.Gulliver.ModelViews.UpdateLoadInRealTimeViaLeap.ZoneRaiseCommand()`
+   calls `ZoneRequestHandler.RaiseCommand()` — a LEAP request handler returning
+   `LeapCommandResponse`. The class is literally named `…viaLeap`; there is no
+   IPL fallback path.
+
+3. **Public Telnet integration also routes through LEAP.** The Telnet
+   integration server translates `#OUTPUT,n,2` (Start Raising) into LEAP
+   `Lutron.Services.Core.LAPFramework.RaiseRequest`, not into IPL opId 20.
+
+4. **Wire-test confirmation.** Sending opId 20/21/22 with multiple body shapes
+   (6 / 8 / 12 bytes) and multiple senderIds (1, 0) to RA3 zone 546 produced:
+   no `LEIA` ack, no `LEIE/Runtime` Level Telemetry, and no observable level
+   change (verified via `GetRuntimeProperty Level` immediately after). For
+   contrast, `GoToLevel` (opId 13) produces an immediate ack plus Level
+   Telemetry plus the actual level change.
+
+5. **Firmware symbols match the bus-internal hypothesis.** `lutron-core` (the
+   processor's C++ task supervisor) exports
+   `TASK_CORE::sendRaiseMessage(…RAISE_LOWER_DATA…)` and
+   `SYSTEM_CONTROL_OUTGOING_PRESET_ACTION_COMMAND_VISITOR::visitStopRaise(STOP_RAISE_INFO)`
+   — these are *outgoing* code paths from master to link processors over the
+   internal bus. The integration port has no incoming parser for these opIds.
+
+**Recommendation for callers wanting Raise / Lower / Stop / Scene / Preset:**
+
+| Want                                  | Use                                                           |
+|---------------------------------------|---------------------------------------------------------------|
+| Raise / Lower / Stop on a zone        | LEAP `RaiseRequest` / `LowerRequest` / `StopRequest` (8081)   |
+| GoToScene on an area                  | LEAP `GoToSceneRequest` (8081)                                |
+| Preset activation                     | LEAP scene/preset activation (8081)                           |
+| Plain-text from a script              | Telnet integration protocol (port 23, public docs)            |
+
+The LEAP request models live in `Lutron.Services.Core.LAPFramework.dll` —
+`RaiseRequest`, `LowerRequest`, `StopRequest`, `GoToSceneRequest`,
+`GoToSceneCommand`. The HTTP-style request URIs are `/zone/{id}/commandprocessor`
+with body `{ "Command": { "CommandType": "Raise" } }` etc.
+
+**Why these opIds exist in the enum at all.** The processor firmware shares
+`Command.Operation` between two transports: the external integration port
+(subset of opIds accepted) and the internal bus (full set, including these 5).
+Designer surfaces the entire enum via `[I18NInformation]` because the diagnostics
+viewer needs human names for both kinds.
 
 ---
 

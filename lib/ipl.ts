@@ -464,6 +464,57 @@ export function bodyGoToLevel(
   return b;
 }
 
+/**
+ * GoToScene (opId 16) — fire a scene on an Area. Same 14-byte layout as
+ * GoToLevel but with sceneNumber where level lives. Verified 2026-04-19 on
+ * RA3 area 32: sn=0→0%, sn=1→100%, sn=2→75%, sn=3→49%, sn=4→24%; out-of-range
+ * scene numbers are silently dropped.
+ */
+export function bodyGoToScene(
+  areaId: number,
+  sceneNumber: number,
+  opts: {
+    originator?: number;
+    fadeSec?: number;
+    delaySec?: number;
+  } = {},
+): Buffer {
+  const b = Buffer.alloc(14);
+  b.writeUInt32BE(areaId, 0);
+  b.writeUInt16BE(ObjectType.Area, 4);
+  b.writeUInt16BE(sceneNumber, 6);
+  b.writeUInt16BE(opts.originator ?? OriginatorFeature.GUI, 8);
+  b.writeUInt16BE(secToQuarters(opts.fadeSec ?? 1), 10);
+  b.writeUInt16BE(secToQuarters(opts.delaySec ?? 0), 12);
+  return b;
+}
+
+/**
+ * Raise (opId 20) / Lower (opId 21) / StopRaiseLower (opId 22) — 12-byte body
+ * shared across all three. Same layout as GoToLevel/GoToScene minus the
+ * level/scene field. Targets an Area (ObjectType.Area = 2) — wire-tested
+ * 2026-04-19 against RA3 area 32 with visible lighting response. Raise/Lower
+ * begin a continuous ramp at the area's programmed rate; StopRaiseLower halts
+ * an in-progress ramp.
+ */
+export function bodyRaiseLowerStop(
+  areaId: number,
+  opts: {
+    objectType?: number;
+    originator?: number;
+    fadeSec?: number;
+    delaySec?: number;
+  } = {},
+): Buffer {
+  const b = Buffer.alloc(12);
+  b.writeUInt32BE(areaId, 0);
+  b.writeUInt16BE(opts.objectType ?? ObjectType.Area, 4);
+  b.writeUInt16BE(opts.originator ?? OriginatorFeature.GUI, 6);
+  b.writeUInt16BE(secToQuarters(opts.fadeSec ?? 0), 8);
+  b.writeUInt16BE(secToQuarters(opts.delaySec ?? 0), 10);
+  return b;
+}
+
 /** GoToLoadState (opId 340) — advanced zone set with color, vibrancy, CCT. */
 export function bodyGoToLoadState(args: {
   objectId: number;
