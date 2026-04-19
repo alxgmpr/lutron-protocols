@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { buildModelInfoOutput, parseModelInfo } from "./build-model-info-lib";
+import { buildModelInfoOutput, parseModelInfo } from "../lib/build-model-info";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
