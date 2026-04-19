@@ -155,6 +155,16 @@ function decodeBody(f: ParsedFrame): string | null {
     }
     return `obj=${t.objectId} type=${t.objectType} ${t.propertyName}(${t.propertyNumber})=${valStr}`;
   }
+  // opId 60 IntegrationCommand — body is printable ASCII terminated with \n
+  if (
+    (f.msgType === MsgType.Command || f.msgType === MsgType.Response) &&
+    f.operationId === 60 &&
+    f.body.length > 0
+  ) {
+    const text = f.body.toString("ascii").replace(/\n$/, "");
+    // Only treat as ASCII if it looks printable.
+    if (/^[\x20-\x7e]*$/.test(text)) return `ascii="${text}"`;
+  }
   if (f.msgType === MsgType.Event && f.body.length >= 6) {
     const objId = f.body.readUInt32BE(0);
     const objType = f.body.readUInt16BE(4);

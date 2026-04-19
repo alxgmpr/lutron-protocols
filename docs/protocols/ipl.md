@@ -451,6 +451,31 @@ device 483 button 1 (bound to preset 496 Office Entrance): sending `#DEVICE,
 button's `AdvancedToggleProgrammingModel` (primary preset 75%, secondary 0%).
 Tooling exposes this as `ipl-cmd.ts press <deviceObjId> <btnNum>`.
 
+#### Important caveats (verified empirically, RA3 2026-04-19)
+
+1. **ID spaces differ per verb.**
+   - `#DEVICE,<id>,…` takes the **LEAP `/device/<id>` object id** (e.g. 483 for a
+     SunnataHybridKeypad).
+   - `#OUTPUT,<id>,…` takes the **Designer-assigned Integration ID** (small
+     integer, ≠ LEAP zone object id). `#OUTPUT,5,1,50,2` triggered Level
+     telemetry for LEAP zone 10508, not zone 5; `#OUTPUT,546,…` did nothing.
+   - `#AREA`, `#SHADEGRP`, `#TIMECLOCK`, `#SYSVAR`, `?GROUP` almost certainly
+     use the Integration ID convention too — the mapping is project-local and
+     lives in Designer.
+
+2. **Query verbs (`?DEVICE`, `?OUTPUT`, `?HELP`, `?SYSVAR`, …) return nothing
+   on the IPL connection.** The processor dispatches the text response to
+   `TERMINAL_TASK_INTF` (the telnet session), not back on the IPL TLS socket.
+   If you need the answer, either use LEAP (which has proper request/response
+   over 8081) or observe the corresponding telemetry after a write.
+
+3. **Write verbs still work** — state changes surface as normal LEIE/Runtime
+   telemetry frames on the same IPL connection.
+
+4. **Unsupported verbs** fall through to `"Command not yet supported\n"` (goes
+   to TERMINAL_TASK, so silent from the IPL side). Only the verbs in the table
+   above are registered in `INTEGRATION_COMMAND_PROCESSOR::ctor`.
+
 ### Full Command.Operation enum (truncated)
 
 Extracted from `Command.Operation` — 70+ values. See

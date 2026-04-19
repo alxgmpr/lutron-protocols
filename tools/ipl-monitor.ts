@@ -265,6 +265,11 @@ function decodeCommand(f: ParsedFrame): string | null {
       if (b.length < 20) return null;
       return `ReportDatabaseSyncInfo guid=${b.subarray(0, 16).toString("hex")} modified=${b.readUInt32BE(16)}`;
     }
+    case 60 /* IntegrationCommand */: {
+      const text = b.toString("ascii").replace(/\n$/, "");
+      if (!/^[\x20-\x7e]*$/.test(text)) return null;
+      return `IntegrationCommand "${text}"`;
+    }
     case 349 /* NamedRPCWrapper */: {
       // body after payload-length stripping: [ASCII name][nulls...][zlib JSON]
       const sep = b.indexOf(0x00, 0);
