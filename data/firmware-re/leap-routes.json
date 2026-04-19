@@ -1,0 +1,4900 @@
+[
+  {
+    "ident": "Alias",
+    "path": "/alias",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddAlias",
+      "GET": "leap/resource.BodyAndMessageTypeForAlias"
+    },
+    "responseType": "Alias"
+  },
+  {
+    "ident": "AliasID",
+    "path": "/alias/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAliasID",
+      "UPDATE": "leap/resource.UpdateAliasID"
+    },
+    "responseType": "Alias"
+  },
+  {
+    "ident": "AllOccupancyGroups",
+    "path": "/alloccupancygroups",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAllOccupancyGroups"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AllPresetAssignmentsForPresetAsHREF",
+    "path": "/allpresetassignmentsforpresetashref",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAllPresetAssignmentsForPresetAsHREF"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AllServerDefinitions",
+    "path": "/allserverdefinitions",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAllServerDefinitions"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Area",
+    "path": "/area",
+    "verbs": [
+      "CREATE",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddArea",
+      "SUBSCRIBE": "leap/resource.SubscribeArea.func1.1"
+    },
+    "responseType": "Area"
+  },
+  {
+    "ident": "AreaDaylightingGainSettings",
+    "path": "/area/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaID",
+    "path": "/area/{id}",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaID",
+      "UPDATE": "leap/resource.UpdateAreaID",
+      "SUBSCRIBE": "leap/resource.SubscribeAreaID.func1.1"
+    },
+    "responseType": "Area"
+  },
+  {
+    "ident": "AreaIDAreaScene",
+    "path": "/area/{id}/areascene",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDAreaScene"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDAssociatedControlStation",
+    "path": "/area/{id}/associatedcontrolstation",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDAssociatedControlStation"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDAssociatedDevice",
+    "path": "/area/{id}/associateddevice",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.CreateAreaIDAssociatedDevice"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDAssociatedZone",
+    "path": "/area/{id}/associatedzone",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDAssociatedZone"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDAssociatedZoneStatus",
+    "path": "/area/{id}/associatedzone/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDAssociatedZoneStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDAssociatedZoneStatusExpanded",
+    "path": "/area/{id}/associatedzone/status/expanded",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDAssociatedZoneStatusExpanded"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDChildAreaAreaSceneWithExplicitPaging",
+    "path": "/area/{id}/childarea/areascene/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDChildAreaAreaSceneWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDChildAreaAreaSceneWithImplicitPaging",
+    "path": "/area/{id}/childarea/areascene/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDChildAreaAreaSceneWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDChildAreaSummary",
+    "path": "/area/{id}/childarea/summary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDChildAreaSummary"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDDaylightingGainSettings",
+    "path": "/area/{id}/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDLoadShedding",
+    "path": "/area/{id}/loadshedding",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDLoadShedding",
+      "UPDATE": "leap/resource.UpdateAreaIDLoadShedding"
+    },
+    "responseType": "AreaLoadShedding"
+  },
+  {
+    "ident": "AreaIDOccupancyGroups",
+    "path": "/area/{id}/occupancygroups",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDOccupancyGroups"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDOccupancySensorSettings",
+    "path": "/area/{id}/occupancysensorsettings",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDOccupancySensorSettings",
+      "SUBSCRIBE": "leap/resource.SubscribeAreaIDOccupancySensorSettings.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDOccupancySettings",
+    "path": "/area/{id}/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaIDRelation",
+    "path": "/area/{id}/relation",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDRelation"
+    },
+    "responseType": "AreaRelation"
+  },
+  {
+    "ident": "AreaIDStatus",
+    "path": "/area/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeAreaIDStatus.func1.1"
+    },
+    "responseType": "AreaStatus"
+  },
+  {
+    "ident": "AreaIDSummary",
+    "path": "/area/{id}/summary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDSummary"
+    },
+    "responseType": "AreaSummary"
+  },
+  {
+    "ident": "AreaIDVButton",
+    "path": "/area/{id}/vbutton",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaIDVButton"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaLoadShedding",
+    "path": "/arealoadshedding",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaLoadShedding"
+    },
+    "responseType": "AreaLoadShedding"
+  },
+  {
+    "ident": "AreaOccupancySensorSettings",
+    "path": "/area/occupancysensorsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaOccupancySensorSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaOccupancySettings",
+    "path": "/area/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaRelation",
+    "path": "/arearelation",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaRelation"
+    },
+    "responseType": "AreaRelation"
+  },
+  {
+    "ident": "AreaSceneAssignmentID",
+    "path": "/areasceneassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaSceneAssignmentID",
+      "UPDATE": "leap/resource.UpdateAreaSceneAssignmentID",
+      "DELETE": "leap/resource.DeleteAreaSceneAssignmentID"
+    },
+    "responseType": "AreaSceneAssignment"
+  },
+  {
+    "ident": "AreaSceneID",
+    "path": "/areascene/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaSceneID",
+      "UPDATE": "leap/resource.UpdateAreaSceneID"
+    },
+    "responseType": "AreaScene"
+  },
+  {
+    "ident": "AreaStatus",
+    "path": "/areastatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeAreaStatus.func1.1"
+    },
+    "responseType": "AreaStatus"
+  },
+  {
+    "ident": "AreaSummaryQuery",
+    "path": "/areasummary/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaSummaryQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaWithExplicitPaging",
+    "path": "/area/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaWithImplicitPaging",
+    "path": "/area/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "AreaXID",
+    "path": "/area/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForAreaXID"
+    },
+    "responseType": "Area"
+  },
+  {
+    "ident": "Button",
+    "path": "/button",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButton"
+    },
+    "responseType": "Button"
+  },
+  {
+    "ident": "ButtonGroup",
+    "path": "/buttongroup",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButtonGroup"
+    },
+    "responseType": "ButtonGroup"
+  },
+  {
+    "ident": "ButtonGroupID",
+    "path": "/buttongroup/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButtonGroupID",
+      "UPDATE": "leap/resource.UpdateButtonGroupID"
+    },
+    "responseType": "ButtonGroup"
+  },
+  {
+    "ident": "ButtonGroupIDAffectedZone",
+    "path": "/buttongroup/{id}/affectedzone",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButtonGroupIDAffectedZone",
+      "CREATE": "leap/resource.CreateButtonGroupIDAffectedZone"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ButtonGroupIDButton",
+    "path": "/buttongroup/{id}/button",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButtonGroupIDButton"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ButtonID",
+    "path": "/button/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForButtonID",
+      "UPDATE": "leap/resource.UpdateButtonID"
+    },
+    "responseType": "Button"
+  },
+  {
+    "ident": "CciID",
+    "path": "/cci/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForCciID",
+      "UPDATE": "leap/resource.UpdateCciID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "CcoLevelAssignmentID",
+    "path": "/ccolevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForCcoLevelAssignmentID",
+      "UPDATE": "leap/resource.UpdateCcoLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteCcoLevelAssignmentID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ClientSetting",
+    "path": "/clientsetting",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForClientSetting",
+      "UPDATE": "leap/resource.UpdateClientSetting"
+    },
+    "responseType": "ClientSetting"
+  },
+  {
+    "ident": "ColorTuningLevelAssignmentID",
+    "path": "/colortuninglevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateColorTuningLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteColorTuningLevelAssignmentID",
+      "GET": "leap/resource.BodyAndMessageTypeForColorTuningLevelAssignmentID"
+    },
+    "responseType": "ColorTuningLevelAssignment"
+  },
+  {
+    "ident": "Contact",
+    "path": "/contact",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForContact",
+      "UPDATE": "leap/resource.UpdateContact"
+    },
+    "responseType": "Contact"
+  },
+  {
+    "ident": "ControlStation",
+    "path": "/controlstation",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddControlStation"
+    },
+    "responseType": "ControlStation"
+  },
+  {
+    "ident": "ControlStationID",
+    "path": "/controlstation/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForControlStationID",
+      "UPDATE": "leap/resource.UpdateControlStationID",
+      "DELETE": "leap/resource.DeleteControlStationID"
+    },
+    "responseType": "ControlStation"
+  },
+  {
+    "ident": "ControlStationIDDeviceLEDStatus",
+    "path": "/controlstation/{id}/device/ledstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForControlStationIDDeviceLEDStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ControlStationIDQuery",
+    "path": "/controlstation/{id}/query",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteControlStationIDQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ControlStationXID",
+    "path": "/controlstation/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForControlStationXID"
+    },
+    "responseType": "ControlStation"
+  },
+  {
+    "ident": "CountdownTimer",
+    "path": "/countdowntimer",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddCountdownTimer",
+      "GET": "leap/resource.BodyAndMessageTypeForCountdownTimer"
+    },
+    "responseType": "CountdownTimer"
+  },
+  {
+    "ident": "CountdownTimerID",
+    "path": "/countdowntimer/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForCountdownTimerID",
+      "DELETE": "leap/resource.DeleteCountdownTimerID",
+      "UPDATE": "leap/resource.UpdateCountdownTimerID"
+    },
+    "responseType": "CountdownTimer"
+  },
+  {
+    "ident": "Curve",
+    "path": "/curve",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForCurve"
+    },
+    "responseType": "Curve"
+  },
+  {
+    "ident": "DailyEvent",
+    "path": "/dailyevent",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDailyEvent",
+      "UPDATE": "leap/resource.UpdateDailyEvent"
+    },
+    "responseType": "DailyEvent"
+  },
+  {
+    "ident": "DailySchedule",
+    "path": "/dailyschedule",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDailySchedule",
+      "UPDATE": "leap/resource.UpdateDailySchedule"
+    },
+    "responseType": "DailySchedule"
+  },
+  {
+    "ident": "DailyScheduleIDDailyEvents",
+    "path": "/dailyschedule/{id}/dailyevents",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDailyScheduleIDDailyEvents"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DailyScheduleQuery",
+    "path": "/dailyschedule/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDailyScheduleQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DaliEmergencyTestEventID",
+    "path": "/daliemergencytestevent/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaliEmergencyTestEventID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DaliEmergencyTestGroup",
+    "path": "/daliemergencytestgroup",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaliEmergencyTestGroup"
+    },
+    "responseType": "DaliEmergencyTestGroup"
+  },
+  {
+    "ident": "DataShippingRuleID",
+    "path": "/datashippingrule/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDataShippingRuleID",
+      "UPDATE": "leap/resource.UpdateDataShippingRuleID"
+    },
+    "responseType": "DataShippingRule"
+  },
+  {
+    "ident": "DatabaseID",
+    "path": "/database/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDatabaseID"
+    },
+    "responseType": "Database"
+  },
+  {
+    "ident": "DatabaseIDDatabaseTransferSession",
+    "path": "/database/{id}/databasetransfersession",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.CreateDatabaseIDDatabaseTransferSession"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DatabaseIDStatus",
+    "path": "/database/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDatabaseIDStatus"
+    },
+    "responseType": "DatabaseStatus"
+  },
+  {
+    "ident": "DatabaseTransferSession",
+    "path": "/databasetransfersession",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteDatabaseTransferSession",
+      "GET": "leap/resource.BodyAndMessageTypeForDatabaseTransferSession"
+    },
+    "responseType": "DatabaseTransferSession"
+  },
+  {
+    "ident": "DatabaseTransferSessionStatus",
+    "path": "/databasetransfersessionstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDatabaseTransferSessionStatus"
+    },
+    "responseType": "DatabaseTransferSessionStatus"
+  },
+  {
+    "ident": "DayNightModeID",
+    "path": "/daynightmode/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDayNightModeID"
+    },
+    "responseType": "DayNightMode"
+  },
+  {
+    "ident": "DaylightSensorID",
+    "path": "/daylightsensor/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightSensorID"
+    },
+    "responseType": "DaylightSensor"
+  },
+  {
+    "ident": "DaylightSensorIDStatus",
+    "path": "/daylightsensor/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightSensorIDStatus"
+    },
+    "responseType": "DaylightSensorStatus"
+  },
+  {
+    "ident": "DaylightSensorStatus",
+    "path": "/daylightsensorstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightSensorStatus"
+    },
+    "responseType": "DaylightSensorStatus"
+  },
+  {
+    "ident": "DaylightingGainGroupAssociatedZoneWithID",
+    "path": "/daylightinggaingroup/associatedzone/with/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightingGainGroupAssociatedZoneWithID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DaylightingGainGroupDaylightingGainSettings",
+    "path": "/daylightinggaingroup/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightingGainGroupDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DaylightingGainGroupID",
+    "path": "/daylightinggaingroup/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightingGainGroupID"
+    },
+    "responseType": "DaylightingGainGroup"
+  },
+  {
+    "ident": "DaylightingGainGroupIDDaylightingGainSettings",
+    "path": "/daylightinggaingroup/{id}/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDaylightingGainGroupIDDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeprecatedPresetAssignmentID",
+    "path": "/deprecated/presetassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeprecatedPresetAssignmentID",
+      "UPDATE": "leap/resource.UpdateDeprecatedPresetAssignmentID",
+      "DELETE": "leap/resource.DeleteDeprecatedPresetAssignmentID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeprecatedPresetIDPresetAssignment",
+    "path": "/deprecated/preset/{id}/presetassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeprecatedPresetIDPresetAssignment",
+      "CREATE": "leap/resource.CreateDeprecatedPresetIDPresetAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DetectionGroupID",
+    "path": "/detectiongroup/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDetectionGroupID",
+      "UPDATE": "leap/resource.UpdateDetectionGroupID",
+      "DELETE": "leap/resource.DeleteDetectionGroupID"
+    },
+    "responseType": "DetectionGroup"
+  },
+  {
+    "ident": "DetectionGroupIDCamera",
+    "path": "/detectiongroup/{id}/camera",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDetectionGroupIDCamera"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Device",
+    "path": "/device",
+    "verbs": [
+      "CREATE",
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddDevice",
+      "SUBSCRIBE": "leap/resource.SubscribeDevice.func1.1",
+      "GET": "leap/resource.BodyAndMessageTypeForDevice"
+    },
+    "responseType": "Device"
+  },
+  {
+    "ident": "DeviceAvailabilityStatus",
+    "path": "/deviceavailabilitystatus",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeDeviceAvailabilityStatus.func1.1"
+    },
+    "responseType": "DeviceAvailabilityStatus"
+  },
+  {
+    "ident": "DeviceAvailabilityStatusWithExplicitPaging",
+    "path": "/deviceavailabilitystatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceAvailabilityStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceAvailabilityStatusWithImplicitPaging",
+    "path": "/deviceavailabilitystatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceAvailabilityStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceBatteryStatusStatus",
+    "path": "/devicebatterystatusstatus",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeDeviceBatteryStatusStatus.func1.1"
+    },
+    "responseType": "DeviceBatteryStatusStatus"
+  },
+  {
+    "ident": "DeviceBatteryStatusStatusWithExplicitPaging",
+    "path": "/devicebatterystatusstatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceBatteryStatusStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceBatteryStatusStatusWithImplicitPaging",
+    "path": "/devicebatterystatusstatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceBatteryStatusStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceFirmwarePackageUpdateSessionID",
+    "path": "/devicefirmwarepackageupdatesession/{id}",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteDeviceFirmwarePackageUpdateSessionID"
+    },
+    "responseType": "DeviceFirmwarePackageUpdateSession"
+  },
+  {
+    "ident": "DeviceID",
+    "path": "/device/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteDeviceID",
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceID",
+      "UPDATE": "leap/resource.UpdateDeviceID",
+      "SUBSCRIBE": "leap/resource.SubscribeDeviceID.func1.1"
+    },
+    "responseType": "Device"
+  },
+  {
+    "ident": "DeviceIDButtonGroup",
+    "path": "/device/{id}/buttongroup",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDButtonGroup"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDButtonGroupExpanded",
+    "path": "/device/{id}/buttongroupexpanded",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDButtonGroupExpanded"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDCCI",
+    "path": "/device/{id}/cci",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDCCI"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDLEDSettings",
+    "path": "/device/{id}/ledsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDLEDSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDLinkNodeID",
+    "path": "/device/{id}/linknode/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDLinkNodeID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDLinkNodeIDSentBy",
+    "path": "/device/{id}/linknode/{id}/sentby",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddDeviceIDLinkNodeIDSentBy"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDLogger",
+    "path": "/device/{id}/logger",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDLogger"
+    },
+    "responseType": "DeviceLogger"
+  },
+  {
+    "ident": "DeviceIDLoggerStatus",
+    "path": "/device/{id}/loggerstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDLoggerStatus"
+    },
+    "responseType": "DeviceLoggerStatus"
+  },
+  {
+    "ident": "DeviceIDQuery",
+    "path": "/device/{id}/query",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteDeviceIDQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDRepeatableDeviceRules",
+    "path": "/device/{id}/repeatabledevicerules",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDRepeatableDeviceRules"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDStatus",
+    "path": "/device/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDStatus"
+    },
+    "responseType": "DeviceStatus"
+  },
+  {
+    "ident": "DeviceIDTemperatureSensors",
+    "path": "/device/{id}/temperaturesensors",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDTemperatureSensors"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceIDZoneControllers",
+    "path": "/device/{id}/zonecontrollers",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceIDZoneControllers"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceQuery",
+    "path": "/device/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceRules",
+    "path": "/devicerules",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceRules"
+    },
+    "responseType": "DeviceRules"
+  },
+  {
+    "ident": "DeviceStatus",
+    "path": "/devicestatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeDeviceStatus.func1.1"
+    },
+    "responseType": "DeviceStatus"
+  },
+  {
+    "ident": "DeviceStatusDeviceHeard",
+    "path": "/devicestatus/deviceheard",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeDeviceStatusDeviceHeard.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceStatusExpandedQueryStringWithExplicitPaging",
+    "path": "/devicestatusexpandedquerystringwithexplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceStatusExpandedQueryStringWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceStatusExpandedQueryStringWithImplicitPaging",
+    "path": "/devicestatusexpandedquerystringwithimplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceStatusExpandedQueryStringWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DeviceStatusQuery",
+    "path": "/devicestatus/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDeviceStatusQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "DimmedLevelAssignmentID",
+    "path": "/dimmedlevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForDimmedLevelAssignmentID",
+      "UPDATE": "leap/resource.UpdateDimmedLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteDimmedLevelAssignmentID"
+    },
+    "responseType": "DimmedLevelAssignment"
+  },
+  {
+    "ident": "Emergency",
+    "path": "/emergency",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForEmergency"
+    },
+    "responseType": "Emergency"
+  },
+  {
+    "ident": "EmergencyID",
+    "path": "/emergency/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateEmergencyID",
+      "GET": "leap/resource.BodyAndMessageTypeForEmergencyID"
+    },
+    "responseType": "Emergency"
+  },
+  {
+    "ident": "EmergencyIDStatus",
+    "path": "/emergency/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForEmergencyIDStatus",
+      "UPDATE": "leap/resource.UpdateEmergencyIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeEmergencyIDStatus.func1.1"
+    },
+    "responseType": "EmergencyStatus"
+  },
+  {
+    "ident": "EmergencyStatus",
+    "path": "/emergencystatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForEmergencyStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeEmergencyStatus.func1.1"
+    },
+    "responseType": "EmergencyStatus"
+  },
+  {
+    "ident": "EndpointIDAssociatedNetworkInterfaceID",
+    "path": "/endpoint/{id}/associatednetworkinterface/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForEndpointIDAssociatedNetworkInterfaceID",
+      "UPDATE": "leap/resource.UpdateEndpointIDAssociatedNetworkInterfaceID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Facade",
+    "path": "/facade",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFacade"
+    },
+    "responseType": "Facade"
+  },
+  {
+    "ident": "FacadeID",
+    "path": "/facade/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFacadeID"
+    },
+    "responseType": "Facade"
+  },
+  {
+    "ident": "FadeSettings",
+    "path": "/fadesettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFadeSettings",
+      "UPDATE": "leap/resource.UpdateFadeSettings"
+    },
+    "responseType": "FadeSettings"
+  },
+  {
+    "ident": "FanSpeedAssignmentID",
+    "path": "/fanspeedassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFanSpeedAssignmentID",
+      "UPDATE": "leap/resource.UpdateFanSpeedAssignmentID",
+      "DELETE": "leap/resource.DeleteFanSpeedAssignmentID"
+    },
+    "responseType": "FanSpeedAssignment"
+  },
+  {
+    "ident": "FanSpeedConfigurationID",
+    "path": "/fanspeedconfiguration/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFanSpeedConfigurationID",
+      "UPDATE": "leap/resource.UpdateFanSpeedConfigurationID"
+    },
+    "responseType": "FanSpeedConfiguration"
+  },
+  {
+    "ident": "FanSpeedConfigurationXID",
+    "path": "/fanspeedconfiguration/{xid}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFanSpeedConfigurationXID",
+      "UPDATE": "leap/resource.UpdateFanSpeedConfigurationXID"
+    },
+    "responseType": "FanSpeedConfiguration"
+  },
+  {
+    "ident": "FavoriteCycleAssignmentID",
+    "path": "/favoritecycleassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFavoriteCycleAssignmentID",
+      "DELETE": "leap/resource.DeleteFavoriteCycleAssignmentID"
+    },
+    "responseType": "FavoriteCycleAssignment"
+  },
+  {
+    "ident": "FirmwareImageID",
+    "path": "/firmwareimage/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFirmwareImageID.func1"
+    },
+    "responseType": "FirmwareImage"
+  },
+  {
+    "ident": "FirmwareSessionDeviceID",
+    "path": "/firmwaresessiondevice/{id}",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteFirmwareSessionDeviceID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "FirmwareSessionProcessorID",
+    "path": "/firmwaresessionprocessor/{id}",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteFirmwareSessionProcessorID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "FirmwareUpdateSession",
+    "path": "/firmwareupdatesession",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForFirmwareUpdateSession"
+    },
+    "responseType": "FirmwareUpdateSession"
+  },
+  {
+    "ident": "LEDSettings",
+    "path": "/ledsettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLEDSettings",
+      "UPDATE": "leap/resource.UpdateLEDSettings"
+    },
+    "responseType": "LEDSettings"
+  },
+  {
+    "ident": "LedID",
+    "path": "/led/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLedID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LedIDStatus",
+    "path": "/led/{id}/status",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLedIDStatus",
+      "UPDATE": "leap/resource.UpdateLedIDStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LegacyServerStatusPing",
+    "path": "/legacyserverstatusping",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLegacyServerStatusPing"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Link",
+    "path": "/link",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLink"
+    },
+    "responseType": "Link"
+  },
+  {
+    "ident": "LinkID",
+    "path": "/link/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkID",
+      "UPDATE": "leap/resource.UpdateLinkID.func1"
+    },
+    "responseType": "Link"
+  },
+  {
+    "ident": "LinkIDAssociatedLinkNodeExpandedQueryStringWithExplicitPaging",
+    "path": "/link/{id}/associatedlinknodeexpandedquerystringwithexplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDAssociatedLinkNodeExpandedQueryStringWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkIDAssociatedLinkNodeExpandedQueryStringWithImplicitPaging",
+    "path": "/link/{id}/associatedlinknodeexpandedquerystringwithimplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDAssociatedLinkNodeExpandedQueryStringWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkIDAssociatedLinkNodeExpandedWithExplicitPaging",
+    "path": "/link/{id}/associatedlinknodeexpandedwithexplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDAssociatedLinkNodeExpandedWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkIDAssociatedLinkNodeExpandedWithImplicitPaging",
+    "path": "/link/{id}/associatedlinknodeexpandedwithimplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDAssociatedLinkNodeExpandedWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkIDAssociatedLinkNodes",
+    "path": "/link/{id}/associatedlinknodes",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDAssociatedLinkNodes"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkIDMemberDiscoverySessionIDStatus",
+    "path": "/link/{id}/memberdiscoverysession/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDMemberDiscoverySessionIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeLinkIDMemberDiscoverySessionIDStatus.func1.1"
+    },
+    "responseType": "LinkMemberDiscoverySessionStatus"
+  },
+  {
+    "ident": "LinkIDMemberInfoStatus",
+    "path": "/link/{id}/memberinfostatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDMemberInfoStatus"
+    },
+    "responseType": "LinkMemberInfoStatus"
+  },
+  {
+    "ident": "LinkIDStatus",
+    "path": "/link/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkIDStatus",
+      "UPDATE": "leap/resource.UpdateLinkIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeLinkIDStatus.func1.1"
+    },
+    "responseType": "LinkStatus"
+  },
+  {
+    "ident": "LinkNodeAssociationID",
+    "path": "/linknodeassociation/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkNodeAssociationID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LinkStatusQuery",
+    "path": "/linkstatus/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLinkStatusQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ListDayNightModes",
+    "path": "/listdaynightmodes",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForListDayNightModes"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ListNaturalShows",
+    "path": "/listnaturalshows",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForListNaturalShows"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadControllerID",
+    "path": "/loadcontroller/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerID"
+    },
+    "responseType": "LoadController"
+  },
+  {
+    "ident": "LoadControllerIDStatus",
+    "path": "/loadcontroller/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeLoadControllerIDStatus.func1.1"
+    },
+    "responseType": "LoadControllerStatus"
+  },
+  {
+    "ident": "LoadControllerStatus",
+    "path": "/loadcontrollerstatus",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeLoadControllerStatus.func1.1"
+    },
+    "responseType": "LoadControllerStatus"
+  },
+  {
+    "ident": "LoadControllerStatusQueryWithExplicitPaging",
+    "path": "/loadcontrollerstatus/query/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerStatusQueryWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadControllerStatusQueryWithImplicitPaging",
+    "path": "/loadcontrollerstatus/query/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerStatusQueryWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadControllerStatusWithExplicitPaging",
+    "path": "/loadcontrollerstatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadControllerStatusWithImplicitPaging",
+    "path": "/loadcontrollerstatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadControllerXID",
+    "path": "/loadcontroller/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadControllerXID"
+    },
+    "responseType": "LoadController"
+  },
+  {
+    "ident": "LoadID",
+    "path": "/load/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadID"
+    },
+    "responseType": "Load"
+  },
+  {
+    "ident": "LoadXID",
+    "path": "/load/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadXID"
+    },
+    "responseType": "Load"
+  },
+  {
+    "ident": "LoadcontrollerIDTuningSettings",
+    "path": "/loadcontroller/{id}/tuningsettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadcontrollerIDTuningSettings",
+      "UPDATE": "leap/resource.UpdateLoadcontrollerIDTuningSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "LoadcontrollerXIDTuningSettings",
+    "path": "/loadcontroller/{xid}/tuningsettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLoadcontrollerXIDTuningSettings",
+      "UPDATE": "leap/resource.UpdateLoadcontrollerXIDTuningSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Login",
+    "path": "/login",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateLogin",
+      "GET": "leap/resource.BodyAndMessageTypeForLogin"
+    },
+    "responseType": "Login"
+  },
+  {
+    "ident": "LutronIntegrationProtocolIDList",
+    "path": "/lutronintegrationprotocol/{id}/list",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForLutronIntegrationProtocolIDList"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptAffectedResource",
+    "path": "/natlightoptaffectedresource",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.CreateNatLightOptAffectedResource"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptAffectedResourceID",
+    "path": "/natlightoptaffectedresource/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNatLightOptAffectedResourceID",
+      "DELETE": "leap/resource.DeleteNatLightOptAffectedResourceID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptID",
+    "path": "/natlightopt/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNatLightOptID",
+      "UPDATE": "leap/resource.UpdateNatLightOptID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptIDPreview",
+    "path": "/natlightopt/{id}/preview",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNatLightOptIDPreview"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptIDStatus",
+    "path": "/natlightopt/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNatLightOptIDStatus",
+      "UPDATE": "leap/resource.UpdateNatLightOptIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeNatLightOptIDStatus.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NatLightOptStatus",
+    "path": "/natlightoptstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNatLightOptStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeNatLightOptStatus.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NaturalLightOptimizationWithExplicitPaging",
+    "path": "/naturallightoptimization/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNaturalLightOptimizationWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NaturalLightOptimizationWithImplicitPaging",
+    "path": "/naturallightoptimization/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNaturalLightOptimizationWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NaturalShowID",
+    "path": "/naturalshow/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNaturalShowID"
+    },
+    "responseType": "NaturalShow"
+  },
+  {
+    "ident": "NetworkInterfaceID",
+    "path": "/networkinterface/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNetworkInterfaceID",
+      "UPDATE": "leap/resource.UpdateNetworkInterfaceID"
+    },
+    "responseType": "NetworkInterface"
+  },
+  {
+    "ident": "NetworkInterfaceIDStatus",
+    "path": "/networkinterface/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNetworkInterfaceIDStatus"
+    },
+    "responseType": "NetworkInterfaceStatus"
+  },
+  {
+    "ident": "NextTrackAssignmentID",
+    "path": "/nexttrackassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNextTrackAssignmentID",
+      "DELETE": "leap/resource.DeleteNextTrackAssignmentID"
+    },
+    "responseType": "NextTrackAssignment"
+  },
+  {
+    "ident": "NloIDFadeFighterPropPreset",
+    "path": "/nlo/{id}/fadefighterproppreset",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNloIDFadeFighterPropPreset"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "NloIDFadeFighterPropTiltAssignment",
+    "path": "/nlo/{id}/fadefighterproptiltassignment",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForNloIDFadeFighterPropTiltAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "OccupancyAggregationRules",
+    "path": "/occupancyaggregationrules",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancyAggregationRules"
+    },
+    "responseType": "OccupancyAggregationRules"
+  },
+  {
+    "ident": "OccupancyAggregator",
+    "path": "/occupancyaggregator",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancyAggregator"
+    },
+    "responseType": "OccupancyAggregator"
+  },
+  {
+    "ident": "OccupancyGroup",
+    "path": "/occupancygroup",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddOccupancyGroup"
+    },
+    "responseType": "OccupancyGroup"
+  },
+  {
+    "ident": "OccupancyGroupID",
+    "path": "/occupancygroup/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancyGroupID",
+      "UPDATE": "leap/resource.UpdateOccupancyGroupID"
+    },
+    "responseType": "OccupancyGroup"
+  },
+  {
+    "ident": "OccupancyGroupStatus",
+    "path": "/occupancygroupstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancyGroupStatus"
+    },
+    "responseType": "OccupancyGroupStatus"
+  },
+  {
+    "ident": "OccupancySensor",
+    "path": "/occupancysensor",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddOccupancySensor"
+    },
+    "responseType": "OccupancySensor"
+  },
+  {
+    "ident": "OccupancySensorID",
+    "path": "/occupancysensor/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorID"
+    },
+    "responseType": "OccupancySensor"
+  },
+  {
+    "ident": "OccupancySensorIDOccupancySensorSettings",
+    "path": "/occupancysensor/{id}/occupancysensorsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorIDOccupancySensorSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "OccupancySensorIDStatus",
+    "path": "/occupancysensor/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorIDStatus"
+    },
+    "responseType": "OccupancySensorStatus"
+  },
+  {
+    "ident": "OccupancySensorOccupancySensorSettings",
+    "path": "/occupancysensor/occupancysensorsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorOccupancySensorSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "OccupancySensorSettingsAssignmentID",
+    "path": "/occupancysensorsettingsassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorSettingsAssignmentID",
+      "UPDATE": "leap/resource.UpdateOccupancySensorSettingsAssignmentID",
+      "DELETE": "leap/resource.DeleteOccupancySensorSettingsAssignmentID"
+    },
+    "responseType": "OccupancySensorSettingsAssignment"
+  },
+  {
+    "ident": "OccupancySensorStatus",
+    "path": "/occupancysensorstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySensorStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeOccupancySensorStatus.func1.1"
+    },
+    "responseType": "OccupancySensorStatus"
+  },
+  {
+    "ident": "OccupancySettingsAssignmentID",
+    "path": "/occupancysettingsassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOccupancySettingsAssignmentID",
+      "UPDATE": "leap/resource.UpdateOccupancySettingsAssignmentID",
+      "DELETE": "leap/resource.DeleteOccupancySettingsAssignmentID"
+    },
+    "responseType": "OccupancySettingsAssignment"
+  },
+  {
+    "ident": "OperationStatus",
+    "path": "/operationstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForOperationStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeOperationStatus.func1.1"
+    },
+    "responseType": "OperationStatus"
+  },
+  {
+    "ident": "PairedDeviceExtractionSessionIDStatus",
+    "path": "/paireddeviceextractionsession/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPairedDeviceExtractionSessionIDStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PauseAssignmentID",
+    "path": "/pauseassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPauseAssignmentID",
+      "DELETE": "leap/resource.DeletePauseAssignmentID"
+    },
+    "responseType": "PauseAssignment"
+  },
+  {
+    "ident": "PlayPauseToggleAssignmentID",
+    "path": "/playpausetoggleassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPlayPauseToggleAssignmentID",
+      "DELETE": "leap/resource.DeletePlayPauseToggleAssignmentID"
+    },
+    "responseType": "PlayPauseToggleAssignment"
+  },
+  {
+    "ident": "PresetAssignmentDeprecated",
+    "path": "/presetassignment/deprecated",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetAssignmentDeprecated"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetID",
+    "path": "/preset/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetID"
+    },
+    "responseType": "Preset"
+  },
+  {
+    "ident": "PresetIDAreaSceneAssignment",
+    "path": "/preset/{id}/areasceneassignment",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDAreaSceneAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDCCOLevelAssignment",
+    "path": "/preset/{id}/ccolevelassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDCCOLevelAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDCCOLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDColorTuningLevelAssignment",
+    "path": "/preset/{id}/colortuninglevelassignment",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDColorTuningLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDDimmedLevelAssignment",
+    "path": "/preset/{id}/dimmedlevelassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDDimmedLevelAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDDimmedLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDFanSpeedAssignment",
+    "path": "/preset/{id}/fanspeedassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDFanSpeedAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDFanSpeedAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDFavoriteCycleAssignment",
+    "path": "/preset/{id}/favoritecycleassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDFavoriteCycleAssignment",
+      "CREATE": "leap/resource.AddPresetIDFavoriteCycleAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDNextTrackAssignment",
+    "path": "/preset/{id}/nexttrackassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDNextTrackAssignment",
+      "CREATE": "leap/resource.AddPresetIDNextTrackAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDOccupancySensorSettingsAssignment",
+    "path": "/preset/{id}/occupancysensorsettingsassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDOccupancySensorSettingsAssignment",
+      "CREATE": "leap/resource.AddPresetIDOccupancySensorSettingsAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDOccupancySettingsAssignment",
+    "path": "/preset/{id}/occupancysettingsassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDOccupancySettingsAssignment",
+      "CREATE": "leap/resource.AddPresetIDOccupancySettingsAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDPauseAssignment",
+    "path": "/preset/{id}/pauseassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDPauseAssignment",
+      "CREATE": "leap/resource.AddPresetIDPauseAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDPlayPauseToggleAssignment",
+    "path": "/preset/{id}/playpausetoggleassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDPlayPauseToggleAssignment",
+      "CREATE": "leap/resource.AddPresetIDPlayPauseToggleAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDRaiseLowerAssignment",
+    "path": "/preset/{id}/raiselowerassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDRaiseLowerAssignment",
+      "CREATE": "leap/resource.AddPresetIDRaiseLowerAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDReceptacleLevelAssignment",
+    "path": "/preset/{id}/receptaclelevelassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDReceptacleLevelAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDReceptacleLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDShadeLevelAssignment",
+    "path": "/preset/{id}/shadelevelassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDShadeLevelAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDShadeLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDShadeLevelWithTiltAssignment",
+    "path": "/preset/{id}/shadelevelwithtiltassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDShadeLevelWithTiltAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDShadeLevelWithTiltAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDShadeLevelWithTiltWhenClosedAssignment",
+    "path": "/preset/{id}/shadelevelwithtiltwhenclosedassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDShadeLevelWithTiltWhenClosedAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDShadeLevelWithTiltWhenClosedAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDSonosPlayAssignment",
+    "path": "/preset/{id}/sonosplayassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDSonosPlayAssignment",
+      "CREATE": "leap/resource.AddPresetIDSonosPlayAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDSpectrumTuningLevelAssignment",
+    "path": "/preset/{id}/spectrumtuninglevelassignment",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDSpectrumTuningLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDStartEmergencyAssignment",
+    "path": "/preset/{id}/startemergencyassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDStartEmergencyAssignment",
+      "CREATE": "leap/resource.AddPresetIDStartEmergencyAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDStartSequenceAssignment",
+    "path": "/preset/{id}/startsequenceassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDStartSequenceAssignment",
+      "CREATE": "leap/resource.AddPresetIDStartSequenceAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDStopEmergencyAssignment",
+    "path": "/preset/{id}/stopemergencyassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDStopEmergencyAssignment",
+      "CREATE": "leap/resource.AddPresetIDStopEmergencyAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDSwitchedLevelAssignment",
+    "path": "/preset/{id}/switchedlevelassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDSwitchedLevelAssignment",
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDSwitchedLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDTiltAssignment",
+    "path": "/preset/{id}/tiltassignment",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForPresetIDTiltAssignment",
+      "CREATE": "leap/resource.AddPresetIDTiltAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDWarmDimAssignment",
+    "path": "/preset/{id}/warmdimassignment",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDWarmDimAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "PresetIDWhiteTuningLevelAssignment",
+    "path": "/preset/{id}/whitetuninglevelassignment",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddPresetIDWhiteTuningLevelAssignment"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ProfileSession",
+    "path": "/profilesession",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProfileSession"
+    },
+    "responseType": "ProfileSession"
+  },
+  {
+    "ident": "ProfileSessionID",
+    "path": "/profilesession/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProfileSessionID",
+      "DELETE": "leap/resource.DeleteProfileSessionID"
+    },
+    "responseType": "ProfileSession"
+  },
+  {
+    "ident": "ProfileSessionIDStatus",
+    "path": "/profilesession/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProfileSessionIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeProfileSessionIDStatus.func1.1"
+    },
+    "responseType": "ProfileSessionStatus"
+  },
+  {
+    "ident": "ProgrammingModel",
+    "path": "/programmingmodel",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProgrammingModel"
+    },
+    "responseType": "ProgrammingModel"
+  },
+  {
+    "ident": "ProgrammingModelID",
+    "path": "/programmingmodel/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProgrammingModelID"
+    },
+    "responseType": "ProgrammingModel"
+  },
+  {
+    "ident": "ProgrammingModelIDPreset",
+    "path": "/programmingmodel/{id}/preset",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProgrammingModelIDPreset"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Project",
+    "path": "/project",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateProject",
+      "SUBSCRIBE": "leap/resource.SubscribeProject.func1.1",
+      "GET": "leap/resource.BodyAndMessageTypeForProject"
+    },
+    "responseType": "Project"
+  },
+  {
+    "ident": "ProjectContact",
+    "path": "/project/contact",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddProjectContact",
+      "GET": "leap/resource.BodyAndMessageTypeForProjectContact"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ProjectMasterDeviceListDeviceExpandedStatus",
+    "path": "/project/masterdevicelist/deviceexpandedstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProjectMasterDeviceListDeviceExpandedStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ProjectMasterDeviceListDevices",
+    "path": "/project/masterdevicelist/devices",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProjectMasterDeviceListDevices"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ProjectMasterDevicelist",
+    "path": "/project/masterdevicelist",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProjectMasterDevicelist",
+      "UPDATE": "leap/resource.UpdateProjectMasterDevicelist"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ProjectTimeclockEventRules",
+    "path": "/project/timeclockeventrules",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForProjectTimeclockEventRules"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RaiseLowerAssignmentID",
+    "path": "/raiselowerassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRaiseLowerAssignmentID",
+      "DELETE": "leap/resource.DeleteRaiseLowerAssignmentID"
+    },
+    "responseType": "RaiseLowerAssignment"
+  },
+  {
+    "ident": "ReceptacleLevelAssignmentID",
+    "path": "/receptaclelevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForReceptacleLevelAssignmentID",
+      "UPDATE": "leap/resource.UpdateReceptacleLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteReceptacleLevelAssignmentID"
+    },
+    "responseType": "ReceptacleLevelAssignment"
+  },
+  {
+    "ident": "RentableSpaceAssociatedAreaWithExplicitPaging",
+    "path": "/rentablespaceassociatedarea/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceAssociatedAreaWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceAssociatedAreaWithImplicitPaging",
+    "path": "/rentablespaceassociatedarea/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceAssociatedAreaWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceStatus",
+    "path": "/rentablespacestatus",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeRentableSpaceStatus.func1.1"
+    },
+    "responseType": "RentableSpaceStatus"
+  },
+  {
+    "ident": "RentableSpaceStatusWithExplicitPaging",
+    "path": "/rentablespacestatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceStatusWithImplicitPaging",
+    "path": "/rentablespacestatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceWithExplicitPaging",
+    "path": "/rentablespace/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceWithImplicitPaging",
+    "path": "/rentablespace/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceXID",
+    "path": "/rentablespace/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceXID"
+    },
+    "responseType": "RentableSpace"
+  },
+  {
+    "ident": "RentableSpaceXIDAssociatedAreaWithExplicitPaging",
+    "path": "/rentablespace/{xid}/associatedarea/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceXIDAssociatedAreaWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RentableSpaceXIDAssociatedAreaWithImplicitPaging",
+    "path": "/rentablespace/{xid}/associatedarea/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRentableSpaceXIDAssociatedAreaWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ResourceGroupIntruderID",
+    "path": "/resourcegroup/intruder/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForResourceGroupIntruderID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ResourceGroupIntruderIDAssociatedZone",
+    "path": "/resourcegroup/intruder/{id}/associatedzone",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddResourceGroupIntruderIDAssociatedZone"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ResourceGroupIntruderIDAssociatedZoneID",
+    "path": "/resourcegroup/intruder/{id}/associatedzone/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForResourceGroupIntruderIDAssociatedZoneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RootArea",
+    "path": "/rootarea",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForRootArea"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "RssiDiscoverySessionID",
+    "path": "/rssidiscoverysession/{id}",
+    "verbs": [
+      "DELETE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteRssiDiscoverySessionID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Sequence",
+    "path": "/sequence",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSequence",
+      "CREATE": "leap/resource.AddSequence"
+    },
+    "responseType": "Sequence"
+  },
+  {
+    "ident": "SequenceID",
+    "path": "/sequence/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSequenceID",
+      "UPDATE": "leap/resource.UpdateSequenceID",
+      "DELETE": "leap/resource.DeleteSequenceID"
+    },
+    "responseType": "Sequence"
+  },
+  {
+    "ident": "SequenceStepID",
+    "path": "/sequencestep/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSequenceStepID",
+      "UPDATE": "leap/resource.UpdateSequenceStepID"
+    },
+    "responseType": "SequenceStep"
+  },
+  {
+    "ident": "ServerDefinition",
+    "path": "/serverdefinition",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServerDefinition"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerIPL",
+    "path": "/server/ipl",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateServerIPL",
+      "GET": "leap/resource.BodyAndMessageTypeForServerIPL"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerLEAPIntegratorPairing",
+    "path": "/server/leap/integrator/pairing",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServerLEAPIntegratorPairing"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerLEAPPairing",
+    "path": "/server/leap/pairing",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddServerLEAPPairing"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerLEAPPairingID",
+    "path": "/server/leap/pairing/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServerLEAPPairingID",
+      "UPDATE": "leap/resource.UpdateServerLEAPPairingID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerLEAPPairings",
+    "path": "/serverleappairings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServerLEAPPairings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerPropertyDefinition",
+    "path": "/serverpropertydefinition",
+    "verbs": [
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateServerPropertyDefinition"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServerStatusPing",
+    "path": "/server/status/ping",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServerStatusPing"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "Service",
+    "path": "/service",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddService",
+      "GET": "leap/resource.BodyAndMessageTypeForService"
+    },
+    "responseType": "Service"
+  },
+  {
+    "ident": "ServiceAlexa",
+    "path": "/service/alexa",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexa"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaConfig",
+    "path": "/servicealexaconfig",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaConfig"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaConfigAlias",
+    "path": "/servicealexaconfigalias",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaConfigAlias"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaConfigAliasAssociation",
+    "path": "/servicealexaconfigaliasassociation",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.CreateServiceAlexaConfigAliasAssociation"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaConfigAliasID",
+    "path": "/servicealexaconfigalias/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaConfigAliasID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaDataSummary",
+    "path": "/service/alexadatasummary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaDataSummary"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaDataSummarySceneWithID",
+    "path": "/service/alexadatasummary/scene/with/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaDataSummarySceneWithID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaDataSummaryShadeGroupID",
+    "path": "/service/alexadatasummary/shadegroup/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaDataSummaryShadeGroupID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAlexaDataSummaryZoneID",
+    "path": "/service/alexadatasummary/zone/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAlexaDataSummaryZoneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceAutoProg",
+    "path": "/serviceautoprog",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceAutoProg"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnet",
+    "path": "/service/bacnet",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnet"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetAreaInstanceWithID",
+    "path": "/servicebacnetareainstancewith/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetAreaInstanceWithID",
+      "UPDATE": "leap/resource.UpdateServiceBACnetAreaInstanceWithID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetDefaultSettings",
+    "path": "/servicebacnetdefaultsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetDefaultSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetInstances",
+    "path": "/service/bacnetinstances",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetInstances"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetNetworkSettings",
+    "path": "/service/bacnetnetworksettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetNetworkSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetNetworkSettingsID",
+    "path": "/service/bacnetnetworksettings/{id}",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetNetworkSettingsID",
+      "UPDATE": "leap/resource.UpdateServiceBACnetNetworkSettingsID",
+      "SUBSCRIBE": "leap/resource.SubscribeServiceBACnetNetworkSettingsID.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetNetworkSettingsIDBacnetInstances",
+    "path": "/service/bacnetnetworksettings/{id}/bacnetinstances",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetNetworkSettingsIDBacnetInstances"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetNetworkSettingsQuery",
+    "path": "/service/bacnetnetworksettings/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetNetworkSettingsQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceBACnetSettings",
+    "path": "/service/bacnetsettings",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceBACnetSettings",
+      "UPDATE": "leap/resource.UpdateServiceBACnetSettings",
+      "SUBSCRIBE": "leap/resource.SubscribeServiceBACnetSettings.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHome",
+    "path": "/servicegooglehome",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHome"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHomeConfig",
+    "path": "/servicegooglehomeconfig",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHomeConfig"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHomeDataSummary",
+    "path": "/service/googlehomedatasummary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHomeDataSummary"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHomeDataSummarySceneID",
+    "path": "/service/googlehomedatasummary/scene/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHomeDataSummarySceneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHomeDataSummaryShadeGroupID",
+    "path": "/service/googlehomedatasummary/shadegroup/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHomeDataSummaryShadeGroupID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceGoogleHomeDataSummaryZoneID",
+    "path": "/service/googlehomedatasummary/zone/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceGoogleHomeDataSummaryZoneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKit",
+    "path": "/service/homekit",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKit"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitConfig",
+    "path": "/servicehomekitconfig",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitConfig"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitConfigAssociatedShadeGroup",
+    "path": "/servicehomekitconfigassociatedshadegroup",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitConfigAssociatedShadeGroup",
+      "CREATE": "leap/resource.AddServiceHomeKitConfigAssociatedShadeGroup"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitConfigAssociatedShadeGroupID",
+    "path": "/servicehomekitconfigassociatedshadegroup/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitConfigAssociatedShadeGroupID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitConfigAssociatedZone",
+    "path": "/servicehomekitconfigassociatedzone",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitConfigAssociatedZone",
+      "CREATE": "leap/resource.AddServiceHomeKitConfigAssociatedZone"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitConfigAssociatedZoneID",
+    "path": "/servicehomekitconfigassociatedzone/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitConfigAssociatedZoneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitDataSummary",
+    "path": "/service/homekitdatasummary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitDataSummary"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitDataSummaryAccessoriesQuery",
+    "path": "/servicehomekitdatasummaryaccessoriesquery",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitDataSummaryAccessoriesQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceHomeKitDataSummaryAssociationID",
+    "path": "/servicehomekitdatasummaryassociation/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceHomeKitDataSummaryAssociationID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceID",
+    "path": "/service/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateServiceID",
+      "GET": "leap/resource.BodyAndMessageTypeForServiceID",
+      "DELETE": "leap/resource.DeleteServiceID"
+    },
+    "responseType": "Service"
+  },
+  {
+    "ident": "ServiceIFTTT",
+    "path": "/service/ifttt",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceIFTTT"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceIFTTTConfig",
+    "path": "/serviceiftttconfig",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceIFTTTConfig"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceIFTTTDataSummary",
+    "path": "/service/iftttdatasummary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceIFTTTDataSummary"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceIFTTTDataSummarySceneID",
+    "path": "/service/iftttdatasummary/scene/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceIFTTTDataSummarySceneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceIFTTTDataSummaryZoneID",
+    "path": "/service/iftttdatasummary/zone/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceIFTTTDataSummaryZoneID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceKetra",
+    "path": "/serviceketra",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceKetra"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceNTPServer",
+    "path": "/servicentpserver",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceNTPServer",
+      "UPDATE": "leap/resource.UpdateServiceNTPServer"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceNTPServerID",
+    "path": "/servicentpserver/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceNTPServerID",
+      "UPDATE": "leap/resource.UpdateServiceNTPServerID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceNestDetectionGroup",
+    "path": "/servicenestdetectiongroup",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddServiceNestDetectionGroup"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceOpenADR",
+    "path": "/service/openadr",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceOpenADR",
+      "UPDATE": "leap/resource.UpdateServiceOpenADR"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceOpenADRConnection",
+    "path": "/service/openadrconnection",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceOpenADRConnection",
+      "UPDATE": "leap/resource.UpdateServiceOpenADRConnection"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceOpenADRConnectionStatus",
+    "path": "/service/openadrconnectionstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceOpenADRConnectionStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceOpenADRCredentials",
+    "path": "/service/openadr/credentials",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceOpenADRCredentials",
+      "UPDATE": "leap/resource.UpdateServiceOpenADRCredentials"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceQuery",
+    "path": "/service/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonos",
+    "path": "/service/sonos",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonos",
+      "UPDATE": "leap/resource.UpdateServiceSonos"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosAccountHousehold",
+    "path": "/service/sonosaccounthousehold",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosAccountHousehold"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHousehold",
+    "path": "/service/sonoshousehold",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHousehold"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdID",
+    "path": "/service/sonoshousehold/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDFavorite",
+    "path": "/service/sonoshousehold/{id}/favorite",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDFavorite"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDFavoriteID",
+    "path": "/service/sonoshousehold/{id}/favorite/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDFavoriteID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDFavoriteIDStatus",
+    "path": "/service/sonoshousehold/{id}/favorite/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDFavoriteIDStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDFavoriteStatus",
+    "path": "/service/sonoshousehold/{id}/favoritestatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDFavoriteStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDSpeaker",
+    "path": "/service/sonoshousehold/{id}/speaker",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDSpeaker"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDSpeakerID",
+    "path": "/service/sonoshousehold/{id}/speaker/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDSpeakerID",
+      "UPDATE": "leap/resource.UpdateServiceSonosHouseholdIDSpeakerID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDSpeakerIDStatus",
+    "path": "/service/sonoshousehold/{id}/speaker/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDSpeakerIDStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosHouseholdIDSpeakerStatus",
+    "path": "/service/sonoshousehold/{id}/speakerstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosHouseholdIDSpeakerStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ServiceSonosStatus",
+    "path": "/service/sonosstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForServiceSonosStatus"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ShadeGroup",
+    "path": "/shadegroup",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeGroup"
+    },
+    "responseType": "ShadeGroup"
+  },
+  {
+    "ident": "ShadeGroupID",
+    "path": "/shadegroup/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeGroupID"
+    },
+    "responseType": "ShadeGroup"
+  },
+  {
+    "ident": "ShadeGroupIDStatus",
+    "path": "/shadegroup/{id}/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeGroupIDStatus"
+    },
+    "responseType": "ShadeGroupStatus"
+  },
+  {
+    "ident": "ShadeGroupStatus",
+    "path": "/shadegroupstatus",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeGroupStatus"
+    },
+    "responseType": "ShadeGroupStatus"
+  },
+  {
+    "ident": "ShadeLevelAssignmentID",
+    "path": "/shadelevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateShadeLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteShadeLevelAssignmentID",
+      "GET": "leap/resource.BodyAndMessageTypeForShadeLevelAssignmentID"
+    },
+    "responseType": "ShadeLevelAssignment"
+  },
+  {
+    "ident": "ShadeLevelWithTiltAssignmentID",
+    "path": "/shadelevelwithtiltassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeLevelWithTiltAssignmentID",
+      "UPDATE": "leap/resource.UpdateShadeLevelWithTiltAssignmentID",
+      "DELETE": "leap/resource.DeleteShadeLevelWithTiltAssignmentID"
+    },
+    "responseType": "ShadeLevelWithTiltAssignment"
+  },
+  {
+    "ident": "ShadeLevelWithTiltWhenClosedAssignmentID",
+    "path": "/shadelevelwithtiltwhenclosedassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForShadeLevelWithTiltWhenClosedAssignmentID",
+      "UPDATE": "leap/resource.UpdateShadeLevelWithTiltWhenClosedAssignmentID",
+      "DELETE": "leap/resource.DeleteShadeLevelWithTiltWhenClosedAssignmentID"
+    },
+    "responseType": "ShadeLevelWithTiltWhenClosedAssignment"
+  },
+  {
+    "ident": "SharedSceneID",
+    "path": "/sharedscene/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSharedSceneID"
+    },
+    "responseType": "SharedScene"
+  },
+  {
+    "ident": "SonosPlayAssignmentID",
+    "path": "/sonosplayassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSonosPlayAssignmentID",
+      "UPDATE": "leap/resource.UpdateSonosPlayAssignmentID",
+      "DELETE": "leap/resource.DeleteSonosPlayAssignmentID"
+    },
+    "responseType": "SonosPlayAssignment"
+  },
+  {
+    "ident": "SpectrumTuningLevelAssignmentID",
+    "path": "/spectrumtuninglevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSpectrumTuningLevelAssignmentID",
+      "UPDATE": "leap/resource.UpdateSpectrumTuningLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteSpectrumTuningLevelAssignmentID"
+    },
+    "responseType": "SpectrumTuningLevelAssignment"
+  },
+  {
+    "ident": "StartEmergencyAssignmentID",
+    "path": "/startemergencyassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForStartEmergencyAssignmentID",
+      "DELETE": "leap/resource.DeleteStartEmergencyAssignmentID"
+    },
+    "responseType": "StartEmergencyAssignment"
+  },
+  {
+    "ident": "StartSequenceAssignmentID",
+    "path": "/startsequenceassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForStartSequenceAssignmentID",
+      "DELETE": "leap/resource.DeleteStartSequenceAssignmentID"
+    },
+    "responseType": "StartSequenceAssignment"
+  },
+  {
+    "ident": "StopEmergencyAssignmentID",
+    "path": "/stopemergencyassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForStopEmergencyAssignmentID",
+      "DELETE": "leap/resource.DeleteStopEmergencyAssignmentID"
+    },
+    "responseType": "StopEmergencyAssignment"
+  },
+  {
+    "ident": "SwitchedLevelAssignmentID",
+    "path": "/switchedlevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSwitchedLevelAssignmentID",
+      "UPDATE": "leap/resource.UpdateSwitchedLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteSwitchedLevelAssignmentID"
+    },
+    "responseType": "SwitchedLevelAssignment"
+  },
+  {
+    "ident": "System",
+    "path": "/system",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystem",
+      "UPDATE": "leap/resource.UpdateSystem"
+    },
+    "responseType": "System"
+  },
+  {
+    "ident": "SystemActionIntruderID",
+    "path": "/system/action/intruder/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemActionIntruderID",
+      "UPDATE": "leap/resource.UpdateSystemActionIntruderID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemAway",
+    "path": "/systemaway",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemAway"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemAwayID",
+    "path": "/systemaway/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemAwayID",
+      "UPDATE": "leap/resource.UpdateSystemAwayID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemEmergencySettings",
+    "path": "/system/emergencysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemEmergencySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemEmergencySettingsID",
+    "path": "/system/emergencysettings/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemEmergencySettingsID",
+      "UPDATE": "leap/resource.UpdateSystemEmergencySettingsID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemEmergencySettingsQuery",
+    "path": "/system/emergencysettings/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemEmergencySettingsQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemLoadShedding",
+    "path": "/systemloadshedding",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemLoadShedding"
+    },
+    "responseType": "SystemLoadShedding"
+  },
+  {
+    "ident": "SystemLoadSheddingGoal",
+    "path": "/system/loadsheddinggoal",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemLoadSheddingGoal",
+      "UPDATE": "leap/resource.UpdateSystemLoadSheddingGoal"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "SystemLoadSheddingStatus",
+    "path": "/systemloadsheddingstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemLoadSheddingStatus",
+      "UPDATE": "leap/resource.UpdateSystemLoadSheddingStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeSystemLoadSheddingStatus.func1.1"
+    },
+    "responseType": "SystemLoadSheddingStatus"
+  },
+  {
+    "ident": "SystemStatus",
+    "path": "/systemstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemStatus",
+      "UPDATE": "leap/resource.UpdateSystemStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeSystemStatus.func1.1"
+    },
+    "responseType": "SystemStatus"
+  },
+  {
+    "ident": "SystemUser",
+    "path": "/systemuser",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemUser"
+    },
+    "responseType": "SystemUser"
+  },
+  {
+    "ident": "SystemUserID",
+    "path": "/systemuser/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForSystemUserID",
+      "UPDATE": "leap/resource.UpdateSystemUserID"
+    },
+    "responseType": "SystemUser"
+  },
+  {
+    "ident": "TemperatureSensor",
+    "path": "/temperaturesensor",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTemperatureSensor"
+    },
+    "responseType": "TemperatureSensor"
+  },
+  {
+    "ident": "TemperatureSensorStatus",
+    "path": "/temperaturesensorstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTemperatureSensorStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeTemperatureSensorStatus.func1.1"
+    },
+    "responseType": "TemperatureSensorStatus"
+  },
+  {
+    "ident": "ThirdPartyDevice",
+    "path": "/thirdpartydevice",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForThirdPartyDevice",
+      "CREATE": "leap/resource.AddThirdPartyDevice"
+    },
+    "responseType": "ThirdPartyDevice"
+  },
+  {
+    "ident": "ThirdPartyDeviceID",
+    "path": "/thirdpartydevice/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForThirdPartyDeviceID",
+      "UPDATE": "leap/resource.UpdateThirdPartyDeviceID",
+      "DELETE": "leap/resource.DeleteThirdPartyDeviceID"
+    },
+    "responseType": "ThirdPartyDevice"
+  },
+  {
+    "ident": "TiltAssignmentID",
+    "path": "/tiltassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "DELETE": "leap/resource.DeleteTiltAssignmentID",
+      "UPDATE": "leap/resource.UpdateTiltAssignmentID",
+      "GET": "leap/resource.BodyAndMessageTypeForTiltAssignmentID"
+    },
+    "responseType": "TiltAssignment"
+  },
+  {
+    "ident": "TimeclockEventID",
+    "path": "/timeclockevent/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventID",
+      "UPDATE": "leap/resource.UpdateTimeclockEventID",
+      "DELETE": "leap/resource.DeleteTimeclockEventID"
+    },
+    "responseType": "TimeclockEvent"
+  },
+  {
+    "ident": "TimeclockEventIDStatus",
+    "path": "/timeclockevent/{id}/status",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventIDStatus",
+      "UPDATE": "leap/resource.UpdateTimeclockEventIDStatus"
+    },
+    "responseType": "TimeclockEventStatus"
+  },
+  {
+    "ident": "TimeclockEventQueryWithExplicitPaging",
+    "path": "/timeclockevent/query/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventQueryWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockEventQueryWithImplicitPaging",
+    "path": "/timeclockevent/query/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventQueryWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockEventStatus",
+    "path": "/timeclockeventstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeTimeclockEventStatus.func1.1"
+    },
+    "responseType": "TimeclockEventStatus"
+  },
+  {
+    "ident": "TimeclockEventWithExplicitPaging",
+    "path": "/timeclockevent/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockEventWithImplicitPaging",
+    "path": "/timeclockevent/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockEventWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockID",
+    "path": "/timeclock/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockID"
+    },
+    "responseType": "Timeclock"
+  },
+  {
+    "ident": "TimeclockIDStatus",
+    "path": "/timeclock/{id}/status",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockIDStatus",
+      "UPDATE": "leap/resource.UpdateTimeclockIDStatus"
+    },
+    "responseType": "TimeclockStatus"
+  },
+  {
+    "ident": "TimeclockIDTimeclockEvent",
+    "path": "/timeclock/{id}/timeclockevent",
+    "verbs": [
+      "CREATE",
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockIDTimeclockEvent",
+      "CREATE": "leap/resource.AddTimeclockIDTimeclockEvent"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockStatus",
+    "path": "/timeclockstatus",
+    "verbs": [
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "SUBSCRIBE": "leap/resource.SubscribeTimeclockStatus.func1.1"
+    },
+    "responseType": "TimeclockStatus"
+  },
+  {
+    "ident": "TimeclockStatusWithExplicitPaging",
+    "path": "/timeclockstatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockStatusWithImplicitPaging",
+    "path": "/timeclockstatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockWithExplicitPaging",
+    "path": "/timeclock/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "TimeclockWithImplicitPaging",
+    "path": "/timeclock/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForTimeclockWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "UnassociatedDeviceDiscoverySessionID",
+    "path": "/unassociateddevicediscoverysession/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForUnassociatedDeviceDiscoverySessionID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "V2OperationStatus",
+    "path": "/v2operationstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForV2OperationStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeV2OperationStatus.func1.1"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "VButtonID",
+    "path": "/vbutton/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForVButtonID",
+      "UPDATE": "leap/resource.UpdateVButtonID",
+      "DELETE": "leap/resource.DeleteVButtonID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "VirtualButton",
+    "path": "/virtualbutton",
+    "verbs": [
+      "CREATE",
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddVirtualButton",
+      "SUBSCRIBE": "leap/resource.SubscribeVirtualButton.func1.1",
+      "GET": "leap/resource.BodyAndMessageTypeForVirtualButton"
+    },
+    "responseType": "VirtualButton"
+  },
+  {
+    "ident": "VirtualButtonID",
+    "path": "/virtualbutton/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForVirtualButtonID",
+      "UPDATE": "leap/resource.UpdateVirtualButtonID"
+    },
+    "responseType": "VirtualButton"
+  },
+  {
+    "ident": "VirtualButtonSummary",
+    "path": "/virtualbuttonsummary",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForVirtualButtonSummary"
+    },
+    "responseType": "VirtualButtonSummary"
+  },
+  {
+    "ident": "WarmDimAssignmentID",
+    "path": "/warmdimassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateWarmDimAssignmentID",
+      "DELETE": "leap/resource.DeleteWarmDimAssignmentID",
+      "GET": "leap/resource.BodyAndMessageTypeForWarmDimAssignmentID"
+    },
+    "responseType": "WarmDimAssignment"
+  },
+  {
+    "ident": "WeeklySchedule",
+    "path": "/weeklyschedule",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForWeeklySchedule",
+      "UPDATE": "leap/resource.UpdateWeeklySchedule"
+    },
+    "responseType": "WeeklySchedule"
+  },
+  {
+    "ident": "WhiteTuningLevelAssignmentID",
+    "path": "/whitetuninglevelassignment/{id}",
+    "verbs": [
+      "DELETE",
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateWhiteTuningLevelAssignmentID",
+      "DELETE": "leap/resource.DeleteWhiteTuningLevelAssignmentID",
+      "GET": "leap/resource.BodyAndMessageTypeForWhiteTuningLevelAssignmentID"
+    },
+    "responseType": "WhiteTuningLevelAssignment"
+  },
+  {
+    "ident": "Zone",
+    "path": "/zone",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZone",
+      "SUBSCRIBE": "leap/resource.SubscribeZone.func1.1"
+    },
+    "responseType": "Zone"
+  },
+  {
+    "ident": "ZoneControllerID",
+    "path": "/zonecontroller/{id}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneControllerID"
+    },
+    "responseType": "ZoneController"
+  },
+  {
+    "ident": "ZoneDaylightingGainSettings",
+    "path": "/zone/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneID",
+    "path": "/zone/{id}",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "UPDATE": "leap/resource.UpdateZoneID",
+      "GET": "leap/resource.BodyAndMessageTypeForZoneID",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneID.func1.1"
+    },
+    "responseType": "Zone"
+  },
+  {
+    "ident": "ZoneIDAssociatedLoadController",
+    "path": "/zone/{id}/associatedloadcontroller",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDAssociatedLoadController"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDCountdownTimer",
+    "path": "/zone/{id}/countdowntimer",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDCountdownTimer"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDDaylightingGainSettings",
+    "path": "/zone/{id}/daylightinggainsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDDaylightingGainSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDExpandedStatus",
+    "path": "/zone/{id}/expanded/status",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDExpandedStatus"
+    },
+    "responseType": "ZoneExpandedStatus"
+  },
+  {
+    "ident": "ZoneIDNaturalShows",
+    "path": "/zone/{id}/naturalshows",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDNaturalShows"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDOccupancySettings",
+    "path": "/zone/{id}/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDPhaseSettings",
+    "path": "/zone/{id}/phasesettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDPhaseSettings",
+      "UPDATE": "leap/resource.UpdateZoneIDPhaseSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDStatus",
+    "path": "/zone/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDStatus",
+      "UPDATE": "leap/resource.UpdateZoneIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneIDStatus.func1.1"
+    },
+    "responseType": "ZoneStatus"
+  },
+  {
+    "ident": "ZoneIDTuningSettings",
+    "path": "/zone/{id}/tuningsettings",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDTuningSettings",
+      "UPDATE": "leap/resource.UpdateZoneIDTuningSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneIDZoneScene",
+    "path": "/zone/{id}/zonescene",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneIDZoneScene"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneOccupancySettings",
+    "path": "/zone/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneStatusExpandedQueryStringWithExplicitPaging",
+    "path": "/zonestatusexpandedquerystringwithexplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneStatusExpandedQueryStringWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneStatusExpandedQueryStringWithImplicitPaging",
+    "path": "/zonestatusexpandedquerystringwithimplicitpaging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneStatusExpandedQueryStringWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneStatusWithExplicitPaging",
+    "path": "/zonestatus/with/explicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneStatusWithExplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneStatusWithImplicitPaging",
+    "path": "/zonestatus/with/implicit/paging",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneStatusWithImplicitPaging"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneToDaylightingGainGroup",
+    "path": "/zonetodaylightinggaingroup",
+    "verbs": [
+      "CREATE"
+    ],
+    "handlers": {
+      "CREATE": "leap/resource.AddZoneToDaylightingGainGroup"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTuningSettings",
+    "path": "/zone/tuningsettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTuningSettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroup",
+    "path": "/zonetypegroup",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroup",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneTypeGroup.func1.1"
+    },
+    "responseType": "ZoneTypeGroup"
+  },
+  {
+    "ident": "ZoneTypeGroupID",
+    "path": "/zonetypegroup/{id}",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupID",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneTypeGroupID.func1.1"
+    },
+    "responseType": "ZoneTypeGroup"
+  },
+  {
+    "ident": "ZoneTypeGroupIDEmergencySettings",
+    "path": "/zonetypegroup/{id}/emergencysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDEmergencySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroupIDEmergencySettingsID",
+    "path": "/zonetypegroup/{id}/emergencysettings/{id}",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDEmergencySettingsID",
+      "UPDATE": "leap/resource.UpdateZoneTypeGroupIDEmergencySettingsID"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroupIDLoadShedding",
+    "path": "/zonetypegroup/{id}/loadshedding",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDLoadShedding"
+    },
+    "responseType": "ZoneTypeGroupLoadShedding"
+  },
+  {
+    "ident": "ZoneTypeGroupIDLoadSheddingGoal",
+    "path": "/zonetypegroup/{id}/loadsheddinggoal",
+    "verbs": [
+      "GET",
+      "UPDATE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDLoadSheddingGoal",
+      "UPDATE": "leap/resource.UpdateZoneTypeGroupIDLoadSheddingGoal"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroupIDOccupancySettings",
+    "path": "/zonetypegroup/{id}/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroupIDStatus",
+    "path": "/zonetypegroup/{id}/status",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupIDStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneTypeGroupIDStatus.func1.1"
+    },
+    "responseType": "ZoneTypeGroupStatus"
+  },
+  {
+    "ident": "ZoneTypeGroupLoadShedding",
+    "path": "/zonetypegrouploadshedding",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupLoadShedding"
+    },
+    "responseType": "ZoneTypeGroupLoadShedding"
+  },
+  {
+    "ident": "ZoneTypeGroupOccupancySettings",
+    "path": "/zonetypegroup/occupancysettings",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupOccupancySettings"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneTypeGroupStatus",
+    "path": "/zonetypegroupstatus",
+    "verbs": [
+      "GET",
+      "SUBSCRIBE"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupStatus",
+      "SUBSCRIBE": "leap/resource.SubscribeZoneTypeGroupStatus.func1.1"
+    },
+    "responseType": "ZoneTypeGroupStatus"
+  },
+  {
+    "ident": "ZoneTypeGroupsEmergencySettingsQuery",
+    "path": "/zonetypegroups/emergencysettings/query",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneTypeGroupsEmergencySettingsQuery"
+    },
+    "responseType": null
+  },
+  {
+    "ident": "ZoneXID",
+    "path": "/zone/{xid}",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneXID"
+    },
+    "responseType": "Zone"
+  },
+  {
+    "ident": "ZoneXIDAssociatedLoadController",
+    "path": "/zone/{xid}/associatedloadcontroller",
+    "verbs": [
+      "GET"
+    ],
+    "handlers": {
+      "GET": "leap/resource.BodyAndMessageTypeForZoneXIDAssociatedLoadController"
+    },
+    "responseType": null
+  }
+]

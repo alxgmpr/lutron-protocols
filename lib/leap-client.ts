@@ -661,12 +661,22 @@ export interface PerItemDef {
 export const LEAP_REGISTRY: EndpointDef[] = [
   // --- Core (always fetched) ---
   { path: "/server", key: "server", core: true, itemsField: "Servers" },
-  { path: "/link", key: "links", core: true, itemsField: "Links" },
+  {
+    path: "/link",
+    key: "links",
+    core: true,
+    itemsField: "Links",
+    perItem: [{ path: "/status", key: "status" }],
+  },
   {
     path: "/area",
     key: "areas",
     core: true,
     itemsField: "Areas",
+    perItem: [
+      { path: "/status", key: "status" },
+      { path: "/summary", key: "summary" },
+    ],
     children: [
       { path: "/associatedzone", key: "zones", itemsField: "Zones" },
       {
@@ -783,6 +793,49 @@ export const LEAP_REGISTRY: EndpointDef[] = [
   },
   { path: "/favorite", key: "favorites", itemsField: "Favorites" },
   { path: "/daynightmode", key: "dayNightMode", itemsField: null },
+
+  // Status collections — discovered from multi-server-phoenix.gobin RE.
+  // See docs/firmware-re/leap-server.md.
+  {
+    path: "/area/status",
+    key: "areaStatuses",
+    itemsField: "AreaStatuses",
+  },
+  {
+    path: "/zone/status",
+    key: "zoneStatuses",
+    itemsField: "ZoneStatuses",
+  },
+  {
+    path: "/loadcontroller/status",
+    key: "loadControllerStatuses",
+    itemsField: "LoadControllerStatuses",
+  },
+  {
+    path: "/timeclock/status",
+    key: "timeclockStatuses",
+    itemsField: "TimeclockStatuses",
+  },
+  {
+    path: "/timeclockevent/status",
+    key: "timeclockEventStatuses",
+    itemsField: "TimeclockEventStatuses",
+  },
+  { path: "/curve", key: "curves", itemsField: "Curves" },
+  { path: "/clientsetting", key: "clientSetting", itemsField: null },
+  { path: "/server/ipl", key: "serverIPL", itemsField: null },
+  {
+    path: "/project/masterdevicelist",
+    key: "masterDeviceListMeta",
+    itemsField: null,
+  },
+
+  // Service integrations (Alexa, BACnet, HomeKit, IFTTT, Sonos)
+  { path: "/service/alexa", key: "serviceAlexa", itemsField: null },
+  { path: "/service/bacnet", key: "serviceBACnet", itemsField: null },
+  { path: "/service/homekit", key: "serviceHomeKit", itemsField: null },
+  { path: "/service/ifttt", key: "serviceIFTTT", itemsField: null },
+  { path: "/service/sonos", key: "serviceSonos", itemsField: null },
 ];
 
 /**
