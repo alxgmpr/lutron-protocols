@@ -1,0 +1,3157 @@
+{
+  "_comment": "SQLMODELINFO model table extract. Prefixes: RR/HQ/HR/PJ only.",
+  "_extracted": "2026-03-03T16:16:52.265Z",
+  "_version": "26.0.1.100",
+  "models": [
+    {
+      "id": 4757,
+      "name": "HQ-HWI-GRX-SW"
+    },
+    {
+      "id": 3837,
+      "name": "HQ-HWI-KP-SW"
+    },
+    {
+      "id": 3841,
+      "name": "HQ-HWI-LX"
+    },
+    {
+      "id": 4120,
+      "name": "HQ-HWI-Q96-SW"
+    },
+    {
+      "id": 1813,
+      "name": "HQ-J-DK420"
+    },
+    {
+      "id": 1391,
+      "name": "HQ-LV21-120"
+    },
+    {
+      "id": 5244,
+      "name": "HQ-MI-LX"
+    },
+    {
+      "id": 5279,
+      "name": "HQ-MI-LX"
+    },
+    {
+      "id": 2563,
+      "name": "HQ-W-DK420"
+    },
+    {
+      "id": 4764,
+      "name": "HQ1-CONNECT1-PKG"
+    },
+    {
+      "id": 4765,
+      "name": "HQ1-CONNECT2-PKG"
+    },
+    {
+      "id": 4766,
+      "name": "HQ1-CONNECT3-PKG"
+    },
+    {
+      "id": 4767,
+      "name": "HQ2-CONNECT1-PKG"
+    },
+    {
+      "id": 4768,
+      "name": "HQ2-CONNECT2-PKG"
+    },
+    {
+      "id": 4769,
+      "name": "HQ2-CONNECT3-PKG"
+    },
+    {
+      "id": 2703,
+      "name": "HQA-RD"
+    },
+    {
+      "id": 2704,
+      "name": "HQA-RS"
+    },
+    {
+      "id": 1295,
+      "name": "HQD-RD"
+    },
+    {
+      "id": 1296,
+      "name": "HQD-RS"
+    },
+    {
+      "id": 2454,
+      "name": "HQK-REP"
+    },
+    {
+      "id": 2541,
+      "name": "HQK-T10CRL"
+    },
+    {
+      "id": 2538,
+      "name": "HQK-T10RL"
+    },
+    {
+      "id": 2542,
+      "name": "HQK-T15CRL"
+    },
+    {
+      "id": 2539,
+      "name": "HQK-T15RL"
+    },
+    {
+      "id": 2540,
+      "name": "HQK-T5CRL"
+    },
+    {
+      "id": 2537,
+      "name": "HQK-T5RL"
+    },
+    {
+      "id": 2455,
+      "name": "HQM-REP"
+    },
+    {
+      "id": 2654,
+      "name": "HQM-T10CRL"
+    },
+    {
+      "id": 2651,
+      "name": "HQM-T10RL"
+    },
+    {
+      "id": 2655,
+      "name": "HQM-T15CRL"
+    },
+    {
+      "id": 2652,
+      "name": "HQM-T15RL"
+    },
+    {
+      "id": 2653,
+      "name": "HQM-T5CRL"
+    },
+    {
+      "id": 2650,
+      "name": "HQM-T5RL"
+    },
+    {
+      "id": 2456,
+      "name": "HQN-REP"
+    },
+    {
+      "id": 4407,
+      "name": "HQP6-1"
+    },
+    {
+      "id": 2601,
+      "name": "HQP6-2"
+    },
+    {
+      "id": 724,
+      "name": "HQP6-2"
+    },
+    {
+      "id": 4408,
+      "name": "HQP6-MDU"
+    },
+    {
+      "id": 4409,
+      "name": "HQP6-MDU-1"
+    },
+    {
+      "id": 4880,
+      "name": "HQP7-1"
+    },
+    {
+      "id": 4876,
+      "name": "HQP7-2"
+    },
+    {
+      "id": 4879,
+      "name": "HQP7-2"
+    },
+    {
+      "id": 5288,
+      "name": "HQP7-2"
+    },
+    {
+      "id": 4882,
+      "name": "HQP7-MDU-1"
+    },
+    {
+      "id": 4881,
+      "name": "HQP7-MDU-2"
+    },
+    {
+      "id": 4878,
+      "name": "HQP7-RF"
+    },
+    {
+      "id": 5046,
+      "name": "HQP7-RF-2"
+    },
+    {
+      "id": 5289,
+      "name": "HQP7E-RF"
+    },
+    {
+      "id": 5287,
+      "name": "HQP7KE-RF-2"
+    },
+    {
+      "id": 2457,
+      "name": "HQQ-REP"
+    },
+    {
+      "id": 2648,
+      "name": "HQQ-T10CRL"
+    },
+    {
+      "id": 2645,
+      "name": "HQQ-T10RL"
+    },
+    {
+      "id": 2649,
+      "name": "HQQ-T15CRL"
+    },
+    {
+      "id": 2646,
+      "name": "HQQ-T15RL"
+    },
+    {
+      "id": 2647,
+      "name": "HQQ-T5CRL"
+    },
+    {
+      "id": 2644,
+      "name": "HQQ-T5RL"
+    },
+    {
+      "id": 1301,
+      "name": "HQR-15APS-1"
+    },
+    {
+      "id": 5192,
+      "name": "HQR-15OUT"
+    },
+    {
+      "id": 730,
+      "name": "HQR-3LD"
+    },
+    {
+      "id": 1300,
+      "name": "HQR-3PD-1"
+    },
+    {
+      "id": 4707,
+      "name": "HQR-CONNECT-PKG"
+    },
+    {
+      "id": 725,
+      "name": "HQR-REP-120"
+    },
+    {
+      "id": 2453,
+      "name": "HQR-REP-BA"
+    },
+    {
+      "id": 1298,
+      "name": "HQR-T10CRL-XX"
+    },
+    {
+      "id": 2579,
+      "name": "HQR-T10CRL-XX-BA"
+    },
+    {
+      "id": 736,
+      "name": "HQR-T10RL"
+    },
+    {
+      "id": 2576,
+      "name": "HQR-T10RL-XX-BA"
+    },
+    {
+      "id": 1299,
+      "name": "HQR-T15CRL-XX"
+    },
+    {
+      "id": 2580,
+      "name": "HQR-T15CRL-XX-BA"
+    },
+    {
+      "id": 737,
+      "name": "HQR-T15RL"
+    },
+    {
+      "id": 2577,
+      "name": "HQR-T15RL-XX-BA"
+    },
+    {
+      "id": 1297,
+      "name": "HQR-T5CRL-XX"
+    },
+    {
+      "id": 2578,
+      "name": "HQR-T5CRL-XX-BA"
+    },
+    {
+      "id": 735,
+      "name": "HQR-T5RL"
+    },
+    {
+      "id": 2575,
+      "name": "HQR-T5RL-XX-BA"
+    },
+    {
+      "id": 2591,
+      "name": "HQR-VCRX-BA"
+    },
+    {
+      "id": 739,
+      "name": "HQR-VCRX-WH"
+    },
+    {
+      "id": 2696,
+      "name": "HQRA-10D"
+    },
+    {
+      "id": 2697,
+      "name": "HQRA-10ND"
+    },
+    {
+      "id": 2853,
+      "name": "HQRA-2ANF"
+    },
+    {
+      "id": 3465,
+      "name": "HQRA-6CL"
+    },
+    {
+      "id": 2695,
+      "name": "HQRA-6D"
+    },
+    {
+      "id": 2699,
+      "name": "HQRA-6NA"
+    },
+    {
+      "id": 2698,
+      "name": "HQRA-6ND"
+    },
+    {
+      "id": 2700,
+      "name": "HQRA-6NE"
+    },
+    {
+      "id": 2702,
+      "name": "HQRA-8ANS"
+    },
+    {
+      "id": 2718,
+      "name": "HQRA-8S-DV"
+    },
+    {
+      "id": 2701,
+      "name": "HQRA-F6AN-DV"
+    },
+    {
+      "id": 2860,
+      "name": "HQRA-H1RLD"
+    },
+    {
+      "id": 3573,
+      "name": "HQRA-H1RLD"
+    },
+    {
+      "id": 2861,
+      "name": "HQRA-H2RLD"
+    },
+    {
+      "id": 2859,
+      "name": "HQRA-H3BSRL"
+    },
+    {
+      "id": 3550,
+      "name": "HQRA-H3S"
+    },
+    {
+      "id": 2858,
+      "name": "HQRA-H4S"
+    },
+    {
+      "id": 2857,
+      "name": "HQRA-H5BRL"
+    },
+    {
+      "id": 2856,
+      "name": "HQRA-H6BRL"
+    },
+    {
+      "id": 4309,
+      "name": "HQRA-HN1RLD"
+    },
+    {
+      "id": 4311,
+      "name": "HQRA-HN2RLD"
+    },
+    {
+      "id": 4313,
+      "name": "HQRA-HN3BSRL"
+    },
+    {
+      "id": 4315,
+      "name": "HQRA-HN3S"
+    },
+    {
+      "id": 4317,
+      "name": "HQRA-HN4S"
+    },
+    {
+      "id": 4319,
+      "name": "HQRA-HN5BRL"
+    },
+    {
+      "id": 4321,
+      "name": "HQRA-HN6BRL"
+    },
+    {
+      "id": 4863,
+      "name": "HQRA-PRO"
+    },
+    {
+      "id": 2721,
+      "name": "HQRA-W1B"
+    },
+    {
+      "id": 2722,
+      "name": "HQRA-W1RLD"
+    },
+    {
+      "id": 2723,
+      "name": "HQRA-W2BS"
+    },
+    {
+      "id": 2724,
+      "name": "HQRA-W2RLD"
+    },
+    {
+      "id": 2725,
+      "name": "HQRA-W3BD"
+    },
+    {
+      "id": 2726,
+      "name": "HQRA-W3BS"
+    },
+    {
+      "id": 2727,
+      "name": "HQRA-W3BSRL"
+    },
+    {
+      "id": 3562,
+      "name": "HQRA-W3S"
+    },
+    {
+      "id": 2728,
+      "name": "HQRA-W4BS"
+    },
+    {
+      "id": 2729,
+      "name": "HQRA-W4S"
+    },
+    {
+      "id": 2730,
+      "name": "HQRA-W5B"
+    },
+    {
+      "id": 2731,
+      "name": "HQRA-W5BRL"
+    },
+    {
+      "id": 2732,
+      "name": "HQRA-W6B"
+    },
+    {
+      "id": 2733,
+      "name": "HQRA-W6BRL"
+    },
+    {
+      "id": 2734,
+      "name": "HQRA-W7B"
+    },
+    {
+      "id": 727,
+      "name": "HQRD-10D"
+    },
+    {
+      "id": 728,
+      "name": "HQRD-10ND"
+    },
+    {
+      "id": 2854,
+      "name": "HQRD-2ANF"
+    },
+    {
+      "id": 3466,
+      "name": "HQRD-6CL"
+    },
+    {
+      "id": 726,
+      "name": "HQRD-6D"
+    },
+    {
+      "id": 1293,
+      "name": "HQRD-6NA"
+    },
+    {
+      "id": 2019,
+      "name": "HQRD-6ND"
+    },
+    {
+      "id": 1882,
+      "name": "HQRD-6NE"
+    },
+    {
+      "id": 729,
+      "name": "HQRD-8ANS"
+    },
+    {
+      "id": 1294,
+      "name": "HQRD-8S-DV"
+    },
+    {
+      "id": 1292,
+      "name": "HQRD-F6AN-DV"
+    },
+    {
+      "id": 2231,
+      "name": "HQRD-H1RLD"
+    },
+    {
+      "id": 3574,
+      "name": "HQRD-H1RLD"
+    },
+    {
+      "id": 2232,
+      "name": "HQRD-H2RLD"
+    },
+    {
+      "id": 1314,
+      "name": "HQRD-H3BSRL"
+    },
+    {
+      "id": 3552,
+      "name": "HQRD-H3S"
+    },
+    {
+      "id": 2230,
+      "name": "HQRD-H4S"
+    },
+    {
+      "id": 1315,
+      "name": "HQRD-H5BRL"
+    },
+    {
+      "id": 734,
+      "name": "HQRD-H6BRL"
+    },
+    {
+      "id": 4308,
+      "name": "HQRD-HN1RLD"
+    },
+    {
+      "id": 4310,
+      "name": "HQRD-HN2RLD"
+    },
+    {
+      "id": 4312,
+      "name": "HQRD-HN3BSRL"
+    },
+    {
+      "id": 4314,
+      "name": "HQRD-HN3S"
+    },
+    {
+      "id": 4316,
+      "name": "HQRD-HN4S"
+    },
+    {
+      "id": 4318,
+      "name": "HQRD-HN5BRL"
+    },
+    {
+      "id": 4320,
+      "name": "HQRD-HN6BRL"
+    },
+    {
+      "id": 4862,
+      "name": "HQRD-PRO"
+    },
+    {
+      "id": 1302,
+      "name": "HQRD-W1B"
+    },
+    {
+      "id": 1311,
+      "name": "HQRD-W1RLD"
+    },
+    {
+      "id": 1303,
+      "name": "HQRD-W2BS"
+    },
+    {
+      "id": 1312,
+      "name": "HQRD-W2RLD"
+    },
+    {
+      "id": 1313,
+      "name": "HQRD-W3BD"
+    },
+    {
+      "id": 1304,
+      "name": "HQRD-W3BS"
+    },
+    {
+      "id": 1308,
+      "name": "HQRD-W3BSRL"
+    },
+    {
+      "id": 3563,
+      "name": "HQRD-W3S"
+    },
+    {
+      "id": 1305,
+      "name": "HQRD-W4BS"
+    },
+    {
+      "id": 1309,
+      "name": "HQRD-W4S"
+    },
+    {
+      "id": 1306,
+      "name": "HQRD-W5B"
+    },
+    {
+      "id": 733,
+      "name": "HQRD-W5BIR"
+    },
+    {
+      "id": 1310,
+      "name": "HQRD-W5BRL"
+    },
+    {
+      "id": 1307,
+      "name": "HQRD-W6B"
+    },
+    {
+      "id": 731,
+      "name": "HQRD-W6BRL"
+    },
+    {
+      "id": 732,
+      "name": "HQRD-W7B"
+    },
+    {
+      "id": 3549,
+      "name": "HQRJ-WPM-6D-120"
+    },
+    {
+      "id": 5030,
+      "name": "HQRK-P20-240F-XX"
+    },
+    {
+      "id": 5029,
+      "name": "HQRK-P20-240G-XX"
+    },
+    {
+      "id": 4771,
+      "name": "HQRK-R25NE-240"
+    },
+    {
+      "id": 4772,
+      "name": "HQRK-R6ANS-240"
+    },
+    {
+      "id": 5302,
+      "name": "HQRK-RNFSQ-240"
+    },
+    {
+      "id": 4773,
+      "name": "HQRM-R25NE-240"
+    },
+    {
+      "id": 4774,
+      "name": "HQRM-R6ANS-240"
+    },
+    {
+      "id": 5018,
+      "name": "HQRN-R25NE-240"
+    },
+    {
+      "id": 5019,
+      "name": "HQRN-R6ANS-240"
+    },
+    {
+      "id": 5303,
+      "name": "HQRN-RNFSQ-240"
+    },
+    {
+      "id": 5071,
+      "name": "HQRQ-P20-240G-XX"
+    },
+    {
+      "id": 4883,
+      "name": "HQRQ-R25NE-240"
+    },
+    {
+      "id": 4884,
+      "name": "HQRQ-R6ANS-240"
+    },
+    {
+      "id": 3826,
+      "name": "HQRT-G25LW"
+    },
+    {
+      "id": 3828,
+      "name": "HQRT-G5ANSW"
+    },
+    {
+      "id": 4174,
+      "name": "HQRT-G5NEW"
+    },
+    {
+      "id": 4225,
+      "name": "HQRT-GH2B"
+    },
+    {
+      "id": 4226,
+      "name": "HQRT-GH4B"
+    },
+    {
+      "id": 4227,
+      "name": "HQRT-GH5B"
+    },
+    {
+      "id": 4228,
+      "name": "HQRT-GH6B"
+    },
+    {
+      "id": 3830,
+      "name": "HQT-GRDW"
+    },
+    {
+      "id": 3459,
+      "name": "HQW"
+    },
+    {
+      "id": 2744,
+      "name": "HQWA-KP5-DN"
+    },
+    {
+      "id": 2745,
+      "name": "HQWA-KP5-DW"
+    },
+    {
+      "id": 2747,
+      "name": "HQWA-KP7-DN"
+    },
+    {
+      "id": 2748,
+      "name": "HQWA-KP7-DW"
+    },
+    {
+      "id": 2746,
+      "name": "HQWA-LB5-DC1-XX(CPN-6219)"
+    },
+    {
+      "id": 1333,
+      "name": "HQWA-W1BI"
+    },
+    {
+      "id": 1348,
+      "name": "HQWA-W1BN"
+    },
+    {
+      "id": 1345,
+      "name": "HQWA-W1RLDI"
+    },
+    {
+      "id": 1360,
+      "name": "HQWA-W1RLDN"
+    },
+    {
+      "id": 1334,
+      "name": "HQWA-W2BSI"
+    },
+    {
+      "id": 1349,
+      "name": "HQWA-W2BSN"
+    },
+    {
+      "id": 1346,
+      "name": "HQWA-W2RLDI"
+    },
+    {
+      "id": 1361,
+      "name": "HQWA-W2RLDN"
+    },
+    {
+      "id": 1347,
+      "name": "HQWA-W3BDI"
+    },
+    {
+      "id": 1362,
+      "name": "HQWA-W3BDN"
+    },
+    {
+      "id": 1335,
+      "name": "HQWA-W3BSI"
+    },
+    {
+      "id": 1350,
+      "name": "HQWA-W3BSN"
+    },
+    {
+      "id": 1340,
+      "name": "HQWA-W3BSRLI"
+    },
+    {
+      "id": 1355,
+      "name": "HQWA-W3BSRLN"
+    },
+    {
+      "id": 3554,
+      "name": "HQWA-W3SI"
+    },
+    {
+      "id": 3556,
+      "name": "HQWA-W3SN"
+    },
+    {
+      "id": 1336,
+      "name": "HQWA-W4BSI"
+    },
+    {
+      "id": 1351,
+      "name": "HQWA-W4BSN"
+    },
+    {
+      "id": 1341,
+      "name": "HQWA-W4SI"
+    },
+    {
+      "id": 1356,
+      "name": "HQWA-W4SN"
+    },
+    {
+      "id": 1337,
+      "name": "HQWA-W5BI"
+    },
+    {
+      "id": 1344,
+      "name": "HQWA-W5BIRI"
+    },
+    {
+      "id": 1359,
+      "name": "HQWA-W5BIRN"
+    },
+    {
+      "id": 1352,
+      "name": "HQWA-W5BN"
+    },
+    {
+      "id": 1342,
+      "name": "HQWA-W5BRLI"
+    },
+    {
+      "id": 1357,
+      "name": "HQWA-W5BRLN"
+    },
+    {
+      "id": 1338,
+      "name": "HQWA-W6BI"
+    },
+    {
+      "id": 1353,
+      "name": "HQWA-W6BN"
+    },
+    {
+      "id": 1343,
+      "name": "HQWA-W6BRLI"
+    },
+    {
+      "id": 1358,
+      "name": "HQWA-W6BRLN"
+    },
+    {
+      "id": 1339,
+      "name": "HQWA-W7BI"
+    },
+    {
+      "id": 1354,
+      "name": "HQWA-W7BN"
+    },
+    {
+      "id": 2869,
+      "name": "HQWAS-B"
+    },
+    {
+      "id": 2870,
+      "name": "HQWAS-G"
+    },
+    {
+      "id": 2742,
+      "name": "HQWAS-W1B-B"
+    },
+    {
+      "id": 2769,
+      "name": "HQWAS-W1RLD-B"
+    },
+    {
+      "id": 2749,
+      "name": "HQWAS-W2BS-B"
+    },
+    {
+      "id": 2771,
+      "name": "HQWAS-W2RLD-B"
+    },
+    {
+      "id": 2773,
+      "name": "HQWAS-W3BD-B"
+    },
+    {
+      "id": 2751,
+      "name": "HQWAS-W3BS-B"
+    },
+    {
+      "id": 2753,
+      "name": "HQWAS-W3BSRL-B"
+    },
+    {
+      "id": 3564,
+      "name": "HQWAS-W3S-B"
+    },
+    {
+      "id": 2755,
+      "name": "HQWAS-W4BS-B"
+    },
+    {
+      "id": 2757,
+      "name": "HQWAS-W4S-B"
+    },
+    {
+      "id": 2759,
+      "name": "HQWAS-W5B-B"
+    },
+    {
+      "id": 2761,
+      "name": "HQWAS-W5BRL-B"
+    },
+    {
+      "id": 2763,
+      "name": "HQWAS-W6B-B"
+    },
+    {
+      "id": 2765,
+      "name": "HQWAS-W6BRL-B"
+    },
+    {
+      "id": 2767,
+      "name": "HQWAS-W7B-B"
+    },
+    {
+      "id": 1318,
+      "name": "HQWD-W1B"
+    },
+    {
+      "id": 1330,
+      "name": "HQWD-W1RLD"
+    },
+    {
+      "id": 1319,
+      "name": "HQWD-W2BS"
+    },
+    {
+      "id": 1331,
+      "name": "HQWD-W2RLD"
+    },
+    {
+      "id": 1332,
+      "name": "HQWD-W3BD"
+    },
+    {
+      "id": 1320,
+      "name": "HQWD-W3BS"
+    },
+    {
+      "id": 1325,
+      "name": "HQWD-W3BSRL"
+    },
+    {
+      "id": 3558,
+      "name": "HQWD-W3S"
+    },
+    {
+      "id": 1321,
+      "name": "HQWD-W4BS"
+    },
+    {
+      "id": 1326,
+      "name": "HQWD-W4S"
+    },
+    {
+      "id": 1322,
+      "name": "HQWD-W5B"
+    },
+    {
+      "id": 1329,
+      "name": "HQWD-W5BIR"
+    },
+    {
+      "id": 1327,
+      "name": "HQWD-W5BRL"
+    },
+    {
+      "id": 1323,
+      "name": "HQWD-W6B"
+    },
+    {
+      "id": 1328,
+      "name": "HQWD-W6BRL"
+    },
+    {
+      "id": 1324,
+      "name": "HQWD-W7B"
+    },
+    {
+      "id": 3461,
+      "name": "HQWIS"
+    },
+    {
+      "id": 2469,
+      "name": "HQWIS-NB-NONE"
+    },
+    {
+      "id": 2470,
+      "name": "HQWIS-NBIR-NONE"
+    },
+    {
+      "id": 4035,
+      "name": "HQWT-B-P22W"
+    },
+    {
+      "id": 4036,
+      "name": "HQWT-B-P24W"
+    },
+    {
+      "id": 4037,
+      "name": "HQWT-B-P2RW"
+    },
+    {
+      "id": 4031,
+      "name": "HQWT-B-P2W"
+    },
+    {
+      "id": 4032,
+      "name": "HQWT-B-P3W"
+    },
+    {
+      "id": 4039,
+      "name": "HQWT-B-P42W"
+    },
+    {
+      "id": 4040,
+      "name": "HQWT-B-P44W"
+    },
+    {
+      "id": 4041,
+      "name": "HQWT-B-P4RW"
+    },
+    {
+      "id": 4034,
+      "name": "HQWT-B-P4W"
+    },
+    {
+      "id": 4462,
+      "name": "HQWT-B-PR2W"
+    },
+    {
+      "id": 4464,
+      "name": "HQWT-B-PR4W"
+    },
+    {
+      "id": 4038,
+      "name": "HQWT-B-PRRW"
+    },
+    {
+      "id": 4033,
+      "name": "HQWT-B-PRW"
+    },
+    {
+      "id": 3857,
+      "name": "HQWT-GS1W"
+    },
+    {
+      "id": 3915,
+      "name": "HQWT-S-P22W"
+    },
+    {
+      "id": 3916,
+      "name": "HQWT-S-P24W"
+    },
+    {
+      "id": 3917,
+      "name": "HQWT-S-P2RW"
+    },
+    {
+      "id": 3911,
+      "name": "HQWT-S-P2W"
+    },
+    {
+      "id": 3912,
+      "name": "HQWT-S-P3W"
+    },
+    {
+      "id": 3919,
+      "name": "HQWT-S-P42W"
+    },
+    {
+      "id": 3920,
+      "name": "HQWT-S-P44W"
+    },
+    {
+      "id": 3921,
+      "name": "HQWT-S-P4RW"
+    },
+    {
+      "id": 3914,
+      "name": "HQWT-S-P4W"
+    },
+    {
+      "id": 4463,
+      "name": "HQWT-S-PR2W"
+    },
+    {
+      "id": 4465,
+      "name": "HQWT-S-PR4W"
+    },
+    {
+      "id": 3918,
+      "name": "HQWT-S-PRRW"
+    },
+    {
+      "id": 3913,
+      "name": "HQWT-S-PRW"
+    },
+    {
+      "id": 4430,
+      "name": "HQWT-T-HW-XXX-A"
+    },
+    {
+      "id": 3886,
+      "name": "HQWT-U-P2W"
+    },
+    {
+      "id": 3887,
+      "name": "HQWT-U-P3W"
+    },
+    {
+      "id": 3889,
+      "name": "HQWT-U-P4W"
+    },
+    {
+      "id": 3888,
+      "name": "HQWT-U-PRW"
+    },
+    {
+      "id": 5058,
+      "name": "HRST-8ANS-XX"
+    },
+    {
+      "id": 5248,
+      "name": "HRST-ANF-XX"
+    },
+    {
+      "id": 5193,
+      "name": "HRST-HN2B-XX"
+    },
+    {
+      "id": 5194,
+      "name": "HRST-HN3RL-XX"
+    },
+    {
+      "id": 5195,
+      "name": "HRST-HN4B-XX"
+    },
+    {
+      "id": 5056,
+      "name": "HRST-PRO-N-XX"
+    },
+    {
+      "id": 5057,
+      "name": "HRST-RD-XX"
+    },
+    {
+      "id": 5059,
+      "name": "HRST-RS-XX"
+    },
+    {
+      "id": 5060,
+      "name": "HRST-W2B-XX"
+    },
+    {
+      "id": 5061,
+      "name": "HRST-W3B-XX"
+    },
+    {
+      "id": 5063,
+      "name": "HRST-W3RL-XX"
+    },
+    {
+      "id": 5062,
+      "name": "HRST-W4B-XX"
+    },
+    {
+      "id": 2328,
+      "name": "PJ-2B-GXX-I01"
+    },
+    {
+      "id": 2264,
+      "name": "PJ-2B-GXX-I01"
+    },
+    {
+      "id": 2267,
+      "name": "PJ-2B-GXX-I02"
+    },
+    {
+      "id": 2299,
+      "name": "PJ-2B-GXX-I02"
+    },
+    {
+      "id": 2300,
+      "name": "PJ-2B-GXX-I08"
+    },
+    {
+      "id": 2268,
+      "name": "PJ-2B-GXX-I08"
+    },
+    {
+      "id": 2298,
+      "name": "PJ-2B-GXX-I14"
+    },
+    {
+      "id": 2266,
+      "name": "PJ-2B-GXX-I14"
+    },
+    {
+      "id": 2297,
+      "name": "PJ-2B-GXX-T01"
+    },
+    {
+      "id": 2265,
+      "name": "PJ-2B-GXX-T01"
+    },
+    {
+      "id": 2269,
+      "name": "PJ-2B-GXX-T02"
+    },
+    {
+      "id": 2301,
+      "name": "PJ-2B-GXX-T02"
+    },
+    {
+      "id": 2303,
+      "name": "PJ-2B-GXX-T05"
+    },
+    {
+      "id": 2271,
+      "name": "PJ-2B-GXX-T05"
+    },
+    {
+      "id": 2272,
+      "name": "PJ-2B-GXX-T06"
+    },
+    {
+      "id": 2304,
+      "name": "PJ-2B-GXX-T06"
+    },
+    {
+      "id": 2305,
+      "name": "PJ-2B-GXX-T07"
+    },
+    {
+      "id": 2273,
+      "name": "PJ-2B-GXX-T07"
+    },
+    {
+      "id": 2270,
+      "name": "PJ-2B-GXX-T08"
+    },
+    {
+      "id": 2302,
+      "name": "PJ-2B-GXX-T08"
+    },
+    {
+      "id": 2306,
+      "name": "PJ-2B-GXX-T09"
+    },
+    {
+      "id": 2274,
+      "name": "PJ-2B-GXX-T09"
+    },
+    {
+      "id": 2275,
+      "name": "PJ-2B-GXX-T10"
+    },
+    {
+      "id": 2307,
+      "name": "PJ-2B-GXX-T10"
+    },
+    {
+      "id": 2280,
+      "name": "PJ-2BRL-GXX-I01"
+    },
+    {
+      "id": 2312,
+      "name": "PJ-2BRL-GXX-I01"
+    },
+    {
+      "id": 2314,
+      "name": "PJ-2BRL-GXX-I02"
+    },
+    {
+      "id": 2282,
+      "name": "PJ-2BRL-GXX-I02"
+    },
+    {
+      "id": 2283,
+      "name": "PJ-2BRL-GXX-I08"
+    },
+    {
+      "id": 2315,
+      "name": "PJ-2BRL-GXX-I08"
+    },
+    {
+      "id": 2313,
+      "name": "PJ-2BRL-GXX-T01"
+    },
+    {
+      "id": 2281,
+      "name": "PJ-2BRL-GXX-T01"
+    },
+    {
+      "id": 2276,
+      "name": "PJ-3B-GXX-I01"
+    },
+    {
+      "id": 2308,
+      "name": "PJ-3B-GXX-I01"
+    },
+    {
+      "id": 2278,
+      "name": "PJ-3B-GXX-I02"
+    },
+    {
+      "id": 2310,
+      "name": "PJ-3B-GXX-I02"
+    },
+    {
+      "id": 2311,
+      "name": "PJ-3B-GXX-I08"
+    },
+    {
+      "id": 2279,
+      "name": "PJ-3B-GXX-I08"
+    },
+    {
+      "id": 2277,
+      "name": "PJ-3B-GXX-T01"
+    },
+    {
+      "id": 2309,
+      "name": "PJ-3B-GXX-T01"
+    },
+    {
+      "id": 2284,
+      "name": "PJ-3BRL-GXX-I01"
+    },
+    {
+      "id": 2316,
+      "name": "PJ-3BRL-GXX-I01"
+    },
+    {
+      "id": 2318,
+      "name": "PJ-3BRL-GXX-I02"
+    },
+    {
+      "id": 2286,
+      "name": "PJ-3BRL-GXX-I02"
+    },
+    {
+      "id": 2287,
+      "name": "PJ-3BRL-GXX-I08"
+    },
+    {
+      "id": 2319,
+      "name": "PJ-3BRL-GXX-I08"
+    },
+    {
+      "id": 2317,
+      "name": "PJ-3BRL-GXX-T01"
+    },
+    {
+      "id": 2285,
+      "name": "PJ-3BRL-GXX-T01"
+    },
+    {
+      "id": 2288,
+      "name": "PJ-3BRL-GXX-T02"
+    },
+    {
+      "id": 2320,
+      "name": "PJ-3BRL-GXX-T02"
+    },
+    {
+      "id": 2322,
+      "name": "PJ-3BRL-GXX-T05"
+    },
+    {
+      "id": 2290,
+      "name": "PJ-3BRL-GXX-T05"
+    },
+    {
+      "id": 2291,
+      "name": "PJ-3BRL-GXX-T06"
+    },
+    {
+      "id": 2323,
+      "name": "PJ-3BRL-GXX-T06"
+    },
+    {
+      "id": 2324,
+      "name": "PJ-3BRL-GXX-T07"
+    },
+    {
+      "id": 2292,
+      "name": "PJ-3BRL-GXX-T07"
+    },
+    {
+      "id": 2289,
+      "name": "PJ-3BRL-GXX-T08"
+    },
+    {
+      "id": 2321,
+      "name": "PJ-3BRL-GXX-T08"
+    },
+    {
+      "id": 2325,
+      "name": "PJ-3BRL-GXX-T09"
+    },
+    {
+      "id": 2293,
+      "name": "PJ-3BRL-GXX-T09"
+    },
+    {
+      "id": 2294,
+      "name": "PJ-3BRL-GXX-T10"
+    },
+    {
+      "id": 2326,
+      "name": "PJ-3BRL-GXX-T10"
+    },
+    {
+      "id": 2327,
+      "name": "PJ-3BRL-GXX-T13"
+    },
+    {
+      "id": 2295,
+      "name": "PJ-3BRL-GXX-T13"
+    },
+    {
+      "id": 4906,
+      "name": "PJ2-2B-TXX-H01"
+    },
+    {
+      "id": 4957,
+      "name": "PJ2-2B-TXX-H01"
+    },
+    {
+      "id": 4958,
+      "name": "PJ2-2B-TXX-H02"
+    },
+    {
+      "id": 4907,
+      "name": "PJ2-2B-TXX-H02"
+    },
+    {
+      "id": 4908,
+      "name": "PJ2-2B-TXX-H05"
+    },
+    {
+      "id": 4959,
+      "name": "PJ2-2B-TXX-H05"
+    },
+    {
+      "id": 3513,
+      "name": "PJ2-2B-XXX-L01"
+    },
+    {
+      "id": 3519,
+      "name": "PJ2-2B-XXX-L01"
+    },
+    {
+      "id": 3726,
+      "name": "PJ2-2B-XXX-L02"
+    },
+    {
+      "id": 3727,
+      "name": "PJ2-2B-XXX-L02"
+    },
+    {
+      "id": 5154,
+      "name": "PJ2-2B-XXX-P01"
+    },
+    {
+      "id": 5143,
+      "name": "PJ2-2B-XXX-P01"
+    },
+    {
+      "id": 5144,
+      "name": "PJ2-2B-XXX-P02"
+    },
+    {
+      "id": 5155,
+      "name": "PJ2-2B-XXX-P02"
+    },
+    {
+      "id": 5152,
+      "name": "PJ2-2B-XXX-P11"
+    },
+    {
+      "id": 5141,
+      "name": "PJ2-2B-XXX-P11"
+    },
+    {
+      "id": 5142,
+      "name": "PJ2-2B-XXX-P12"
+    },
+    {
+      "id": 5153,
+      "name": "PJ2-2B-XXX-P12"
+    },
+    {
+      "id": 3525,
+      "name": "PJ2-2B-XXX-S08"
+    },
+    {
+      "id": 3534,
+      "name": "PJ2-2B-XXX-S08"
+    },
+    {
+      "id": 3516,
+      "name": "PJ2-2BRL-XXX-L01"
+    },
+    {
+      "id": 3522,
+      "name": "PJ2-2BRL-XXX-L01"
+    },
+    {
+      "id": 3728,
+      "name": "PJ2-2BRL-XXX-S01"
+    },
+    {
+      "id": 3729,
+      "name": "PJ2-2BRL-XXX-S01"
+    },
+    {
+      "id": 3515,
+      "name": "PJ2-3B-XXX-L01"
+    },
+    {
+      "id": 3521,
+      "name": "PJ2-3B-XXX-L01"
+    },
+    {
+      "id": 4412,
+      "name": "PJ2-3BRL-XXX-A02"
+    },
+    {
+      "id": 4413,
+      "name": "PJ2-3BRL-XXX-A02"
+    },
+    {
+      "id": 5094,
+      "name": "PJ2-3BRL-XXX-F01"
+    },
+    {
+      "id": 5095,
+      "name": "PJ2-3BRL-XXX-F01"
+    },
+    {
+      "id": 3523,
+      "name": "PJ2-3BRL-XXX-L01"
+    },
+    {
+      "id": 3517,
+      "name": "PJ2-3BRL-XXX-L01"
+    },
+    {
+      "id": 3535,
+      "name": "PJ2-3BRL-XXX-S01"
+    },
+    {
+      "id": 3526,
+      "name": "PJ2-3BRL-XXX-S01"
+    },
+    {
+      "id": 3527,
+      "name": "PJ2-3BRL-XXX-S02"
+    },
+    {
+      "id": 3536,
+      "name": "PJ2-3BRL-XXX-S02"
+    },
+    {
+      "id": 3537,
+      "name": "PJ2-3BRL-XXX-S03"
+    },
+    {
+      "id": 3528,
+      "name": "PJ2-3BRL-XXX-S03"
+    },
+    {
+      "id": 3529,
+      "name": "PJ2-3BRL-XXX-S04"
+    },
+    {
+      "id": 3538,
+      "name": "PJ2-3BRL-XXX-S04"
+    },
+    {
+      "id": 3539,
+      "name": "PJ2-3BRL-XXX-S05"
+    },
+    {
+      "id": 3530,
+      "name": "PJ2-3BRL-XXX-S05"
+    },
+    {
+      "id": 3531,
+      "name": "PJ2-3BRL-XXX-S06"
+    },
+    {
+      "id": 3540,
+      "name": "PJ2-3BRL-XXX-S06"
+    },
+    {
+      "id": 3541,
+      "name": "PJ2-3BRL-XXX-S07"
+    },
+    {
+      "id": 3532,
+      "name": "PJ2-3BRL-XXX-S07"
+    },
+    {
+      "id": 3533,
+      "name": "PJ2-3BRL-XXX-S09"
+    },
+    {
+      "id": 3542,
+      "name": "PJ2-3BRL-XXX-S09"
+    },
+    {
+      "id": 5173,
+      "name": "PJ2-3BRL-XXX-S10"
+    },
+    {
+      "id": 5174,
+      "name": "PJ2-3BRL-XXX-S10"
+    },
+    {
+      "id": 4960,
+      "name": "PJ2-4B-TXX-H03"
+    },
+    {
+      "id": 4909,
+      "name": "PJ2-4B-TXX-H03"
+    },
+    {
+      "id": 4910,
+      "name": "PJ2-4B-TXX-H04"
+    },
+    {
+      "id": 4961,
+      "name": "PJ2-4B-TXX-H04"
+    },
+    {
+      "id": 4962,
+      "name": "PJ2-4B-TXX-H06"
+    },
+    {
+      "id": 4911,
+      "name": "PJ2-4B-TXX-H06"
+    },
+    {
+      "id": 4912,
+      "name": "PJ2-4B-TXX-H07"
+    },
+    {
+      "id": 4963,
+      "name": "PJ2-4B-TXX-H07"
+    },
+    {
+      "id": 4964,
+      "name": "PJ2-4B-TXX-H08"
+    },
+    {
+      "id": 4913,
+      "name": "PJ2-4B-TXX-H08"
+    },
+    {
+      "id": 4914,
+      "name": "PJ2-4B-TXX-H09"
+    },
+    {
+      "id": 4965,
+      "name": "PJ2-4B-TXX-H09"
+    },
+    {
+      "id": 3812,
+      "name": "PJ2-4B-XXX-EL1"
+    },
+    {
+      "id": 3815,
+      "name": "PJ2-4B-XXX-EL1"
+    },
+    {
+      "id": 3818,
+      "name": "PJ2-4B-XXX-EL1"
+    },
+    {
+      "id": 3821,
+      "name": "PJ2-4B-XXX-EL1"
+    },
+    {
+      "id": 3822,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3823,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3819,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3820,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3816,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3817,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3838,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3839,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3855,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3856,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3813,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3814,
+      "name": "PJ2-4B-XXX-EL2"
+    },
+    {
+      "id": 3611,
+      "name": "PJ2-4B-XXX-L01"
+    },
+    {
+      "id": 3608,
+      "name": "PJ2-4B-XXX-L01"
+    },
+    {
+      "id": 3610,
+      "name": "PJ2-4B-XXX-L21"
+    },
+    {
+      "id": 3613,
+      "name": "PJ2-4B-XXX-L21"
+    },
+    {
+      "id": 3612,
+      "name": "PJ2-4B-XXX-L31"
+    },
+    {
+      "id": 3609,
+      "name": "PJ2-4B-XXX-L31"
+    },
+    {
+      "id": 3807,
+      "name": "PJ2-4B-XXX-L41"
+    },
+    {
+      "id": 3811,
+      "name": "PJ2-4B-XXX-L41"
+    },
+    {
+      "id": 3853,
+      "name": "PJ2-4B-XXX-LS21"
+    },
+    {
+      "id": 3854,
+      "name": "PJ2-4B-XXX-LS21"
+    },
+    {
+      "id": 5149,
+      "name": "PJ2-4B-XXX-P01"
+    },
+    {
+      "id": 5138,
+      "name": "PJ2-4B-XXX-P01"
+    },
+    {
+      "id": 5139,
+      "name": "PJ2-4B-XXX-P02"
+    },
+    {
+      "id": 5150,
+      "name": "PJ2-4B-XXX-P02"
+    },
+    {
+      "id": 5151,
+      "name": "PJ2-4B-XXX-P03"
+    },
+    {
+      "id": 5140,
+      "name": "PJ2-4B-XXX-P03"
+    },
+    {
+      "id": 5134,
+      "name": "PJ2-4B-XXX-P11"
+    },
+    {
+      "id": 5145,
+      "name": "PJ2-4B-XXX-P11"
+    },
+    {
+      "id": 5146,
+      "name": "PJ2-4B-XXX-P12"
+    },
+    {
+      "id": 5135,
+      "name": "PJ2-4B-XXX-P12"
+    },
+    {
+      "id": 5136,
+      "name": "PJ2-4B-XXX-P13"
+    },
+    {
+      "id": 5147,
+      "name": "PJ2-4B-XXX-P13"
+    },
+    {
+      "id": 5148,
+      "name": "PJ2-4B-XXX-P14"
+    },
+    {
+      "id": 5137,
+      "name": "PJ2-4B-XXX-P14"
+    },
+    {
+      "id": 3808,
+      "name": "PJ2-4B-XXX-S01"
+    },
+    {
+      "id": 3804,
+      "name": "PJ2-4B-XXX-S01"
+    },
+    {
+      "id": 3806,
+      "name": "PJ2-4B-XXX-S21"
+    },
+    {
+      "id": 3810,
+      "name": "PJ2-4B-XXX-S21"
+    },
+    {
+      "id": 3809,
+      "name": "PJ2-4B-XXX-S31"
+    },
+    {
+      "id": 3805,
+      "name": "PJ2-4B-XXX-S31"
+    },
+    {
+      "id": 5234,
+      "name": "PJ2-P2B-XXX"
+    },
+    {
+      "id": 5235,
+      "name": "PJ2-P2B-XXX"
+    },
+    {
+      "id": 5236,
+      "name": "PJL-2B-XXX-L01"
+    },
+    {
+      "id": 5237,
+      "name": "PJL-2BRL-XXX-L01"
+    },
+    {
+      "id": 5238,
+      "name": "PJL-3BRL-XXX-L01"
+    },
+    {
+      "id": 3520,
+      "name": "PJN-2B-GXX-L01"
+    },
+    {
+      "id": 3514,
+      "name": "PJN-2B-GXX-L01"
+    },
+    {
+      "id": 3518,
+      "name": "PJN-3BRL-GXX-L01"
+    },
+    {
+      "id": 3524,
+      "name": "PJN-3BRL-GXX-L01"
+    },
+    {
+      "id": 1167,
+      "name": "RR-15APS-1"
+    },
+    {
+      "id": 5191,
+      "name": "RR-15OUT"
+    },
+    {
+      "id": 1166,
+      "name": "RR-3PD-1"
+    },
+    {
+      "id": 499,
+      "name": "RR-AUX-REP"
+    },
+    {
+      "id": 5233,
+      "name": "RR-AUX-REP-WHBA"
+    },
+    {
+      "id": 2571,
+      "name": "RR-AUX-REP-XXBA"
+    },
+    {
+      "id": 497,
+      "name": "RR-IO"
+    },
+    {
+      "id": 498,
+      "name": "RR-MAIN-REP-WH"
+    },
+    {
+      "id": 2567,
+      "name": "RR-MAIN-REP-WHBA"
+    },
+    {
+      "id": 5163,
+      "name": "RR-PROC3-CW"
+    },
+    {
+      "id": 5093,
+      "name": "RR-PROC3-KIT"
+    },
+    {
+      "id": 473,
+      "name": "RR-SD-2A1-TP"
+    },
+    {
+      "id": 477,
+      "name": "RR-T10RL"
+    },
+    {
+      "id": 2569,
+      "name": "RR-T10RL-XX-BA"
+    },
+    {
+      "id": 478,
+      "name": "RR-T15RL"
+    },
+    {
+      "id": 2570,
+      "name": "RR-T15RL-XX-BA"
+    },
+    {
+      "id": 462,
+      "name": "RR-T5RL"
+    },
+    {
+      "id": 2568,
+      "name": "RR-T5RL-XX-BA"
+    },
+    {
+      "id": 496,
+      "name": "RR-VCRX"
+    },
+    {
+      "id": 5130,
+      "name": "RR-VCRX"
+    },
+    {
+      "id": 5232,
+      "name": "RR-VCRX-WHBA"
+    },
+    {
+      "id": 2581,
+      "name": "RR-VCRX-XX-BA"
+    },
+    {
+      "id": 5541,
+      "name": "RR3K-P20-240G-TXX"
+    },
+    {
+      "id": 5454,
+      "name": "RR3K-R25NE-240"
+    },
+    {
+      "id": 5455,
+      "name": "RR3K-R6ANS-240"
+    },
+    {
+      "id": 5304,
+      "name": "RR3K-RNFSQ-240"
+    },
+    {
+      "id": 466,
+      "name": "RRD-10D"
+    },
+    {
+      "id": 467,
+      "name": "RRD-10ND"
+    },
+    {
+      "id": 469,
+      "name": "RRD-2ANF"
+    },
+    {
+      "id": 461,
+      "name": "RRD-3LD"
+    },
+    {
+      "id": 3467,
+      "name": "RRD-6CL"
+    },
+    {
+      "id": 460,
+      "name": "RRD-6D"
+    },
+    {
+      "id": 465,
+      "name": "RRD-6NA"
+    },
+    {
+      "id": 464,
+      "name": "RRD-6ND"
+    },
+    {
+      "id": 1255,
+      "name": "RRD-6NE"
+    },
+    {
+      "id": 468,
+      "name": "RRD-8ANS"
+    },
+    {
+      "id": 740,
+      "name": "RRD-8S-DV"
+    },
+    {
+      "id": 1229,
+      "name": "RRD-F6AN-DV"
+    },
+    {
+      "id": 2254,
+      "name": "RRD-H1RLD"
+    },
+    {
+      "id": 2256,
+      "name": "RRD-H2RLD"
+    },
+    {
+      "id": 2258,
+      "name": "RRD-H3BSRL"
+    },
+    {
+      "id": 3502,
+      "name": "RRD-H3S"
+    },
+    {
+      "id": 2262,
+      "name": "RRD-H4S"
+    },
+    {
+      "id": 2260,
+      "name": "RRD-H5BRL"
+    },
+    {
+      "id": 576,
+      "name": "RRD-H6BRL"
+    },
+    {
+      "id": 4337,
+      "name": "RRD-HN1RLD"
+    },
+    {
+      "id": 4338,
+      "name": "RRD-HN2RLD"
+    },
+    {
+      "id": 4339,
+      "name": "RRD-HN3BSRL"
+    },
+    {
+      "id": 4340,
+      "name": "RRD-HN3S"
+    },
+    {
+      "id": 4341,
+      "name": "RRD-HN4S"
+    },
+    {
+      "id": 4342,
+      "name": "RRD-HN5BRL"
+    },
+    {
+      "id": 4343,
+      "name": "RRD-HN6BRL"
+    },
+    {
+      "id": 3547,
+      "name": "RRD-P3BRL-L"
+    },
+    {
+      "id": 577,
+      "name": "RRD-P3BRL-L"
+    },
+    {
+      "id": 578,
+      "name": "RRD-P3BRL-S"
+    },
+    {
+      "id": 3548,
+      "name": "RRD-P3BRL-S"
+    },
+    {
+      "id": 722,
+      "name": "RRD-P5BRL-L"
+    },
+    {
+      "id": 4864,
+      "name": "RRD-PRO"
+    },
+    {
+      "id": 493,
+      "name": "RRD-W10IR"
+    },
+    {
+      "id": 492,
+      "name": "RRD-W10RL"
+    },
+    {
+      "id": 479,
+      "name": "RRD-W1B"
+    },
+    {
+      "id": 501,
+      "name": "RRD-W1RLD"
+    },
+    {
+      "id": 480,
+      "name": "RRD-W2B"
+    },
+    {
+      "id": 575,
+      "name": "RRD-W2RLD"
+    },
+    {
+      "id": 481,
+      "name": "RRD-W3B"
+    },
+    {
+      "id": 502,
+      "name": "RRD-W3BD"
+    },
+    {
+      "id": 482,
+      "name": "RRD-W3BRL"
+    },
+    {
+      "id": 4426,
+      "name": "RRD-W3BS"
+    },
+    {
+      "id": 2340,
+      "name": "RRD-W3BSRL"
+    },
+    {
+      "id": 3500,
+      "name": "RRD-W3S"
+    },
+    {
+      "id": 483,
+      "name": "RRD-W4B"
+    },
+    {
+      "id": 484,
+      "name": "RRD-W4FS"
+    },
+    {
+      "id": 485,
+      "name": "RRD-W4S"
+    },
+    {
+      "id": 2342,
+      "name": "RRD-W4S"
+    },
+    {
+      "id": 486,
+      "name": "RRD-W4SIR"
+    },
+    {
+      "id": 487,
+      "name": "RRD-W5B"
+    },
+    {
+      "id": 2341,
+      "name": "RRD-W5BRL"
+    },
+    {
+      "id": 463,
+      "name": "RRD-W5BRLIR"
+    },
+    {
+      "id": 488,
+      "name": "RRD-W5FS"
+    },
+    {
+      "id": 489,
+      "name": "RRD-W6B"
+    },
+    {
+      "id": 490,
+      "name": "RRD-W6BRL"
+    },
+    {
+      "id": 491,
+      "name": "RRD-W7B"
+    },
+    {
+      "id": 505,
+      "name": "RRDE-10D"
+    },
+    {
+      "id": 506,
+      "name": "RRDE-10ND"
+    },
+    {
+      "id": 510,
+      "name": "RRDE-2ANF"
+    },
+    {
+      "id": 508,
+      "name": "RRDE-3LD"
+    },
+    {
+      "id": 507,
+      "name": "RRDE-5NE"
+    },
+    {
+      "id": 503,
+      "name": "RRDE-6D"
+    },
+    {
+      "id": 504,
+      "name": "RRDE-6ND"
+    },
+    {
+      "id": 509,
+      "name": "RRDE-8ANS"
+    },
+    {
+      "id": 511,
+      "name": "RRDE-AD"
+    },
+    {
+      "id": 512,
+      "name": "RRDE-AS"
+    },
+    {
+      "id": 2546,
+      "name": "RRK-AUX-REP"
+    },
+    {
+      "id": 2550,
+      "name": "RRK-MAIN-REP-WH"
+    },
+    {
+      "id": 5459,
+      "name": "RRK-P20-240F-XX"
+    },
+    {
+      "id": 5458,
+      "name": "RRK-P20-240G-XX"
+    },
+    {
+      "id": 5452,
+      "name": "RRK-R25NE-240"
+    },
+    {
+      "id": 5453,
+      "name": "RRK-R6ANS-240"
+    },
+    {
+      "id": 2544,
+      "name": "RRK-T10RL"
+    },
+    {
+      "id": 2545,
+      "name": "RRK-T15RL"
+    },
+    {
+      "id": 2543,
+      "name": "RRK-T5RL"
+    },
+    {
+      "id": 5292,
+      "name": "RRKE-PROC3-CW"
+    },
+    {
+      "id": 5291,
+      "name": "RRKE-PROC3-KIT1"
+    },
+    {
+      "id": 5268,
+      "name": "RRL-MTK-RT-IN"
+    },
+    {
+      "id": 5296,
+      "name": "RRL-MWCL-WH"
+    },
+    {
+      "id": 5224,
+      "name": "RRL-TLK-DL"
+    },
+    {
+      "id": 5566,
+      "name": "RRL-TLK-RT-IN"
+    },
+    {
+      "id": 5618,
+      "name": "RRL-TLK-RT-IN"
+    },
+    {
+      "id": 5223,
+      "name": "RRL-TLK-SW"
+    },
+    {
+      "id": 5568,
+      "name": "RRL-TLK-TW-IN"
+    },
+    {
+      "id": 5587,
+      "name": "RRL-TWCL-WH"
+    },
+    {
+      "id": 5716,
+      "name": "RRLE-A20WH-TW"
+    },
+    {
+      "id": 5561,
+      "name": "RRLE-MTK-RT-IN"
+    },
+    {
+      "id": 5563,
+      "name": "RRLE-MWCL-WH"
+    },
+    {
+      "id": 5305,
+      "name": "RRN-RNFSQ-240"
+    },
+    {
+      "id": 3885,
+      "name": "RRQ-AUX-REP"
+    },
+    {
+      "id": 3884,
+      "name": "RRQ-MAIN-REP-WH"
+    },
+    {
+      "id": 5227,
+      "name": "RRQ-R25NE-240"
+    },
+    {
+      "id": 472,
+      "name": "RRR-3LD"
+    },
+    {
+      "id": 5117,
+      "name": "RRST-8ANS-XX"
+    },
+    {
+      "id": 5249,
+      "name": "RRST-ANF-XX"
+    },
+    {
+      "id": 5196,
+      "name": "RRST-HN2B-XX"
+    },
+    {
+      "id": 5197,
+      "name": "RRST-HN3RL-XX"
+    },
+    {
+      "id": 5198,
+      "name": "RRST-HN4B-XX"
+    },
+    {
+      "id": 5115,
+      "name": "RRST-PRO-N-XX"
+    },
+    {
+      "id": 5116,
+      "name": "RRST-RD-XX"
+    },
+    {
+      "id": 5118,
+      "name": "RRST-RS-XX"
+    },
+    {
+      "id": 5119,
+      "name": "RRST-W2B-XX"
+    },
+    {
+      "id": 5120,
+      "name": "RRST-W3B-XX"
+    },
+    {
+      "id": 5122,
+      "name": "RRST-W3RL-XX"
+    },
+    {
+      "id": 5121,
+      "name": "RRST-W4B-XX"
+    },
+    {
+      "id": 3825,
+      "name": "RRT-G25LW"
+    },
+    {
+      "id": 3827,
+      "name": "RRT-G5ANSW"
+    },
+    {
+      "id": 4179,
+      "name": "RRT-G5NEW"
+    },
+    {
+      "id": 4221,
+      "name": "RRT-GH2B"
+    },
+    {
+      "id": 4222,
+      "name": "RRT-GH4B"
+    },
+    {
+      "id": 4223,
+      "name": "RRT-GH5B"
+    },
+    {
+      "id": 4224,
+      "name": "RRT-GH6B"
+    }
+  ],
+  "duplicateNames": [
+    {
+      "name": "HQ-MI-LX",
+      "ids": [
+        5244,
+        5279
+      ]
+    },
+    {
+      "name": "HQP6-2",
+      "ids": [
+        724,
+        2601
+      ]
+    },
+    {
+      "name": "HQP7-2",
+      "ids": [
+        4876,
+        4879,
+        5288
+      ]
+    },
+    {
+      "name": "HQRA-H1RLD",
+      "ids": [
+        2860,
+        3573
+      ]
+    },
+    {
+      "name": "HQRD-H1RLD",
+      "ids": [
+        2231,
+        3574
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-I01",
+      "ids": [
+        2264,
+        2328
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-I02",
+      "ids": [
+        2267,
+        2299
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-I08",
+      "ids": [
+        2268,
+        2300
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-I14",
+      "ids": [
+        2266,
+        2298
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T01",
+      "ids": [
+        2265,
+        2297
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T02",
+      "ids": [
+        2269,
+        2301
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T05",
+      "ids": [
+        2271,
+        2303
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T06",
+      "ids": [
+        2272,
+        2304
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T07",
+      "ids": [
+        2273,
+        2305
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T08",
+      "ids": [
+        2270,
+        2302
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T09",
+      "ids": [
+        2274,
+        2306
+      ]
+    },
+    {
+      "name": "PJ-2B-GXX-T10",
+      "ids": [
+        2275,
+        2307
+      ]
+    },
+    {
+      "name": "PJ-2BRL-GXX-I01",
+      "ids": [
+        2280,
+        2312
+      ]
+    },
+    {
+      "name": "PJ-2BRL-GXX-I02",
+      "ids": [
+        2282,
+        2314
+      ]
+    },
+    {
+      "name": "PJ-2BRL-GXX-I08",
+      "ids": [
+        2283,
+        2315
+      ]
+    },
+    {
+      "name": "PJ-2BRL-GXX-T01",
+      "ids": [
+        2281,
+        2313
+      ]
+    },
+    {
+      "name": "PJ-3B-GXX-I01",
+      "ids": [
+        2276,
+        2308
+      ]
+    },
+    {
+      "name": "PJ-3B-GXX-I02",
+      "ids": [
+        2278,
+        2310
+      ]
+    },
+    {
+      "name": "PJ-3B-GXX-I08",
+      "ids": [
+        2279,
+        2311
+      ]
+    },
+    {
+      "name": "PJ-3B-GXX-T01",
+      "ids": [
+        2277,
+        2309
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-I01",
+      "ids": [
+        2284,
+        2316
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-I02",
+      "ids": [
+        2286,
+        2318
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-I08",
+      "ids": [
+        2287,
+        2319
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T01",
+      "ids": [
+        2285,
+        2317
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T02",
+      "ids": [
+        2288,
+        2320
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T05",
+      "ids": [
+        2290,
+        2322
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T06",
+      "ids": [
+        2291,
+        2323
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T07",
+      "ids": [
+        2292,
+        2324
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T08",
+      "ids": [
+        2289,
+        2321
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T09",
+      "ids": [
+        2293,
+        2325
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T10",
+      "ids": [
+        2294,
+        2326
+      ]
+    },
+    {
+      "name": "PJ-3BRL-GXX-T13",
+      "ids": [
+        2295,
+        2327
+      ]
+    },
+    {
+      "name": "PJ2-2B-TXX-H01",
+      "ids": [
+        4906,
+        4957
+      ]
+    },
+    {
+      "name": "PJ2-2B-TXX-H02",
+      "ids": [
+        4907,
+        4958
+      ]
+    },
+    {
+      "name": "PJ2-2B-TXX-H05",
+      "ids": [
+        4908,
+        4959
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-L01",
+      "ids": [
+        3513,
+        3519
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-L02",
+      "ids": [
+        3726,
+        3727
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-P01",
+      "ids": [
+        5143,
+        5154
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-P02",
+      "ids": [
+        5144,
+        5155
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-P11",
+      "ids": [
+        5141,
+        5152
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-P12",
+      "ids": [
+        5142,
+        5153
+      ]
+    },
+    {
+      "name": "PJ2-2B-XXX-S08",
+      "ids": [
+        3525,
+        3534
+      ]
+    },
+    {
+      "name": "PJ2-2BRL-XXX-L01",
+      "ids": [
+        3516,
+        3522
+      ]
+    },
+    {
+      "name": "PJ2-2BRL-XXX-S01",
+      "ids": [
+        3728,
+        3729
+      ]
+    },
+    {
+      "name": "PJ2-3B-XXX-L01",
+      "ids": [
+        3515,
+        3521
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-A02",
+      "ids": [
+        4412,
+        4413
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-F01",
+      "ids": [
+        5094,
+        5095
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-L01",
+      "ids": [
+        3517,
+        3523
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S01",
+      "ids": [
+        3526,
+        3535
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S02",
+      "ids": [
+        3527,
+        3536
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S03",
+      "ids": [
+        3528,
+        3537
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S04",
+      "ids": [
+        3529,
+        3538
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S05",
+      "ids": [
+        3530,
+        3539
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S06",
+      "ids": [
+        3531,
+        3540
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S07",
+      "ids": [
+        3532,
+        3541
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S09",
+      "ids": [
+        3533,
+        3542
+      ]
+    },
+    {
+      "name": "PJ2-3BRL-XXX-S10",
+      "ids": [
+        5173,
+        5174
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H03",
+      "ids": [
+        4909,
+        4960
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H04",
+      "ids": [
+        4910,
+        4961
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H06",
+      "ids": [
+        4911,
+        4962
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H07",
+      "ids": [
+        4912,
+        4963
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H08",
+      "ids": [
+        4913,
+        4964
+      ]
+    },
+    {
+      "name": "PJ2-4B-TXX-H09",
+      "ids": [
+        4914,
+        4965
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-EL1",
+      "ids": [
+        3812,
+        3815,
+        3818,
+        3821
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-EL2",
+      "ids": [
+        3813,
+        3814,
+        3816,
+        3817,
+        3819,
+        3820,
+        3822,
+        3823,
+        3838,
+        3839,
+        3855,
+        3856
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-L01",
+      "ids": [
+        3608,
+        3611
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-L21",
+      "ids": [
+        3610,
+        3613
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-L31",
+      "ids": [
+        3609,
+        3612
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-L41",
+      "ids": [
+        3807,
+        3811
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-LS21",
+      "ids": [
+        3853,
+        3854
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P01",
+      "ids": [
+        5138,
+        5149
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P02",
+      "ids": [
+        5139,
+        5150
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P03",
+      "ids": [
+        5140,
+        5151
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P11",
+      "ids": [
+        5134,
+        5145
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P12",
+      "ids": [
+        5135,
+        5146
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P13",
+      "ids": [
+        5136,
+        5147
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-P14",
+      "ids": [
+        5137,
+        5148
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-S01",
+      "ids": [
+        3804,
+        3808
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-S21",
+      "ids": [
+        3806,
+        3810
+      ]
+    },
+    {
+      "name": "PJ2-4B-XXX-S31",
+      "ids": [
+        3805,
+        3809
+      ]
+    },
+    {
+      "name": "PJ2-P2B-XXX",
+      "ids": [
+        5234,
+        5235
+      ]
+    },
+    {
+      "name": "PJN-2B-GXX-L01",
+      "ids": [
+        3514,
+        3520
+      ]
+    },
+    {
+      "name": "PJN-3BRL-GXX-L01",
+      "ids": [
+        3518,
+        3524
+      ]
+    },
+    {
+      "name": "RR-VCRX",
+      "ids": [
+        496,
+        5130
+      ]
+    },
+    {
+      "name": "RRD-P3BRL-L",
+      "ids": [
+        577,
+        3547
+      ]
+    },
+    {
+      "name": "RRD-P3BRL-S",
+      "ids": [
+        578,
+        3548
+      ]
+    },
+    {
+      "name": "RRD-W4S",
+      "ids": [
+        485,
+        2342
+      ]
+    },
+    {
+      "name": "RRL-TLK-RT-IN",
+      "ids": [
+        5566,
+        5618
+      ]
+    }
+  ]
+}
