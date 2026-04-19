@@ -1,9 +1,9 @@
 ---
 name: designer-re
-description: "Reverse Engineering Lutron Designer Libraries — decompile .NET DLLs, analyze enums, cross-reference with Designer DB"
+description: "Decompile and analyze Lutron Designer .NET DLLs. Use when investigating how Designer implements a feature (account gating, channel entitlements, device model rules, toolbox platform filtering, protocol handlers), tracing an enum/attribute through the assembly stack, or cross-referencing SQLMODELINFO against in-DLL metadata. Complements designer-feature-flags (flag-specific tracing) and designer-project (project-file/DB queries)."
 metadata:
   author: alex
-  version: "1.0"
+  version: "1.1"
 user_invocable: false
 ---
 
@@ -110,8 +110,7 @@ WHERE m.LUTRONMODELNUMBERBASE LIKE 'RR%';
 
 ## Existing Analysis
 
-See `memory/designer-account-system.md` for documented findings:
-- Complete ChannelTypes enum (29 channels, string→bitfield mapping)
-- Complete ToolboxPlatformTypes enum (21 platforms, channel requirements)
-- Auth flow (RefreshToken/AuthenticateCode → SetUserChannels → bitfield)
-- How to make RA3 devices appear in HW toolbox (single bit flip: 0x20)
+Documented findings (channels, auth flow, toolbox platform bitfields, RA3-in-HW unlock):
+- `docs/security/designer-auth-bypass.md` — RefreshToken/AuthenticateCode → SetUserChannels flow
+- `docs/security/designer-jailbreak.md` — channel/platform enum details
+- `docs/infrastructure/designer-universal-unlock.md` — cross-platform unlock (e.g., RA3 in HW toolbox) baked into the DLL patcher
