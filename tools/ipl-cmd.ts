@@ -46,18 +46,27 @@ import { defaultHost } from "../lib/config";
 import {
   bodyDeviceSetIdentifyState,
   bodyDeviceSetOutputLevel,
+  bodyDMXOutputFlash,
   bodyFactoryResetDevice,
+  bodyGetRuntimeProperty,
   bodyGoToLevel,
   bodyGoToLoadState,
+  bodyPingLinkDevice,
+  bodyPresetGoToLiftAndTiltLevels,
+  bodyProcessorSetDateTime,
   bodyRuntimeIdentify,
+  bodySetRuntimeProperty,
+  bodyShadeIdentifyOnInterfaceAddress,
   buildCommandFrame,
   CommandOp,
-  EventOp,
+  decodeRuntimeTelemetry,
   level16ToPct,
   MsgType,
   MsgTypeName,
+  ObjectType,
   type ParsedFrame,
   parseAllFrames,
+  RuntimeProperty,
   resolveOpName,
 } from "../lib/ipl";
 
@@ -114,35 +123,30 @@ function frameOpts() {
 // Decode a small set of well-known telemetry/event bodies inline so output
 // is readable without firing up ipl-monitor.ts in parallel.
 function decodeBody(f: ParsedFrame): string | null {
-  if (f.msgType === MsgType.Telemetry && f.body.length >= 8) {
-    const objId = f.body.readUInt32BE(0);
-    const prop = f.body.readUInt16BE(4);
-    const rest = f.body.subarray(6);
-    if (prop === 0x000f || prop === 0x0003) {
-      // Zone level (dimmed or switch/fan). [cmd(1)][level16(2 BE)]
-      if (rest.length >= 3) {
-        const cmd = rest[0];
-        const level = rest.readUInt16BE(1);
-        return `zone=${objId} cmd=${cmd} level=${level16ToPct(level)}% (0x${level.toString(16)})`;
-      }
+  if (f.msgType === MsgType.Telemetry && f.operationId === 1) {
+    const t = decodeRuntimeTelemetry(f.body);
+    if (!t) return null;
+    let valStr = `0x${t.value.toString("hex")}`;
+    const isLevel = t.propertyNumber === 1 || t.propertyNumber === 4;
+    if (isLevel && t.value.length >= 3) {
+      const lvl = t.value.readUInt16BE(1);
+      valStr = `cmd=${t.value[0]} level=${level16ToPct(lvl)}% (0x${lvl.toString(16)})`;
+    } else if (isLevel && t.value.length === 2) {
+      const lvl = t.value.readUInt16BE(0);
+      valStr = `level=${level16ToPct(lvl)}% (0x${lvl.toString(16)})`;
+    } else if (t.value.length === 1) {
+      valStr = `${t.value[0]}`;
+    } else if (t.value.length === 2) {
+      valStr = `0x${t.value.readUInt16BE(0).toString(16).padStart(4, "0")}`;
     }
-    if (prop === 0x0005 && rest.length >= 2) {
-      return `button obj=${objId} val=0x${rest.readUInt16BE(0).toString(16)}`;
-    }
-    if (prop === 0x025b && rest.length >= 1) {
-      return `area=${objId} occupancy=${rest[0]}`;
-    }
-    if (prop === 0x006b && rest.length >= 2) {
-      return `led obj=${objId} val=0x${rest.readUInt16BE(0).toString(16)}`;
-    }
-    return `obj=${objId} prop=0x${prop.toString(16).padStart(4, "0")} data=${rest.toString("hex")}`;
+    return `obj=${t.objectId} type=${t.objectType} ${t.propertyName}(${t.propertyNumber})=${valStr}`;
   }
   if (f.msgType === MsgType.Event && f.body.length >= 6) {
     const objId = f.body.readUInt32BE(0);
     const objType = f.body.readUInt16BE(4);
     const evt =
       f.operationId !== undefined
-        ? (EventOp[f.operationId] ?? `?${f.operationId}`)
+        ? (resolveOpName(f.msgType, f.operationId) ?? `?${f.operationId}`)
         : "?";
     return `${evt} obj=${objId} type=${objType} rest=${f.body.subarray(6).toString("hex")}`;
   }
@@ -175,13 +179,29 @@ async function main() {
     console.error(
       [
         "commands:",
-        "  ping",
-        "  gotolevel <zoneId> <pct> [fade] [delay]",
-        "  loadstate <zoneId> <pct> [fade] [delay] [fieldmask]",
-        "  setoutput <proc> <link> <serialHex> <comp> <pct>",
-        "  identify <objectId> <objectType> on|off [timeoutSec]",
-        "  devidentify <proc> <link> <serialHex> <comp> on|off",
-        "  devreset <proc> <link> <serialHex> <comp>   (DANGER: --yes required)",
+        "  -- output / zone level --",
+        "  gotolevel <zoneId> <pct> [fade] [delay]              opId 13",
+        "  loadstate <zoneId> <pct> [fade] [delay] [fieldmask]  opId 340 (color/CCT/vibrancy)",
+        "  setoutput <proc> <link> <serialHex> <comp> <pct>     opId 44 (DEVICE path)",
+        "  presettilt <zoneId> [liftPct] [tiltPct] [delay]      opId 82 (shade lift+tilt)",
+        "  dmxflash <objectId> [flashRate]                      opId 15",
+        "",
+        "  -- runtime property R/W (generic) --",
+        "  set-prop <obj> <objType> <propNameOrNum> <valueHex>  opId 7 (or 6 if prop=0)",
+        "  get-prop <obj> <objType> <propNameOrNum>             opId 9",
+        "",
+        "  -- identify / commissioning --",
+        "  identify <objectId> <objectType> on|off [timeoutSec] opId 6 (RuntimeIdentify)",
+        "  devidentify <proc> <link> <serialHex> <comp> on|off  opId 40",
+        "  shadeident <proc> <link> <ifAddr> next|prev|stop     opId 320",
+        "  pinglink <objectId> [objectType=15]                  opId 279",
+        "",
+        "  -- destructive (require --yes) --",
+        "  devreset <proc> <link> <serialHex> <comp>            opId 284 (FactoryResetDevice)",
+        "",
+        "  -- system --",
+        "  ping                                                 opId 11",
+        "  settime                                              opId 25 (sets to host wallclock)",
         "  ipl-version | schema | dbsync-info | dbsync-uri | telnet-diag-user",
         "  raw <opId> <bodyHex>",
       ].join("\n"),
@@ -270,6 +290,104 @@ async function main() {
         Number.parseInt(serial, 16),
         parseNum(comp),
       );
+      break;
+    }
+
+    case "presettilt": {
+      const [zone, lift = "", tilt = "", delay = "0"] = rest;
+      opId = CommandOp.PresetGoToLiftAndTiltLevels;
+      body = bodyPresetGoToLiftAndTiltLevels({
+        objectId: parseNum(zone),
+        liftPct: lift === "" ? undefined : parseNum(lift),
+        tiltPct: tilt === "" ? undefined : parseNum(tilt),
+        delaySec: parseNum(delay),
+      });
+      break;
+    }
+
+    case "dmxflash": {
+      const [obj, rate = "1"] = rest;
+      opId = CommandOp.DMXOutputFlashLevel;
+      body = bodyDMXOutputFlash(parseNum(obj), parseNum(rate));
+      break;
+    }
+
+    case "pinglink": {
+      const [obj, type = String(ObjectType.Zone)] = rest;
+      opId = CommandOp.PingLinkDevice;
+      body = bodyPingLinkDevice(parseNum(obj), parseNum(type));
+      break;
+    }
+
+    case "shadeident": {
+      const [proc, link, ifAddr, cmdName] = rest;
+      const code =
+        cmdName === "next"
+          ? 0
+          : cmdName === "prev" || cmdName === "previous"
+            ? 1
+            : 2;
+      opId = CommandOp.ShadeIdentifyOnInterfaceAddress;
+      body = bodyShadeIdentifyOnInterfaceAddress(
+        parseNum(proc),
+        parseNum(link),
+        parseNum(ifAddr),
+        code as 0 | 1 | 2,
+      );
+      break;
+    }
+
+    case "settime":
+      opId = CommandOp.ProcessorSetDateTime;
+      body = bodyProcessorSetDateTime();
+      break;
+
+    case "set-prop": {
+      // set-prop <objectId> <objectType> <propertyName-or-num> <valueHex>
+      const [obj, type, prop, hex = ""] = rest;
+      const propNum = Number.isFinite(parseNum(prop))
+        ? parseNum(prop)
+        : RuntimeProperty[Number(prop)]
+          ? Number(prop)
+          : NaN;
+      // Accept either a known name or a number
+      const finalProp = Number.isFinite(propNum)
+        ? propNum
+        : Number(
+            Object.entries(RuntimeProperty).find(([, v]) => v === prop)?.[0] ??
+              "",
+          );
+      if (!Number.isFinite(finalProp)) {
+        console.error(`unknown property: ${prop}`);
+        process.exit(2);
+      }
+      opId =
+        finalProp === 0
+          ? CommandOp.RuntimeIdentify
+          : CommandOp.SetRuntimeProperty;
+      body = bodySetRuntimeProperty(
+        parseNum(obj),
+        parseNum(type),
+        finalProp,
+        Buffer.from(hex, "hex"),
+      );
+      break;
+    }
+
+    case "get-prop": {
+      const [obj, type, prop] = rest;
+      const finalProp = Number.isFinite(Number(prop))
+        ? Number(prop)
+        : Number(
+            Object.entries(RuntimeProperty).find(([, v]) => v === prop)?.[0] ??
+              NaN,
+          );
+      if (!Number.isFinite(finalProp)) {
+        console.error(`unknown property: ${prop}`);
+        process.exit(2);
+      }
+      opId = CommandOp.GetRuntimeProperty;
+      body = bodyGetRuntimeProperty(parseNum(obj), parseNum(type), finalProp);
       break;
     }
 

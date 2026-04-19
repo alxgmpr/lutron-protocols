@@ -255,6 +255,138 @@ export const OriginatorFeature = {
   TimeClock: 16,
 } as const;
 
+/** OccupancyStatus values seen in OccupancyStatusChanged events / property 16. */
+export const OccupancyStatus: Record<number, string> = {
+  1: "Unknown",
+  3: "Occupied",
+  4: "Unoccupied",
+  255: "Disabled",
+};
+
+/**
+ * RuntimePropertyNumberEnum — the property number (1 byte) carried inside a
+ * Telemetry/Runtime body or a SetRuntimePropertyCommand. ~160 entries; common
+ * ones extracted below. Source:
+ * Lutron.Gulliver.Infrastructure.RuntimeDomainObjectFramework.RuntimePropertyNumberEnum
+ */
+export const RuntimeProperty: Record<number, string> = {
+  0: "Identify",
+  1: "Level",
+  2: "PowerAndEnergySavings",
+  4: "CURRENT_LEVEL",
+  9: "ContactClosureOutputState",
+  10: "LastPresetActivated",
+  12: "ContactClosureInputState",
+  14: "CURRENT_SCENE",
+  15: "SEQUENCE_STATUS",
+  16: "OccupancyStatus",
+  20: "BUTTON_PRESS_STATE",
+  23: "LED_STATUS",
+  28: "OccupancyActiveState",
+  29: "DeviceDiagInfo",
+  31: "HyperionEnableStateData",
+  32: "HyperionReenableTime",
+  38: "OccupiedLevel",
+  39: "UnoccupiedLevel",
+  40: "DaylightingTargetSetPoint",
+  41: "HyperionModeData",
+  42: "ActiveVariableState",
+  43: "Tilt",
+  45: "TILT_CURRENT_LEVEL",
+  46: "BacklightIntensity",
+  50: "SensorFaultState",
+  51: "SHADE_PRESET",
+  52: "SEQUENCE_STEP",
+  53: "MONTH",
+  54: "DAY_OF_WEEK",
+  56: "PhotoValue",
+  58: "TargetSetPoint",
+  59: "TemporaryTargetSetPoint",
+  62: "ShadowSensorReading",
+  63: "SetupTempGroup",
+  67: "SceneSelect",
+  68: "Time",
+  69: "Date",
+  70: "DeviceState",
+  71: "PartitionWallState",
+  72: "DeviceResponseState",
+  73: "CurrentLoadShedAmount",
+  74: "LoadShedEnabled",
+  75: "DeviceComponentState",
+  76: "LinkDeviceBitMap",
+  77: "UpdateProgress",
+  78: "TimeclockEnableState",
+  79: "DaliEmergencyTestResult",
+  80: "HVAC_OPERATING_TEMPERATURE",
+  81: "HVACEcoMode",
+  82: "HVAC_FAN_MODE",
+  83: "HVAC_OPERATING_MODE",
+  86: "HVAC_SYSTEM_MODE",
+  87: "HVAC_SCHEDULE_STATUS",
+  88: "HVACCallStatus",
+  89: "LampHoursUsed",
+  90: "LampsNearingEndOfLife",
+  91: "AreaLightingState",
+  92: "AreaLightLevelMatch",
+  94: "SwitchLegControllerErrorLevel",
+  96: "HyperionThresholdMode",
+  98: "DarkModulatedThreshold",
+  99: "TimeclockEventEnableState",
+  100: "DaylightingCapAtGainGroupLevel",
+  101: "BrightnessThreshold",
+  102: "HVAC_FAN_STATUS",
+  103: "HVAC_FAULT_STATUS",
+  104: "HyperionBrightOverridePosition",
+  105: "HyperionDarkOverridePosition",
+  106: "HyperionVisorPosition",
+  107: "HyperionVisorThreshold",
+  108: "TimeClockEventTime",
+  109: "SunOnFacade",
+  110: "StatusIntensity",
+  112: "HVACRelativeHumidity",
+  123: "MinimumLightLevel",
+  125: "AreaBatteryStatus",
+  126: "SystemBatteryStatus",
+  127: "DeviceStatusChange",
+  128: "RemainingBatteryLevel",
+  129: "SystemTimeAccuracyStatus",
+  130: "DaytimeNighttimeState",
+  131: "ConnectionStatus",
+  133: "TargetCIE1931Point",
+  134: "CurrentCIE1931Point",
+  135: "TargetVibrancy",
+  136: "CurrentVibrancy",
+  137: "TargetWarmDimCurveId",
+  138: "CurrentWarmDimCurveId",
+  139: "TargetCCT",
+  140: "CurrentCCT",
+  149: "RentedState",
+  150: "MakeUpRoomRequestState",
+  151: "DoNotDisturbRequestState",
+  152: "AutomationEnabled",
+  156: "PresenceStatus",
+  211: "DoNotDisturbMode",
+  212: "RoomAutomationState",
+  213: "GPDRoomStatus",
+  214: "HVACCalculatedCallstatus",
+  215: "HVACPower",
+  220: "CountdownTimeout",
+  225: "LightState",
+  226: "ControlStationState",
+  227: "VariableStates",
+  228: "KeypadButtonInfo",
+  235: "LeafAlertCount",
+  239: "SystemAlertCount",
+  240: "AreaAlertCount",
+  254: "AreaOnOff",
+  255: "SavedPower",
+};
+
+/** Inverse — property name → number, for building SetRuntimeProperty commands. */
+export const RuntimePropertyByName: Record<string, number> = Object.fromEntries(
+  Object.entries(RuntimeProperty).map(([k, v]) => [v, Number(k)]),
+);
+
 /** level16 = percent * 0xFEFF / 100, clamped [0, 0xFEFF]. */
 export function pctToLevel16(pct: number): number {
   const v = Math.round((pct * 0xfeff) / 100);
@@ -424,6 +556,262 @@ export function bodyFactoryResetDevice(
   b.writeUInt32BE(serial, 2);
   b.writeUInt16BE(component, 6);
   return b;
+}
+
+/** PresetGoToLiftAndTiltLevels (opId 82) — for shades with separate lift+tilt. */
+export const InvalidLiftLevel = 0xff00;
+export const InvalidTiltLevel = 0xff00;
+export function bodyPresetGoToLiftAndTiltLevels(args: {
+  objectId: number;
+  objectType?: number;
+  liftPct?: number; // pass undefined → InvalidLiftLevel (skip lift)
+  tiltPct?: number; // pass undefined → InvalidTiltLevel (skip tilt)
+  delaySec?: number;
+}): Buffer {
+  const b = Buffer.alloc(12);
+  b.writeUInt32BE(args.objectId, 0);
+  b.writeUInt16BE(args.objectType ?? ObjectType.ShadeZone, 4);
+  b.writeUInt16BE(
+    args.liftPct === undefined ? InvalidLiftLevel : pctToLevel16(args.liftPct),
+    6,
+  );
+  b.writeUInt16BE(
+    args.tiltPct === undefined ? InvalidTiltLevel : pctToLevel16(args.tiltPct),
+    8,
+  );
+  b.writeUInt16BE(secToQuarters(args.delaySec ?? 0), 10);
+  return b;
+}
+
+/** DMXOutputFlash (opId 15) — flash a DMX output. flashRate is the FlashRate enum. */
+export function bodyDMXOutputFlash(
+  objectId: number,
+  flashRate: number,
+  objectType: number = ObjectType.Zone,
+): Buffer {
+  const b = Buffer.alloc(12);
+  b.writeUInt32BE(objectId, 0);
+  b.writeUInt16BE(objectType, 4);
+  b.writeUInt16BE(flashRate, 6);
+  b[8] = 255; // UpperFlashLevel
+  b[9] = 0; //   LowerFlashLevel
+  b.writeUInt16BE(0, 10); // Delay+Options would extend, but Designer only writes 12B effectively
+  // (Designer writes Delay(2 BE) + Options(2 BE) — 14 bytes total. Pad up:)
+  return Buffer.concat([b, Buffer.from([0, 0])]);
+}
+
+/** PingLinkDevice (opId 279) — round-trip latency probe to a specific device. */
+export function bodyPingLinkDevice(
+  objectId: number,
+  objectType: number,
+): Buffer {
+  const b = Buffer.alloc(6);
+  b.writeUInt32BE(objectId, 0);
+  b.writeUInt16BE(objectType, 4);
+  return b;
+}
+
+/** ShadeIdentifyOnInterfaceAddress (opId 320) — Next/Previous/Stop = 0/1/2. */
+export function bodyShadeIdentifyOnInterfaceAddress(
+  procNum: number,
+  linkNum: number,
+  interfaceAddress: number,
+  cmd: 0 | 1 | 2,
+): Buffer {
+  return Buffer.from([procNum, linkNum, interfaceAddress, cmd]);
+}
+
+/**
+ * SetRuntimeProperty (opId 7) — generic property write. Body matches
+ * RuntimePropertyCommand.MarshalPayload + the property value bytes serialised
+ * by RuntimePropertyConverter (we caller-provide the value bytes).
+ *
+ * NOTE: opId is 6 (RuntimeIdentify) when propertyNumber == 0, else 7.
+ *
+ *   uint32 BE objectId
+ *   uint16 BE objectType
+ *   [byte propertyNumber]    -- only when propertyNumber != 0
+ *   [byte updateImmediately] -- only when propertyNumber != 0
+ *   <valueBytes>
+ */
+export function bodySetRuntimeProperty(
+  objectId: number,
+  objectType: number,
+  propertyNumber: number,
+  valueBytes: Buffer,
+  updateImmediately = true,
+): Buffer {
+  if (propertyNumber === 0) {
+    const head = Buffer.alloc(6);
+    head.writeUInt32BE(objectId, 0);
+    head.writeUInt16BE(objectType, 4);
+    return Buffer.concat([head, valueBytes]);
+  }
+  const head = Buffer.alloc(8);
+  head.writeUInt32BE(objectId, 0);
+  head.writeUInt16BE(objectType, 4);
+  head[6] = propertyNumber;
+  head[7] = updateImmediately ? 1 : 0;
+  return Buffer.concat([head, valueBytes]);
+}
+
+/** GetRuntimeProperty (opId 9) — same as SetRuntimeProperty header, no value bytes. */
+export function bodyGetRuntimeProperty(
+  objectId: number,
+  objectType: number,
+  propertyNumber: number,
+): Buffer {
+  if (propertyNumber === 0) {
+    const b = Buffer.alloc(6);
+    b.writeUInt32BE(objectId, 0);
+    b.writeUInt16BE(objectType, 4);
+    return b;
+  }
+  const b = Buffer.alloc(7);
+  b.writeUInt32BE(objectId, 0);
+  b.writeUInt16BE(objectType, 4);
+  b[6] = propertyNumber;
+  return b;
+}
+
+/** ProcessorSetDateTime (opId 25) — sync the processor clock to wallclock. */
+export function bodyProcessorSetDateTime(d = new Date()): Buffer {
+  const b = Buffer.alloc(10);
+  b[0] = 0xff;
+  b[1] = 0xff;
+  b[2] = 0xff;
+  b[3] = d.getDate();
+  b[4] = d.getMonth() + 1;
+  // Year is written low-byte-first in the source (`bytes[1], bytes[0]` from
+  // BitConverter.GetBytes((ushort)Year)) which means **big-endian** ushort.
+  b.writeUInt16BE(d.getFullYear(), 5);
+  b[7] = d.getHours();
+  b[8] = d.getMinutes();
+  b[9] = d.getSeconds();
+  return b;
+}
+
+// ---------- Body decoders (incoming Telemetry/Event payloads) ----------
+
+export interface RuntimePropertyUpdate {
+  objectId: number;
+  objectType: number;
+  propertyNumber: number;
+  /** Human-readable property name, if known. */
+  propertyName: string;
+  /** Raw bytes after the header. RuntimePropertyConverter format depends on prop. */
+  value: Buffer;
+}
+
+/**
+ * Decode a Telemetry/Runtime (opId 1) body — single property update.
+ * Format per RuntimeTelemetry.MarshalPayload:
+ *   uint32 BE objectId
+ *   uint16 BE objectType
+ *   byte     propertyNumber
+ *   N bytes  property value (per-property encoding via RuntimePropertyConverter)
+ */
+export function decodeRuntimeTelemetry(
+  body: Buffer,
+): RuntimePropertyUpdate | null {
+  if (body.length < 7) return null;
+  const objectId = body.readUInt32BE(0);
+  const objectType = body.readUInt16BE(4);
+  const propertyNumber = body[6];
+  return {
+    objectId,
+    objectType,
+    propertyNumber,
+    propertyName: RuntimeProperty[propertyNumber] ?? `prop${propertyNumber}`,
+    value: Buffer.from(body.subarray(7)),
+  };
+}
+
+export interface EventBody {
+  objectId: number;
+  objectType: number;
+  /** Event-id specific bytes after the header. */
+  rest: Buffer;
+}
+
+/** Common Event header decoder — every event starts with objectId(4) + objectType(2). */
+export function decodeEventHeader(body: Buffer): EventBody | null {
+  if (body.length < 6) return null;
+  return {
+    objectId: body.readUInt32BE(0),
+    objectType: body.readUInt16BE(4),
+    rest: Buffer.from(body.subarray(6)),
+  };
+}
+
+/** OccupancyStateChange (event op 6) — header + 1 byte status. */
+export function decodeOccupancyEvent(body: Buffer): {
+  objectId: number;
+  objectType: number;
+  status: number;
+  statusName: string;
+} | null {
+  const h = decodeEventHeader(body);
+  if (!h || h.rest.length < 1) return null;
+  const s = h.rest[0];
+  return {
+    objectId: h.objectId,
+    objectType: h.objectType,
+    status: s,
+    statusName: OccupancyStatus[s] ?? `unk${s}`,
+  };
+}
+
+/** IPAnnouncement (event op 47) — header + ip(4) + serial(4). */
+export function decodeIPAnnouncementEvent(body: Buffer): {
+  objectId: number;
+  objectType: number;
+  ip: string;
+  serialHex: string;
+} | null {
+  const h = decodeEventHeader(body);
+  if (!h || h.rest.length < 8) return null;
+  return {
+    objectId: h.objectId,
+    objectType: h.objectType,
+    ip: `${h.rest[0]}.${h.rest[1]}.${h.rest[2]}.${h.rest[3]}`,
+    serialHex: h.rest.subarray(4, 8).toString("hex"),
+  };
+}
+
+/** DeviceUploadProgress (event op 9) — header + componentNumber(2) + status(1) + uploadType(1). */
+export function decodeDeviceUploadProgressEvent(body: Buffer): {
+  objectId: number;
+  componentNumber: number;
+  status: number;
+  uploadType: number;
+} | null {
+  const h = decodeEventHeader(body);
+  if (!h || h.rest.length < 4) return null;
+  return {
+    objectId: h.objectId,
+    componentNumber: h.rest.readUInt16BE(0),
+    status: h.rest[2],
+    uploadType: h.rest[3],
+  };
+}
+
+/** DiagnosticBeacon (Command op 28) incoming — variable-length 36/40/49 byte body. */
+export function decodeDiagnosticBeacon(body: Buffer): {
+  serialHex: string;
+  databaseGuid: string;
+  os: string;
+  boot: string;
+  raw: number;
+} | null {
+  if (body.length < 22) return null;
+  return {
+    serialHex: body.subarray(0, 4).toString("hex"),
+    databaseGuid: body.subarray(4, 20).toString("hex"),
+    os: `${body.readUInt16BE(20)}.${body.readUInt16BE(22)}.${body.readUInt16BE(24)}`,
+    boot: `${body.readUInt16BE(26)}.${body.readUInt16BE(28)}.${body.readUInt16BE(30)}`,
+    raw: body.length,
+  };
 }
 
 // ---------- Frame parser ----------
