@@ -14,7 +14,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "fs";
-import { hrefId, LeapConnection } from "./leap-client";
+import { hrefId, LeapConnection } from "../lib/leap-client";
 
 const args = process.argv.slice(2);
 function getArg(name: string): string | undefined {

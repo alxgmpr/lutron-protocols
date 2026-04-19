@@ -20,7 +20,7 @@
 
 import { parseArgs } from "util";
 import { defaultHost } from "../lib/config";
-import { hrefId, LeapConnection } from "./leap-client";
+import { hrefId, LeapConnection } from "../lib/leap-client";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
