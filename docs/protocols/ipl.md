@@ -303,7 +303,6 @@ the correct init response, command messages are silently ignored.
 |------|---------|
 | `tools/ipl-client.ts` | Connect, decode, and display IPL traffic |
 | `tools/leap-explore.ts` | Comprehensive LEAP endpoint scanner |
-| `tools/leap-mitm.ts` | TLS MITM proxy (blocked by cert pinning) |
 | ~~`tools/leap-frida.js`~~ | Removed — Frida TLS hook, blocked by SIP |
 | ~~`tools/leap-lldb-intercept.py`~~ | Removed — LLDB TLS breakpoint, blocked by hardened runtime |
 

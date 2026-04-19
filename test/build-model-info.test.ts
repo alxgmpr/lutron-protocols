@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  buildModelInfoOutput,
-  parseModelInfo,
-} from "../tools/build-model-info-lib";
+import { buildModelInfoOutput, parseModelInfo } from "../lib/build-model-info";
 
 test("parseModelInfo ignores headers and malformed rows", () => {
   const parsed = parseModelInfo(`

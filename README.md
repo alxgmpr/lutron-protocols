@@ -70,7 +70,6 @@ npx tsx tools/nucleo-cmd.ts "cca button 001D94EF on"
 
 # LEAP
 npx tsx tools/leap-dump.ts --save
-npx tsx tools/leap-query.ts /zone/3663/status
 ```
 
 ## Firmware
@@ -108,7 +107,6 @@ status                                  # Radio/network status
 | `tools/coap-probe.ts`        | Scan all CCX devices for CoAP endpoints                   |
 | `tools/coap-fuzz.ts`         | Rapid CoAP path fuzzer                                    |
 | `tools/leap-dump.ts`         | Dump LEAP device/zone hierarchy                           |
-| `tools/leap-query.ts`        | One-shot LEAP API query                                   |
 | `tools/leap-cmd.ts`          | LEAP zone control (level, on, off, raise, lower)          |
 | `tools/ccx-sniffer.ts`       | Thread traffic sniffer                                    |
 | `tools/ccx-send.ts`          | Send CCX multicast commands                               |
@@ -117,7 +115,6 @@ status                                  # Radio/network status
 | `tools/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
 | `tools/dll-patcher/`         | .NET DLL patcher — universal unlock for Designer          |
 | `tools/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
-| `tools/fw-probe.ts`          | Probe Phoenix firmware images for build metadata          |
 | `bridge/`                    | CCX→WiZ bridge (HA add-on) — Thread sniffer to WiZ UDP    |
 
 

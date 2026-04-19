@@ -29,7 +29,7 @@ import {
   type PresetMapping,
   walkEndpoints,
   type ZoneInfo,
-} from "./leap-client";
+} from "../lib/leap-client";
 
 // --- CLI args ---
 
