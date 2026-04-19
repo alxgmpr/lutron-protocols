@@ -666,7 +666,10 @@ export const LEAP_REGISTRY: EndpointDef[] = [
     key: "links",
     core: true,
     itemsField: "Links",
-    perItem: [{ path: "/status", key: "status" }],
+    perItem: [
+      { path: "/status", key: "status" },
+      { path: "/memberinfo/status", key: "memberInfoStatus" },
+    ],
   },
   {
     path: "/area",
@@ -830,12 +833,31 @@ export const LEAP_REGISTRY: EndpointDef[] = [
     itemsField: null,
   },
 
-  // Service integrations (Alexa, BACnet, HomeKit, IFTTT, Sonos)
+  // Service integrations (Alexa, BACnet, HomeKit, IFTTT, Sonos, Google Home, NTP)
   { path: "/service/alexa", key: "serviceAlexa", itemsField: null },
+  {
+    path: "/service/alexa/config",
+    key: "serviceAlexaConfig",
+    itemsField: null,
+  },
   { path: "/service/bacnet", key: "serviceBACnet", itemsField: null },
   { path: "/service/homekit", key: "serviceHomeKit", itemsField: null },
   { path: "/service/ifttt", key: "serviceIFTTT", itemsField: null },
   { path: "/service/sonos", key: "serviceSonos", itemsField: null },
+  {
+    path: "/service/sonos/status",
+    key: "serviceSonosStatus",
+    itemsField: null,
+  },
+  { path: "/service/googlehome", key: "serviceGoogleHome", itemsField: null },
+  { path: "/service/ntpserver", key: "serviceNTPServer", itemsField: null },
+
+  // Operation status (system-wide async operation tracker) — v2 is preferred
+  {
+    path: "/v2/operation/status",
+    key: "operationStatusV2",
+    itemsField: "OperationStatuses",
+  },
 ];
 
 /**

@@ -145,3 +145,90 @@ type leapobj.AreaStatus struct {
    `walkEndpoints` can return typed data instead of `any`.
 4. The `polarisarch/proto/dom/*` packages are the gRPC-backed domain model —
    worth a separate pass for CREATE/UPDATE body schemas.
+
+## Investigation notes (probe pass 2)
+
+### Permission levels
+
+`leap/protocol.Permissions` is a `uint8`. Two observable tests in the binary:
+`IsAdmin()` and `IsLoginOrHigher()` — meaning there's at least a 3-tier
+ordering below Admin (Untrusted < Limited < Login < Admin).
+
+Four strategy classes register handlers, and each picks its own role:
+
+| Strategy | Package | Resulting role |
+|---|---|---|
+| `UntrustedUserStrategy` | `leap/strategy/shared` | below Login |
+| `limitedUserStrategy` | `leap/strategy/viveLaCaseta/phoenix` | Limited |
+| `Strategy` (default) | `leap/strategy/viveLaCaseta/phoenix` | Login |
+| `CertBasedAdminStrategy` | `leap/strategy/viveLaCaseta/phoenix` | **Admin** |
+
+Our RA3 cert selects `CertBasedAdminStrategy` — confirmed by
+`GET /clientsetting` returning `"SessionRole": "Admin"`.
+
+`ClientSettingUpdate` in `leapobj` only has `ClientMajorVersion` and
+`ClientMinorVersion` fields — **role cannot be elevated via settings**. No
+evidence of a role above Admin in the binary's strategy registry.
+
+### Why ~140 probe paths returned 400 "This request is not supported"
+
+**Not auth denials** — the same error text covers several distinct failures:
+
+1. **Segmentation artifacts** (most common). The binary-derived paths
+   concatenate entity names that should be slash-separated. A second-pass
+   probe that tries every CamelCase split point (see
+   `tools/leap-probe-v2.ts`) recovers 22 additional real paths. Results in
+   `data/firmware-re/leap-probe-v2-finds.json`.
+2. **Wrong HTTP method**. Routes registered only for CREATE/UPDATE/DELETE
+   return the same 400 when hit with GET.
+3. **Missing body fields**. CREATE routes that require specific enum values
+   (e.g. `TransferProtocol`) fail with the same generic error when the
+   payload doesn't parse.
+
+The 404s were all bogus paths from the initial over-segmenting pass.
+
+### Database extraction via LEAP — feasible but payload undetermined
+
+The RA3 processor exposes database transfer via LEAP:
+
+- `CREATE /databasetransfersession` with body `DatabaseTransferSessionCreate`
+- `CREATE /database/{id}/databasetransfersession`
+- `GET /databasetransfersession`, `DELETE /databasetransfersession`
+- `GET /databasetransfersessionstatus`
+
+`CertBasedAdminStrategy` **has** the methods (not role-gated from our cert):
+- `CreateDatabaseIDDatabaseTransferSession`
+- `ExecutePerformS3DatabaseBackup`
+- `ExecutePerformSFTPDatabaseBackup`
+- `ExecuteApplyDatabaseTransferSession` (apply a downloaded DB!)
+
+Request body shape (from `leapobj`):
+
+```go
+type DatabaseTransferSessionCreate struct {
+    DownloadFrom           *DownloadFrom           // for APPLYing a DB
+    FilePackageDestination *FilePackageDestination // for EXTRACTing a DB
+}
+type FilePackageDestination struct {
+    Protocol TransferProtocol  // enum — "SFTP", "HTTPS", "S3"? unconfirmed
+    Path     string
+    Username string
+    Port     *uint32
+}
+```
+
+All probe payloads with guessed `Protocol` values ("SFTP", "HTTPS", "S3", etc.)
+returned 400. The `TransferProtocol` enum string values are stored in Go
+reflection metadata rather than as adjacent constants, so GoReSym didn't
+expose them. To get the exact accepted values:
+
+- Decompile `leap/mux.databaseIDDatabaseTransferSession.create` (at
+  `0xd8ed98`) or `leap/resource.beginSFTPDatabaseTransferSession` (at
+  `0xa09be8`) in Binary Ninja, OR
+- Packet-sniff a live Designer "Get from Processor" operation on port 8081,
+  which uses this exact endpoint.
+
+The second approach is the faster path — Designer already knows the right
+payload. A TLS MITM with the processor cert (which we have) on the Designer
+VM's network path would reveal the full request body and be the ground truth
+for implementing our own DB extractor.
