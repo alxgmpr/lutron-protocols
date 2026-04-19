@@ -388,14 +388,93 @@ area's programmed rate; StopRaiseLower halts an in-progress ramp. Verified
 matching `Telemetry/Runtime` Level frames; `stoprl` mid-ramp halts the fade
 at the intermediate level (caught one ramp at 74% mid-flight).
 
-### PresetActivate (opId 12) — body shape not yet pinned down
+### PresetActivate (opId 12) — bus-internal only
 
-The opId is in the enum and several body shapes get a `LEIA` ack from the
-processor, but no shape tested so far produces the expected zone-level
-side-effect when activating preset 496 (which should drive its three
-affected zones to 75%). Likely needs an additional addressing field
-(parent SceneController objectId, button context, or similar). Use LEAP
-`/zone/{id}/commandprocessor` with `CommandType: "PresetActivate"` for now.
+Every binary body shape tested gets a `LEIA` ack but no side effect. The
+correct external path for preset activation is **opId 60 `IntegrationCommand`
+with `#DEVICE,<keypadId>,<btnNum>,3\n`** — see below. This routes through the
+processor's `INTEGRATION_COMMAND_PROCESSOR` which runs the keypad button's
+`ProgrammingModel` (AdvancedToggle, SingleAction, etc.), which then invokes
+the preset internally.
+
+### IntegrationCommand (opId 60) — ASCII string payload ✅ verified
+
+```
+body = ascii bytes of a telnet-style line, terminated with '\n'
+```
+
+The processor registers a single `Command` handler (opId **60**) whose body
+is a line of ASCII text dispatched through `INTEGRATION_COMMAND_PROCESSOR`
+— the same dispatcher the legacy RA2/HWQS telnet integration port used.
+On RA3 the telnet TCP port (23) is closed, but the dispatcher itself is
+reachable from the IPL TLS port (8902) via opId 60.
+
+Registered command verbs (from `sub_1177518` in lutron-core
+v26.01.13f000):
+
+| Verb              | Purpose                                             |
+|-------------------|-----------------------------------------------------|
+| `#DEVICE`         | Simulate keypad events (Press/Release/Hold/MultiTap)|
+| `?DEVICE`         | Query device state                                  |
+| `#OUTPUT`         | Set a zone's output level                           |
+| `?OUTPUT`         | Query a zone's level                                |
+| `#AREA` / `?AREA` | Area-scoped scene/state commands                    |
+| `#SHADEGRP` / `?SHADEGRP` | Shade-group commands                        |
+| `#TIMECLOCK` / `?TIMECLOCK` | Timeclock commands                        |
+| `?INTEGRATIONID`  | Query integration ID                                |
+| `#SYSTEM` / `?SYSTEM` | System-wide commands                            |
+| `?HELP`           | List available commands                             |
+| `#SYSVAR` / `?SYSVAR` | System-variable get/set                         |
+| `#EMULATE`        | Emulator hooks                                      |
+| `#PARTITIONWALL` / `?PARTITIONWALL` | Partition-wall state               |
+| `?GROUP`          | Query temporary groups                              |
+| `#MONITORING`     | Subscribe to telemetry                              |
+
+#### `#DEVICE,<deviceObjectId>,<buttonNumber>,<action>\n`
+
+Action codes (from `sub_1188918` switch):
+
+| Action | Telnet name | Dispatch |
+|--------|-------------|----------|
+| 3      | Press       | `CORE_TASK.sendKeypadEvent(btn, 0x38, 0, …)` |
+| 4      | Release     | `CORE_TASK.sendKeypadEvent(btn, 0x38, 1, …)` |
+| 5      | Hold        | `CORE_TASK.sendKeypadEvent(btn, 0x38, 3, …)` |
+| 6      | MultiTap    | `CORE_TASK.sendKeypadEvent(btn, 0x38, 2, …)` |
+
+`deviceObjectId` is the LEAP `/device/<id>` id of the keypad (NOT the
+button's `/button/<id>`). `buttonNumber` is the physical button position
+(1-based, matches LEAP `Button.ButtonNumber`). The newline is required.
+
+Verified 2026-04-19 on RA3 firmware v26.01.13f000 against SunnataHybridKeypad
+device 483 button 1 (bound to preset 496 Office Entrance): sending `#DEVICE,
+483,1,3\n` then `#DEVICE,483,1,4\n` toggles zones 518/546/574 through the
+button's `AdvancedToggleProgrammingModel` (primary preset 75%, secondary 0%).
+Tooling exposes this as `ipl-cmd.ts press <deviceObjId> <btnNum>`.
+
+#### Important caveats (verified empirically, RA3 2026-04-19)
+
+1. **ID spaces differ per verb.**
+   - `#DEVICE,<id>,…` takes the **LEAP `/device/<id>` object id** (e.g. 483 for a
+     SunnataHybridKeypad).
+   - `#OUTPUT,<id>,…` takes the **Designer-assigned Integration ID** (small
+     integer, ≠ LEAP zone object id). `#OUTPUT,5,1,50,2` triggered Level
+     telemetry for LEAP zone 10508, not zone 5; `#OUTPUT,546,…` did nothing.
+   - `#AREA`, `#SHADEGRP`, `#TIMECLOCK`, `#SYSVAR`, `?GROUP` almost certainly
+     use the Integration ID convention too — the mapping is project-local and
+     lives in Designer.
+
+2. **Query verbs (`?DEVICE`, `?OUTPUT`, `?HELP`, `?SYSVAR`, …) return nothing
+   on the IPL connection.** The processor dispatches the text response to
+   `TERMINAL_TASK_INTF` (the telnet session), not back on the IPL TLS socket.
+   If you need the answer, either use LEAP (which has proper request/response
+   over 8081) or observe the corresponding telemetry after a write.
+
+3. **Write verbs still work** — state changes surface as normal LEIE/Runtime
+   telemetry frames on the same IPL connection.
+
+4. **Unsupported verbs** fall through to `"Command not yet supported\n"` (goes
+   to TERMINAL_TASK, so silent from the IPL side). Only the verbs in the table
+   above are registered in `INTEGRATION_COMMAND_PROCESSOR::ctor`.
 
 ### Full Command.Operation enum (truncated)
 
@@ -449,7 +528,7 @@ not client-facing IPL commands.
 |---------------------------------------|---------------------------------------------------------------|
 | Raise / Lower / Stop on a zone        | LEAP `RaiseRequest` / `LowerRequest` / `StopRequest` (8081)   |
 | GoToScene on an area                  | LEAP `GoToSceneRequest` (8081)                                |
-| Preset activation                     | LEAP scene/preset activation (8081)                           |
+| **Preset activation**                 | **IPL opId 60 `#DEVICE,<keypadId>,<btnNum>,3\n` (see §4.1)**  |
 | Plain-text from a script              | Telnet integration protocol (port 23, public docs)            |
 
 The LEAP request models live in `Lutron.Services.Core.LAPFramework.dll` —
