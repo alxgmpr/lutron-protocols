@@ -25,6 +25,12 @@ import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { defaultHost } from "../lib/config";
 import {
+  decodeDeviceUploadProgressEvent,
+  decodeDiagnosticBeacon,
+  decodeEventHeader,
+  decodeIPAnnouncementEvent,
+  decodeOccupancyEvent,
+  decodeRuntimeTelemetry,
   EventOp,
   level16ToPct,
   MsgType,
@@ -154,70 +160,83 @@ function mtColor(mt: MsgType): string {
 
 // ---------- Body decoders ----------
 
-/** Property codes seen in Telemetry/Runtime (opId=1) bodies. */
-const PROP_NAME: Record<number, string> = {
-  0x0003: "level(sw)",
-  0x0005: "button",
-  0x000f: "level(dim)",
-  0x006b: "led",
-  0x0202: "cfg47",
-  0x0225: "cfg40",
-  0x0243: "bool",
-  0x025b: "occupancy",
-};
+function fmtPropValue(propNum: number, val: Buffer): string {
+  // Per RuntimePropertyConverter — Level (1/4/38/39) is either a bare uint16 BE
+  // (response to GetRuntimeProperty) or [cmd:u8][level16:u16 BE] (spontaneous
+  // telemetry push). Try the longer form first.
+  const isLevel =
+    propNum === 1 || propNum === 4 || propNum === 38 || propNum === 39;
+  if (isLevel && val.length >= 3) {
+    const cmd = val[0];
+    const lvl = val.readUInt16BE(1);
+    return `cmd=${cmd} ${level16ToPct(lvl)}% (0x${lvl.toString(16)})`;
+  }
+  if (isLevel && val.length === 2) {
+    const lvl = val.readUInt16BE(0);
+    return `${level16ToPct(lvl)}% (0x${lvl.toString(16)})`;
+  }
+  if (propNum === 16 && val.length >= 1) {
+    // OccupancyStatus: 1=Unknown, 3=Occupied, 4=Unoccupied
+    const s = val[0];
+    return s === 3
+      ? "Occupied"
+      : s === 4
+        ? "Unoccupied"
+        : s === 1
+          ? "Unknown"
+          : `state=${s}`;
+  }
+  if (propNum === 23 && val.length >= 2) {
+    // LED_STATUS — high byte is sub-led, low byte is on/off
+    const v = val.readUInt16BE(0);
+    return `led=${v & 0xff ? "ON" : "off"} (0x${v.toString(16).padStart(4, "0")})`;
+  }
+  if (propNum === 67 && val.length >= 2) {
+    return `scene=${val.readUInt16BE(0)}`;
+  }
+  if (propNum === 91 && val.length >= 1) {
+    return val[0] ? "ON" : "off";
+  }
+  if (val.length === 1) return `${val[0]}`;
+  if (val.length === 2)
+    return `0x${val.readUInt16BE(0).toString(16).padStart(4, "0")}`;
+  if (val.length === 4)
+    return `0x${val.readUInt32BE(0).toString(16).padStart(8, "0")}`;
+  return `0x${val.toString("hex")}`;
+}
 
 function decodeTelemetry(f: ParsedFrame): string | null {
-  // Body format: [payloadLen:u16 BE][padding:u16 00 00][objId:u32 BE][prop:u16 BE][value bytes]
-  // NOTE: the body we receive here already has the outer payloadLen stripped
-  // (lib/ipl did that). What remains is an *inner* runtime packet with its own
-  // internal length — observed as [innerLen:u16][00 00][objId:u32][prop:u16][value].
-  const b = f.body;
-  if (b.length < 2) return null;
-  const innerLen = b.readUInt16BE(0);
-  if (innerLen === 0 || innerLen === 1) return "(heartbeat)";
-  if (b.length < 8) return null;
-  // two pad bytes at offset 2, objId @ offset 4, prop @ offset 6 match captures
-  const objId = b.readUInt32BE(4);
-  const prop = b.readUInt16BE(6);
-  const val = b.subarray(8);
-  const propName =
-    PROP_NAME[prop] ?? `prop=0x${prop.toString(16).padStart(4, "0")}`;
-
-  if ((prop === 0x000f || prop === 0x0003) && val.length >= 3) {
-    const cmd = val[0];
-    const level = val.readUInt16BE(1);
-    return `${objectLabel(objId)} ${propName} cmd=${cmd} level=${level16ToPct(level)}% (0x${level.toString(16)})`;
-  }
-  if (prop === 0x0005 && val.length >= 2) {
-    return `${objectLabel(objId)} ${propName}=0x${val.readUInt16BE(0).toString(16).padStart(4, "0")}`;
-  }
-  if (prop === 0x006b && val.length >= 2) {
-    const v = val.readUInt16BE(0);
-    const on = (v & 0xff) !== 0;
-    return `${objectLabel(objId)} led=${on ? "ON " : "off"} (0x${v.toString(16).padStart(4, "0")})`;
-  }
-  if (prop === 0x025b && val.length >= 1) {
-    const st = val[0];
-    const label =
-      st === 3 ? "occupied" : st === 4 ? "unoccupied" : `state=${st}`;
-    return `${objectLabel(objId)} ${propName}=${label}`;
-  }
-  if (prop === 0x0243 && val.length >= 1) {
-    return `${objectLabel(objId)} ${propName}=${val[0] ? "true" : "false"}`;
-  }
-  return `${objectLabel(objId)} ${propName} val=${val.toString("hex")}`;
+  // (heartbeat) telemetry has 0 or 1-byte body
+  if (f.body.length <= 1) return "(heartbeat)";
+  const t = decodeRuntimeTelemetry(f.body);
+  if (!t) return `(unrecognised tlm body ${f.body.length}B)`;
+  return `${objectLabel(t.objectId)} type=${t.objectType} ${t.propertyName}(${t.propertyNumber})=${fmtPropValue(t.propertyNumber, t.value)}`;
 }
 
 function decodeEvent(f: ParsedFrame): string | null {
-  const b = f.body;
-  if (b.length < 6) return null;
-  const objId = b.readUInt32BE(0);
-  const objType = b.readUInt16BE(4);
+  if (f.operationId === 6) {
+    const o = decodeOccupancyEvent(f.body);
+    if (o)
+      return `OccupancyChange ${objectLabel(o.objectId)} type=${o.objectType} → ${o.statusName}`;
+  }
+  if (f.operationId === 47) {
+    const a = decodeIPAnnouncementEvent(f.body);
+    if (a)
+      return `IPAnnouncement ${objectLabel(a.objectId)} type=${a.objectType} ip=${a.ip} serial=${a.serialHex}`;
+  }
+  if (f.operationId === 9) {
+    const u = decodeDeviceUploadProgressEvent(f.body);
+    if (u)
+      return `DeviceUploadProgress ${objectLabel(u.objectId)} comp=${u.componentNumber} status=${u.status} type=${u.uploadType}`;
+  }
+  // Fallback: header + raw rest
+  const h = decodeEventHeader(f.body);
   const name =
     f.operationId !== undefined
       ? (EventOp[f.operationId] ?? `Event(op${f.operationId})`)
       : "Event";
-  return `${name} ${objectLabel(objId)} type=${objType}${b.length > 6 ? ` rest=${b.subarray(6).toString("hex")}` : ""}`;
+  if (!h) return `${name} (short body ${f.body.length}B)`;
+  return `${name} ${objectLabel(h.objectId)} type=${h.objectType}${h.rest.length > 0 ? ` rest=${h.rest.toString("hex")}` : ""}`;
 }
 
 function decodeCommand(f: ParsedFrame): string | null {
@@ -230,11 +249,9 @@ function decodeCommand(f: ParsedFrame): string | null {
       return `GoToLevel ${objectLabel(b.readUInt32BE(0))} type=${b.readUInt16BE(4)} level=${level16ToPct(b.readUInt16BE(6))}% orig=${b.readUInt16BE(8)} fade=${b.readUInt16BE(10) / 4}s delay=${b.readUInt16BE(12) / 4}s`;
     }
     case 28 /* DiagnosticBeacon */: {
-      if (b.length < 22) return null;
-      const serial = b.subarray(0, 4).toString("hex");
-      const guid = b.subarray(4, 20).toString("hex");
-      const os = `${b.readUInt16BE(20)}.${b.readUInt16BE(22)}.${b.readUInt16BE(24)}`;
-      return `DiagnosticBeacon serial=${serial} dbGUID=${guid} os=${os} (${b.length}B)`;
+      const d = decodeDiagnosticBeacon(b);
+      if (!d) return null;
+      return `DiagnosticBeacon serial=${d.serialHex} dbGUID=${d.databaseGuid} os=${d.os} boot=${d.boot} (${d.raw}B)`;
     }
     case 44 /* DeviceSetOutputLevel */: {
       if (b.length < 10) return null;
