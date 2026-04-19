@@ -10,6 +10,10 @@
  * Commands implemented:
  *   ping                                       -> opId 11 (empty body)
  *   gotolevel <zoneId> <pct> [fade] [delay]    -> opId 13 (OUTPUT, fade/delay sec)
+ *   gotoscene <areaId> <sceneNum> [fade] [delay]  -> opId 16 (Area scene)
+ *   raise <areaId> [fade] [delay]              -> opId 20
+ *   lower <areaId> [fade] [delay]              -> opId 21
+ *   stoprl <areaId>                            -> opId 22 (StopRaiseLower)
  *   loadstate <zoneId> <pct> [fade] [delay] [fieldmask]
  *                                              -> opId 340 (color/vibrancy/CCT)
  *   setoutput <proc> <link> <serialHex> <comp> <pct>
@@ -51,9 +55,11 @@ import {
   bodyGetRuntimeProperty,
   bodyGoToLevel,
   bodyGoToLoadState,
+  bodyGoToScene,
   bodyPingLinkDevice,
   bodyPresetGoToLiftAndTiltLevels,
   bodyProcessorSetDateTime,
+  bodyRaiseLowerStop,
   bodyRuntimeIdentify,
   bodySetRuntimeProperty,
   bodyShadeIdentifyOnInterfaceAddress,
@@ -186,6 +192,12 @@ async function main() {
         "  presettilt <zoneId> [liftPct] [tiltPct] [delay]      opId 82 (shade lift+tilt)",
         "  dmxflash <objectId> [flashRate]                      opId 15",
         "",
+        "  -- area scene / continuous ramp --",
+        "  gotoscene <areaId> <sceneNum> [fade] [delay]         opId 16",
+        "  raise <areaId> [fade] [delay]                        opId 20",
+        "  lower <areaId> [fade] [delay]                        opId 21",
+        "  stoprl <areaId>                                      opId 22 (StopRaiseLower)",
+        "",
         "  -- runtime property R/W (generic) --",
         "  set-prop <obj> <objType> <propNameOrNum> <valueHex>  opId 7 (or 6 if prop=0)",
         "  get-prop <obj> <objType> <propNameOrNum>             opId 9",
@@ -226,6 +238,43 @@ async function main() {
         fadeSec: parseNum(fade),
         delaySec: parseNum(delay),
       });
+      break;
+    }
+
+    case "gotoscene": {
+      const [area, sceneNum, fade = "1", delay = "0"] = rest;
+      opId = CommandOp.GoToScene;
+      body = bodyGoToScene(parseNum(area), parseNum(sceneNum), {
+        fadeSec: parseNum(fade),
+        delaySec: parseNum(delay),
+      });
+      break;
+    }
+
+    case "raise": {
+      const [area, fade = "0", delay = "0"] = rest;
+      opId = CommandOp.Raise;
+      body = bodyRaiseLowerStop(parseNum(area), {
+        fadeSec: parseNum(fade),
+        delaySec: parseNum(delay),
+      });
+      break;
+    }
+
+    case "lower": {
+      const [area, fade = "0", delay = "0"] = rest;
+      opId = CommandOp.Lower;
+      body = bodyRaiseLowerStop(parseNum(area), {
+        fadeSec: parseNum(fade),
+        delaySec: parseNum(delay),
+      });
+      break;
+    }
+
+    case "stoprl": {
+      const [area] = rest;
+      opId = CommandOp.StopRaiseLower;
+      body = bodyRaiseLowerStop(parseNum(area));
       break;
     }
 
