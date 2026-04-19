@@ -19,7 +19,10 @@ export const PacketLog = memo(function PacketLog({ height }: Props) {
   const total = state.lines.length;
   const end = Math.max(0, total + state.scrollOffset);
   const start = Math.max(0, end - height);
-  const visible = state.lines.slice(start, end);
+  const slice = state.lines.slice(start, end);
+  const padCount = Math.max(0, height - slice.length);
+  const visible =
+    padCount > 0 ? [...Array(padCount).fill(""), ...slice] : slice;
 
   return (
     <Box flexDirection="column" height={height} flexShrink={0}>
@@ -27,7 +30,9 @@ export const PacketLog = memo(function PacketLog({ height }: Props) {
         // Line index is stable within the window; ANSI is preserved by Ink's
         // Text component when the string already contains escape codes.
         // biome-ignore lint/suspicious/noArrayIndexKey: windowed render by position
-        <Text key={i}>{line}</Text>
+        <Text key={i} wrap="truncate-end">
+          {line}
+        </Text>
       ))}
     </Box>
   );

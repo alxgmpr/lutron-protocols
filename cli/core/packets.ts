@@ -156,7 +156,10 @@ export function getPacketLayout(
     layout.zone +
     layout.delta;
 
-  let available = width - fixed - spaces;
+  // Target width-1 so rendered rows never fill the last terminal column —
+  // avoids Ink/terminal edge-case wrapping that would push DELTA onto a
+  // second line.
+  let available = width - 1 - fixed - spaces;
 
   const minFlex = showRaw
     ? MIN_PACKET_STATE_WIDTH + MIN_PACKET_RAW_WIDTH
