@@ -59,7 +59,7 @@ This is architecturally similar to Lutron's production bridges. Caseta/Vive/RA2 
 ```bash
 git clone https://github.com/alxgmpr/lutron-tools.git && cd lutron-tools
 npm install
-cp .env.example .env  # configure IPs
+cp config.example.json config.json  # configure processor IPs and cert paths
 
 # Connect to Nucleo
 npx tsx cli/nucleo.ts
@@ -115,7 +115,10 @@ status                                  # Radio/network status
 | `tools/codegen.ts`           | Generate C headers from TS protocol definitions           |
 | `tools/thread-decrypt.ts`    | Decrypt 802.15.4 frames                                   |
 | `tools/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
-| `tools/auth-bypass/`         | Designer offline auth bypass — forges LutronData.bin      |
+| `tools/dll-patcher/`         | .NET DLL patcher — universal unlock for Designer          |
+| `tools/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
+| `tools/fw-probe.ts`          | Probe Phoenix firmware images for build metadata          |
+| `bridge/`                    | CCX→WiZ bridge (HA add-on) — Thread sniffer to WiZ UDP    |
 
 
 ## Documentation
@@ -124,17 +127,25 @@ Protocol research and reverse engineering findings are in `docs/`. See [docs/ind
 
 ## Configuration
 
-Environment values in `.env`:
+Host addresses, cert paths, and Designer VM credentials live in `config.json` (gitignored):
 
-```bash
-RA3_HOST=10.x.x.x
-CASETA_HOST=10.x.x.x
-NUCLEO_HOST=10.x.x.x
+```json
+{
+  "processors": {
+    "10.x.x.x": {
+      "cert": "lutron-ra3-cert.pem",
+      "key": "lutron-ra3-key.pem",
+      "ca": "lutron-ra3-ca.pem"
+    }
+  },
+  "openBridge": "10.x.x.x",
+  "designer": { "host": "10.x.x.x", "user": "user", "pass": "pass" }
+}
 ```
 
-Thread network parameters in `firmware/src/ccx/thread_config.h`. Both are gitignored — get credentials from LEAP API `/link` endpoint.
+Processor type (RA3 / HomeWorks QSX / Caseta) is auto-detected from the LEAP `/server` ProtocolVersion. LEAP tools require mutual TLS certs (`lutron-{name}-{cert,key,ca}.pem` in project root).
 
-LEAP tools require mutual TLS certificates (`lutron-{name}-{cert,key,ca}.pem` in project root).
+Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than static config — pull them from a processor with `npx tsx tools/leap-dump.ts --save`.
 
 ## Prior Work
 
