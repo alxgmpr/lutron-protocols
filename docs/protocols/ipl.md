@@ -1,12 +1,14 @@
-# IPL Protocol: RA3 Designer Integration Port (TLS:8902)
+# IPL Protocol: RA3 Designer Integration Port (TLS:8902 or WSS)
 
-The RA3 processor exposes a binary protocol on TLS port 8902 used by Lutron Designer
-for project transfer, device configuration, and real-time state sync. This document
-covers the protocol framing, message types, and connection setup discovered through
-reverse engineering.
+The RA3 processor exposes a binary protocol used by Lutron Designer for project
+transfer, device configuration, and real-time state sync. Historically carried on
+raw TLS:8902; newer processors may advertise a WSS endpoint alongside (same payload,
+WebSocket transport). Lutron docs sometimes call this **LIP** ("Lutron Integration
+Protocol"); Designer's own code uses **IPL** everywhere — they are the same thing.
 
-**Date**: 2026-03-06
-**Processor**: RA3 (HWQS), firmware v03.247, IP <ra3-ip>
+**Original capture**: 2026-03-06 (RA3 HWQS, firmware v03.247).
+**Revised from RE**: 2026-04-19 — reversed framing, operation enums, and transport
+discovery from Designer 26.0.2.100 DLLs (see §2–§6).
 
 ---
 
@@ -85,215 +87,427 @@ Cipher negotiated: **TLS_CHACHA20_POLY1305_SHA256** (TLSv1.3).
 
 ---
 
-## 2. Protocol Framing
+## 2. Protocol Framing (from Designer RE, 2026-04-19)
 
-Messages are delimited by `LEI` + ASCII type byte markers. No explicit length field —
-messages run from one marker to the next.
+Reversed from `Lutron.Gulliver.Infrastructure.dll`:
+`CommunicationFramework.Message.MessageHeader.WriteWith()`,
+`CommunicationFramework.Protocol.GulliverProtocolReader`,
+`CommunicationFramework.CommunicationManager` (enums).
 
-### Message Header (12 bytes)
+**Byte order is BIG-ENDIAN for all multi-byte integers.** `GulliverProtocolReader/Writer`
+override .NET `BinaryReader/Writer` and do explicit byte-by-byte BE serialisation. Strings
+use UTF-16BE (`Encoding.BigEndianUnicode`): 2 bytes per char, variable-length strings are
+prefixed with a uint16 BE length and terminated with `00 00`.
+
+### Message Header + Payload (Version3)
 
 ```
 Offset  Size  Field
-0       3     Magic: "LEI"
-3       1     Type: '@' (0x40), 'C' (0x43), 'E' (0x45), etc.
-4       2     Version: 00 01 (always)
-6       2     Flags: 00 FF (always)
-8       2     Sequence: uint16 BE, monotonically increasing
-10      2     Subtype: varies by message type
+0       3     Magic: 'L' 'E' 'I' (0x4C 0x45 0x49)
+3       1     Packed: [Version:3][RecvProc:1][Attempt:1][MsgType:3]
+4       2     systemId (uint16 BE)  -- 1 byte for Version2, omitted for Version1
+6       1     senderId   (address on processor-to-system map)
+7       1     receiverId (0xFF = broadcast)
+8       2     messageId (uint16 BE, monotonically increasing per sender)
+10      16    requestedAcknowledgementSet  -- ONLY when Attempt==Resend (0x08 bit)
+10/26   2     operationId (uint16 BE)  -- ONLY when HasOperationId (Command/Response/Event/Control/Telemetry)
+
+-- after the header, if the message HasPayload (all types except Acknowledgement):
+12/28   2     payloadLength (uint16 BE)      -- per MessageFactorylet.ReadPayload
+14/30   N     payload bytes                  -- operation-specific body
 ```
 
-### Message Types
+**Critical:** the payload is always preceded by a 2-byte BE length prefix. Missing it
+causes the processor to try parsing the first two body bytes as the length and then
+expect a `LEI` magic at `body[2+parsed_len:]` — when the magic isn't there, the TCP
+connection is torn down.
 
-| Marker | Direction | Purpose | Subtype |
-|--------|-----------|---------|---------|
-| `LEI@` | Processor → Client | Commands (zlib JSON) or init handshake | `01 5D` for commands, `00 1C` for init |
-| `LEIE` | Processor → Client | Status reports (binary) or heartbeat | `00 01` for status, `00 02` for init status |
-| `LEIC` | Both | Keepalive / acknowledgment | `00 00` or `00 01` |
+Minimum Version3 Command wire size: 14 bytes (12-byte header + 2-byte length 0 for empty body).
+
+### The Packed Type Byte (offset 3)
+
+| Bits    | Mask | Field              | Values |
+|---------|------|--------------------|--------|
+| 7-5     | 0xE0 | Version            | `0x00`=V1, `0x20`=V2, `0x40`=V3, `0x60`=V4, … |
+| 4       | 0x10 | ReceiverProcessing | `0x00`=NoAcks, `0x10`=Normal |
+| 3       | 0x08 | Attempt            | `0x00`=Original, `0x08`=Resend |
+| 2-0     | 0x07 | MessageType        | `0`=Command, `1`=Ack, `2`=Response, `3`=Event, `4`=Control, `5`=Telemetry |
+
+RA3 uses **Version3**. `IPLVersionManager.MAX_VERSION_SUPPORTED` is Version3 (the client
+warns if a processor advertises Version4+). So the 4th byte is almost always `0x40 | msgType`:
+
+| Byte | ASCII | MsgType | Direction | Purpose |
+|------|-------|---------|-----------|---------|
+| 0x40 | `@`   | Command | Both | Request with operationId from `Command.Operation` enum |
+| 0x41 | `A`   | Ack     | Both | Acknowledges a command/event by messageId; no op, no payload |
+| 0x42 | `B`   | Response | Processor → Client | Response to a command |
+| 0x43 | `C`   | Event   | Processor → Client | Async event (button press, occupancy, IP announcement, …) |
+| 0x44 | `D`   | Control | Both | Flow control (`RequestResendOne`, `RequestResendMany`, `ResendNAK`) |
+| 0x45 | `E`   | Telemetry | Processor → Client | Continuous data push (`Runtime`=1, `Configuration`=2) |
+
+**Correction vs. the 2026-03 capture write-up:** `LEIC` is NOT a keepalive — it's an **Event**
+frame (button presses, occupancy, LED feedback, etc.). The "Subtype" was actually the
+`operationId`, not a random type code. What we called "init" (subtype `0x001C`) was
+**DiagnosticBeacon** (opId 28).
+
+### Message Delimiting
+
+There is **no outer length prefix** on the stream. `TcpReceiver.WaitForMessage` reads into
+an 8KB buffer and, on each chunk, iterates through `LutronProtocol` (`IPL`, `DeviceIP`)
+and calls a per-protocol validator delegate that returns the number of bytes consumed for
+a complete message (0 if incomplete). Multiple IPL messages can therefore be pipelined
+back-to-back in a single TCP payload.
 
 ---
 
-## 3. LEI@ — Command Messages
+## 3. Message Types in Detail
 
-### RequestSetLEDState (most common)
+Each `MessageType` is dispatched by `MessageFactory` to a type-specific `Factorylet`
+(see `CommunicationFramework.Message.Factorylet.*`). Commands and Events subclass
+the abstract base classes `Command` / `EventAction` and implement
+`MarshalPayload(GulliverProtocolWriter)` + `UnmarshalData(…)`.
 
-The processor periodically sends LED state updates for button/keypad LEDs:
+### 3.1 Command (LEI@, MsgType=0)
+
+OperationId comes from `CommunicationFramework.Action.Command.Operation` (~70 values).
+Highlights (full list decompiled in §6):
+
+| opId  | Name                          | Direction |
+|-------|-------------------------------|-----------|
+| 11    | Ping                          | Both |
+| 13    | GoToLevel                     | Client → Proc |
+| 16    | GoToScene                     | Client → Proc |
+| 20/21/22 | Raise / Lower / StopRaiseLower | Client → Proc |
+| 28    | DiagnosticBeacon              | Proc → Client (periodic, previously misidentified as "init") |
+| 44    | DeviceSetOutputLevel          | Client → Proc |
+| 46    | DevOrLinkInitialize           | Client → Proc |
+| 92    | RequestTelnetDiagnosticUser   | Client → Proc |
+| 270   | ClearFileSystem               | Client → Proc |
+| 271   | SendSystemFile                | Client → Proc (file xfer) |
+| 272/273 | UpdateDeviceFirmware / UpdateProcessorFirmware | Client → Proc |
+| 284   | FactoryResetDevice            | Client → Proc |
+| 306   | RequestObjectTweaks           | Client → Proc |
+| 307-309 | Start / Block / End TweakedDataExtraction | Proc ↔ Client |
+| 330-333 | PrepareForDatabaseTransfer / DatabaseUri / DatabaseTransferStatus / CompleteDatabaseTransfer | DB push |
+| 335   | ReportSchemaVersion           | Proc → Client |
+| 338   | ReportIPLProtocolVersion      | Proc → Client (part of init) |
+| 340   | GoToLoadState                 | Client → Proc |
+| 344   | DatabaseSyncUri               | DB pull |
+| 346   | ReportDatabaseSyncInfo        | Proc → Client |
+| 347/348 | RequestDeviceNotInDatabase / ReportDeviceNotInDatabase | Device discovery |
+| 65532 | **Init** (`InitCommand`)      | Session bootstrap |
+| 65533-65535 | TestPing / TestFullReset / Test | Diagnostic |
+
+### 3.2 Acknowledgement (LEIA, MsgType=1)
+
+Ack of a prior command/event by `messageId`. Has no operationId and no payload (per
+`AcknowledgementFactorylet`). Only sent when `ReceiverProcessing == Normal` (bit 4 set).
+
+### 3.3 Response (LEIB, MsgType=2)
+
+Response to a command. OperationId matches the command being responded to. Parsed by
+`ResponseFactorylet`.
+
+### 3.4 Event (LEIC, MsgType=3)
+
+Async event from the processor. `EventAction` parses: `uint32 BE objectId` + `uint16 BE objectType`
++ per-event-type body. Event IDs (`ProcessorEventIdType`):
+
+| Id | Event |
+|----|-------|
+| 0  | ButtonPress |
+| 1  | ButtonRelease |
+| 2  | ButtonMultiTap |
+| 3  | ButtonHold |
+| 4  | LogEntry |
+| 5  | CriticalFailure |
+| 6  | OccupancyStateChange |
+| 7  | TimeClockExecute |
+| 8  | DeviceParameterVerification |
+| 9  | DeviceUploadProgress |
+| 10 | SceneSave |
+| 11 | DeviceUpdateError |
+| 12 | LinkUpdateComplete |
+| 13 | AfterHoursEvent |
+| 15 | BACnetEvent |
+| 16 | HyperionEvent |
+| 17 | HyperionEndOfDay |
+| 18 | AutoReplaceEvent |
+| 22 | InfraRedSensorEvent |
+| 34 | CordlessWakeupPressEvent |
+| 35 | CordlessWakeupReleaseEvent |
+| 47 | IPAnnouncementEvent |
+| 51 | DeviceUploadProgrammingError |
+| 52 | DeviceUploadCriticalError |
+| 60 | IntegrationCommandEvent |
+
+### 3.5 Control (LEID, MsgType=4)
+
+Flow control / reliability layer. `Control.Operation` enum:
+
+| opId | Name |
+|------|------|
+| 0 | Unknown |
+| 1 | RequestResendOne |
+| 2 | RequestResendMany |
+| 3 | ResendNegativeAcknowledgment |
+
+Tied to `CommunicationFramework.Reactor.ReplySetManager` / `OrderByMessageIdPassive` —
+the receiver tracks gaps in sender messageIds and requests retransmissions.
+
+### 3.6 Telemetry (LEIE, MsgType=5)
+
+Continuous property push. `Telemetry.Operation`:
+
+| opId | Name |
+|------|------|
+| 1 | Runtime (levels, occupancy, LEDs — what Designer's UI renders) |
+| 2 | Configuration (device settings, tweaks) |
+
+Body is a stream of `MonitorIdentifier → value` pairs (see `RuntimeServer.MonitorIdentifierConverter`).
+
+---
+
+## 4. Decoded Command Body Layouts
+
+All integers below are big-endian. Derived by decompiling `MarshalPayload` /
+`UnmarshalData` on each `*Command` class.
+
+### DeviceSetOutputLevel (opId 44) — 10 bytes
 
 ```
-Header: LEI@ 00 01 00 FF <seq> 01 5D
-Body:   00 3B "RequestSetLEDState" 00*6 <zlib>
+byte   processorNumber
+byte   linkNumber
+uint32 BE  serialNumberOfDevice   (8-char hex device serial, e.g. 0x0595E68D)
+uint16 BE  componentNumber
+uint16 BE  outputLevel            (level16 = percent * 0xFEFF / 100)
 ```
 
-The body starts with `00 3B` (null + semicolon), followed by the ASCII command name,
-null-padded to 6-byte alignment, then a zlib-compressed JSON payload.
+This is the Designer-side equivalent of the Telnet `#DEVICE,...,14,level` command.
+No fade field — matches the telnet protocol note that DEVICE actions don't carry
+fade; the dimmer uses its programmed default ramp.
 
-**JSON payload**: `{"ObjectId":<integration_id>,"State":0|1}`
+### GoToLevel (opId 13) — 14 bytes (OUTPUT path, has fade) ✅ verified
 
-Example decoded messages (30-second capture):
+```
+uint32 BE  objectId            (LEAP integration id / zone id)
+uint16 BE  objectType          (ObjectType.Zone = 15 for a zone)
+uint16 BE  level               (level16 = pct * 0xFEFF / 100)
+uint16 BE  originatorFeature   (OriginatorFeature.GUI = 9)
+uint16 BE  fadeTime            (quarter-seconds; seconds * 4)
+uint16 BE  delay               (quarter-seconds)
+```
+
+`const ushort MAX_LEVEL = 65279` (0xFEFF). `const ushort FadeTime = 0` and
+`Delay = 0` are the GoToLevelCommand defaults.
+
+Verified end-to-end on 2026-04-19 against RA3 @ 10.1.1.133 using `tools/ipl-cmd.ts`:
+`gotolevel 546 50 1 0` drove zone 546 "Standing Desk Lamps" to 50% with a 1s fade and
+got a `Telemetry/Runtime` feedback frame back with `obj=0x0222 prop=0x000F val=0x7F80`.
+
+### DiagnosticBeacon (opId 28) — variable (36 / 40 / 49 bytes, incoming)
+
+Processor → Client periodic beacon; Designer parses it in `UnmarshalData`:
+
+```
+byte[4]   deviceTypeSerialNumber
+byte[16]  databaseGUID
+uint16 BE majorOsRev, minorOsRev, buildOsRev
+uint16 BE majorBootRev, minorBootRev, buildBootRev
+-- if body length >= 36:
+byte      (reserved, skipped)
+byte      deviceProduct  (DeviceProduct enum)
+byte      hardwareRev
+byte      operatingMode  (ProcessorOperatingModes)
+-- if body length == 40:
+uint32 BE lastTweakTimestamp
+-- if body length == 49:
+byte[9]   (unknown extra — RA3 uses this variant)
+```
+
+This matches the 49-byte "init" body previously captured. The `08 67 63 08 06 67 A2 CB`
+prefix was (devSerial) + databaseGUID bytes, not opaque binary.
+
+### ReportIPLProtocolVersion (opId 338) — 8 bytes, incoming
+
+```
+uint32 BE IPLMajorVersion
+uint32 BE IPLMinorVersion
+```
+
+Sent by the processor during session bootstrap so Designer can update
+`IPLVersionManager.processorVersionMap[systemId][processorId]`.
+
+### ReportDatabaseSyncInfo (opId 346) — 20 bytes, incoming
+
+```
+byte[16]  GUID
+uint32 BE ModifiedObjectCount
+```
+
+Triggers a delta sync if the GUID differs from Designer's local DB.
+
+### Init (opId 65532) — abstract `InitCommand`
+
+`Lutron.Gulliver.Infrastructure.CommunicationFramework.Action.InitCommand` is abstract
+and has no subclass in the Designer DLLs I decompiled — the concrete body is supplied
+elsewhere (likely `Lutron.ProcessorTransfer.dll` / processor firmware). Distinct from
+DiagnosticBeacon (28); `InitCommand.GetOperationId()` returns `65532` (0xFFFC), not 28.
+
+### Full Command.Operation enum (truncated)
+
+Extracted from `Command.Operation` — 70+ values. See
+`Lutron.Gulliver.Infrastructure.dll!Lutron.Gulliver.Infrastructure.CommunicationFramework.Action.Command.Operation`
+for the complete list (attributed with `[I18NInformation]` resource IDs for
+human-readable names in the Designer UI).
+
+---
+
+## 5. Session Bootstrap (revised)
+
+The `00 3B "RequestSetLEDState" … <zlib>` stream captured previously appears to be a
+**separate named-RPC layer** inside a Command payload (still not fully located — no
+class of that name exists in the Infrastructure DLL's `Command` subtypes). The strings
+list it alongside other `Request*` names, suggesting a generic dispatcher. Until that
+wrapper is located, treat those string-prefixed bodies as out-of-spec relative to the
+`Command.Operation` enum-based commands above.
+
+Typical open-session flow (inferred from enum + IPLVersionManager):
+
+1. Designer opens mTLS to the processor's IPL endpoint.
+2. Processor sends `DiagnosticBeacon` (opId 28, Version3 Command) with firmware + DB GUID.
+3. Designer may send `Ping` (11) to confirm liveness.
+4. Processor sends `ReportIPLProtocolVersion` (338) with major/minor.
+5. Processor sends `ReportSchemaVersion` (335) + `ReportDatabaseSyncInfo` (346).
+6. If DB GUID differs, Designer requests sync (`DatabaseSyncUri`=344, `PrepareForDatabaseTransfer`=330, `DatabaseUri`=331, `CompleteDatabaseTransfer`=333).
+7. Processor continuously streams `Telemetry/Runtime` (LEIE, opId=1) with live zone levels / LEDs / occupancy.
+
+---
+
+## 6. WSS vs. TCP Transport (key finding, 2026-04-19)
+
+There is **no separate "WSS protocol."** WSS is one of three transport options in the
+`CommunicationProtocolType` enum:
+
+```cs
+// Lutron.Gulliver.NetworkFramework.dll
+public enum CommunicationProtocolType { Udp, Tcp, WSS }
+```
+
+The `LutronProtocol` enum — what we actually speak over the wire — has only two values:
+`IPL` and `DeviceIP`. So:
+
+- **`LutronProtocol.IPL`** over **`CommunicationProtocolType.Tcp`** = the classic
+  TLS:8902 stream this doc describes (LEI-framed binary).
+- **`LutronProtocol.IPL`** over **`CommunicationProtocolType.WSS`** = the same LEI-framed
+  binary payload carried inside WebSocket frames on a different port.
+- **`LutronProtocol.IPL`** over **`CommunicationProtocolType.Udp`** = legacy QS/RA2 UDP
+  variant (`CommunicationProtocolTypeHelper.GetDefaultCommunicationProtocol() == Udp`).
+
+### Per-Processor Transport Discovery
+
+Designer asks LEAP for the processor's server definitions (via
+`PostActivationSettingsRequestHandler.ReadMultipleServerDefinitions`) and gets back a
+list like:
+
 ```json
-{"ObjectId":1855,"State":0}    // LED off
-{"ObjectId":491,"State":1}     // LED on
-{"ObjectId":490,"State":0}     // LED off
-{"ObjectId":1901,"State":1}    // LED on
+[
+  { "Type": "IPL",      "EndPoints": [
+      { "Protocol": "TCP", "Port": 8902 },
+      { "Protocol": "WSS", "Port": <?> }   // only if EnableWSS flag enabled
+  ]},
+  { "Type": "DeviceIP", "EndPoints": [ ... ] }
+]
 ```
 
-The ObjectId values are LEAP button/LED integration IDs (2000+ range for most).
-State toggles between 0 and 1 roughly every 5 seconds per cycle.
+`ProcessorModelView.IsWSSEnabled()` returns true when a WSS endpoint is advertised
+under the IPL server definition (`IsProtocolEnabledOnIplServer(WSS)`).
 
-### Init/Handshake Message
+### Feature-flag gated rollout
 
-```
-Header: LEI@ 00 01 00 FF <seq> 00 1C
-Body:   00 31 <49 bytes binary>
+Two Rollout.io flags in `FeatureFlagServiceProvider.FlagsContainer` gate the WSS
+migration:
+
+| Flag | Effect |
+|------|--------|
+| `EnableWSS` | Allow Designer to negotiate WSS instead of raw TCP for new activations |
+| `EnableWSSMigration` | Upgrade already-activated processors (`ApplySecuitySettingsPipeline.UpdateWssSettingOnProcessor`) |
+
+Post-activation, `ProcessorModelView.EnableWSS()` does:
+
+```cs
+if (GetIplServerDefinition() != null) {
+    result = IsProtocolEnabledOnIplServer(CommunicationProtocolType.WSS)
+          || new PostActivationSettingsRequestHandler().EnableWSS(this);
+}
 ```
 
-Sent once every ~6 cycles. Contains what appears to be a project identifier and timestamp.
-The exact fields are not yet decoded. Example body:
-```
-00 31 08 67 63 08 06 67 A2 CB 40 C4 8C 43 A3 05
-A4 ED 11 8C B4 D5 00 00 00 00 00 00 00 00 00 00
-00 00 00 08 1B 01 00 00 00 00 00 1A 00 02 00 64
-00 01 83 09
-```
+i.e., either the processor already exposes a WSS endpoint, or Designer POSTs a LEAP
+request that asks it to start doing so.
+
+### Framing differences
+
+**None at the IPL payload level.** Once the stream is established (either raw TLS/TCP
+or inside a WebSocket), the LEI framing, operationIds, body layouts, and endianness are
+all identical. The port/handshake differ; the protocol bytes do not.
+
+### Nomenclature
+
+- "IPL" is how Designer's code names the protocol. User-facing Lutron docs sometimes
+  call it **LIP** ("Lutron Integration Protocol") — treat `LIP` and `IPL` as the same
+  thing in this codebase. There is no class literally named `LIP*`; all internal
+  identifiers are `Ipl*` / `IPL*`.
 
 ---
 
-## 4. LEIE — Status Reports
+## 7. Revised Traffic-Pattern Notes
 
-Binary status messages reporting zone levels, device states, occupancy, and configs.
+The previously observed 5-second "cycle" was not a protocol feature but a consequence
+of `Telemetry/Runtime` (LEIE) being refreshed alongside `Event` (LEIC) bursts for
+button/LED state. Re-labeling what we captured:
 
-### Short Status Format (payload_len ≤ 9)
+| Old label     | Actual |
+|---------------|--------|
+| `LEI@ RequestSetLEDState` | `Command` frame, operationId TBD (named-RPC wrapper, not in `Command.Operation`) |
+| `LEIE heartbeat` (body=`00`) | `Telemetry/Runtime` (opId=1) with an empty monitor-item list |
+| `LEIE status batch` | `Telemetry/Runtime` (opId=1) carrying level/occupancy/LED items |
+| `LEIC keepalive` | `Event` (MsgType=3) — a `ProcessorEventIdType` (button/LED/occupancy) |
+| `LEI@ init, subtype 00 1C` | `Command` `DiagnosticBeacon` (opId=28) — not Init |
 
-```
-Offset  Size  Field
-0       2     Payload length (uint16 BE)
-2       2     Padding: 00 00
-4       2     Object ID (uint16 BE) — LEAP integration ID
-6       2     Property type (uint16 BE)
-8       1-3   Value bytes
-```
+### Known Command Names (string table, for future searches)
 
-### Property Types
+`Lutron.Gulliver.Infrastructure.dll` strings still show these names; most are telemetry
+monitor identifiers or LEAP-side RPC wrappers rather than raw IPL operationIds:
 
-| Property | Meaning | Value Format | Example |
-|----------|---------|-------------|---------|
-| `0x000F` | Zone level (dimmer) | `<cmd> <level16:u16>` | `01 FE FF` = 100% |
-| `0x0003` | Zone level (switch/fan) | `<cmd> <level16:u16>` | `01 00 00` = 0% |
-| `0x0005` | Pico button state | `<val:u16>` | `7F 01` |
-| `0x025B` | Area occupancy | `<state:u8>` | `00` or `01` |
-| `0x0243` | Boolean state | `<val:u8>` | `00` or `FF` |
-| `0x006B` | LED status | `<val:u16>` | `42 00` off, `42 01` on |
-
-Level encoding matches LEAP/CCA: `level16 = percent * 0xFEFF / 100`.
-
-### Long Status Format (payload_len > 9)
-
-Two larger payload types observed:
-
-**Config block 0x0225** (40 bytes): Timer/fade configuration
-```
-00 28 00 00 <obj_id> 02 25 00 00 <...timer data...>
-```
-
-**Config block 0x0202** (47 bytes): Device settings
-```
-00 2F 00 00 <obj_id> 02 02 00 00 <...settings data...>
-```
-
-### Heartbeat
-
-Single-byte body (`00`), payload_len = 1. Sent frequently between status batches.
-
-### Object ID Cross-Reference
-
-Object IDs map directly to LEAP integration IDs:
-
-| IPL Object ID | LEAP Entity | Name |
-|---------------|-------------|------|
-| 518 | `/zone/518` | Light |
-| 546 | `/zone/546` | Standing Desk Lamps |
-| 574 | `/zone/574` | Desk Lamps |
-| 435 | `/device/435` | Processor 001 (HWQSProcessor) |
-| 694 | `/device/694` | Pico4Button |
-| 32 | `/area/32` | (area) |
-
----
-
-## 5. LEIC — Keepalive
-
-```
-Header: LEIC 00 01 00 FF <seq> <00 00 | 00 01>
-Body:   00 06 00 00 <obj_id:u16> 00 39
-```
-
-Two LEIC messages per cycle, alternating between two object IDs (e.g., 707 and 698).
-The subtype toggles between `00 00` and `00 01`. The trailing `00 39` may be a fixed
-command code.
-
----
-
-## 6. Traffic Pattern
-
-A typical 5-second cycle from the processor:
-
-1. **LEIE heartbeats** (body=`00`, several per cycle)
-2. **LEIC keepalive** (obj_id A)
-3. **LEI@ RequestSetLEDState** (1-3 LED updates)
-4. **LEIE status batch** (all zones: levels, occupancy, configs)
-5. **LEIC keepalive** (obj_id B)
-6. **LEIE status batch** (same zones, toggled ON/OFF state)
-
-The state alternates each cycle — zones report 0% in odd cycles and their actual
-level in even cycles. This appears to be a Designer UI refresh pattern rather than
-actual state changes.
-
----
-
-## 7. Protocol Behavior Notes
-
-### Read-Only Sync
-The IPL port appears to be primarily a **state sync channel** for Designer's UI.
-Sending LEIE messages back to the processor causes them to be echoed but does NOT
-change zone levels. Sending LEI@ with unknown command names either gets no response
-or causes the processor to close the connection.
-
-### Known Command Names (from Designer DLLs)
-
-Strings extracted from `Lutron.Gulliver.Infrastructure.dll` (7.7MB .NET assembly):
-
-| Command | Purpose |
-|---------|---------|
-| `RequestSetLEDState` | LED state sync (processor → client) |
-| `RequestIPLProtocolVersion` | Query protocol version |
-| `RequestSchemaVersion` | Query database schema version |
-| `RequestDatabaseSync` | Trigger full database sync |
-| `RequestDatabaseSyncInfo` | Get sync metadata |
-| `RequestDeviceNotInDatabase` | Device discovery notification |
-| `RequestDeviceTransferStatus` | Transfer progress |
-| `RequestObjectTweaks` | Modify object properties |
-| `RequestTweakChanges` | Apply pending tweaks |
-| `RequestResendMany/One` | Request data retransmission |
-| `RequestTelnetDiagnosticUser` | Diagnostic telnet access |
-| `DeviceSetOutputLevel` | Set zone/output level |
-| `EndTweakedDataExtraction` | Finalize tweak extraction |
-
-### Init Handshake
-The processor may require a proper init response before accepting commands. The init
-message (body `00 31 ...`) likely contains session negotiation data. Without sending
-the correct init response, command messages are silently ignored.
+| Name | Likely Layer |
+|------|--------------|
+| `RequestSetLEDState` | Named-RPC wrapper inside a Command (dispatcher not yet located) |
+| `RequestIPLProtocolVersion` | Triggers opId 338 |
+| `RequestSchemaVersion` | Triggers opId 335 |
+| `RequestDatabaseSync` / `RequestDatabaseSyncInfo` | Triggers opIds 344 / 346 |
+| `RequestDeviceNotInDatabase` | opId 347 |
+| `RequestDeviceTransferStatus` | opId 341 |
+| `RequestObjectTweaks` | opId 306 |
+| `RequestTweakChanges` | opId 69 |
+| `RequestTelnetDiagnosticUser` | opId 92 |
+| `DeviceSetOutputLevel` | opId 44 |
+| `EndTweakedDataExtraction` | opId 309 |
 
 ---
 
 ## 8. Comparison with LEAP API
 
-| Feature | LEAP (8081) | IPL (8902) |
-|---------|-------------|------------|
-| Transport | JSON over TLS | Binary (LEI framing) + zlib JSON |
+| Feature | LEAP (8081) | IPL (8902 TCP / WSS alt) |
+|---------|-------------|--------------------------|
+| Transport | JSON over TLS | Binary (LEI framing) over TLS or WSS; 8N1 over Udp for legacy |
 | Auth | LEAP certs (lutron-root CA) | Project SubSystem CA |
-| Direction | Request/response | Mostly server push |
-| Zone control | CreateRequest GoToLevel | DeviceSetOutputLevel (not yet working) |
-| Device config | Caseta only (tuning, phase, etc.) | RequestObjectTweaks (not yet working) |
-| Database | Per-endpoint reads | RequestDatabaseSync (full dump) |
-| Real-time | Subscribe to events | Continuous state stream |
+| Direction | Request/response | Bidirectional: Commands + async Events + continuous Telemetry |
+| Zone control | `CreateRequest GoToLevel` | `GoToLevel` (opId 13) / `DeviceSetOutputLevel` (opId 44) |
+| Device config | Caseta only | `RequestObjectTweaks` (opId 306) + `TweakedObjectDataBlock` (opId 308) |
+| Database | Per-endpoint reads | `DatabaseSyncUri` (344) / `DatabaseUri` (331) + chunk transfer |
+| Real-time | Subscribe to events | `Telemetry/Runtime` (MsgType=5, opId=1) pushes continuous updates |
+| Endianness | JSON (N/A) | **Big-endian** (custom `GulliverProtocol{Reader,Writer}`) |
+| Strings | UTF-8 JSON | **UTF-16BE** variable-length-prefixed |
 
 ---
 
@@ -301,7 +515,8 @@ the correct init response, command messages are silently ignored.
 
 | Tool | Purpose |
 |------|---------|
-| `tools/ipl-client.ts` | Connect, decode, and display IPL traffic |
+| `tools/ipl-client.ts` | Read-only: connect, decode, display IPL traffic (uses old framing — needs update) |
+| `tools/ipl-cmd.ts` | Write-path: send a proper Version3 Command with correct length-prefixed body (verified GoToLevel) |
 | `tools/leap-explore.ts` | Comprehensive LEAP endpoint scanner |
 | ~~`tools/leap-frida.js`~~ | Removed — Frida TLS hook, blocked by SIP |
 | ~~`tools/leap-lldb-intercept.py`~~ | Removed — LLDB TLS breakpoint, blocked by hardened runtime |
@@ -338,16 +553,26 @@ All in `certs/designer/`:
 
 ## 11. Future Work
 
-1. **Decompile Designer**: Use ILSpy/dnSpy on `ConnectSyncService.exe` and
-   `Lutron.Gulliver.Infrastructure.dll` to find exact command formats
-2. **Init handshake**: Reverse the `00 31` init message to properly establish
-   a session before sending commands
-3. **Database sync**: Try `RequestDatabaseSync` to pull the full project database
-   (would reveal all device configs, scenes, schedules)
-4. **Device config**: Find the correct format for `RequestObjectTweaks` to modify
-   trim, phase, fade, and LED settings via IPL (these are hidden on RA3's LEAP API)
-5. **Capture Designer traffic**: Mirror the processor's Ethernet during a Designer
-   transfer to capture the full command sequence
+1. ~~**Decompile Designer**~~ — **DONE**. See §2–§6.
+2. **Named-RPC wrapper**: Locate the Command subclass that wraps
+   `RequestSetLEDState` + zlib-JSON payloads. The `Command.Operation` enum doesn't
+   cover it directly; look for a dispatch class in `Lutron.Gulliver.DomainObjects.dll`
+   or `Lutron.ProcessorTransfer.dll`.
+3. **InitCommand body**: `InitCommand` is abstract in `Infrastructure.dll` (opId 65532);
+   find its concrete subclass (likely in `Lutron.ProcessorTransfer.dll` or processor
+   firmware) to replay a real session bootstrap.
+4. **Database sync**: Issue `DatabaseSyncUri` (344) + follow the chunk-transfer
+   state machine (`PrepareForDatabaseTransfer` 330 → `DatabaseUri` 331 →
+   `DatabaseTransferStatus` 332 → `CompleteDatabaseTransfer` 333) to pull the full
+   project DB.
+5. **Device config via IPL**: Implement `RequestObjectTweaks` (306) +
+   `StartTweakedDataExtraction` (307) / `TweakedObjectDataBlock` (308) /
+   `EndTweakedDataExtraction` (309) to modify trim, phase, fade, LED settings —
+   fields hidden on RA3's LEAP API.
+6. **WSS transport**: Capture a Designer session with `EnableWSS` flag on to confirm
+   the WebSocket framing (port, sub-protocol name, ping/pong handling).
+7. **Update `tools/ipl-client.ts`**: Replace the old "LEIC=keepalive" logic with
+   the corrected Event/Telemetry/Control decode + operationId lookup.
 
 ## 12. Telnet Integration Protocol (ESN Interface)
 
