@@ -152,6 +152,9 @@ Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than sta
 ## Future Work
 
 - Native Vive cross-compatibility. The custom bridge handles this at the application layer, but native pairing requires flashing the Caseta NCP with Vive (link type 30) CCA instead of Caseta/HWQS (type 9/11). So far only MRF2/MRF2S devices have paired natively.
+- Harden `LeapConnection` (`tools/leap-client.ts`) for long-running use: periodic `/server/1/status/ping` heartbeat + auto-reconnect on disconnect, bulk `/zone/status` and `/area/status` subscriptions instead of per-zone, typed error classes (`BridgeResponseError`, `BridgeDisconnectedError`), UUID ClientTags. Patterns to borrow from [gurumitts/pylutron-caseta](https://github.com/gurumitts/pylutron-caseta). Matters most for the CCX→WiZ bridge, which currently has no LEAP-side watchdog.
+- Port a LEAP pairing helper (port 8083 CSR flow from `pylutron-caseta/pairing.py`) so tools can enroll their own client certs instead of copying them out of the Designer VM.
+- Fork `pylutron-caseta` to add RA3/HWQS scene support (`/areascene` + `/preset/{id}/presetassignment` for target levels), timeclock/event exposure, and optional CCX Thread credential extraction — lets Home Assistant surface scenes and bridge pairing for RA3 processors.
 
 ## License
 
