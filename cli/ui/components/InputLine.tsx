@@ -16,7 +16,7 @@ export function InputLine() {
   const after = cursorAtEnd ? "" : inputText.slice(inputCursor + 1);
 
   return (
-    <Text>
+    <Text wrap="truncate-end">
       <Text dimColor>{prompt}</Text>
       <Text>{before}</Text>
       <Text inverse>{at}</Text>

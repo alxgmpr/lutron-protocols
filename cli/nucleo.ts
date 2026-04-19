@@ -506,6 +506,7 @@ function displayCcaPacket(
   const isTx = !!(flags & FLAG_TX);
   if (isTx) ccaTxCount++;
   else ccaRxCount++;
+  updateHeader();
   const rssi = isTx ? 0 : -(flags & FLAG_RSSI_MASK);
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : GREEN;
@@ -967,6 +968,7 @@ function displayCcxPacket(
   const isTx = !!(flags & FLAG_TX);
   if (isTx) ccxTxCount++;
   else ccxRxCount++;
+  updateHeader();
   const direction = isTx ? "TX" : "RX";
   const dirColor = isTx ? MAGENTA : BLUE;
   const ts = new Date().toISOString().slice(11, 23);
@@ -1851,6 +1853,13 @@ async function startup() {
     cleanup();
     process.exit(0);
   };
+
+  // On terminal resize, recompute column headers so they match the new width
+  // and the layout used for subsequent packet rows.
+  process.stdout.on("resize", () => {
+    updateColumnHeaders();
+    updateHeader();
+  });
 
   // Tab completion candidates
   screen.setCompletions([

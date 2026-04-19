@@ -36,7 +36,7 @@ export function App(props: AppProps) {
   const { overlay, palette } = useAppState();
 
   // Reserve rows for the fixed footer region.
-  // Base: separator(1) + legend(1) + input(1) = 3.
+  // Base: separator(1) + column headers(1) + status(1) + input(1) = 4.
   const palRows = palette
     ? Math.max(
         1,
@@ -49,7 +49,7 @@ export function App(props: AppProps) {
   const overlayRows = overlay
     ? Math.min(overlay.lines.length + 3, Math.floor(rows / 2))
     : 0;
-  const reserved = 3 + palRows + overlayRows;
+  const reserved = 4 + palRows + overlayRows;
   const logHeight = Math.max(1, rows - reserved);
 
   useLineEditor({
