@@ -1810,7 +1810,7 @@ async function startup() {
   if (UPDATE_LEAP) {
     try {
       const { LeapConnection, fetchLeapData, buildDumpData } = await import(
-        "../tools/leap-client"
+        "../lib/leap-client"
       );
 
       // LEAP fetch happens before TUI init — use console.log

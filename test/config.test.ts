@@ -50,7 +50,7 @@ test("each configured processor has cert/key/ca fields", () => {
 // ── LeapConnection cert validation ──────────────────────────
 
 test("LeapConnection throws for unconfigured host", async () => {
-  const { LeapConnection } = await import("../tools/leap-client");
+  const { LeapConnection } = await import("../lib/leap-client");
   assert.throws(
     () => new LeapConnection({ host: "192.168.255.255" }),
     /No certs configured/,
@@ -58,7 +58,7 @@ test("LeapConnection throws for unconfigured host", async () => {
 });
 
 test("LeapConnection accepts configured host", async () => {
-  const { LeapConnection } = await import("../tools/leap-client");
+  const { LeapConnection } = await import("../lib/leap-client");
   const conn = new LeapConnection({ host: processorIPs[0] });
   assert.equal(conn.host, processorIPs[0]);
 });

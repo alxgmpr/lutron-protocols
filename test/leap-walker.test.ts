@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LEAP_REGISTRY, walkEndpoints } from "../tools/leap-client";
+import { LEAP_REGISTRY, walkEndpoints } from "../lib/leap-client";
 
 // Mock LeapConnection that returns canned responses
 class MockLeap {

@@ -9,7 +9,7 @@
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import type { LeapDumpData } from "../tools/leap-client";
+import type { LeapDumpData } from "../lib/leap-client";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
