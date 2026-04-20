@@ -314,6 +314,17 @@ function annotateCoapPayload(
   return target.slice(3) || ""; // strip " → " prefix
 }
 
+/** Parse tshark `frame.time_epoch` ("1776652940.198123456") → ns BigInt as string */
+function epochStrToNs(s: string): string {
+  const [sec, frac = ""] = s.split(".");
+  const fracNs = (frac + "000000000").slice(0, 9);
+  try {
+    return (BigInt(sec) * 1_000_000_000n + BigInt(fracNs)).toString();
+  } catch {
+    return "0";
+  }
+}
+
 /** Process a CoAP line from tshark (--coap mode) */
 function processCoapLine(
   epochStr: string,
@@ -344,6 +355,7 @@ function processCoapLine(
     console.log(
       JSON.stringify({
         timestamp: new Date(epoch * 1000).toISOString(),
+        epoch_ns: epochStrToNs(epochStr),
         type: "COAP",
         srcAddr,
         dstAddr,
@@ -402,7 +414,7 @@ function processLine(line: string): CCXPacket | null {
     const epoch = parseFloat(epochStr);
     const timestamp = new Date(epoch * 1000).toISOString();
 
-    return buildPacket({
+    const pkt = buildPacket({
       timestamp,
       srcAddr: srcAddr ?? "",
       dstAddr: dstAddr ?? "",
@@ -410,6 +422,9 @@ function processLine(line: string): CCXPacket | null {
       dstEui64: dstEui64 ?? "",
       payloadHex,
     });
+    // Attach ns-precision hardware timestamp from pcap for downstream consumers
+    (pkt as any).epoch_ns = epochStrToNs(epochStr);
+    return pkt;
   } catch (err) {
     if (!jsonOutput) {
       console.error(
