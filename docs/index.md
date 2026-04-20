@@ -44,6 +44,7 @@ Documentation for the Lutron reverse engineering toolkit, organized by topic.
 | [firmware-re/ble-commissioning.md](firmware-re/ble-commissioning.md) | BLE device commissioning protocol — pairing, credential exchange |
 | [firmware-re/apk.md](firmware-re/apk.md) | LEAP Android APK — decompilation, endpoint discovery, command surfaces |
 | [firmware-re/wink-hub.md](firmware-re/wink-hub.md) | Wink hub firmware — legacy Lutron hub analysis |
+| [firmware-re/grafik-eye.md](firmware-re/grafik-eye.md) | Grafik Eye QS firmware — extraction from Designer install, encrypted payload format |
 
 ## Infrastructure
 
@@ -67,3 +68,4 @@ Documentation for the Lutron reverse engineering toolkit, organized by topic.
 | [reference/ccx-device-map.md](reference/ccx-device-map.md) | CCX device table — keypads, RLOCs, EUI-64 addresses |
 | [reference/cca-event-loop.md](reference/cca-event-loop.md) | CCA radio task design — FreeRTOS event loop, GDO0 interrupts |
 | [reference/daylighting.md](reference/daylighting.md) | Daylighting system — Hyperion sensors, Designer config, firmware gating |
+| [reference/training-notes-index.md](reference/training-notes-index.md) | Index of xmocxd/lutron-training-notes corpus — FSE insider notes, firmware paths, defaults, protocol corroboration |
