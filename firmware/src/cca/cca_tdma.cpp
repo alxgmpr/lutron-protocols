@@ -369,7 +369,7 @@ static bool transmit_one(const uint8_t* packet, size_t packet_len)
     /* Radio TX */
     bool ok = cc1101_transmit_raw(encoded, encoded_len);
     if (ok) {
-        stream_send_cca_packet(packet, packet_len, 0, true, HAL_GetTick());
+        stream_send_cca_packet(packet, packet_len, 0, true, HAL_GetTick(), DWT->CYCCNT);
     }
     return ok;
 }

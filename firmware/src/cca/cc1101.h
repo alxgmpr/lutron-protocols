@@ -104,7 +104,13 @@ extern "C" {
 /* -----------------------------------------------------------------------
  * RX callback type
  * ----------------------------------------------------------------------- */
-typedef void (*cc1101_rx_callback_t)(const uint8_t* data, size_t len, int8_t rssi, uint32_t timestamp_ms);
+/**
+ * RX callback. `timestamp_ms` is HAL_GetTick() at start-of-frame; `timestamp_cyc`
+ * is DWT->CYCCNT at the same instant (CPU-clock ticks, ~1.82 ns each at 548 MHz,
+ * wraps every ~7.8 seconds). Host uses cyc for sub-ms ordering, ms for wall clock.
+ */
+typedef void (*cc1101_rx_callback_t)(const uint8_t* data, size_t len, int8_t rssi, uint32_t timestamp_ms,
+                                     uint32_t timestamp_cyc);
 
 typedef enum {
     CC1101_TUNE_PROFILE_DEFAULT = 0,

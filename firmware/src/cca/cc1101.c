@@ -33,6 +33,7 @@ static uint8_t accum_[RX_PKT_LEN + 4]; /* +4 margin */
 static size_t accum_len_ = 0;
 static bool accum_active_ = false;
 static uint32_t accum_start_ms_ = 0;
+static uint32_t accum_start_cyc_ = 0;
 static int8_t accum_rssi_ = 0;
 
 /* Counters */
@@ -511,6 +512,7 @@ bool cc1101_check_rx(void)
         if (!accum_active_) {
             accum_active_ = true;
             accum_start_ms_ = HAL_GetTick();
+            accum_start_cyc_ = DWT->CYCCNT;
             accum_len_ = 0;
             /* Capture RSSI while signal is present */
             uint8_t rssi_raw = cc1101_read_status_register(CC1101_RSSI_REG);
@@ -535,7 +537,7 @@ bool cc1101_check_rx(void)
     if (accum_len_ >= RX_PKT_LEN) {
         peek_hit_count_++;
         if (rx_callback_) {
-            rx_callback_(accum_, accum_len_, accum_rssi_, accum_start_ms_);
+            rx_callback_(accum_, accum_len_, accum_rssi_, accum_start_ms_, accum_start_cyc_);
         }
         restart_rx_fast();
         return true;

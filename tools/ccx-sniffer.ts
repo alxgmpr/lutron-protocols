@@ -27,7 +27,7 @@
 import { Decoder } from "cbor-x";
 import { execSync, spawn } from "child_process";
 import { createSocket } from "dgram";
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import {
   CCX_CONFIG,
   getAllDevices,
@@ -99,21 +99,50 @@ Requirements:
 const relaySocket = relayMode ? createSocket("udp4") : null;
 const RELAY_PORT = 9435; // Dedicated CCX relay port
 
-/** Auto-detect nRF sniffer serial device */
-function detectSnifferInterface(): string {
-  // Check common macOS paths for nRF52840 dongle
-  const candidates = [
-    "/dev/cu.usbmodem201401",
-    "/dev/cu.usbmodem0004401800001",
-  ];
-  for (const path of candidates) {
-    try {
-      if (existsSync(path)) return path;
-    } catch {
-      /* skip */
+/** Auto-detect nRF sniffer serial device by asking the extcap binary which
+ * interfaces it recognizes. This avoids picking up unrelated USB CDC devices
+ * (like the Nucleo's VCP) that happen to share the /dev/cu.usbmodem* prefix. */
+function detectSnifferInterface(extcapBin: string): string {
+  try {
+    const out = execSync(`"${extcapBin}" --extcap-interfaces`, {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    // Lines look like: interface {value=/dev/cu.usbmodem202401}{display=...}
+    for (const line of out.split("\n")) {
+      const m = line.match(/^interface \{value=([^}]+)\}/);
+      if (m && existsSync(m[1])) return m[1];
     }
+  } catch {
+    /* fall through to fallback scan */
   }
-  return "/dev/cu.usbmodem201401";
+  try {
+    const entries = readdirSync("/dev");
+    const matches = entries
+      .filter((n) => n.startsWith("cu.usbmodem"))
+      .map((n) => `/dev/${n}`)
+      .sort();
+    if (matches.length > 0) return matches[matches.length - 1];
+  } catch {
+    /* ignore */
+  }
+  return "/dev/cu.usbmodem202401";
+}
+
+/** Locate the nRF 802.15.4 sniffer extcap binary */
+function findNrfExtcap(): string {
+  const candidates = [
+    `${process.env.HOME}/.local/lib/wireshark/extcap/nrf802154_sniffer`,
+    "/Applications/Wireshark.app/Contents/MacOS/extcap/nrf802154_sniffer",
+    "/usr/local/lib/wireshark/extcap/nrf802154_sniffer",
+    "/opt/homebrew/lib/wireshark/extcap/nrf802154_sniffer",
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(
+    "nrf802154_sniffer extcap not found. Install from https://github.com/NordicSemiconductor/nRF-Sniffer-for-802.15.4",
+  );
 }
 
 /** Build tshark command arguments */
@@ -123,13 +152,11 @@ function buildTsharkArgs(): string[] {
   if (fileMode) {
     tsharkArgs.push("-r", fileMode);
   } else {
-    // Live capture — interface is the serial device path
-    const iface = ifaceName ?? detectSnifferInterface();
-    tsharkArgs.push("-i", iface);
-    // Pass channel to nRF extcap plugin via preference override
-    // The preference key encodes the interface path with underscores
-    const prefIface = iface.replace(/\//g, "_").replace(/\./g, "_");
-    tsharkArgs.push("-o", `extcap.${prefIface}.channel:${channel}`);
+    // Live capture — we spawn the nRF extcap binary separately and pipe
+    // its pcap stream into tshark's stdin. Passing the channel via
+    // `-o extcap.<iface>.channel:N` is fragile across tshark versions.
+    // `-i -` treats stdin as a live pcap interface.
+    tsharkArgs.push("-i", "-");
     if (duration) {
       tsharkArgs.push("-a", `duration:${duration}`);
     }
@@ -661,14 +688,55 @@ async function main() {
     console.log("");
   }
 
+  // In live mode, spawn the nRF extcap sniffer and pipe its pcap output into
+  // tshark's stdin. In file mode, tshark reads the pcap file directly.
+  let extcap: ReturnType<typeof spawn> | null = null;
+  let tsharkStdin: "ignore" | "pipe" = "ignore";
+  if (!fileMode) {
+    const extcapBin = findNrfExtcap();
+    const iface = ifaceName ?? detectSnifferInterface(extcapBin);
+    if (!jsonOutput) {
+      console.log(`  Sniffer: ${extcapBin}`);
+      console.log(`  Interface: ${iface}`);
+    }
+    extcap = spawn(
+      extcapBin,
+      [
+        "--extcap-interface",
+        iface,
+        "--capture",
+        "--channel",
+        String(channel),
+        "--fifo",
+        "/dev/stdout",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    extcap.stderr?.on("data", (chunk: Buffer) => {
+      const msg = chunk.toString().trim();
+      if (msg) console.error(`  [nrf-sniffer] ${msg}`);
+    });
+    extcap.on("close", (code) => {
+      if (code !== 0) console.error(`  [nrf-sniffer] exited code=${code}`);
+    });
+    tsharkStdin = "pipe";
+  }
+
   const tshark = spawn("tshark", tsharkArgs, {
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [tsharkStdin, "pipe", "pipe"],
   });
+
+  if (extcap && extcap.stdout && tshark.stdin) {
+    extcap.stdout.pipe(tshark.stdin);
+    tshark.stdin.on("error", () => {
+      /* swallow EPIPE when tshark exits first */
+    });
+  }
 
   let packetCount = 0;
   let buffer = "";
 
-  tshark.stdout.on("data", (chunk: Buffer) => {
+  tshark.stdout?.on("data", (chunk: Buffer) => {
     buffer += chunk.toString();
     const lines = buffer.split("\n");
     // Keep the last incomplete line in the buffer
@@ -683,7 +751,7 @@ async function main() {
     }
   });
 
-  tshark.stderr.on("data", (chunk: Buffer) => {
+  tshark.stderr?.on("data", (chunk: Buffer) => {
     const msg = chunk.toString().trim();
     // Filter out tshark's informational messages
     if (msg.includes("Capturing on") || msg.includes("packets captured")) {
@@ -738,6 +806,7 @@ async function main() {
   // Handle Ctrl+C gracefully
   process.on("SIGINT", () => {
     if (!jsonOutput) console.log("\nStopping capture...");
+    if (extcap) extcap.kill("SIGINT");
     tshark.kill("SIGINT");
   });
 }

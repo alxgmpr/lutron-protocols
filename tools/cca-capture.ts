@@ -223,11 +223,12 @@ sock.on("message", (msg: Buffer) => {
   // Status response (0xFE)
   if (flags === 0xfe) return;
 
-  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][DATA:N]
-  if (msg.length < 6 + len) return;
+  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]
+  if (msg.length < 10 + len) return;
 
   const radioTs = readU32LE(msg, 2);
-  const data = msg.subarray(6, 6 + len);
+  // radioCyc at offset 6 — not used by this capture tool
+  const data = msg.subarray(10, 10 + len);
   const isCcx = !!(flags & FLAG_CCX);
 
   if (!isCcx) {
