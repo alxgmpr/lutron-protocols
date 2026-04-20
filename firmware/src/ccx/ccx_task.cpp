@@ -17,7 +17,9 @@
 #include "ccx_task.h"
 #include "ccx_msg.h"
 #include "coap.h"
+#include "hdlc.h"
 #include "ipv6_udp.h"
+#include "spinel_frame.h"
 #include "spinel_props.h"
 #include "smp_serial.h"
 #include "stream.h"
@@ -35,12 +37,7 @@
 #define CCX_TASK_STACK_SIZE 2048
 #define CCX_TASK_PRIORITY 2 /* Lower than CCA (3) — CCA is time-critical for CC1101 FIFO */
 
-/* -----------------------------------------------------------------------
- * HDLC constants
- * ----------------------------------------------------------------------- */
-#define HDLC_FLAG 0x7E
-#define HDLC_ESCAPE 0x7D
-#define HDLC_ESCAPE_XOR 0x20
+/* HDLC_FLAG / HDLC_ESCAPE / HDLC_ESCAPE_XOR live in hdlc.h */
 #define HDLC_RX_BUF_SIZE 512
 
 /* -----------------------------------------------------------------------
@@ -324,52 +321,17 @@ static ccx_peer_t* peer_update(uint16_t rloc16, const uint8_t src_addr[16])
 }
 
 /* -----------------------------------------------------------------------
- * HDLC framing helpers (for Spinel over UART)
+ * HDLC framing helpers (for Spinel over UART) — pure logic in hdlc.c
  * ----------------------------------------------------------------------- */
-
-/* CRC-16/CCITT for HDLC-Lite */
-static uint16_t hdlc_crc16(const uint8_t* data, size_t len)
-{
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i];
-        for (int j = 0; j < 8; j++) {
-            if (crc & 1)
-                crc = (crc >> 1) ^ 0x8408;
-            else
-                crc >>= 1;
-        }
-    }
-    return crc ^ 0xFFFF;
-}
-
-/* Send a byte with HDLC escaping */
-static void hdlc_send_byte(uint8_t b)
-{
-    if (b == HDLC_FLAG || b == HDLC_ESCAPE) {
-        uint8_t esc[2] = {HDLC_ESCAPE, (uint8_t)(b ^ HDLC_ESCAPE_XOR)};
-        HAL_UART_Transmit(&huart2, esc, 2, 10);
-    }
-    else {
-        HAL_UART_Transmit(&huart2, &b, 1, 10);
-    }
-}
 
 /* Send a complete HDLC frame (flag + escaped data + CRC + flag) */
 static void hdlc_send_frame(const uint8_t* data, size_t len)
 {
-    uint8_t flag = HDLC_FLAG;
-    HAL_UART_Transmit(&huart2, &flag, 1, 10);
-
-    for (size_t i = 0; i < len; i++) {
-        hdlc_send_byte(data[i]);
-    }
-
-    uint16_t crc = hdlc_crc16(data, len);
-    hdlc_send_byte((uint8_t)(crc & 0xFF));
-    hdlc_send_byte((uint8_t)(crc >> 8));
-
-    HAL_UART_Transmit(&huart2, &flag, 1, 10);
+    /* Worst case: every byte escaped + 2 flags + 4 CRC bytes. */
+    uint8_t wire[2 * HDLC_RX_BUF_SIZE + 6];
+    size_t wire_len = hdlc_encode_frame(wire, sizeof(wire), data, len);
+    if (wire_len == 0) return;
+    HAL_UART_Transmit(&huart2, wire, (uint16_t)wire_len, 50);
 }
 
 /* Read one HDLC frame from USART2 using interrupt-driven ring buffer.
@@ -378,9 +340,8 @@ static void hdlc_send_frame(const uint8_t* data, size_t len)
 static size_t hdlc_recv_frame(uint8_t* out, size_t out_size, uint32_t timeout_ms)
 {
     uint32_t start = HAL_GetTick();
-    size_t pos = 0;
-    bool in_frame = false;
-    bool escaped = false;
+    hdlc_decoder_t dec;
+    hdlc_decoder_reset(&dec);
 
     while ((HAL_GetTick() - start) < timeout_ms) {
         uint8_t byte;
@@ -390,39 +351,10 @@ static size_t hdlc_recv_frame(uint8_t* out, size_t out_size, uint32_t timeout_ms
             continue;
         }
 
-        if (byte == HDLC_FLAG) {
-            if (in_frame && pos > 0) {
-                /* End of frame — verify CRC (last 2 bytes) */
-                if (pos < 2) return 0;
-                uint16_t rx_crc = (uint16_t)out[pos - 2] | ((uint16_t)out[pos - 1] << 8);
-                uint16_t calc_crc = hdlc_crc16(out, pos - 2);
-                if (rx_crc != calc_crc) {
-                    return 0;
-                }
-                return pos - 2; /* payload length without CRC */
-            }
-            /* Start of new frame */
-            in_frame = true;
-            pos = 0;
-            escaped = false;
-            continue;
-        }
-
-        if (!in_frame) continue;
-
-        if (byte == HDLC_ESCAPE) {
-            escaped = true;
-            continue;
-        }
-
-        if (escaped) {
-            byte ^= HDLC_ESCAPE_XOR;
-            escaped = false;
-        }
-
-        if (pos < out_size) {
-            out[pos++] = byte;
-        }
+        size_t payload_len = 0;
+        hdlc_decode_result_t r = hdlc_decoder_push(&dec, byte, out, out_size, &payload_len);
+        if (r == HDLC_DECODE_FRAME) return payload_len;
+        if (r == HDLC_DECODE_ERROR) return 0;
     }
 
     return 0; /* timeout */
