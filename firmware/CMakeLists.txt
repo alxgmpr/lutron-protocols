@@ -214,6 +214,7 @@ target_link_options(${PROJECT_NAME}.elf PRIVATE
     -mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard
     -Wl,--gc-sections
     -Wl,--print-memory-usage
+    -Wl,--no-warn-rwx-segments
     --specs=nano.specs
     --specs=nosys.specs
     -lc -lm -lnosys

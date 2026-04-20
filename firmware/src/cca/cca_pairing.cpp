@@ -931,6 +931,7 @@ static void exec_announce(uint32_t serial, uint32_t device_class, uint16_t subne
 static void exec_hybrid_pair(uint32_t bridge_id, uint32_t device_class_32, uint16_t subnet, uint8_t zone_byte,
                              uint8_t duration_sec)
 {
+    (void)zone_byte;
     if (duration_sec == 0) duration_sec = 60;
 
     /* device_id for B0 announce: use bridge_id as placeholder until B8 captured */
