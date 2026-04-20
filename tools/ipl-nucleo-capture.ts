@@ -158,10 +158,12 @@ function startNucleo(): void {
     if (flags === 0xff && len === 0x00) return;
     if (flags === RESP_TEXT) return;
     if (flags === 0xfe) return;
-    if (msg.length < 6 + len) return;
+    /* Wire format: FLAGS(1) LEN(1) TS_MS(4) TS_CYC(4) DATA(N) */
+    if (msg.length < 10 + len) return;
 
     const radioTs = msg.readUInt32LE(2);
-    const data = msg.subarray(6, 6 + len);
+    const radioCyc = msg.readUInt32LE(6);
+    const data = msg.subarray(10, 10 + len);
     const isCcx = !!(flags & FLAG_CCX);
     const isRaw = !!(flags & FLAG_RAW);
     const isTx = !!(flags & FLAG_TX);
@@ -178,6 +180,7 @@ function startNucleo(): void {
       rssi: isCcx ? undefined : rssi,
       flags,
       radioTs,
+      radioCyc,
       data_hex: data.toString("hex"),
       data_len: data.length,
     });
