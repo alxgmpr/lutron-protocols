@@ -6,7 +6,8 @@
  * Usage: npx tsx tools/coap-fuzz.ts <rloc> [--wordlist paths|buckets|deep]
  */
 
-import { createSocket } from "dgram";
+import { createCcxCoapClient } from "../lib/ccx-coap";
+import { config } from "../lib/config";
 
 const args = process.argv.slice(2);
 const rloc = args.find((a) => !a.startsWith("--")) ?? "4800";
@@ -15,43 +16,19 @@ const getArg = (name: string) => {
   return i !== -1 ? args[i + 1] : undefined;
 };
 const wordlist = getArg("--wordlist") ?? "all";
-
-import { config } from "../lib/config";
-
 const host = config.openBridge;
-const PORT = 9433;
-const CMD_TEXT = 0x20;
-const RESP_TEXT = 0xfd;
-
-const sock = createSocket("udp4");
-
-function send(cmd: number, data?: Buffer) {
-  const d = data ?? Buffer.alloc(0);
-  const frame = Buffer.alloc(2 + d.length);
-  frame[0] = cmd;
-  frame[1] = d.length;
-  d.copy(frame, 2);
-  sock.send(frame, 0, frame.length, PORT, host);
-}
-
-function sendText(text: string) {
-  send(CMD_TEXT, Buffer.from(text, "utf-8"));
-}
 
 // Generate path lists
 function generatePaths(): string[] {
   const paths: string[] = [];
 
   if (wordlist === "buckets" || wordlist === "all") {
-    // 3-letter bucket names: AA? through AZ?, plus some longer combos
     const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-    // Systematically: A[A-Z][A-Z]
     for (const b of alpha) {
       for (const c of alpha) {
         paths.push(`cg/db/ct/c/A${b}${c}`);
       }
     }
-    // Also try non-A prefixes for common ones
     for (const a of "BCDFGHKLMNOPRSTUVW") {
       for (const c of alpha) {
         paths.push(`cg/db/ct/c/${a}A${c}`);
@@ -60,7 +37,6 @@ function generatePaths(): string[] {
   }
 
   if (wordlist === "paths" || wordlist === "all") {
-    // Single-segment paths
     const segs1 = [
       "cg",
       "fw",
@@ -121,7 +97,6 @@ function generatePaths(): string[] {
     ];
     for (const s of segs1) paths.push(s);
 
-    // Two-segment paths
     const prefixes = ["cg", "fw", "lg", "em", "lut", "a", "d"];
     const suffixes = [
       "ac",
@@ -163,7 +138,6 @@ function generatePaths(): string[] {
       }
     }
 
-    // Three-segment paths for known containers
     const containers = ["cg/db/ct", "cg/db/mc", "cg/db/ns", "cg/db/pr"];
     for (const c of containers) {
       paths.push(`${c}/c`);
@@ -171,14 +145,12 @@ function generatePaths(): string[] {
       paths.push(`${c}/s`);
     }
 
-    // fw sub-paths
     for (const slot of ["ia", "ib", "ic", "ip", "it", "f"]) {
       paths.push(`fw/${slot}`);
       paths.push(`fw/${slot}/md`);
       paths.push(`fw/${slot}/st`);
     }
 
-    // em sub-paths
     paths.push("em/tc");
     paths.push("em/tc/cfg");
     paths.push("em/tc/st");
@@ -188,7 +160,6 @@ function generatePaths(): string[] {
   }
 
   if (wordlist === "deep") {
-    // More bucket combos: try all 2-letter and 3-letter combos more broadly
     const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     for (const a of alpha) {
       for (const b of alpha) {
@@ -200,7 +171,6 @@ function generatePaths(): string[] {
     }
   }
 
-  // Deduplicate
   return [...new Set(paths)];
 }
 
@@ -208,54 +178,38 @@ async function main() {
   const paths = generatePaths();
   console.error(`Fuzzing ${paths.length} paths on rloc:${rloc}`);
 
-  // Collect responses
-  const hits = new Map<string, string>(); // path → code
+  const client = createCcxCoapClient({ host });
+  await client.connect();
+
+  const target = { kind: "rloc" as const, rloc };
+  const hits = new Map<string, string>();
   let responseCount = 0;
 
-  sock.on("message", (msg: Buffer) => {
-    if (msg[0] !== RESP_TEXT) return;
-    const text = msg.subarray(1).toString("utf-8").trim();
-    // Parse "[coap] X.XX <path> mid=0xXXXX len=N" or "[coap] X.XX mid=0xXXXX len=N"
-    const m =
-      text.match(/\[coap\] (\d+\.\d+) (.+?) mid=/) ||
-      text.match(/\[coap\] (\d+\.\d+) (mid=.*)/);
-    if (m) {
-      const [, code, path] = m;
-      if (code !== "4.04") {
-        hits.set(path, code);
-      }
-      responseCount++;
-      if (responseCount % 50 === 0) {
-        process.stderr.write(
-          `  ${responseCount}/${paths.length} responses, ${hits.size} hits\r`,
-        );
-      }
+  client.onBroadcast((notif) => {
+    if (notif.code !== "4.04") {
+      const label =
+        notif.path || `mid=0x${notif.mid.toString(16).padStart(4, "0")}`;
+      hits.set(label, notif.code);
     }
-    // Also catch "OK" / "FAIL" from probe command
+    responseCount++;
+    if (responseCount % 50 === 0) {
+      process.stderr.write(
+        `  ${responseCount}/${paths.length} responses, ${hits.size} hits\r`,
+      );
+    }
   });
 
-  // Register as client
-  await new Promise<void>((resolve) => {
-    sock.bind(0, () => {
-      send(0x00, Buffer.alloc(0)); // keepalive to register
-      setTimeout(resolve, 200);
-    });
-  });
-
-  // Wait for Thread to be ready
   console.error("Waiting for Thread...");
   await new Promise((r) => setTimeout(r, 15000));
 
-  // Fire probes in rapid bursts
   const BATCH = 2;
-  const DELAY_MS = 350; // slow enough for reliable response
+  const DELAY_MS = 350;
 
   for (let i = 0; i < paths.length; i += BATCH) {
     const batch = paths.slice(i, i + BATCH);
-    for (const path of batch) {
-      sendText(`ccx coap probe rloc:${rloc} ${path}`);
-    }
-    // Wait for responses
+    await Promise.all(
+      batch.map((path) => client.probe(target, path).catch(() => {})),
+    );
     await new Promise((r) => setTimeout(r, DELAY_MS * BATCH));
 
     if ((i + BATCH) % 200 < BATCH) {
@@ -265,11 +219,9 @@ async function main() {
     }
   }
 
-  // Wait for stragglers
   console.error("Waiting for remaining responses...");
   await new Promise((r) => setTimeout(r, 5000));
 
-  // Print results
   console.log(`\n=== HITS (${hits.size} non-4.04 responses) ===`);
   const sorted = [...hits.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   for (const [path, code] of sorted) {
@@ -279,7 +231,7 @@ async function main() {
     `\nTotal: ${responseCount} responses from ${paths.length} probes`,
   );
 
-  sock.close();
+  client.close();
 }
 
 main().catch((err) => {
