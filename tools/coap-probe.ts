@@ -7,7 +7,13 @@
  *        npx tsx tools/coap-probe.ts --rloc 4800    # single device
  */
 
-import { createSocket } from "dgram";
+import {
+  type CoapCode,
+  type CoapResponse,
+  type CoapTarget,
+  createCcxCoapClient,
+} from "../lib/ccx-coap";
+import { config } from "../lib/config";
 
 const args = process.argv.slice(2);
 const getArg = (name: string) => {
@@ -15,59 +21,8 @@ const getArg = (name: string) => {
   return i !== -1 ? args[i + 1] : undefined;
 };
 
-import { config } from "../lib/config";
-
 const host = getArg("--host") ?? config.openBridge;
 const singleRloc = getArg("--rloc");
-const PORT = 9433;
-const CMD_TEXT = 0x20;
-const CMD_KEEPALIVE = 0x00;
-const RESP_TEXT = 0xfd;
-
-const sock = createSocket("udp4");
-
-function send(cmd: number, data?: Buffer) {
-  const d = data ?? Buffer.alloc(0);
-  const frame = Buffer.alloc(2 + d.length);
-  frame[0] = cmd;
-  frame[1] = d.length;
-  d.copy(frame, 2);
-  sock.send(frame, 0, frame.length, PORT, host);
-}
-
-function sendText(text: string): Promise<string> {
-  return new Promise((resolve) => {
-    const handler = (msg: Buffer) => {
-      if (msg[0] === RESP_TEXT) {
-        const text = msg.subarray(1).toString("utf-8").trim();
-        if (text.length > 0) {
-          sock.removeListener("message", handler);
-          resolve(text);
-        }
-      }
-    };
-    sock.on("message", handler);
-    send(CMD_TEXT, Buffer.from(text, "utf-8"));
-    // Timeout
-    setTimeout(() => {
-      sock.removeListener("message", handler);
-      resolve("");
-    }, 8000);
-  });
-}
-
-async function coapGet(
-  rloc: string,
-  path: string,
-): Promise<{ code: string; payload: string }> {
-  const resp = await sendText(`ccx coap get rloc:${rloc} ${path}`);
-  // Parse: "CoAP GET ... → waiting...\r\nCoAP response code=X.XX mid=0xXXXX ...\r\n..."
-  const codeMatch = resp.match(/code=(\d+\.\d+)/);
-  const payloadMatch = resp.match(/Payload \((\d+) bytes\):([ 0-9A-F]+)/);
-  const code = codeMatch ? codeMatch[1] : "timeout";
-  const payload = payloadMatch ? payloadMatch[2].trim() : "";
-  return { code, payload };
-}
 
 // Device table from diagnostics + LEAP
 const devices: {
@@ -293,13 +248,11 @@ const bucketEndpoints = [
 ];
 const otherEndpoints = ["cg/db/mc", "cg/db/pr", "lg/all", "lg/lim", "em/tc"];
 
-function decodeFwItMd(hex: string): string {
-  const buf = Buffer.from(hex.replace(/ /g, ""), "hex");
+function decodeFwItMd(buf: Buffer): string {
   if (buf.length < 13) return "(too short)";
   const state = buf[0];
   const ver = `${buf[5]}.${buf[6]}.${buf[7]}`;
   const build = buf.readUInt16BE(9);
-  // Find null-terminated string
   const strStart = 13;
   let strEnd = buf.indexOf(0, strStart);
   if (strEnd < 0) strEnd = buf.length;
@@ -307,8 +260,7 @@ function decodeFwItMd(hex: string): string {
   return `state=${state} ver=${ver} build=${build} variant="${variant}"`;
 }
 
-function decodeFwIcMd(hex: string): string {
-  const buf = Buffer.from(hex.replace(/ /g, ""), "hex");
+function decodeFwIcMd(buf: Buffer): string {
   if (buf.length < 9) return "(too short)";
   const count = buf[0];
   const parts: string[] = [];
@@ -337,30 +289,45 @@ function decodeFwIcMd(hex: string): string {
   return parts.join(" ");
 }
 
-async function probeDevice(dev: (typeof devices)[0]) {
+async function safeGet(
+  client: ReturnType<typeof createCcxCoapClient>,
+  target: CoapTarget,
+  path: string,
+): Promise<{ code: CoapCode | "timeout"; resp?: CoapResponse }> {
+  try {
+    const resp = await client.get(target, path);
+    return { code: resp.code, resp };
+  } catch (err) {
+    if (/timeout/i.test((err as Error).message)) return { code: "timeout" };
+    throw err;
+  }
+}
+
+async function probeDevice(
+  client: ReturnType<typeof createCcxCoapClient>,
+  dev: (typeof devices)[0],
+) {
   const { rloc, leapId, type, name } = dev;
   const shortType = type.replace("Sunnata", "").replace("Hybrid", "H-");
+  const target: CoapTarget = { kind: "rloc", rloc };
 
   process.stderr.write(`Probing ${rloc} ${shortType} ${name}...\n`);
-
   const result: Record<string, string> = {};
 
-  // Firmware endpoints
   for (const ep of fwEndpoints) {
-    const { code, payload } = await coapGet(rloc, ep);
-    if (code === "2.05" && payload) {
-      if (ep === "fw/it/md") result[ep] = decodeFwItMd(payload);
-      else if (ep === "fw/ic/md") result[ep] = decodeFwIcMd(payload);
-      else result[ep] = payload;
+    const { code, resp } = await safeGet(client, target, ep);
+    if (code === "2.05" && resp && resp.payload.length) {
+      if (ep === "fw/it/md") result[ep] = decodeFwItMd(resp.payload);
+      else if (ep === "fw/ic/md") result[ep] = decodeFwIcMd(resp.payload);
+      else result[ep] = resp.payload.toString("hex");
     } else if (code !== "timeout") {
       result[ep] = code;
     }
   }
 
-  // Bucket discovery
   const foundBuckets: string[] = [];
   for (const ep of bucketEndpoints) {
-    const { code } = await coapGet(rloc, ep);
+    const { code } = await safeGet(client, target, ep);
     if (code !== "4.04" && code !== "timeout") {
       const bucket = ep.split("/").pop()!;
       foundBuckets.push(bucket);
@@ -368,11 +335,12 @@ async function probeDevice(dev: (typeof devices)[0]) {
   }
   if (foundBuckets.length > 0) result["buckets"] = foundBuckets.join(", ");
 
-  // Other endpoints
   for (const ep of otherEndpoints) {
-    const { code, payload } = await coapGet(rloc, ep);
+    const { code, resp } = await safeGet(client, target, ep);
     if (code !== "4.04" && code !== "timeout") {
-      result[ep] = payload ? `${code} (${payload.split(" ").length}B)` : code;
+      result[ep] = resp?.payload.length
+        ? `${code} (${resp.payload.length}B)`
+        : code;
     }
   }
 
@@ -380,13 +348,8 @@ async function probeDevice(dev: (typeof devices)[0]) {
 }
 
 async function main() {
-  // Register as UDP client
-  await new Promise<void>((resolve) => {
-    sock.bind(0, () => {
-      send(CMD_KEEPALIVE);
-      setTimeout(resolve, 200);
-    });
-  });
+  const client = createCcxCoapClient({ host });
+  await client.connect();
 
   const targets = singleRloc
     ? devices.filter((d) => d.rloc.toLowerCase() === singleRloc.toLowerCase())
@@ -394,10 +357,10 @@ async function main() {
 
   if (targets.length === 0) {
     console.error("No matching devices");
+    client.close();
     process.exit(1);
   }
 
-  // Probe one representative per type first, then all if no --rloc
   const byType = new Map<string, (typeof devices)[0][]>();
   for (const d of targets) {
     const list = byType.get(d.type) || [];
@@ -408,17 +371,23 @@ async function main() {
   const results: Awaited<ReturnType<typeof probeDevice>>[] = [];
 
   for (const [type, devs] of byType) {
-    // Probe first device of each type for full bucket scan
     const first = devs[0];
-    const r = await probeDevice(first);
+    const r = await probeDevice(client, first);
     results.push(r);
 
-    // For remaining devices of same type, only probe fw/it/md (quick fingerprint)
+    // Quick fingerprint for remaining devices of same type.
     for (let i = 1; i < devs.length; i++) {
       const d = devs[i];
       process.stderr.write(`Quick probe ${d.rloc} ${d.name}...\n`);
-      const { code, payload } = await coapGet(d.rloc, "fw/it/md");
-      const fwInfo = code === "2.05" && payload ? decodeFwItMd(payload) : code;
+      const { code, resp } = await safeGet(
+        client,
+        { kind: "rloc", rloc: d.rloc },
+        "fw/it/md",
+      );
+      const fwInfo =
+        code === "2.05" && resp?.payload.length
+          ? decodeFwItMd(resp.payload)
+          : code;
       results.push({
         rloc: d.rloc,
         leapId: d.leapId,
@@ -429,7 +398,6 @@ async function main() {
     }
   }
 
-  // Print results grouped by type
   let currentType = "";
   for (const r of results.sort((a, b) => a.type.localeCompare(b.type))) {
     if (r.type !== currentType) {
@@ -442,7 +410,7 @@ async function main() {
     }
   }
 
-  sock.close();
+  client.close();
 }
 
 main().catch((err) => {
