@@ -1239,11 +1239,12 @@ function handleDatagram(msg: Buffer) {
     return;
   }
 
-  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][DATA:N]
-  if (msg.length < 6 + len) return;
+  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]
+  if (msg.length < 10 + len) return;
 
   const radioTs = readU32LE(msg, 2);
-  const data = msg.subarray(6, 6 + len);
+  // radioCyc at offset 6 (DWT cycle count, ~1.82 ns @ 548 MHz) — ignored by CLI display
+  const data = msg.subarray(10, 10 + len);
   const isCcx = !!(flags & FLAG_CCX);
 
   // Compute per-protocol inter-packet delta

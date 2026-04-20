@@ -167,7 +167,7 @@ static uint32_t isr_latency_p95_us_internal(void)
  * Logging and streaming happen later in the task loop after all
  * pending FIFO data has been drained.
  * ----------------------------------------------------------------------- */
-static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t timestamp_ms)
+static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t timestamp_ms, uint32_t timestamp_cyc)
 {
     DecodedPacket pkt;
     pkt.clear();
@@ -181,6 +181,12 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
         if (pkt.n81_errors > 0) n81_err_count++;
         if (pkt.type_byte == 0x0B) ack_count++;
         cca_tdma_on_rx(&pkt, timestamp_ms);
+
+        /* Stream immediately — bypass the drain-silence window so the host
+         * sees the packet within a few ms of RF arrival. The rx_pending[]
+         * queue below is retained only for batched UART logging, which
+         * still needs drain silence to avoid DMA mutex interleaving. */
+        stream_send_cca_packet(pkt.raw, pkt.raw_len, rssi, false, timestamp_ms, timestamp_cyc);
 
         if (rx_pend_count < CCA_RX_PEND_MAX) {
             CcaRxPending& p = rx_pending[rx_pend_count++];
@@ -280,13 +286,9 @@ static void flush_rx_pending(void)
         }
     }
 
-    /* Stream decoded packets to UDP */
-    for (size_t i = 0; i < rx_pend_count; i++) {
-        if (rx_pending[i].valid) {
-            stream_send_cca_packet(rx_pending[i].pkt.raw, rx_pending[i].pkt.raw_len, rx_pending[i].rssi, false,
-                                   rx_pending[i].timestamp_ms);
-        }
-    }
+    /* Decoded-packet stream send happens in on_rx_packet() now — not here —
+     * so the UDP path isn't gated by the drain-silence window. Only the UART
+     * log above needs drain silence (DMA mutex contention). */
 
     rx_pend_count = 0;
 }

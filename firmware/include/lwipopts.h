@@ -13,7 +13,9 @@
 /* Memory configuration */
 #define MEM_ALIGNMENT                   4
 #define MEM_SIZE                        (16 * 1024)
-#define MEMP_NUM_PBUF                   16
+#define MEMP_NUM_PBUF                   32
+/* Small frames (≤60 B) always fit in one pbuf — skip chain handling on TX. */
+#define LWIP_NETIF_TX_SINGLE_PBUF       1
 #define MEMP_NUM_TCP_PCB                5
 #define MEMP_NUM_TCP_PCB_LISTEN         2
 #define MEMP_NUM_TCP_SEG                16
@@ -71,7 +73,7 @@
 #define TCPIP_THREAD_NAME               "lwIP"
 #define TCPIP_THREAD_STACKSIZE          1024
 #define TCPIP_THREAD_PRIO               4
-#define TCPIP_MBOX_SIZE                 8
+#define TCPIP_MBOX_SIZE                 16
 #define DEFAULT_THREAD_STACKSIZE        512
 #define DEFAULT_ACCEPTMBOX_SIZE         4
 #define DEFAULT_RAW_RECVMBOX_SIZE       4

@@ -275,14 +275,14 @@ async function sendCoapViaStm32(params: {
         return;
       }
 
-      // Stream frame: [flags][len][ts_le32][data]
-      if (msg.length < 6) return;
+      // Stream frame: [flags][len][ts_ms_le32][ts_cyc_le32][data]
+      if (msg.length < 10) return;
       const flags = msg[0];
       const len = msg[1];
-      if (msg.length < 6 + len) return;
+      if (msg.length < 10 + len) return;
       if ((flags & 0x40) === 0) return; // only CCX channel
 
-      const data = msg.subarray(6, 6 + len);
+      const data = msg.subarray(10, 10 + len);
       const coap = parseCoapHeader(data);
       if (!coap) return;
 

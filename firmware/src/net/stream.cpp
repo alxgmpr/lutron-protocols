@@ -41,7 +41,9 @@
  * Constants
  * ----------------------------------------------------------------------- */
 #define STREAM_TASK_STACK_SIZE 2048
-#define STREAM_TASK_PRIORITY 2
+/* Match tcpip_thread so stream_task drains tx_queue without waiting behind
+ * lwIP. Bursts of CCA retx (pairs 12 ms apart) cascade immediately to UDP. */
+#define STREAM_TASK_PRIORITY 4
 #define TX_RING_SIZE 64
 #define TX_ITEM_MAX_DATA 140 /* 127 max 802.15.4 frame + margin for raw mode */
 #define CLIENT_TIMEOUT_MS 30000
@@ -60,6 +62,7 @@ struct StreamTxItem {
     uint8_t data[TX_ITEM_MAX_DATA];
     uint8_t len;
     uint32_t timestamp_ms;
+    uint32_t timestamp_cyc; /* DWT->CYCCNT at RF arrival; 0 for locally-timestamped frames */
 };
 
 /* -----------------------------------------------------------------------
@@ -87,7 +90,8 @@ static volatile uint32_t udp_fail_count = 0;
 /* -----------------------------------------------------------------------
  * Public API: enqueue packets for streaming
  * ----------------------------------------------------------------------- */
-void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms)
+void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms,
+                            uint32_t timestamp_cyc)
 {
     if (tx_queue == NULL || len > TX_ITEM_MAX_DATA) return;
 
@@ -96,6 +100,7 @@ void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool i
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = timestamp_ms;
+    item.timestamp_cyc = timestamp_cyc;
 
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
@@ -109,6 +114,7 @@ void stream_send_ccx_packet(const uint8_t* data, size_t len)
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = HAL_GetTick();
+    item.timestamp_cyc = DWT->CYCCNT;
 
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
@@ -122,6 +128,7 @@ void stream_send_raw_frame(const uint8_t* data, size_t len)
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = HAL_GetTick();
+    item.timestamp_cyc = DWT->CYCCNT;
 
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
@@ -241,7 +248,16 @@ static void expire_clients(void)
  * UDP send helpers
  * ----------------------------------------------------------------------- */
 
-/** Send a frame to all registered UDP clients. */
+/** Send a frame to all registered UDP clients.
+ *
+ * Uses netbuf_ref so the frame buffer is sent without an extra memcpy into a
+ * lwIP-allocated pbuf. Safe because:
+ *   - LWIP_TCPIP_CORE_LOCKING=1 → netconn_sendto runs synchronously in caller
+ *     context; it returns only after the send completes.
+ *   - The `frame` buffer lives on stream_task's stack (RAM_D1, DMA-accessible),
+ *     so it remains valid throughout the loop.
+ *   - Frames are ≤ TX_ITEM_MAX_DATA + 6 (≤ 70 B) → always a single pbuf.
+ */
 static void broadcast_frame(const uint8_t* frame, uint16_t frame_len)
 {
     if (udp_conn == NULL || num_clients == 0) return;
@@ -251,13 +267,11 @@ static void broadcast_frame(const uint8_t* frame, uint16_t frame_len)
         udp_fail_count++;
         return;
     }
-    void* p = netbuf_alloc(nb, frame_len);
-    if (p == NULL) {
+    if (netbuf_ref(nb, frame, frame_len) != ERR_OK) {
         netbuf_delete(nb);
         udp_fail_count++;
         return;
     }
-    memcpy(p, frame, frame_len);
 
     for (int i = 0; i < MAX_STREAM_CLIENTS; i++) {
         if (!clients[i].active) continue;
@@ -271,18 +285,17 @@ static void broadcast_frame(const uint8_t* frame, uint16_t frame_len)
     netbuf_delete(nb);
 }
 
-/** Send a frame to one specific client (for directed responses). */
+/** Send a frame to one specific client (for directed responses). See
+ *  broadcast_frame() for the rationale behind netbuf_ref. */
 static void send_to_client(const uint8_t* frame, uint16_t frame_len, const ip_addr_t* addr, uint16_t port)
 {
     if (udp_conn == NULL) return;
     struct netbuf* nb = netbuf_new();
     if (nb == NULL) return;
-    void* p = netbuf_alloc(nb, frame_len);
-    if (p == NULL) {
+    if (netbuf_ref(nb, frame, frame_len) != ERR_OK) {
         netbuf_delete(nb);
         return;
     }
-    memcpy(p, frame, frame_len);
     netconn_sendto(udp_conn, nb, addr, port);
     netbuf_delete(nb);
 }
@@ -721,12 +734,14 @@ static void stream_task_func(void* param)
                     broadcast_frame(frame, (uint16_t)(1 + tx_item.len));
                 }
                 else {
-                    uint8_t frame[TX_ITEM_MAX_DATA + 6]; /* FLAGS + LEN + TS(4) + DATA */
+                    /* Wire format: FLAGS(1) LEN(1) TS_MS(4) TS_CYC(4) DATA(N) */
+                    uint8_t frame[TX_ITEM_MAX_DATA + 10];
                     frame[0] = tx_item.flags;
                     frame[1] = tx_item.len;
                     put_le32(frame + 2, tx_item.timestamp_ms);
-                    memcpy(frame + 6, tx_item.data, tx_item.len);
-                    broadcast_frame(frame, (uint16_t)(6 + tx_item.len));
+                    put_le32(frame + 6, tx_item.timestamp_cyc);
+                    memcpy(frame + 10, tx_item.data, tx_item.len);
+                    broadcast_frame(frame, (uint16_t)(10 + tx_item.len));
                 }
             } while (xQueueReceive(tx_queue, &tx_item, 0) == pdTRUE);
         }

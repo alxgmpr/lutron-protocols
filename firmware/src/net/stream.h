@@ -68,8 +68,11 @@ extern "C" {
 void stream_task_start(void);
 
 /** Send a CCA packet to all registered UDP clients.
- *  timestamp_ms is the radio-side HAL_GetTick() when the packet was first heard. */
-void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms);
+ *  timestamp_ms  = HAL_GetTick() at start-of-frame (wall-clock aligned).
+ *  timestamp_cyc = DWT->CYCCNT at the same instant (~1.82 ns @ 548 MHz,
+ *                  wraps every ~7.8 s). Gives host sub-µs intra-radio ordering. */
+void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms,
+                            uint32_t timestamp_cyc);
 
 /** Send a CCX packet to all registered UDP clients */
 void stream_send_ccx_packet(const uint8_t* data, size_t len);
