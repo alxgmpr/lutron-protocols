@@ -6,7 +6,7 @@ PROJECT   := nucleo-firmware
 APP_SOURCES := $(shell find src -name '*.c' -o -name '*.cpp' -o -name '*.h')
 INCLUDE_DIRS := -I include -I src -I src/bsp -I src/cca -I src/ccx -I src/net -I src/shell -I src/storage
 
-.PHONY: build clean flash monitor reset test format format-check lint
+.PHONY: build clean flash monitor reset test format format-check lint build-check
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -51,6 +51,9 @@ test:
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \
 	    src/ccx/coap.c src/ccx/smp_serial.c \
 	    -o $(BUILD_DIR)/test_runner && ./$(BUILD_DIR)/test_runner
+
+build-check:
+	@bash $(CURDIR)/check-build-warnings.sh
 
 format:
 	clang-format -i $(APP_SOURCES)
