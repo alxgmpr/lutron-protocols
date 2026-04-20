@@ -726,7 +726,7 @@ async function main() {
     stdio: [tsharkStdin, "pipe", "pipe"],
   });
 
-  if (extcap && extcap.stdout && tshark.stdin) {
+  if (extcap?.stdout && tshark.stdin) {
     extcap.stdout.pipe(tshark.stdin);
     tshark.stdin.on("error", () => {
       /* swallow EPIPE when tshark exits first */
