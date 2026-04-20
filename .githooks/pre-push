@@ -39,4 +39,14 @@ if command -v cppcheck &>/dev/null; then
   fi
 fi
 
+# Firmware build warning check (requires ARM toolchain)
+if command -v arm-none-eabi-gcc &>/dev/null; then
+  echo "  Firmware build warnings..."
+  bash firmware/check-build-warnings.sh
+  if [ $? -ne 0 ]; then
+    echo "❌ Firmware build has warnings. Fix before pushing."
+    exit 1
+  fi
+fi
+
 echo "✅ All checks passed."
