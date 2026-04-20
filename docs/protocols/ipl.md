@@ -451,6 +451,68 @@ device 483 button 1 (bound to preset 496 Office Entrance): sending `#DEVICE,
 button's `AdvancedToggleProgrammingModel` (primary preset 75%, secondary 0%).
 Tooling exposes this as `ipl-cmd.ts press <deviceObjId> <btnNum>`.
 
+#### `#OUTPUT,<integrationId>,<action>[,<args>]\n`
+
+Action codes (jump table at 0x118b1fc in `sub_118aef8`, indexed by
+`actionCode-1` with bound `cmp #34`):
+
+| Action | Telnet name        | Args                       | Implemented |
+|--------|--------------------|----------------------------|-------------|
+| 1      | Set/Get Level      | `level[,fade[,delay]]`     | ✅ wire     |
+| 2      | Start Raising      | —                          | ✅ wire     |
+| 3      | Start Lowering     | —                          | ✅ wire     |
+| 4      | Stop Raise/Lower   | —                          | ✅ wire     |
+| 5      | Start Flash        | (per LIP guide)            | ✅ in fw    |
+| 6      | Pulse Time         | (per LIP guide)            | ✅ in fw    |
+| 7, 8   | (unsupported)      |                            | ❌ falls through |
+| 9      | Set Tilt           | shades                     | ✅ in fw    |
+| 10–21  | (tilt / lift / ALD variants — see LIP guide §5)            | ✅ in fw    |
+| 22–30  | (unsupported)      |                            | ❌ falls through |
+| 31     | (per LIP guide)    |                            | ✅ in fw    |
+| 32–34  | (unsupported)      |                            | ❌ falls through |
+| 35     | (per LIP guide)    |                            | ✅ in fw    |
+
+`integrationId` is the **Designer-assigned Integration ID** (small integer,
+project-local, ≠ LEAP zone object id). The mapping lives in the Designer SQL
+DB table `tblIntegrationID` (columns `DomainControlBaseObjectID`,
+`IntegrationID`, `DomainControlBaseObjectType`); see
+`docs/infrastructure/designer-db.md`. RA3's LEAP API does **not** expose the
+mapping, so without Designer DB access there is no in-band lookup.
+
+Per the firmware arg-count check on action 1 (`(argc-4) <= 2`), `delay` requires
+`fade` — `#OUTPUT,id,1,level,,delay` is rejected with `~ERROR,1`.
+
+Tooling exposes the four wire-tested actions:
+
+```
+ipl-cmd.ts output-set   <intId> <pct> [fade] [delay]
+ipl-cmd.ts output-raise <intId>
+ipl-cmd.ts output-lower <intId>
+ipl-cmd.ts output-stop  <intId>
+```
+
+The encoders in `lib/ipl.ts` (`bodyOutputSetLevel`, `bodyOutputStartRaising`,
+`bodyOutputStartLowering`, `bodyOutputStopRaiseLower`) emit byte-identical
+output to the equivalent `intcmd` raw string — verified 2026-04-19 by diffing
+the Command frame hex.
+
+**Side-effect verification status (2026-04-19):** the firmware dispatcher
+exists and accepts the bytes (no `~ERROR` echoed back; bus-internal `op=349
+RequestSetLEDState` and Telemetry frames follow). Direct effect verification
+on the test rig is **blocked on the IntegrationID map** — the IDs we probed
+(1–15) produced ambient telemetry indistinguishable from background activity,
+and the historical claim "intID 5 → LEAP zone 10508" no longer reproduces
+(zone 10508 not in current LEAP dump). The encoder is correct by construction
+(disassembly + wire equivalence); per-zone effect verification is gated on
+populating `data/integration-ids-<host>.json` via Designer DB.
+
+**Telemetry routing for OUTPUT changes:** Level Telemetry from an OUTPUT
+change is delivered against an `objectType=3` **LoadController**, not against
+the Zone (`objectType=15`). To map a LoadController obj → Zone obj, query
+`/loadcontroller/<id>` over LEAP and follow `AssociatedZone.href`. (Discovery
+2026-04-19: LC obj 3650 → `/loadcontroller/3650` → zone 3663 "Closet Light".)
+`ObjectType.LoadController` is added to `lib/ipl.ts` so consumers can decode it.
+
 #### Important caveats (verified empirically, RA3 2026-04-19)
 
 1. **ID spaces differ per verb.**

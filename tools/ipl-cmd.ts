@@ -32,6 +32,11 @@
  *                                                  `#DEVICE,id,btn,action\n`. Default
  *                                                  sends Press(3)+Release(4). Actions:
  *                                                  3=Press 4=Release 5=Hold 6=MultiTap.
+ *   output-set <intId> <pct> [fade] [delay]    -> opId 60 `#OUTPUT,id,1,pct[,f[,d]]\n`
+ *                                                  intId is the Designer Integration ID.
+ *   output-raise <intId>                       -> opId 60 `#OUTPUT,id,2\n`
+ *   output-lower <intId>                       -> opId 60 `#OUTPUT,id,3\n`
+ *   output-stop  <intId>                       -> opId 60 `#OUTPUT,id,4\n`
  *   intcmd <telnet-string>                     -> opId 60 raw: `#AREA,32,6,2`,
  *                                                  `?OUTPUT,518,1`, etc.
  *   raw <opId> <bodyHex>                       -> escape hatch
@@ -64,6 +69,10 @@ import {
   bodyGoToLoadState,
   bodyGoToScene,
   bodyIntegrationCommand,
+  bodyOutputSetLevel,
+  bodyOutputStartLowering,
+  bodyOutputStartRaising,
+  bodyOutputStopRaiseLower,
   bodyPingLinkDevice,
   bodyPresetGoToLiftAndTiltLevels,
   bodyProcessorSetDateTime,
@@ -228,6 +237,14 @@ async function main() {
         "",
         "  -- destructive (require --yes) --",
         "  devreset <proc> <link> <serialHex> <comp>            opId 284 (FactoryResetDevice)",
+        "",
+        "  -- IntegrationCommand (opId 60) telnet-style --",
+        "  press <devObjId> <btnNum> [action]                   `#DEVICE,id,btn,a` (3=Press 4=Release 5=Hold 6=MultiTap)",
+        "  output-set <intId> <pct> [fade] [delay]              `#OUTPUT,id,1,pct[,f[,d]]` (Integration ID, NOT zone obj)",
+        "  output-raise <intId>                                 `#OUTPUT,id,2`",
+        "  output-lower <intId>                                 `#OUTPUT,id,3`",
+        "  output-stop  <intId>                                 `#OUTPUT,id,4`",
+        "  intcmd <telnet-string>                               raw `#AREA,32,6,2`, etc.",
         "",
         "  -- system --",
         "  ping                                                 opId 11",
@@ -511,6 +528,44 @@ async function main() {
       ];
       txDescription = `IntegrationCommand #DEVICE,${devId},${btnNum},3 + ,4 (Press+Release)`;
       body = pressBody;
+      break;
+    }
+
+    case "output-set": {
+      // `output-set <intId> <pct> [fade] [delay]` — opId 60 `#OUTPUT,id,1,...`.
+      // intId is the Designer-assigned Integration ID, not a LEAP zone id.
+      const [intStr, pctStr, fadeStr, delayStr] = rest;
+      const intId = parseNum(intStr);
+      const pct = parseNum(pctStr);
+      const fadeSec = fadeStr === undefined ? undefined : parseNum(fadeStr);
+      const delaySec = delayStr === undefined ? undefined : parseNum(delayStr);
+      opId = CommandOp.IntegrationCommand;
+      body = bodyOutputSetLevel(intId, pct, { fadeSec, delaySec });
+      txDescription = `IntegrationCommand ${body.toString("ascii").replace(/\n$/, "")}`;
+      break;
+    }
+
+    case "output-raise": {
+      const [intStr] = rest;
+      opId = CommandOp.IntegrationCommand;
+      body = bodyOutputStartRaising(parseNum(intStr));
+      txDescription = `IntegrationCommand ${body.toString("ascii").replace(/\n$/, "")}`;
+      break;
+    }
+
+    case "output-lower": {
+      const [intStr] = rest;
+      opId = CommandOp.IntegrationCommand;
+      body = bodyOutputStartLowering(parseNum(intStr));
+      txDescription = `IntegrationCommand ${body.toString("ascii").replace(/\n$/, "")}`;
+      break;
+    }
+
+    case "output-stop": {
+      const [intStr] = rest;
+      opId = CommandOp.IntegrationCommand;
+      body = bodyOutputStopRaiseLower(parseNum(intStr));
+      txDescription = `IntegrationCommand ${body.toString("ascii").replace(/\n$/, "")}`;
       break;
     }
 

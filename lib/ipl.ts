@@ -230,6 +230,10 @@ export const EventOp: Record<number, string> = {
 /** ObjectType — the set used in IPL commands (only common members listed). */
 export const ObjectType = {
   Area: 2,
+  /** Backing object for an OUTPUT zone — Level Telemetry from a Zone change is
+   * delivered against the LoadController, not the Zone itself. Resolve via
+   * `/loadcontroller/<id>` then follow `AssociatedZone.href`. */
+  LoadController: 3,
   ControlStation: 4,
   ControlStationDevice: 5,
   Zone: 15,
@@ -527,6 +531,69 @@ export function bodyDevicePress(
   return bodyIntegrationCommand(
     `#DEVICE,${deviceObjectId},${buttonNumber},${action}`,
   );
+}
+
+/**
+ * `#OUTPUT` action codes (opId 60 IntegrationCommand). Numbers extracted from
+ * the jump table in `sub_118aef8` (lutron-core v26.01.13f000), at file address
+ * 0x118b1fc with bound `cmp r0, #34` after a `sub r0, r9, #1` (so codes are
+ * 1-based, 1..35).
+ *
+ *   Implemented:    1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+ *                   19, 20, 21, 31, 35
+ *   Falls through to "Command not yet supported\n":  7, 8, 22-30, 32, 33, 34
+ *
+ * Only the wire-verified actions are exported as named encoders below; the
+ * rest can be reached via `bodyIntegrationCommand("#OUTPUT,<id>,<n>,...")`.
+ */
+export const OutputAction = {
+  SetLevel: 1,
+  StartRaising: 2,
+  StartLowering: 3,
+  StopRaiseLower: 4,
+  StartFlash: 5,
+  PulseTime: 6,
+  SetTilt: 9,
+} as const;
+
+/**
+ * `#OUTPUT,<intID>,1,<level>[,<fade>[,<delay>]]` — set a zone's output level.
+ *
+ * `intId` is the **Designer-assigned Integration ID**, NOT a LEAP object id.
+ * `level` is 0-100 (the dispatcher also accepts decimal). `fadeSec` and
+ * `delaySec` are integer seconds (the dispatcher also accepts `MM:SS` or
+ * `HH:MM:SS` strings — pass via `bodyIntegrationCommand` if needed).
+ *
+ * Per the firmware arg-count check (`(argc-4) <= 2`), `delaySec` requires
+ * `fadeSec` — passing only `delaySec` will be ignored.
+ *
+ * Verified 2026-04-19 on RA3 firmware v26.01.13f000: `#OUTPUT,5,1,50` against
+ * integration ID 5 produced Level Telemetry on LEAP zone 10508.
+ */
+export function bodyOutputSetLevel(
+  intId: number,
+  level: number,
+  opts: { fadeSec?: number; delaySec?: number } = {},
+): Buffer {
+  let s = `#OUTPUT,${intId},1,${level}`;
+  if (opts.fadeSec !== undefined) s += `,${opts.fadeSec}`;
+  if (opts.delaySec !== undefined) s += `,${opts.delaySec}`;
+  return bodyIntegrationCommand(s);
+}
+
+/** `#OUTPUT,<intID>,2` — start a continuous raise at the zone's programmed rate. */
+export function bodyOutputStartRaising(intId: number): Buffer {
+  return bodyIntegrationCommand(`#OUTPUT,${intId},2`);
+}
+
+/** `#OUTPUT,<intID>,3` — start a continuous lower at the zone's programmed rate. */
+export function bodyOutputStartLowering(intId: number): Buffer {
+  return bodyIntegrationCommand(`#OUTPUT,${intId},3`);
+}
+
+/** `#OUTPUT,<intID>,4` — stop an in-progress raise/lower. */
+export function bodyOutputStopRaiseLower(intId: number): Buffer {
+  return bodyIntegrationCommand(`#OUTPUT,${intId},4`);
 }
 
 // ---------- Body encoders ----------
