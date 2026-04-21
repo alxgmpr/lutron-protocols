@@ -2152,12 +2152,16 @@ static bool parse_ipv6_addr(const char* str, uint8_t out[16])
                 if (end == p || val > 0xFFFF) return false;
                 groups[head_count + tail_count] = (uint16_t)val;
                 tail_count++;
-                if (*end == ':')
+                if (*end == ':') {
                     p = end + 1;
-                else if (*end == '\0')
+                }
+                else if (*end == '\0') {
+                    p = end;
                     break;
-                else
+                }
+                else {
                     return false;
+                }
             }
             if (*p != '\0') return false;
         }
