@@ -109,6 +109,12 @@ export interface CoapNotification {
   path: string;
   mid: number;
   len: number;
+  /** Present when the firmware broadcast includes the IPv6 source. */
+  src?: string;
+  /** Present when the firmware broadcast includes the CoAP token (hex). */
+  token?: string;
+  /** Present when the firmware broadcast includes the CoAP payload (decoded from hex). */
+  payload?: Buffer;
 }
 
 // ── Text parsing helpers ─────────────────────────────────
@@ -183,22 +189,34 @@ export function parseCoapGetResponse(text: string): GetParse | null {
 }
 
 const BROADCAST_RE =
-  /^\[coap\]\s+(\d+)\.(\d+)\s+(?:(\S+)\s+)?mid=0x([0-9a-fA-F]+)\s+len=(\d+)/;
+  /^\[coap\]\s+(\d+)\.(\d+)(?:\s+src=(\S+))?(?:\s+(\S+))?\s+mid=0x([0-9a-fA-F]+)(?:\s+token=([0-9a-fA-F]+))?\s+len=(\d+)(?:\s+payload=([0-9a-fA-F]+))?/;
 
-/** Parse a single `[coap] X.XX [path] mid=0xABCD len=N` broadcast line. */
+/** Parse a single `[coap] X.XX [src=...] [path] mid=0xABCD [token=HH] len=N [payload=HEX]` broadcast line. */
 export function parseCoapBroadcast(line: string): CoapNotification | null {
   const m = BROADCAST_RE.exec(line.trim());
   if (!m) return null;
   const cls = Number(m[1]);
   const det = Number(m[2]);
-  const path = m[3] && !m[3].startsWith("mid=") ? m[3] : "";
-  const mid = Number.parseInt(m[4], 16);
-  const len = Number(m[5]);
+  const src = m[3];
+  const pathCandidate = m[4];
+  const mid = Number.parseInt(m[5], 16);
+  const token = m[6];
+  const len = Number(m[7]);
+  const payloadHex = m[8];
+  const path =
+    pathCandidate &&
+    !pathCandidate.startsWith("mid=") &&
+    !pathCandidate.startsWith("token=")
+      ? pathCandidate
+      : "";
   return {
     code: `${cls}.${det.toString().padStart(2, "0")}` as CoapCode,
     path,
     mid,
     len,
+    ...(src ? { src } : {}),
+    ...(token ? { token } : {}),
+    ...(payloadHex ? { payload: Buffer.from(payloadHex, "hex") } : {}),
   };
 }
 

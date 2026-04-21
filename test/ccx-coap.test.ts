@@ -67,6 +67,29 @@ test("percentToLevel16 rejects out-of-range percentages", () => {
   assert.throws(() => percentToLevel16(100.1));
 });
 
+test("parseCoapBroadcast accepts legacy [coap] X.YY mid= len= format", () => {
+  const n = parseCoapBroadcast("[coap] 2.05 mid=0x1234 len=18");
+  assert.ok(n);
+  assert.equal(n.code, "2.05");
+  assert.equal(n.mid, 0x1234);
+  assert.equal(n.len, 18);
+  assert.equal(n.src, undefined);
+  assert.equal(n.payload, undefined);
+});
+
+test("parseCoapBroadcast captures src= and payload= when present", () => {
+  const line =
+    "[coap] 2.05 src=fd00::e079:8dff:fe92:85fe mid=0x1234 token=ab len=18 payload=820318a101";
+  const n = parseCoapBroadcast(line);
+  assert.ok(n);
+  assert.equal(n.code, "2.05");
+  assert.equal(n.mid, 0x1234);
+  assert.equal(n.src, "fd00::e079:8dff:fe92:85fe");
+  assert.equal(n.len, 18);
+  assert.equal(n.token, "ab");
+  assert.equal(n.payload?.toString("hex"), "820318a101");
+});
+
 test("coapCodeToNumber and coapCodeFromNumber round-trip", () => {
   assert.equal(coapCodeToNumber("2.05"), (2 << 5) | 5);
   assert.equal(coapCodeFromNumber((2 << 5) | 5), "2.05");
