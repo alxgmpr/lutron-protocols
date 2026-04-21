@@ -282,30 +282,69 @@ try
 catch (Exception ex) { Report("DO", "error", false, ex.Message); }
 
 // ============================================================
-// 3b. Infrastructure.dll + ModelViews.dll — strip strong name so
-//     InternalsVisibleTo works between re-saved assemblies
+// 3b. Infrastructure.dll — auth short-circuit (+ IVT strip)
+//     Replaces the hosts-file block + ServicesConfig URL-list hack:
+//     stubs the only two de-auth code paths so Designer stays fully
+//     online (engraving submission, firmware checks, LEAP cloud proxy
+//     all flow through) while the myLutron server can never revoke.
 // ============================================================
-Console.WriteLine("--- Infrastructure.dll + ModelViews.dll ---");
+Console.WriteLine("--- Infrastructure.dll ---");
+try
 {
-    // Infrastructure — just strip IVT
+    var path = Path.Combine(srcDir, "Lutron.Gulliver.Infrastructure.dll");
+    using var mod = ModuleDefMD.Load(path);
+
+    // Patch: UserManager.AttemptAuthentication(bool) — wrap original body in try/catch,
+    // coerce return to AuthenticationSuccess (1) regardless of real outcome.
+    //
+    // Why not a pure stub? A pure stub prevents the REAL myLutron OAuth/RefreshToken
+    // calls from running, which means SecurityToken never gets written to LutronData.bin,
+    // which means Bearer-auth endpoints (PStoreService engraving Apim, etc.) always 401.
+    // By letting the real call execute first (its side effect is SetCurrentUser → live
+    // SecurityToken), then coercing the return to success, a real login populates a real
+    // token while offline/expired/revoked states still return success (no de-auth).
     {
-        var path = Path.Combine(srcDir, "Lutron.Gulliver.Infrastructure.dll");
-        if (File.Exists(path))
-        {
-            using var mod = ModuleDefMD.Load(path);
-            SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.Infrastructure.dll"));
-            Report("SN", "Infrastructure.dll", true, "IVT PublicKey stripped");
-        }
+        var mgr = mod.Find("Lutron.Gulliver.Infrastructure.myLutronService.UserManager", false);
+        var method = mgr?.FindMethod("AttemptAuthentication");
+        Report("INF", "AttemptAuthentication", PatchAttemptAuthenticationTryCatch(method, mod, out var msg), msg);
     }
 
-    // ModelViews — IVT strip only (backlight diagnostic + IsAlisseForSunnata reverted)
+    // NOTE: ResetProperties is intentionally NOT patched.
+    // Originally stubbed as belt-and-suspenders against de-auth, but ResetProperties is
+    // called by UserManager.AuthenticateNewUser (the Login button flow) to clear username/
+    // Code/CodeVerifier/IsAuthenticated/channels BEFORE kicking off OAuth. Stubbing it to
+    // no-op leaves the post-logout "@Guest@" dummy username in place, which causes
+    // AuthenticatefromSSO to return AuthenticationFailure via IsCurrentUserADummyUser()
+    // without ever opening the browser. The AttemptAuthentication try/catch wrapper above
+    // is sufficient to prevent de-auth from the online-refresh path.
+
+    // Patch: User.get_ChannelTypes / User.get_AllChannelTypes → ChannelTypes.All (0x1FFFFFFF)
+    // Overrides whatever channel bits the myLutron server returned for the real account so
+    // cross-product project opens (RA3/HWQS/Vive/etc.) all pass channel-gating checks.
+    // Setters remain untouched — SetUserChannels still runs but any reader gets All.
     {
-        var mvPath = Path.Combine(srcDir, "Lutron.Gulliver.ModelViews.dll");
-        using var mod = ModuleDefMD.Load(mvPath);
-        SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.ModelViews.dll"));
-        Report("SN", "ModelViews.dll", true, "IVT PublicKey stripped");
+        var usr = mod.Find("Lutron.Gulliver.Infrastructure.myLutronService.User", false);
+        var getChannelTypes = usr?.FindMethod("get_ChannelTypes");
+        Report("INF", "User.get_ChannelTypes", StubReturnInt(getChannelTypes, 0x1FFFFFFF, out var m1), m1);
+        var getAllChannelTypes = usr?.FindMethod("get_AllChannelTypes");
+        Report("INF", "User.get_AllChannelTypes", StubReturnInt(getAllChannelTypes, 0x1FFFFFFF, out var m2), m2);
     }
+
+    SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.Infrastructure.dll"));
+    Report("INF", "write", true, "saved (IVT PublicKey stripped)");
 }
+catch (Exception ex) { Report("INF", "error", false, ex.Message); }
+
+// ModelViews — IVT strip only (backlight diagnostic + IsAlisseForSunnata reverted)
+Console.WriteLine("--- ModelViews.dll ---");
+try
+{
+    var mvPath = Path.Combine(srcDir, "Lutron.Gulliver.ModelViews.dll");
+    using var mod = ModuleDefMD.Load(mvPath);
+    SaveModule(mod, Path.Combine(outDir, "Lutron.Gulliver.ModelViews.dll"));
+    Report("SN", "ModelViews.dll", true, "IVT PublicKey stripped");
+}
+catch (Exception ex) { Report("SN", "ModelViews.dll", false, ex.Message); }
 
 // ============================================================
 // 4. InfoObjects.dll — IVT strip + channel→toolbox platform unlock
@@ -370,6 +409,25 @@ static bool StubReturnInt(MethodDef? method, int value, out string msg)
     return true;
 }
 
+// Stub a void method body to just `ret`. Idempotent: a body that's already a single
+// `ret` is left alone. Returns false only when MethodDef is missing.
+static bool StubReturnVoid(MethodDef? method, out string msg)
+{
+    if (method?.Body == null) { msg = "method not found"; return false; }
+    var instrs = method.Body.Instructions;
+    if (instrs.Count == 1 && instrs[0].OpCode == OpCodes.Ret)
+    {
+        msg = "already stubbed → no-op";
+        return true;
+    }
+    instrs.Clear();
+    method.Body.ExceptionHandlers.Clear();
+    method.Body.Variables.Clear();
+    instrs.Add(OpCodes.Ret.ToInstruction());
+    msg = "stubbed → no-op";
+    return true;
+}
+
 static Instruction NewLdcI4(int v)
 {
     switch (v)
@@ -387,6 +445,124 @@ static Instruction NewLdcI4(int v)
     }
     if (v >= -128 && v <= 127) return new Instruction(OpCodes.Ldc_I4_S, (sbyte)v);
     return new Instruction(OpCodes.Ldc_I4, v);
+}
+
+// Rewrite AttemptAuthentication(bool) as:
+//   try { if (!arg1) AuthenticateCode(user) else RefreshToken(); }
+//   catch { }
+//   return AuthenticationSuccess;  // always 1
+//
+// Preserves the REAL outbound calls (so SecurityToken side-effects still fire on
+// successful login) while forcing the return value to 1 in every path. Extracts
+// method refs (get_Instance, AuthenticateCode, RefreshToken) and the `user` field
+// ref from the existing IL before rewriting — so we don't need to import new refs.
+//
+// Idempotent: if the first instruction pattern matches the rewritten shape
+// (ldarg.1; brfalse.s; call get_Instance; callvirt RefreshToken; pop), skip.
+static bool PatchAttemptAuthenticationTryCatch(MethodDef? method, ModuleDefMD mod, out string msg)
+{
+    if (method?.Body == null) { msg = "method not found"; return false; }
+
+    // Idempotency: look for our marker — ldarg.1 as first instruction followed by
+    // brfalse (pure stub starts with ldc.i4.1, so this distinguishes the rewrite).
+    var existing = method.Body.Instructions;
+    if (existing.Count >= 2
+        && existing[0].OpCode == OpCodes.Ldarg_1
+        && existing[1].OpCode == OpCodes.Brfalse_S
+        && method.Body.ExceptionHandlers.Count == 1)
+    {
+        msg = "already wrapped (try/catch)";
+        return true;
+    }
+
+    // Extract refs from original IL.
+    IMethodDefOrRef? getInstance = null;
+    IMethodDefOrRef? refreshToken = null;
+    IMethodDefOrRef? authenticateCode = null;
+    IField? userField = null;
+
+    foreach (var ins in existing)
+    {
+        if ((ins.OpCode == OpCodes.Call || ins.OpCode == OpCodes.Callvirt)
+            && ins.Operand is IMethodDefOrRef m)
+        {
+            if (m.Name == "get_Instance" && getInstance == null) getInstance = m;
+            else if (m.Name == "RefreshToken" && refreshToken == null) refreshToken = m;
+            else if (m.Name == "AuthenticateCode" && authenticateCode == null) authenticateCode = m;
+        }
+        else if (ins.OpCode == OpCodes.Ldfld && ins.Operand is IField f && f.Name == "user")
+        {
+            userField = f;
+        }
+    }
+
+    if (getInstance == null || refreshToken == null || authenticateCode == null || userField == null)
+    {
+        msg = $"refs missing (getInstance={getInstance != null}, refresh={refreshToken != null}, " +
+              $"authCode={authenticateCode != null}, userField={userField != null})";
+        return false;
+    }
+
+    // Build new body.
+    var sysException = new TypeRefUser(mod, "System", "Exception", mod.CorLibTypes.AssemblyRef);
+
+    existing.Clear();
+    method.Body.ExceptionHandlers.Clear();
+    method.Body.Variables.Clear();
+
+    // Success landing: ldc.i4.1 ; ret
+    var successLdc1 = OpCodes.Ldc_I4_1.ToInstruction();
+    var retInstr = OpCodes.Ret.ToInstruction();
+    var leaveToSuccess = new Instruction(OpCodes.Leave_S, successLdc1);
+    var catchStartPop = OpCodes.Pop.ToInstruction();
+    var catchLeave = new Instruction(OpCodes.Leave_S, successLdc1);
+
+    // Try block: ldarg.1 ; brfalse CODE_AUTH ; (refresh path) ; br leave
+    // CODE_AUTH: (auth-code path) ; fallthrough to leave
+    var codeAuthStart = new Instruction(OpCodes.Call, getInstance);  // first instr of auth-code path
+    var tryStart = OpCodes.Ldarg_1.ToInstruction();
+
+    existing.Add(tryStart);
+    existing.Add(new Instruction(OpCodes.Brfalse_S, codeAuthStart));
+
+    // RefreshToken path (attemptTokenAuthentication == true)
+    // Signature: RefreshToken(bool updateUserProfile). Original passes true.
+    existing.Add(new Instruction(OpCodes.Call, getInstance));
+    existing.Add(OpCodes.Ldc_I4_1.ToInstruction());
+    existing.Add(new Instruction(OpCodes.Callvirt, refreshToken));
+    existing.Add(OpCodes.Pop.ToInstruction());
+    existing.Add(new Instruction(OpCodes.Br_S, leaveToSuccess));
+
+    // AuthenticateCode path (attemptTokenAuthentication == false)
+    // Stack order for callvirt AuthenticateCode(User): [this=Instance, user]
+    existing.Add(codeAuthStart);                               // call get_Instance (pushes Instance)
+    existing.Add(OpCodes.Ldarg_0.ToInstruction());             // push this
+    existing.Add(new Instruction(OpCodes.Ldfld, userField));   // replace this with this.user
+    existing.Add(new Instruction(OpCodes.Callvirt, authenticateCode));
+    existing.Add(OpCodes.Pop.ToInstruction());
+
+    // End of try
+    existing.Add(leaveToSuccess);
+
+    // Catch handler
+    existing.Add(catchStartPop);
+    existing.Add(catchLeave);
+
+    // Success landing
+    existing.Add(successLdc1);
+    existing.Add(retInstr);
+
+    method.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+    {
+        TryStart = tryStart,
+        TryEnd = catchStartPop,
+        HandlerStart = catchStartPop,
+        HandlerEnd = successLdc1,
+        CatchType = sysException,
+    });
+
+    msg = "wrapped original calls in try/catch → return 1";
+    return true;
 }
 
 static int GetLdcI4Value(Instruction instr)
