@@ -1464,6 +1464,17 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         }
     }
 
+    {
+        char buf[96];
+        int n = snprintf(buf, sizeof(buf),
+                         "[rx] %s src=%02x%02x:%02x%02x:%02x%02x:%02x%02x:"
+                         "%02x%02x:%02x%02x:%02x%02x:%02x%02x rloc=0x%04X\r\n",
+                         ccx_msg_type_name(msg.msg_type), src_addr[0], src_addr[1], src_addr[2], src_addr[3],
+                         src_addr[4], src_addr[5], src_addr[6], src_addr[7], src_addr[8], src_addr[9], src_addr[10],
+                         src_addr[11], src_addr[12], src_addr[13], src_addr[14], src_addr[15], src_rloc16);
+        if (n > 0) stream_broadcast_text(buf, (size_t)n);
+    }
+
     /* Forward raw CBOR to TCP stream */
     stream_send_ccx_packet(udp_data, udp_payload_len);
 }
