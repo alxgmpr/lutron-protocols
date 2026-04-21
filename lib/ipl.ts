@@ -1002,6 +1002,27 @@ export function decodeDeviceUploadProgressEvent(body: Buffer): {
   };
 }
 
+/**
+ * Button events (ops 0/1/2/3 — ButtonPress/Release/MultiTap/Hold) — header +
+ * componentNumber(2) + trailing bytes (originator/state, exact layout TBD).
+ * Returns at minimum the componentNumber so callers can say which button fired.
+ */
+export function decodeButtonEvent(body: Buffer): {
+  objectId: number;
+  objectType: number;
+  componentNumber: number;
+  rest: Buffer;
+} | null {
+  const h = decodeEventHeader(body);
+  if (!h || h.rest.length < 2) return null;
+  return {
+    objectId: h.objectId,
+    objectType: h.objectType,
+    componentNumber: h.rest.readUInt16BE(0),
+    rest: Buffer.from(h.rest.subarray(2)),
+  };
+}
+
 /** DiagnosticBeacon (Command op 28) incoming — variable-length 36/40/49 byte body. */
 export function decodeDiagnosticBeacon(body: Buffer): {
   serialHex: string;

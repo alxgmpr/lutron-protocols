@@ -25,6 +25,7 @@ import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { defaultHost } from "../lib/config";
 import {
+  decodeButtonEvent,
   decodeDeviceUploadProgressEvent,
   decodeDiagnosticBeacon,
   decodeEventHeader,
@@ -35,6 +36,7 @@ import {
   level16ToPct,
   MsgType,
   MsgTypeName,
+  OccupancyStatus,
   type ParsedFrame,
   parseAllFrames,
   resolveOpName,
@@ -161,11 +163,23 @@ function mtColor(mt: MsgType): string {
 // ---------- Body decoders ----------
 
 function fmtPropValue(propNum: number, val: Buffer): string {
-  // Per RuntimePropertyConverter — Level (1/4/38/39) is either a bare uint16 BE
+  // Per RuntimePropertyConverter — level-shaped props (Level, Tilt, Backlight,
+  // Vibrancy, OccupiedLevel, UnoccupiedLevel) are either a bare uint16 BE
   // (response to GetRuntimeProperty) or [cmd:u8][level16:u16 BE] (spontaneous
   // telemetry push). Try the longer form first.
+  // 1=Level, 4=CURRENT_LEVEL, 38=OccupiedLevel, 39=UnoccupiedLevel,
+  // 43=Tilt, 45=TILT_CURRENT_LEVEL, 46=BacklightIntensity,
+  // 135=TargetVibrancy, 136=CurrentVibrancy
   const isLevel =
-    propNum === 1 || propNum === 4 || propNum === 38 || propNum === 39;
+    propNum === 1 ||
+    propNum === 4 ||
+    propNum === 38 ||
+    propNum === 39 ||
+    propNum === 43 ||
+    propNum === 45 ||
+    propNum === 46 ||
+    propNum === 135 ||
+    propNum === 136;
   if (isLevel && val.length >= 3) {
     const cmd = val[0];
     const lvl = val.readUInt16BE(1);
@@ -175,27 +189,54 @@ function fmtPropValue(propNum: number, val: Buffer): string {
     const lvl = val.readUInt16BE(0);
     return `${level16ToPct(lvl)}% (0x${lvl.toString(16)})`;
   }
-  if (propNum === 16 && val.length >= 1) {
-    // OccupancyStatus: 1=Unknown, 3=Occupied, 4=Unoccupied
+  // Occupancy-shaped enums: 16=OccupancyStatus, 28=OccupancyActiveState,
+  // 156=PresenceStatus — all use the {1=Unknown, 3=Occupied, 4=Unoccupied,
+  // 255=Disabled} byte.
+  if (
+    (propNum === 16 || propNum === 28 || propNum === 156) &&
+    val.length >= 1
+  ) {
     const s = val[0];
-    return s === 3
-      ? "Occupied"
-      : s === 4
-        ? "Unoccupied"
-        : s === 1
-          ? "Unknown"
-          : `state=${s}`;
+    return OccupancyStatus[s] ?? `state=${s}`;
   }
   if (propNum === 23 && val.length >= 2) {
     // LED_STATUS — high byte is sub-led, low byte is on/off
     const v = val.readUInt16BE(0);
     return `led=${v & 0xff ? "ON" : "off"} (0x${v.toString(16).padStart(4, "0")})`;
   }
-  if (propNum === 67 && val.length >= 2) {
+  // Scene props: 14=CURRENT_SCENE, 67=SceneSelect — uint16 BE scene number
+  if ((propNum === 14 || propNum === 67) && val.length >= 2) {
     return `scene=${val.readUInt16BE(0)}`;
   }
-  if (propNum === 91 && val.length >= 1) {
+  // Binary on/off: 91=AreaLightingState, 254=AreaOnOff
+  if ((propNum === 91 || propNum === 254) && val.length >= 1) {
     return val[0] ? "ON" : "off";
+  }
+  // 10=LastPresetActivated — uint32 BE preset object id
+  if (propNum === 10 && val.length >= 4) {
+    return `preset=${val.readUInt32BE(0)}`;
+  }
+  // 77=UpdateProgress, 128=RemainingBatteryLevel — uint8 percent
+  if ((propNum === 77 || propNum === 128) && val.length >= 1) {
+    return `${val[0]}%`;
+  }
+  // 130=DaytimeNighttimeState — 0=Day, 1=Night (typical encoding)
+  if (propNum === 130 && val.length >= 1) {
+    return val[0] === 0 ? "Day" : val[0] === 1 ? "Night" : `state=${val[0]}`;
+  }
+  // 131=ConnectionStatus — 1=Unknown, 3=Connected, 4=Disconnected (Lutron
+  // reuses the occupancy-shaped byte for connection state in the same
+  // family of enums — decode conservatively and fall through if it looks off).
+  if (propNum === 131 && val.length >= 1) {
+    const s = val[0];
+    if (s === 3) return "Connected";
+    if (s === 4) return "Disconnected";
+    if (s === 1) return "Unknown";
+    return `state=${s}`;
+  }
+  // 139=TargetCCT, 140=CurrentCCT — uint16 BE Kelvin (Ketra range ~1400–6500)
+  if ((propNum === 139 || propNum === 140) && val.length >= 2) {
+    return `${val.readUInt16BE(0)}K`;
   }
   if (val.length === 1) return `${val[0]}`;
   if (val.length === 2)
@@ -214,6 +255,20 @@ function decodeTelemetry(f: ParsedFrame): string | null {
 }
 
 function decodeEvent(f: ParsedFrame): string | null {
+  // Button events: 0=Press, 1=Release, 2=MultiTap, 3=Hold
+  if (
+    f.operationId === 0 ||
+    f.operationId === 1 ||
+    f.operationId === 2 ||
+    f.operationId === 3
+  ) {
+    const ev = decodeButtonEvent(f.body);
+    if (ev) {
+      const name = EventOp[f.operationId] ?? `Event(op${f.operationId})`;
+      const tail = ev.rest.length > 0 ? ` rest=${ev.rest.toString("hex")}` : "";
+      return `${name} ${objectLabel(ev.objectId)} type=${ev.objectType} comp=${ev.componentNumber}${tail}`;
+    }
+  }
   if (f.operationId === 6) {
     const o = decodeOccupancyEvent(f.body);
     if (o)
