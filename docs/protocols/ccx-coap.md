@@ -190,6 +190,7 @@ is v0.7.0 across all devices.
 
 | Path | Notes |
 |------|-------|
+| `.well-known/core` | RFC 6690 resource discovery — **4.04 on Sunnata Hybrid Keypad** (2026-04-21, two units). Devices do not expose CoRE Link Format. |
 | `em/tc/` | Found in Kinetis firmware strings. 4.04 on all tested devices. Possibly emergency test/control, disabled in production. |
 | `lut/ac` | Action Command — **processor-internal only**, 4.04 on all devices |
 | `lut/ra` | Resource Access — **processor-internal only**, 4.04 (port 49136 also tested, no response) |
@@ -197,7 +198,7 @@ is v0.7.0 across all devices.
 
 ## Addressing
 
-Devices respond to CoAP on their Thread RLOC addresses. ML-EID addressing was not tested.
+Devices respond to CoAP on their primary Thread mesh-local EID (`fd0d:…`) and their RLOC. ML-EID addressing was not tested.
 
 To find device RLOCs:
 ```bash
