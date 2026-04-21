@@ -242,6 +242,19 @@ Async event from the processor. `EventAction` parses: `uint32 BE objectId` + `ui
 | 52 | DeviceUploadCriticalError |
 | 60 | IntegrationCommandEvent |
 
+#### Button event body (ops 0/1/2/3)
+
+```
+uint32 BE  objectId         (keypad/pico device object id)
+uint16 BE  objectType        (ObjectType.Device = 7)
+uint16 BE  componentNumber   (physical button number — matches LEAP Button.ButtonNumber)
+[trailing bytes — originator / LED-affinity / state; layout TBD]
+```
+
+Decoded by `decodeButtonEvent()` in `lib/ipl.ts`. `ipl-monitor.ts` prints
+`ButtonPress dev=483(Office) type=7 comp=1`. Trailing bytes are surfaced as
+hex until their layout is confirmed against the DLL.
+
 ### 3.5 Control (LEID, MsgType=4)
 
 Flow control / reliability layer. `Control.Operation` enum:
@@ -266,6 +279,29 @@ Continuous property push. `Telemetry.Operation`:
 | 2 | Configuration (device settings, tweaks) |
 
 Body is a stream of `MonitorIdentifier → value` pairs (see `RuntimeServer.MonitorIdentifierConverter`).
+
+#### Decoded RuntimeProperty values (Telemetry/Runtime)
+
+Per-property value encoding pulled from `RuntimePropertyConverter`. `ipl-monitor.ts`
+pretty-prints the following:
+
+| Prop # | Name | Encoding | Rendered |
+|-------:|------|----------|----------|
+| 1 / 4 / 38 / 39 | Level / CurrentLevel / Occupied / Unoccupied | `[cmd:u8][level16:u16 BE]` or bare `u16 BE` | `50% (0x7f80)` |
+| 43 / 45 / 46 | Tilt / TiltCurrent / BacklightIntensity | level16 | `50%` |
+| 135 / 136 | TargetVibrancy / CurrentVibrancy | level16 (inferred) | `50%` |
+| 10 | LastPresetActivated | `u32 BE` preset object id | `preset=496` |
+| 14 / 67 | CurrentScene / SceneSelect | `u16 BE` scene number | `scene=2` |
+| 16 / 28 / 156 | OccupancyStatus / OccupancyActive / PresenceStatus | 1 byte; 1=Unknown, 3=Occupied, 4=Unoccupied, 255=Disabled | `Occupied` |
+| 23 | LED_STATUS | `u16 BE`; low byte = on/off | `led=ON` |
+| 77 / 128 | UpdateProgress / RemainingBatteryLevel | `u8` percent | `75%` |
+| 91 / 254 | AreaLightingState / AreaOnOff | 1 byte bool | `ON` / `off` |
+| 130 | DaytimeNighttimeState | 1 byte; 0=Day, 1=Night | `Day` |
+| 131 | ConnectionStatus | 1 byte; 3=Connected, 4=Disconnected (inferred; shares the occupancy-style enum space) | `Connected` |
+| 139 / 140 | TargetCCT / CurrentCCT | `u16 BE` Kelvin (inferred; Ketra ~1400–6500K) | `2700K` |
+
+Properties marked "inferred" are high-confidence guesses pending wire
+verification — they fall back to raw hex if the byte length doesn't match.
 
 ---
 
