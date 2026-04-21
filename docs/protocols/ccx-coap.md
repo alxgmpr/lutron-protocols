@@ -190,7 +190,7 @@ is v0.7.0 across all devices.
 
 | Path | Notes |
 |------|-------|
-| `.well-known/core` | RFC 6690 resource discovery — **4.04 on Sunnata Hybrid Keypad** (2026-04-21, two units). Devices do not expose CoRE Link Format. |
+| `.well-known/core` | RFC 6690 resource discovery — **4.04 on Sunnata Hybrid Keypad** (2026-04-21, two units). Devices do not expose CoRE Link Format. For mesh enumeration, use TMF `/d/dg` instead — see "TMF Network Diagnostic" below. |
 | `em/tc/` | Found in Kinetis firmware strings. 4.04 on all tested devices. Possibly emergency test/control, disabled in production. |
 | `lut/ac` | Action Command — **processor-internal only**, 4.04 on all devices |
 | `lut/ra` | Resource Access — **processor-internal only**, 4.04 (port 49136 also tested, no response) |
@@ -198,20 +198,136 @@ is v0.7.0 across all devices.
 
 ## Addressing
 
-Devices respond to CoAP on their primary Thread mesh-local EID (`fd0d:…`) and their RLOC. ML-EID addressing was not tested.
+Three address forms are visible for every CCX device on the Thread mesh. Only
+one of them is stable enough to use in long-lived tooling.
 
-To find device RLOCs:
+| Form | Example | Stability | Use for |
+|------|---------|-----------|---------|
+| Primary ML-EID | `fd0d:2ef:a82c:0:<random-IID>` | **rotates** on reboot/re-pair | RX-side device identification only |
+| RLOC-EID | `fd0d:2ef:a82c:0:0:ff:fe00:<RLOC16>` | transient — valid while device holds that RLOC | probes against Routers; unreliable for Sleepy End Devices |
+| Secondary ML-EID | `fd00::<modified-EUI-64>` | **stable forever** — derived from hardware MAC | all write paths |
+
+The secondary ML-EID is an SLAAC address on the processor-advertised on-mesh
+prefix (`fd00::/64`). Its IID is the device's EUI-64 with the U/L bit flipped
+(XOR byte 0 with `0x02`), exactly as described by RFC 4291 Section 2.5.1.
+
+Given an EUI-64 (from Designer DB `tblPegasusLinkNode.IPv6Address`, or TLV 0 in
+a TMF Network Diagnostic reply), compute the secondary ML-EID with
+`ccx/addressing.ts::eui64ToSecondaryMleid`. The TS helper accepts colons,
+hyphens, or bare hex; mixed case OK. Sample:
+
+```
+e2:79:8d:ff:fe:92:85:fe  →  fd00::e079:8dff:fe92:85fe
+```
+
+**Gotcha:** the `fd00::` address only routes once the Nucleo is fully attached
+as a Router and has picked up the on-mesh prefix from Thread Network Data. If
+you see `CoAP TX failed (not joined?)`, wait for ROUTER role (~30–60 s after
+boot).
+
+### Finding device addresses
+
+- **Static** (via Designer DB): see `data/designer-ccx-devices.json` — exported
+  from `tblPegasusLinkNode`. Each row has `eui64` and precomputed
+  `secondaryMleid`.
+- **Live**: run `npx tsx tools/tmf-diag.ts --save`. This POSTs a TMF Network
+  Diagnostic request to `ff03::1:61631/d/dg` and writes
+  `data/ccx-mesh-inventory.json` with every responder's EUI-64, RLOC16, and
+  derived secondary ML-EID. See next section.
+
+Shell command: `ccx coap get <addr> <path> [port]` — `addr` may be raw IPv6
+(preferred; `::` shorthand accepted), `rloc:<RLOC16>`, or `serial:<N>`
+(resolves via the firmware's peer table, which learns from live traffic). TS
+tools should prefer to emit the full `fd00::` IPv6 address by calling
+`lib/ccx-coap.ts::formatCoapTarget(target, resolveSerial)` with a resolver
+backed by `data/designer-ccx-devices.json`.
+
+## TMF Network Diagnostic (port 61631)
+
+Endpoint: `POST coap://[<dst>]:61631/d/dg` where `<dst>` is either a unicast
+device address or the all-Thread-nodes multicast `ff03::1` for mesh
+enumeration.
+
+Request payload (single TLV, type `0x12` = Type List):
+
+```
+[0x12][count][type_1]...[type_N]
+```
+
+Example — request ExtMacAddress (0), Address16 (1), and IPv6 List (8):
+
+```
+12 03 00 01 08
+```
+
+Response payload is a sequence of TLVs in `type(1) | length(1) | value(length)`
+format. Types this tooling consumes:
+
+| Type | Name | Value |
+|------|------|-------|
+| 0 | ExtMacAddress | 8 bytes EUI-64 (as stored in `data/designer-ccx-devices.json::eui64`) |
+| 1 | Address16 | 2 bytes RLOC16 (big-endian) |
+| 8 | IPv6 Address List | `16 * N` bytes — all IPv6 addresses assigned to the device, including primary ML-EID, RLOC-EID, and secondary ML-EID(s) |
+
+Other Thread spec types (Mode, Timeout, Connectivity, Route64, Leader Data,
+Network Data, Channel Pages, MAC Counters, …) are defined but not consumed
+here; the decoder ignores them safely. See `ccx/tmf-diag.ts` for the canonical
+TLV list constants.
+
+Shell usage:
+
+```
+ccx coap post ff03::1 d/dg 1203000108 61631
+```
+
+The Nucleo forwards the multicast, and every responder's reply is broadcast
+on the `:9433` stream as
+`[coap] 2.05 src=<ipv6> mid=<hex> token=<hex> len=<n> payload=<hex>`.
+`tools/tmf-diag.ts` consumes this stream and produces
+`data/ccx-mesh-inventory.json`.
+
+### ⚠ NCP restriction on port 61631
+
+On the current firmware stack, outbound CoAP to port 61631 via Spinel
+`STREAM_NET` is dropped by the OpenThread NCP with
+`LAST_STATUS=14 (PACKET_DROPPED)` — reproducible with both unicast and
+multicast destinations. Port 61631 is reserved by Thread for MLE/MeshCoP;
+OpenThread expects TMF messages to originate from its own internal TMF
+client (secured with MLE), not from a host-injected STREAM_NET packet.
+
+**Verified (2026-04-21, firmware commit d08cbde):**
+- `ccx coap get fd00::<secondaryMleid> <path>` on port 5683 → works from cold
+  start (2.05 Content response in both `ccx_task` and enriched `[coap]`
+  broadcast). Stale-ML-EID problem **structurally solved** for all write
+  paths that can address a known device by EUI-64.
+- `ccx coap post <fd00::|ff03::1> d/dg <hex> 61631` → `tx=FAIL`,
+  `LAST_STATUS=14`.
+- Same packet re-targeted to port 49136 (or 5683) → `tx=OK`.
+
+To enable the mesh sweep as originally designed, the NCP would need a
+dedicated Spinel property that routes through `otThreadSendDiagnosticGet()`
+internally (bypassing STREAM_NET's port filtering). Deferred to a follow-up
+plan; `tools/tmf-diag.ts` and the TLV codec remain in tree so that path can
+pick them up when the firmware side lands.
+
+### Scope of multicast
+
+`ff03::1` is the all-Thread-nodes scope-3 multicast. It reaches every node in
+the PAN, including Sleepy End Devices (during their listening window). If the
+keypad you care about isn't answering, wait longer (`--wait 6000`) to catch
+the SED polling interval.
+
+### Finding device RLOCs via the processor
+
+Legacy path, still useful when the Nucleo isn't attached:
 ```bash
 ssh root@10.0.0.1 "zcat /var/log/ccx-diagnostics-log.0.gz | head -20"
 ```
-
 Output format:
 ```
  Device ID| SerialNumber|Rx#|Rloc16| ...
       3647|   0x0451A7A0|  3|0x4800| ...
 ```
-
-Shell command: `ccx coap get rloc:<RLOC16> <path> [port]`
 
 ## CCX Multicast Messages (port 9190)
 

@@ -907,6 +907,11 @@ static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
             uint8_t status = (resp_len > 3) ? resp[3] : 0xFF;
             if (status == 0) return true; /* STATUS_OK */
             printf("[ccx] TX: NCP LAST_STATUS error=%u\r\n", status);
+            /* Also broadcast so TS-side tools see NCP rejection causes */
+            char msg[64];
+            int n = snprintf(msg, sizeof(msg),
+                             "[ccx] TX fail: NCP LAST_STATUS=%u\r\n", status);
+            if (n > 0) stream_broadcast_text(msg, (size_t)n);
             return false;
         }
     }
