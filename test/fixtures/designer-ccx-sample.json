@@ -1,0 +1,29 @@
+[
+  {
+    "serial": 71148018,
+    "eui64": "e2:79:8d:ff:fe:92:85:fe",
+    "secondaryMleid": "fd00::e079:8dff:fe92:85fe",
+    "stationName": "Back Doorway",
+    "areaName": "Dining Room",
+    "modelInfoId": 5056,
+    "parentDeviceId": 2291
+  },
+  {
+    "serial": 103976004,
+    "eui64": "46:9f:da:ff:fe:7e:cc:62",
+    "secondaryMleid": "fd00::449f:daff:fe7e:cc62",
+    "stationName": "Entrance",
+    "areaName": "Dining Room",
+    "modelInfoId": 5194,
+    "parentDeviceId": 2028
+  },
+  {
+    "serial": 103891990,
+    "eui64": "96:b2:16:ff:fe:ac:e1:ec",
+    "secondaryMleid": "fd00::94b2:16ff:feac:e1ec",
+    "stationName": "Entrance",
+    "areaName": "Foyer",
+    "modelInfoId": 5195,
+    "parentDeviceId": 1803
+  }
+]
