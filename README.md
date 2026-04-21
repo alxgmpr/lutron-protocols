@@ -1,6 +1,6 @@
 # Lutron Tools
 
-Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), and LEAP (processor API). Built on an STM32H723 + CC1101 + nRF52840 platform with TypeScript host tooling.
+Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), LEAP (processor API), and IPL (Designer integration protocol). Built on an STM32H723 + CC1101 + nRF52840 platform with TypeScript host tooling.
 
 Supports Phoenix, Caseta, and Vive product families.
 
@@ -52,6 +52,7 @@ This is architecturally similar to Lutron's production bridges. Caseta/Vive/RA2 
 | **CCA**  | 433 MHz 2-FSK, CC1101     | Dimmer control, pico remotes, pairing, state reports              |
 | **CCX**  | 802.15.4 Thread, nRF52840 | Sunnata/Darter multicast level/scene, unicast CoAP programming    |
 | **LEAP** | TLS mutual-auth JSON      | Processor API for zone/device/area hierarchy, status, configuration |
+| **IPL**  | TLS:8902 binary frames    | Designer integration protocol — project sync, real-time telemetry, device config |
 
 
 ## Quick Start
@@ -70,6 +71,9 @@ npx tsx tools/nucleo-cmd.ts "cca button 001D94EF on"
 
 # LEAP
 npx tsx tools/leap-dump.ts --save
+
+# IPL (Designer integration protocol)
+npx tsx tools/ipl-monitor.ts
 ```
 
 ## Firmware
@@ -108,6 +112,10 @@ status                                  # Radio/network status
 | `tools/coap-fuzz.ts`         | Rapid CoAP path fuzzer                                    |
 | `tools/leap-dump.ts`         | Dump LEAP device/zone hierarchy                           |
 | `tools/leap-cmd.ts`          | LEAP zone control (level, on, off, raise, lower)          |
+| `tools/ipl-monitor.ts`       | Live IPL stream decoder — color-coded LEI frames, name resolution |
+| `tools/ipl-cmd.ts`           | Send IPL commands (ping, gotolevel, gotoscene, raise/lower) |
+| `tools/ipl-correlate.ts`     | Correlate IPL events with CCA/CCX radio captures          |
+| `tools/ipl-nucleo-capture.ts` | Multi-source NDJSON capture (IPL + CCA + CCX + sniffer)  |
 | `tools/ccx-sniffer.ts`       | Thread traffic sniffer                                    |
 | `tools/ccx-send.ts`          | Send CCX multicast commands                               |
 | `tools/codegen.ts`           | Generate C headers from TS protocol definitions           |
