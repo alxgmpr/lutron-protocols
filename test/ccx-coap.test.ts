@@ -28,6 +28,25 @@ test("formatCoapTarget renders rloc, serial, and ipv6 targets", () => {
   );
 });
 
+test("formatCoapTarget resolves serial to secondary ML-EID when an address resolver is provided", () => {
+  const resolver = (serial: number) =>
+    serial === 71148018 ? "fd00::e079:8dff:fe92:85fe" : undefined;
+  assert.equal(
+    formatCoapTarget({ kind: "serial", serial: 71148018 }, resolver),
+    "fd00::e079:8dff:fe92:85fe",
+  );
+  // Unknown serial falls back to the legacy serial:N form
+  assert.equal(
+    formatCoapTarget({ kind: "serial", serial: 99999999 }, resolver),
+    "serial:99999999",
+  );
+  // No resolver → legacy behavior preserved
+  assert.equal(
+    formatCoapTarget({ kind: "serial", serial: 71148018 }),
+    "serial:71148018",
+  );
+});
+
 test("percentToLevel16 matches documented formula raw = percent * 0xFEFF / 100", () => {
   assert.equal(percentToLevel16(0), 0);
   assert.equal(percentToLevel16(100), TRIM_MAX);

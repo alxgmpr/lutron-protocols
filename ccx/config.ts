@@ -10,6 +10,7 @@ import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type { LeapDumpData } from "../lib/leap-client";
+import { eui64ToSecondaryMleid } from "./addressing";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -76,7 +77,9 @@ function loadLeapFromDisk(): LeapDumpData | null {
 interface CCXDeviceEntry {
   serial: number;
   eui64: string;
+  /** Stable fd00::<modified-EUI-64>. Preferred for writes. */
   secondaryMleid: string;
+  /** Legacy rotating fd0d:…-prefixed address. Kept only as an RX-identification alias. */
   primaryMleid?: string;
   name: string;
   area: string;
@@ -103,14 +106,19 @@ function loadDeviceMap(): DeviceMapData | null {
 
 const _deviceMap = loadDeviceMap();
 
-// Build lookup indices
+// Build lookup indices — address → device is keyed by BOTH the stable
+// secondary ML-EID and the legacy primary ML-EID, so RX packets seen on
+// either address path resolve to the same device entry.
 const _addrToDevice = new Map<string, CCXDeviceEntry>();
 const _serialToDevice = new Map<number, CCXDeviceEntry>();
 if (_deviceMap) {
   for (const dev of _deviceMap.devices) {
-    if (dev.primaryMleid) {
-      _addrToDevice.set(dev.primaryMleid, dev);
+    // Fill secondaryMleid if the file is an older version that only stored eui64
+    if (!dev.secondaryMleid && dev.eui64) {
+      dev.secondaryMleid = eui64ToSecondaryMleid(dev.eui64);
     }
+    if (dev.secondaryMleid) _addrToDevice.set(dev.secondaryMleid, dev);
+    if (dev.primaryMleid) _addrToDevice.set(dev.primaryMleid, dev);
     _serialToDevice.set(dev.serial, dev);
   }
 }
@@ -152,9 +160,13 @@ export function getDeviceName(ipv6: string): string | undefined {
   return dev?.name;
 }
 
-/** Look up a device's primary ML-EID by serial number */
+/**
+ * Look up a device's preferred CoAP destination address by serial number.
+ * Returns the stable `fd00::` secondary ML-EID derived from the device's
+ * EUI-64 — NOT the rotating primary ML-EID.
+ */
 export function getDeviceAddress(serial: number): string | undefined {
-  return _serialToDevice.get(serial)?.primaryMleid;
+  return _serialToDevice.get(serial)?.secondaryMleid;
 }
 
 /** Get full device info by serial number */
