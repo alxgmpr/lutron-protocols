@@ -36,8 +36,20 @@ function loadConfig(): Config {
   // Fall back to the example so tests and CI don't need a real config.json.
   // Placeholder IPs (10.x.x.x) can never reach production — any actual network
   // call will fail with a clear connection error.
-  const path = existsSync(configPath) ? configPath : examplePath;
-  return JSON.parse(readFileSync(path, "utf-8"));
+  if (existsSync(configPath)) {
+    return JSON.parse(readFileSync(configPath, "utf-8"));
+  }
+  // Warn for interactive tool use, but stay quiet under the test runner so
+  // tests and CI don't get noise.
+  const underTest =
+    process.execArgv.some((a) => a === "--test" || a.startsWith("--test=")) ||
+    process.env.NODE_ENV === "test";
+  if (!underTest) {
+    process.stderr.write(
+      "config: using config.example.json (no config.json found) — copy config.example.json → config.json for real values\n",
+    );
+  }
+  return JSON.parse(readFileSync(examplePath, "utf-8"));
 }
 
 export const config = loadConfig();
