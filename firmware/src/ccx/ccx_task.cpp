@@ -909,8 +909,7 @@ static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
             printf("[ccx] TX: NCP LAST_STATUS error=%u\r\n", status);
             /* Also broadcast so TS-side tools see NCP rejection causes */
             char msg[64];
-            int n = snprintf(msg, sizeof(msg),
-                             "[ccx] TX fail: NCP LAST_STATUS=%u\r\n", status);
+            int n = snprintf(msg, sizeof(msg), "[ccx] TX fail: NCP LAST_STATUS=%u\r\n", status);
             if (n > 0) stream_broadcast_text(msg, (size_t)n);
             return false;
         }
@@ -1171,8 +1170,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
 
     /* Forward CoAP traffic to host tools and auto-ACK CON responses so
      * programming database write transactions can complete end-to-end. */
-    if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT ||
-        src_port == 49136 || dst_port == 49136 ||
+    if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT || src_port == 49136 || dst_port == 49136 ||
         src_port == COAP_TMF_PORT || dst_port == COAP_TMF_PORT) {
         stream_send_ccx_packet(udp_data, udp_payload_len);
 
@@ -1275,23 +1273,31 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                     uint8_t dn = udp_data[pl_pos] >> 4;
                     uint8_t ln = udp_data[pl_pos] & 0x0F;
                     pl_pos++;
-                    if (dn == 13) pl_pos++;
-                    else if (dn == 14) pl_pos += 2;
-                    else if (dn == 15) break;
+                    if (dn == 13)
+                        pl_pos++;
+                    else if (dn == 14)
+                        pl_pos += 2;
+                    else if (dn == 15)
+                        break;
                     size_t olen = ln;
-                    if (ln == 13) { if (pl_pos < udp_payload_len) olen = udp_data[pl_pos] + 13; pl_pos++; }
+                    if (ln == 13) {
+                        if (pl_pos < udp_payload_len) olen = udp_data[pl_pos] + 13;
+                        pl_pos++;
+                    }
                     else if (ln == 14) {
-                        if (pl_pos + 1 < udp_payload_len) olen = ((size_t)udp_data[pl_pos] << 8 | udp_data[pl_pos + 1]) + 269;
+                        if (pl_pos + 1 < udp_payload_len)
+                            olen = ((size_t)udp_data[pl_pos] << 8 | udp_data[pl_pos + 1]) + 269;
                         pl_pos += 2;
                     }
-                    else if (ln == 15) break;
+                    else if (ln == 15)
+                        break;
                     pl_pos += olen;
                 }
-                size_t payload_start = 0;
-                size_t payload_len = 0;
+                size_t coap_payload_start = 0;
+                size_t coap_payload_len = 0;
                 if (pl_pos < udp_payload_len && udp_data[pl_pos] == 0xFF) {
-                    payload_start = pl_pos + 1;
-                    payload_len = udp_payload_len - payload_start;
+                    coap_payload_start = pl_pos + 1;
+                    coap_payload_len = udp_payload_len - coap_payload_start;
                 }
 
                 /* Assemble the single broadcast line. Buffer sized just under
@@ -1299,36 +1305,33 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 char buf[140];
                 int pos;
                 if (path) {
-                    pos = snprintf(buf, sizeof(buf),
-                                   "[coap] %u.%02u src=%s %s mid=0x%04X token=%s len=%u",
-                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F),
-                                   src_str, path, coap_mid, token_str, (unsigned)udp_payload_len);
+                    pos = snprintf(buf, sizeof(buf), "[coap] %u.%02u src=%s %s mid=0x%04X token=%s len=%u",
+                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), src_str, path, coap_mid,
+                                   token_str, (unsigned)udp_payload_len);
                 }
                 else {
-                    pos = snprintf(buf, sizeof(buf),
-                                   "[coap] %u.%02u src=%s mid=0x%04X token=%s len=%u",
-                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F),
-                                   src_str, coap_mid, token_str, (unsigned)udp_payload_len);
+                    pos = snprintf(buf, sizeof(buf), "[coap] %u.%02u src=%s mid=0x%04X token=%s len=%u",
+                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), src_str, coap_mid,
+                                   token_str, (unsigned)udp_payload_len);
                 }
                 if (pos < 0) pos = 0;
                 if (pos >= (int)sizeof(buf)) pos = (int)sizeof(buf) - 1;
 
                 /* Append " payload=<hex>" if room remains. Reserve 18 bytes for
                  * " truncated=NNNNN\r\n" worst-case suffix. */
-                if (payload_len > 0 && pos + 18 < (int)sizeof(buf)) {
+                if (coap_payload_len > 0 && pos + 18 < (int)sizeof(buf)) {
                     int avail = (int)sizeof(buf) - pos - 18; /* bytes free for "=payload<hex>" */
                     int header_extra = (int)snprintf(buf + pos, (size_t)(sizeof(buf) - pos), " payload=");
                     pos += header_extra;
                     avail -= header_extra;
-                    size_t emit_bytes = payload_len;
-                    if ((int)(payload_len * 2) > avail) emit_bytes = (size_t)(avail / 2);
+                    size_t emit_bytes = coap_payload_len;
+                    if ((int)(coap_payload_len * 2) > avail) emit_bytes = (size_t)(avail / 2);
                     for (size_t i = 0; i < emit_bytes && pos + 2 < (int)sizeof(buf); i++) {
-                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%02x",
-                                        udp_data[payload_start + i]);
+                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%02x", udp_data[coap_payload_start + i]);
                     }
-                    if (emit_bytes < payload_len && pos + 18 < (int)sizeof(buf)) {
-                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos,
-                                        " truncated=%u", (unsigned)(payload_len - emit_bytes));
+                    if (emit_bytes < coap_payload_len && pos + 18 < (int)sizeof(buf)) {
+                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, " truncated=%u",
+                                        (unsigned)(coap_payload_len - emit_bytes));
                     }
                 }
 
