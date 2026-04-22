@@ -1,0 +1,648 @@
+diff --git a/src/ncp/CMakeLists.txt b/src/ncp/CMakeLists.txt
+index d88fbe2..401236e 100644
+--- a/src/ncp/CMakeLists.txt
++++ b/src/ncp/CMakeLists.txt
+@@ -39,6 +39,7 @@ set(COMMON_SOURCES
+     ncp_base_radio.cpp
+     ncp_spi.cpp
+     ncp_hdlc.cpp
++    ncp_tmf_ext.cpp
+     platform/dnssd.cpp
+     platform/infra_if.cpp
+ )
+diff --git a/src/ncp/ncp_base.cpp b/src/ncp/ncp_base.cpp
+index 044e099..c879ed1 100644
+--- a/src/ncp/ncp_base.cpp
++++ b/src/ncp/ncp_base.cpp
+@@ -49,6 +49,7 @@
+ #include "common/code_utils.hpp"
+ #include "common/debug.hpp"
+ #include "lib/spinel/spinel.h"
++#include "ncp_tmf_ext.hpp"
+ #include "radio/radio.hpp"
+ 
+ namespace ot {
+@@ -392,6 +393,10 @@ NcpBase::NcpBase(Instance *aInstance)
+ #if OPENTHREAD_ENABLE_VENDOR_EXTENSION
+     aInstance->Get<Extension::ExtensionBase>().SignalNcpInit(*this);
+ #endif
++
++    // Lutron vendor Spinel TMF toolkit extension — registers handlers for
++    // vendor property IDs 0x3C00..0x3C05 (see ncp_tmf_ext.{hpp,cpp}).
++    NcpTmfExtensionInit(this);
+ }
+ 
+ NcpBase *NcpBase::GetNcpInstance(void) { return sNcpInstance; }
+diff --git a/src/ncp/ncp_base.hpp b/src/ncp/ncp_base.hpp
+index a0f4d35..3d65fc7 100644
+--- a/src/ncp/ncp_base.hpp
++++ b/src/ncp/ncp_base.hpp
+@@ -144,6 +144,16 @@ public:
+      */
+     Instance *IidToInstance(uint8_t aIid);
+ 
++    /**
++     * Returns a reference to the primary OpenThread instance this NCP owns.
++     *
++     * Used by vendor Spinel extensions (see `ncp_tmf_ext.hpp`) that need
++     * access to the instance to invoke OT APIs.
++     *
++     * @returns Reference to the primary `Instance`.
++     */
++    Instance &GetInstance(void) { return *mInstance; }
++
+ #if OPENTHREAD_CONFIG_MULTIPAN_RCP_ENABLE
+     /**
+      * Called to send notification to host about switchower results.
+@@ -347,6 +357,11 @@ public:
+ #endif // OPENTHREAD_FTD && OPENTHREAD_CONFIG_NCP_DNSSD_ENABLE && OPENTHREAD_CONFIG_PLATFORM_DNSSD_ENABLE
+ 
+ protected:
++    // Lutron vendor Spinel TMF toolkit extension — access to mEncoder,
++    // mDecoder, mChangedPropsSet, and mUpdateChangedPropsTask for async
++    // DIAG_GET_RESPONSE / DIAG_GET_DONE frame emission.
++    friend class NcpTmfExtension;
++
+     static constexpr uint8_t kBitsPerByte = 8; ///< Number of bits in a byte.
+ 
+     typedef otError (NcpBase::*PropertyHandler)(void);
+diff --git a/src/ncp/ncp_base_dispatcher.cpp b/src/ncp/ncp_base_dispatcher.cpp
+index f025e95..59f9d81 100644
+--- a/src/ncp/ncp_base_dispatcher.cpp
++++ b/src/ncp/ncp_base_dispatcher.cpp
+@@ -31,6 +31,7 @@
+  */
+ 
+ #include "ncp_base.hpp"
++#include "ncp_tmf_ext.hpp"
+ 
+ namespace ot {
+ namespace Ncp {
+@@ -392,6 +393,12 @@ NcpBase::PropertyHandler NcpBase::FindGetPropertyHandler(spinel_prop_key_t aKey)
+ #endif
+ 
+ #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
++
++        // Lutron vendor Spinel TMF extension (ncp_tmf_ext).
++        // Vendor range (0x3C00..0x3FFF) sorts before DEBUG range (0x4000+).
++        OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_NEIGHBOR_TABLE),
++        OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_CHILD_TABLE),
++
+         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_TEST_ASSERT),
+         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_NCP_LOG_LEVEL),
+         OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_TEST_WATCHDOG),
+@@ -704,6 +711,12 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
+ #endif
+ #endif
+ #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
++
++        // Lutron vendor Spinel TMF extension (ncp_tmf_ext).
++        // Vendor range (0x3C00..0x3FFF) sorts before DEBUG range (0x4000+).
++        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_DIAG_GET_REQUEST),
++        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_DIAG_RESET_REQUEST),
++
+ #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
+         OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_NCP_LOG_LEVEL),
+ #endif
+diff --git a/src/ncp/ncp_tmf_ext.cpp b/src/ncp/ncp_tmf_ext.cpp
+new file mode 100644
+index 0000000..d8ea081
+--- /dev/null
++++ b/src/ncp/ncp_tmf_ext.cpp
+@@ -0,0 +1,452 @@
++/*
++ * Lutron vendor Spinel extension — TMF toolkit.
++ */
++#include "ncp_tmf_ext.hpp"
++
++#include <new>
++#include <string.h>
++
++#include <openthread/thread.h>
++#include <openthread/thread_ftd.h>
++
++#include "common/code_utils.hpp"
++#include "ncp/ncp_base.hpp"
++
++namespace ot {
++namespace Ncp {
++
++namespace {
++
++// Singleton pointer. Used only by this TU so it has internal linkage.
++NcpTmfExtension *gNcpTmfExt = nullptr;
++
++// Bit layout for the flags byte emitted per entry in the neighbor and child
++// tables. Kept in-sync with the host-side decoder.
++constexpr uint8_t kNeighborFlagIsChild          = 0x01;
++constexpr uint8_t kNeighborFlagRxOnWhenIdle     = 0x02;
++constexpr uint8_t kNeighborFlagFullThreadDevice = 0x04;
++constexpr uint8_t kNeighborFlagSecureDataReq    = 0x08; // reserved; not populated in this OT rev
++constexpr uint8_t kNeighborFlagFullNetworkData  = 0x10;
++
++// Reason codes emitted with DIAG_GET_DONE.
++constexpr uint8_t kDoneReasonTimerElapsed = 0;
++constexpr uint8_t kDoneReasonError        = 1;
++
++// Stack scratch for otMessageRead chunks in the DIAG_GET_RESPONSE loop.
++constexpr uint16_t kReadChunkBytes = 64;
++
++} // namespace
++
++NcpTmfExtension::NcpTmfExtension(Instance &aInstance, NcpBase &aNcpBase)
++    : mNcpBase(aNcpBase)
++    , mInstance(aInstance)
++    , mInFlight(false)
++    , mResponderCount(0)
++    , mTimer(aInstance, NcpTmfExtension::HandleTimerTrampoline, this)
++{
++    gNcpTmfExt = this;
++}
++
++// ---------------------------------------------------------------------------
++// Static trampolines
++// ---------------------------------------------------------------------------
++
++void NcpTmfExtension::HandleDiagGetResponseTrampoline(otError              aError,
++                                                      otMessage           *aMessage,
++                                                      const otMessageInfo *aMessageInfo,
++                                                      void                *aContext)
++{
++    static_cast<NcpTmfExtension *>(aContext)->HandleDiagGetResponse(aError, aMessage, aMessageInfo);
++}
++
++void NcpTmfExtension::HandleTimerTrampoline(Timer &aTimer)
++{
++    static_cast<NcpTmfExtension *>(static_cast<TimerMilliContext &>(aTimer).GetContext())->HandleTimer();
++}
++
++// ---------------------------------------------------------------------------
++// Neighbor-table handler (0x3C04)
++// ---------------------------------------------------------------------------
++
++otError NcpTmfExtension::HandleGetNeighborTable(void)
++{
++    // Single-pass: buffer entries into a local stack array, then emit count +
++    // buffered bytes so the count is always consistent with the payload.
++    // A two-pass design would race if a neighbor joined or left between
++    // the count pass and the emit pass. Cap at 32 entries — matches
++    // OPENTHREAD_CONFIG_MAX_ROUTERS and keeps buffer well under a typical
++    // task stack.
++    static constexpr uint8_t  kMaxEntries    = 32;
++    static constexpr uint16_t kBytesPerEntry = 17;
++    static constexpr uint16_t kBufferSize    = static_cast<uint16_t>(kMaxEntries) * kBytesPerEntry;
++
++    uint8_t  buf[kBufferSize];
++    uint16_t pos   = 0;
++    uint8_t  count = 0;
++
++    otNeighborInfoIterator iter = OT_NEIGHBOR_INFO_ITERATOR_INIT;
++    otNeighborInfo         info;
++
++    while (otThreadGetNextNeighborInfo(&mInstance, &iter, &info) == OT_ERROR_NONE)
++    {
++        if (count >= kMaxEntries)
++        {
++            break; // soft cap — drop extras rather than overflow
++        }
++
++        // EUI-64 (8 bytes, network order per Spinel convention)
++        memcpy(&buf[pos], info.mExtAddress.m8, 8);
++        pos = static_cast<uint16_t>(pos + 8);
++
++        // RLOC16 (LE)
++        buf[pos++] = static_cast<uint8_t>(info.mRloc16 & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mRloc16 >> 8) & 0xFF);
++
++        // Age in seconds (LE uint32)
++        buf[pos++] = static_cast<uint8_t>(info.mAge & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 8) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 16) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 24) & 0xFF);
++
++        // Signed int8 RSSI fields — two's-complement-preserving cast
++        buf[pos++] = static_cast<uint8_t>(info.mAverageRssi);
++        buf[pos++] = static_cast<uint8_t>(info.mLastRssi);
++
++        // Flags: mSecureDataRequest is not exposed on otNeighborInfo in this
++        // OT rev, so kNeighborFlagSecureDataReq is reserved and always 0.
++        uint8_t flags = 0;
++        if (info.mIsChild)
++        {
++            flags |= kNeighborFlagIsChild;
++        }
++        if (info.mRxOnWhenIdle)
++        {
++            flags |= kNeighborFlagRxOnWhenIdle;
++        }
++        if (info.mFullThreadDevice)
++        {
++            flags |= kNeighborFlagFullThreadDevice;
++        }
++        if (info.mFullNetworkData)
++        {
++            flags |= kNeighborFlagFullNetworkData;
++        }
++        buf[pos++] = flags;
++
++        count++;
++    }
++
++    otError error = OT_ERROR_NONE;
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteUint8(count));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteData(buf, pos));
++
++exit:
++    return error;
++}
++
++// ---------------------------------------------------------------------------
++// Child-table handler (0x3C05)
++// ---------------------------------------------------------------------------
++
++otError NcpTmfExtension::HandleGetChildTable(void)
++{
++    // Same single-pass pattern as HandleGetNeighborTable — see comment there.
++    // 32 is the MLE upper bound for children in typical OT configs.
++    static constexpr uint8_t  kMaxEntries    = 32;
++    static constexpr uint16_t kBytesPerEntry = 21;
++    static constexpr uint16_t kBufferSize    = static_cast<uint16_t>(kMaxEntries) * kBytesPerEntry;
++
++    uint8_t  buf[kBufferSize];
++    uint16_t pos   = 0;
++    uint8_t  count = 0;
++
++    otChildInfo info;
++    for (uint16_t i = 0;; i++)
++    {
++        if (otThreadGetChildInfoByIndex(&mInstance, i, &info) != OT_ERROR_NONE)
++        {
++            break; // end of child table
++        }
++        if (info.mRloc16 == 0xFFFE)
++        {
++            continue; // sentinel entry; skip
++        }
++        if (count >= kMaxEntries)
++        {
++            break;
++        }
++
++        memcpy(&buf[pos], info.mExtAddress.m8, 8);
++        pos = static_cast<uint16_t>(pos + 8);
++
++        buf[pos++] = static_cast<uint8_t>(info.mRloc16 & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mRloc16 >> 8) & 0xFF);
++
++        buf[pos++] = static_cast<uint8_t>(info.mTimeout & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mTimeout >> 8) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mTimeout >> 16) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mTimeout >> 24) & 0xFF);
++
++        buf[pos++] = static_cast<uint8_t>(info.mAge & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 8) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 16) & 0xFF);
++        buf[pos++] = static_cast<uint8_t>((info.mAge >> 24) & 0xFF);
++
++        buf[pos++] = static_cast<uint8_t>(info.mAverageRssi);
++        buf[pos++] = static_cast<uint8_t>(info.mLastRssi);
++
++        // otChildInfo exposes no mIsChild (it's implicitly true) and no
++        // mSecureDataRequest in this OT rev. kNeighborFlagIsChild and
++        // kNeighborFlagSecureDataReq are therefore not set here.
++        uint8_t flags = 0;
++        if (info.mRxOnWhenIdle)
++        {
++            flags |= kNeighborFlagRxOnWhenIdle;
++        }
++        if (info.mFullThreadDevice)
++        {
++            flags |= kNeighborFlagFullThreadDevice;
++        }
++        if (info.mFullNetworkData)
++        {
++            flags |= kNeighborFlagFullNetworkData;
++        }
++        buf[pos++] = flags;
++
++        count++;
++    }
++
++    otError error = OT_ERROR_NONE;
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteUint8(count));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteData(buf, pos));
++
++exit:
++    return error;
++}
++
++// ---------------------------------------------------------------------------
++// DIAG_RESET_REQUEST (0x3C03) — fire-and-forget
++// ---------------------------------------------------------------------------
++
++otError NcpTmfExtension::HandleSetDiagResetRequest(const uint8_t *aArg, uint16_t aLen)
++{
++    if (aLen < 17)
++    {
++        return OT_ERROR_PARSE;
++    }
++
++    otIp6Address dst;
++    memcpy(dst.mFields.m8, aArg, 16);
++
++    uint8_t tlvCount = aArg[16];
++    if (tlvCount == 0 || tlvCount > TMF_EXT_MAX_TLV_TYPES)
++    {
++        return OT_ERROR_PARSE;
++    }
++    if (aLen != static_cast<uint16_t>(17u + tlvCount))
++    {
++        return OT_ERROR_PARSE;
++    }
++
++    return otThreadSendDiagnosticReset(&mInstance, &dst, &aArg[17], tlvCount);
++}
++
++// ---------------------------------------------------------------------------
++// DIAG_GET_REQUEST (0x3C00)
++// ---------------------------------------------------------------------------
++
++otError NcpTmfExtension::HandleSetDiagGetRequest(const uint8_t *aArg, uint16_t aLen)
++{
++    if (mInFlight)
++    {
++        return OT_ERROR_BUSY;
++    }
++
++    if (aLen < 17)
++    {
++        return OT_ERROR_PARSE;
++    }
++
++    otIp6Address dst;
++    memcpy(dst.mFields.m8, aArg, 16);
++
++    uint8_t tlvCount = aArg[16];
++    if (tlvCount == 0 || tlvCount > TMF_EXT_MAX_TLV_TYPES)
++    {
++        return OT_ERROR_PARSE;
++    }
++    if (aLen != static_cast<uint16_t>(17u + tlvCount))
++    {
++        return OT_ERROR_PARSE;
++    }
++
++    otError err = otThreadSendDiagnosticGet(&mInstance, &dst, &aArg[17], tlvCount,
++                                            &NcpTmfExtension::HandleDiagGetResponseTrampoline, this);
++    if (err != OT_ERROR_NONE)
++    {
++        return err;
++    }
++
++    mInFlight       = true;
++    mResponderCount = 0;
++    mTimer.Start(TMF_EXT_DIAG_GET_TIMEOUT_MS);
++
++    return OT_ERROR_NONE;
++}
++
++// ---------------------------------------------------------------------------
++// DIAG_GET_RESPONSE emitter (async, 0x3C01)
++// ---------------------------------------------------------------------------
++
++// Safe single-threaded: OT's NCP runs all callbacks (Spinel receive, OT timer,
++// diag-get response) serially on the same task, so mResponderCount++ needs no
++// atomic/lock.
++void NcpTmfExtension::HandleDiagGetResponse(otError aError, otMessage *aMessage, const otMessageInfo *aMessageInfo)
++{
++    if (aError != OT_ERROR_NONE || aMessage == nullptr || aMessageInfo == nullptr)
++    {
++        return;
++    }
++
++    uint16_t offset = otMessageGetOffset(aMessage);
++    uint16_t msgLen = otMessageGetLength(aMessage);
++    uint16_t tlvLen = (msgLen > offset) ? static_cast<uint16_t>(msgLen - offset) : 0;
++
++    // Cap payload so the full frame fits comfortably in the Spinel buffer.
++    // Truncation is encoded as the high bit of the length field.
++    bool     truncated = false;
++    uint16_t emit      = tlvLen;
++    if (emit > TMF_EXT_DIAG_GET_RESPONSE_MAX_BYTES)
++    {
++        emit      = TMF_EXT_DIAG_GET_RESPONSE_MAX_BYTES;
++        truncated = true;
++    }
++
++    const uint8_t  header   = SPINEL_HEADER_FLAG | SPINEL_HEADER_TX_NOTIFICATION_IID;
++    const uint16_t lenField = static_cast<uint16_t>(emit | (truncated ? 0x8000u : 0u));
++
++    otError error = OT_ERROR_NONE;
++
++    SuccessOrExit(error = mNcpBase.mEncoder.BeginFrame(header, SPINEL_CMD_PROP_VALUE_INSERTED,
++                                                       SPINEL_PROP_VENDOR_DIAG_GET_RESPONSE));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteData(aMessageInfo->mPeerAddr.mFields.m8, 16));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteUint16(lenField));
++
++    // Stream TLV bytes directly from the message in chunks.
++    {
++        uint8_t  chunk[kReadChunkBytes];
++        uint16_t remaining = emit;
++        uint16_t readFrom  = offset;
++        while (remaining > 0)
++        {
++            uint16_t n = (remaining < sizeof(chunk)) ? remaining : static_cast<uint16_t>(sizeof(chunk));
++            if (otMessageRead(aMessage, readFrom, chunk, n) != n)
++            {
++                // Partial read would leave the emitted bytes short of the
++                // already-written tlv_len. Bail; the Spinel encoder discards
++                // the in-progress frame at the next BeginFrame so the host
++                // won't see a corrupt record. The caller sees NOMEM.
++                error = OT_ERROR_FAILED;
++                ExitNow();
++            }
++            SuccessOrExit(error = mNcpBase.mEncoder.WriteData(chunk, n));
++            readFrom  = static_cast<uint16_t>(readFrom + n);
++            remaining = static_cast<uint16_t>(remaining - n);
++        }
++    }
++    SuccessOrExit(error = mNcpBase.mEncoder.EndFrame());
++
++    mResponderCount++;
++
++exit:
++    if (error != OT_ERROR_NONE)
++    {
++        mNcpBase.mChangedPropsSet.AddLastStatus(SPINEL_STATUS_NOMEM);
++        mNcpBase.mUpdateChangedPropsTask.Post();
++    }
++}
++
++// ---------------------------------------------------------------------------
++// Completion timer — emits DIAG_GET_DONE (0x3C02) and clears in-flight state
++// ---------------------------------------------------------------------------
++
++void NcpTmfExtension::HandleTimer(void)
++{
++    const uint8_t header = SPINEL_HEADER_FLAG | SPINEL_HEADER_TX_NOTIFICATION_IID;
++    otError       error  = OT_ERROR_NONE;
++
++    SuccessOrExit(error = mNcpBase.mEncoder.BeginFrame(header, SPINEL_CMD_PROP_VALUE_INSERTED,
++                                                       SPINEL_PROP_VENDOR_DIAG_GET_DONE));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteUint8(kDoneReasonTimerElapsed));
++    SuccessOrExit(error = mNcpBase.mEncoder.WriteUint16(mResponderCount)); // LE
++    SuccessOrExit(error = mNcpBase.mEncoder.EndFrame());
++
++exit:
++    if (error != OT_ERROR_NONE)
++    {
++        mNcpBase.mChangedPropsSet.AddLastStatus(SPINEL_STATUS_NOMEM);
++        mNcpBase.mUpdateChangedPropsTask.Post();
++    }
++
++    mInFlight = false;
++}
++
++// ---------------------------------------------------------------------------
++// Template specializations for vendor properties dispatched via NcpBase
++// ---------------------------------------------------------------------------
++
++template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_VENDOR_NEIGHBOR_TABLE>(void)
++{
++    return (gNcpTmfExt != nullptr) ? gNcpTmfExt->HandleGetNeighborTable() : OT_ERROR_INVALID_STATE;
++}
++
++template <> otError NcpBase::HandlePropertyGet<SPINEL_PROP_VENDOR_CHILD_TABLE>(void)
++{
++    return (gNcpTmfExt != nullptr) ? gNcpTmfExt->HandleGetChildTable() : OT_ERROR_INVALID_STATE;
++}
++
++template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_VENDOR_DIAG_GET_REQUEST>(void)
++{
++    const uint8_t *data    = nullptr;
++    uint16_t       dataLen = 0;
++    otError        error   = mDecoder.ReadData(data, dataLen);
++
++    if (error == OT_ERROR_NONE)
++    {
++        error = (gNcpTmfExt != nullptr) ? gNcpTmfExt->HandleSetDiagGetRequest(data, dataLen) : OT_ERROR_INVALID_STATE;
++    }
++
++    return error;
++}
++
++template <> otError NcpBase::HandlePropertySet<SPINEL_PROP_VENDOR_DIAG_RESET_REQUEST>(void)
++{
++    const uint8_t *data    = nullptr;
++    uint16_t       dataLen = 0;
++    otError        error   = mDecoder.ReadData(data, dataLen);
++
++    if (error == OT_ERROR_NONE)
++    {
++        error = (gNcpTmfExt != nullptr) ? gNcpTmfExt->HandleSetDiagResetRequest(data, dataLen) : OT_ERROR_INVALID_STATE;
++    }
++
++    return error;
++}
++
++} // namespace Ncp
++} // namespace ot
++
++// ---------------------------------------------------------------------------
++// C init called from NcpBase constructor patch
++// ---------------------------------------------------------------------------
++
++extern "C" void NcpTmfExtensionInit(ot::Ncp::NcpBase *aNcpBase)
++{
++    // Static storage + placement-new: we need exactly one NcpTmfExtension for
++    // the process lifetime and cannot rely on a heap in the NCP firmware.
++    // OT_DEFINE_ALIGNED_VAR guarantees alignment suitable for the embedded
++    // TimerMilliContext (pointer-aligned members) — see the reference use
++    // in openthread/src/ncp/example_vendor_hook.cpp.
++    static OT_DEFINE_ALIGNED_VAR(sStorage, sizeof(ot::Ncp::NcpTmfExtension), uint64_t);
++    new (&sStorage) ot::Ncp::NcpTmfExtension(aNcpBase->GetInstance(), *aNcpBase);
++}
+diff --git a/src/ncp/ncp_tmf_ext.hpp b/src/ncp/ncp_tmf_ext.hpp
+new file mode 100644
+index 0000000..859a420
+--- /dev/null
++++ b/src/ncp/ncp_tmf_ext.hpp
+@@ -0,0 +1,78 @@
++/*
++ * Lutron vendor Spinel extension — TMF toolkit.
++ *
++ * Exposes otThreadSendDiagnosticGet/Reset and the neighbor/child-table
++ * iterators via six vendor properties at IDs 0x3C00..0x3C05. See:
++ *   docs/superpowers/specs/2026-04-22-ncp-tmf-extension-design.md
++ */
++#ifndef NCP_TMF_EXT_HPP_
++#define NCP_TMF_EXT_HPP_
++
++#include <openthread/instance.h>
++#include <openthread/ip6.h>
++#include <openthread/message.h>
++#include <openthread/netdiag.h>
++
++#include "common/timer.hpp"
++#include "lib/spinel/spinel.h"
++
++// Vendor property IDs. OpenThread reserves 0x3C00..0x3FFF for vendors.
++#define SPINEL_PROP_VENDOR_DIAG_GET_REQUEST ((spinel_prop_key_t)0x3C00)
++#define SPINEL_PROP_VENDOR_DIAG_GET_RESPONSE ((spinel_prop_key_t)0x3C01)
++#define SPINEL_PROP_VENDOR_DIAG_GET_DONE ((spinel_prop_key_t)0x3C02)
++#define SPINEL_PROP_VENDOR_DIAG_RESET_REQUEST ((spinel_prop_key_t)0x3C03)
++#define SPINEL_PROP_VENDOR_NEIGHBOR_TABLE ((spinel_prop_key_t)0x3C04)
++#define SPINEL_PROP_VENDOR_CHILD_TABLE ((spinel_prop_key_t)0x3C05)
++
++// Max diag TLV types per request.
++#define TMF_EXT_MAX_TLV_TYPES 32
++
++// Completion timer window for DIAG_GET (ms).
++#define TMF_EXT_DIAG_GET_TIMEOUT_MS 5000
++
++// Cap on a single DIAG_GET_RESPONSE TLV blob we'll forward to the host.
++// Bigger blobs get truncated with the high bit of tlv_len set. Chosen to fit
++// comfortably inside the Spinel encoder's default buffer (~1.5 KB) with room
++// for header + peer-addr + len field.
++#define TMF_EXT_DIAG_GET_RESPONSE_MAX_BYTES 256
++
++namespace ot {
++namespace Ncp {
++
++class NcpBase; // forward decl
++
++class NcpTmfExtension
++{
++public:
++    NcpTmfExtension(Instance &aInstance, NcpBase &aNcpBase);
++
++    // Property handlers — called by NcpBase templated handler specializations.
++    otError HandleSetDiagGetRequest(const uint8_t *aArg, uint16_t aLen);
++    otError HandleSetDiagResetRequest(const uint8_t *aArg, uint16_t aLen);
++    otError HandleGetNeighborTable(void);
++    otError HandleGetChildTable(void);
++
++private:
++    static void HandleDiagGetResponseTrampoline(otError              aError,
++                                                otMessage           *aMessage,
++                                                const otMessageInfo *aMessageInfo,
++                                                void                *aContext);
++    void        HandleDiagGetResponse(otError aError, otMessage *aMessage, const otMessageInfo *aMessageInfo);
++
++    static void HandleTimerTrampoline(Timer &aTimer);
++    void        HandleTimer(void);
++
++    NcpBase          &mNcpBase;
++    Instance         &mInstance;
++    bool              mInFlight;
++    uint16_t          mResponderCount;
++    TimerMilliContext mTimer;
++};
++
++} // namespace Ncp
++} // namespace ot
++
++// C-linkage init called from the NcpBase constructor patch.
++extern "C" void NcpTmfExtensionInit(ot::Ncp::NcpBase *aNcpBase);
++
++#endif // NCP_TMF_EXT_HPP_
