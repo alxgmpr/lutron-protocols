@@ -6,6 +6,7 @@ import {
   buildPropSet,
   decodeResponse,
   encodePackedUint,
+  parseArgs,
   parseNeighborTable,
   SPINEL_CMD_PROP_VALUE_GET,
   SPINEL_CMD_PROP_VALUE_INSERTED,
@@ -94,4 +95,32 @@ test("parseNeighborTable deserializes count + fixed-size entries", () => {
   assert.equal(entries[0].isChild, true);
   assert.equal(entries[0].rxOnWhenIdle, false);
   assert.equal(entries[0].fullThreadDevice, false);
+});
+
+test("argument parser treats --host <value> as a flag, not a positional", () => {
+  const r = parseArgs([
+    "--host",
+    "10.0.0.4",
+    "diag-get",
+    "ff03::1",
+    "0",
+    "1",
+    "8",
+  ]);
+  assert.equal(r.host, "10.0.0.4");
+  assert.equal(r.cmd, "diag-get");
+  assert.deepEqual(r.rest, ["ff03::1", "0", "1", "8"]);
+});
+
+test("argument parser defaults cmd to 'neighbors' when none given", () => {
+  const r = parseArgs(["--host", "10.0.0.4"]);
+  assert.equal(r.cmd, "neighbors");
+  assert.deepEqual(r.rest, []);
+});
+
+test("argument parser works without --host (fall back to config)", () => {
+  const r = parseArgs(["diag-get", "ff03::1", "0"]);
+  assert.equal(r.host, undefined);
+  assert.equal(r.cmd, "diag-get");
+  assert.deepEqual(r.rest, ["ff03::1", "0"]);
 });
