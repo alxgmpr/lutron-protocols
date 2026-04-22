@@ -1,35 +1,62 @@
 diff --git a/src/ncp/CMakeLists.txt b/src/ncp/CMakeLists.txt
-index d88fbe2..401236e 100644
+index d88fbe2..6d83bd5 100644
 --- a/src/ncp/CMakeLists.txt
 +++ b/src/ncp/CMakeLists.txt
-@@ -39,6 +39,7 @@ set(COMMON_SOURCES
-     ncp_base_radio.cpp
-     ncp_spi.cpp
-     ncp_hdlc.cpp
-+    ncp_tmf_ext.cpp
-     platform/dnssd.cpp
-     platform/infra_if.cpp
+@@ -75,6 +75,13 @@ set(COMMON_NCP_SOURCES
+     ncp_base_ftd.cpp
+     ncp_base_mtd.cpp
  )
++
++# Lutron TMF vendor extension sources — FTD only. Uses
++# otThreadGetChildInfoByIndex (FTD-only API) and
++# otThreadSendDiagnosticGet/Reset. Not linked into MTD or RCP.
++set(LUTRON_TMF_EXT_SOURCES
++    ncp_tmf_ext.cpp
++)
+ option(OT_NCP_SPI "enable NCP SPI support")
+ if(OT_NCP_SPI)
+     target_compile_definitions(ot-config INTERFACE "OPENTHREAD_CONFIG_NCP_SPI_ENABLE=1")
+diff --git a/src/ncp/ftd.cmake b/src/ncp/ftd.cmake
+index 2b2a1c5..39998f4 100644
+--- a/src/ncp/ftd.cmake
++++ b/src/ncp/ftd.cmake
+@@ -42,7 +42,7 @@ target_compile_options(openthread-ncp-ftd PRIVATE
+ 
+ target_include_directories(openthread-ncp-ftd PUBLIC ${OT_PUBLIC_INCLUDES} PRIVATE ${COMMON_INCLUDES})
+ 
+-target_sources(openthread-ncp-ftd PRIVATE ${COMMON_NCP_SOURCES})
++target_sources(openthread-ncp-ftd PRIVATE ${COMMON_NCP_SOURCES} ${LUTRON_TMF_EXT_SOURCES})
+ target_include_directories(openthread-ncp-ftd PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ 
+ target_link_libraries(openthread-ncp-ftd
 diff --git a/src/ncp/ncp_base.cpp b/src/ncp/ncp_base.cpp
-index 044e099..c879ed1 100644
+index 044e099..bb8ddb6 100644
 --- a/src/ncp/ncp_base.cpp
 +++ b/src/ncp/ncp_base.cpp
-@@ -49,6 +49,7 @@
- #include "common/code_utils.hpp"
- #include "common/debug.hpp"
+@@ -51,6 +51,12 @@
  #include "lib/spinel/spinel.h"
-+#include "ncp_tmf_ext.hpp"
  #include "radio/radio.hpp"
  
++#if OPENTHREAD_FTD
++// Lutron TMF vendor extension — FTD only. Uses otThreadGetChildInfoByIndex
++// (FTD-only API) and the diagnostic client APIs.
++#include "ncp_tmf_ext.hpp"
++#endif
++
  namespace ot {
-@@ -392,6 +393,10 @@ NcpBase::NcpBase(Instance *aInstance)
+ namespace Ncp {
+ 
+@@ -392,6 +398,13 @@ NcpBase::NcpBase(Instance *aInstance)
  #if OPENTHREAD_ENABLE_VENDOR_EXTENSION
      aInstance->Get<Extension::ExtensionBase>().SignalNcpInit(*this);
  #endif
 +
++#if OPENTHREAD_FTD
 +    // Lutron vendor Spinel TMF toolkit extension — registers handlers for
 +    // vendor property IDs 0x3C00..0x3C05 (see ncp_tmf_ext.{hpp,cpp}).
++    // FTD only — MTD lacks child-table APIs, RCP has no Thread APIs at all.
 +    NcpTmfExtensionInit(this);
++#endif
  }
  
  NcpBase *NcpBase::GetNcpInstance(void) { return sNcpInstance; }
@@ -67,39 +94,48 @@ index a0f4d35..3d65fc7 100644
  
      typedef otError (NcpBase::*PropertyHandler)(void);
 diff --git a/src/ncp/ncp_base_dispatcher.cpp b/src/ncp/ncp_base_dispatcher.cpp
-index f025e95..59f9d81 100644
+index f025e95..851a748 100644
 --- a/src/ncp/ncp_base_dispatcher.cpp
 +++ b/src/ncp/ncp_base_dispatcher.cpp
-@@ -31,6 +31,7 @@
-  */
+@@ -32,6 +32,12 @@
  
  #include "ncp_base.hpp"
-+#include "ncp_tmf_ext.hpp"
  
++#if OPENTHREAD_FTD
++// Lutron TMF vendor extension — FTD only. Gives us the
++// SPINEL_PROP_VENDOR_* IDs used in the dispatcher tables below.
++#include "ncp_tmf_ext.hpp"
++#endif
++
  namespace ot {
  namespace Ncp {
-@@ -392,6 +393,12 @@ NcpBase::PropertyHandler NcpBase::FindGetPropertyHandler(spinel_prop_key_t aKey)
+ 
+@@ -392,6 +398,14 @@ NcpBase::PropertyHandler NcpBase::FindGetPropertyHandler(spinel_prop_key_t aKey)
  #endif
  
  #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
 +
-+        // Lutron vendor Spinel TMF extension (ncp_tmf_ext).
++#if OPENTHREAD_FTD
++        // Lutron vendor Spinel TMF extension (ncp_tmf_ext) — FTD only.
 +        // Vendor range (0x3C00..0x3FFF) sorts before DEBUG range (0x4000+).
 +        OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_NEIGHBOR_TABLE),
 +        OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_CHILD_TABLE),
++#endif
 +
          OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_TEST_ASSERT),
          OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_NCP_LOG_LEVEL),
          OT_NCP_GET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_TEST_WATCHDOG),
-@@ -704,6 +711,12 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
+@@ -704,6 +718,14 @@ NcpBase::PropertyHandler NcpBase::FindSetPropertyHandler(spinel_prop_key_t aKey)
  #endif
  #endif
  #endif // OPENTHREAD_MTD || OPENTHREAD_FTD
 +
-+        // Lutron vendor Spinel TMF extension (ncp_tmf_ext).
++#if OPENTHREAD_FTD
++        // Lutron vendor Spinel TMF extension (ncp_tmf_ext) — FTD only.
 +        // Vendor range (0x3C00..0x3FFF) sorts before DEBUG range (0x4000+).
 +        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_DIAG_GET_REQUEST),
 +        OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_VENDOR_DIAG_RESET_REQUEST),
++#endif
 +
  #if OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE
          OT_NCP_SET_HANDLER_ENTRY(SPINEL_PROP_DEBUG_NCP_LOG_LEVEL),
