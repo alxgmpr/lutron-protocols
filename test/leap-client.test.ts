@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import { processorIPs } from "../lib/config";
 import {
   buildDumpData,
   fetchLeapData,
@@ -509,9 +510,10 @@ describe("buildDumpData", () => {
 // ── LeapConnection: tag pairing + buffer splitting ───────────────
 
 describe("LeapConnection message framing", () => {
-  // Constructor requires a configured host — use the example config entry.
+  // Constructor requires a configured host — use whatever the example config
+  // declares so renames to the placeholder don't silently break this test.
   // connect() is never called, so cert files don't need to exist.
-  const makeConn = () => new LeapConnection({ host: "10.x.x.x" });
+  const makeConn = () => new LeapConnection({ host: processorIPs[0] });
 
   test("rejects construction when host is not in config", () => {
     assert.throws(
