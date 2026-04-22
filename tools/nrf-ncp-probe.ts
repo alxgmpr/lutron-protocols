@@ -496,17 +496,38 @@ async function cmdDiagReset(
   }
 }
 
+export interface ParsedArgs {
+  host: string | undefined;
+  cmd: string;
+  rest: string[];
+}
+
+/**
+ * Parse argv into known flags and positionals. `--host <value>` is consumed as
+ * a flag; unknown `--flag` arguments are skipped along with their value if the
+ * next arg doesn't itself look like a flag. The first remaining positional is
+ * the command (defaulting to `neighbors`); everything after is passed through.
+ */
+export function parseArgs(argv: readonly string[]): ParsedArgs {
+  let host: string | undefined;
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--host") {
+      host = argv[++i];
+    } else if (a.startsWith("--")) {
+      if (i + 1 < argv.length && !argv[i + 1].startsWith("--")) i++;
+    } else {
+      positional.push(a);
+    }
+  }
+  return { host, cmd: positional[0] ?? "neighbors", rest: positional.slice(1) };
+}
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const hostIdx = args.indexOf("--host");
-  const host = hostIdx !== -1 ? args[hostIdx + 1] : config.openBridge;
+  const { host: hostArg, cmd, rest } = parseArgs(process.argv.slice(2));
+  const host = hostArg ?? config.openBridge;
   const port = 9433;
-  const cmd = args.find((a) => !a.startsWith("--")) ?? "neighbors";
-  const rest = args.filter((a, i) => {
-    if (a.startsWith("--")) return false;
-    if (a === cmd && args.indexOf(a) === i) return false;
-    return true;
-  });
 
   if (!host) {
     throw new Error(
