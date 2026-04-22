@@ -1464,6 +1464,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         }
     }
 
+    /* Broadcast IPv6 src + msg type to help identify sleepy children
+     * whose RLOC-less ML-EID src isn't captured by peer_table. */
     {
         char buf[96];
         int n = snprintf(buf, sizeof(buf),
