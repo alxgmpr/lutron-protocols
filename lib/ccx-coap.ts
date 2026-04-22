@@ -71,13 +71,21 @@ export type CoapTarget =
   | { kind: "serial"; serial: number }
   | { kind: "ipv6"; addr: string };
 
+/** Optional resolver returning a full IPv6 string for a known device serial. */
+export type SerialAddressResolver = (serial: number) => string | undefined;
+
 /** Render a target as the shell-command argument (`rloc:XXXX`, `serial:N`, or raw IPv6). */
-export function formatCoapTarget(target: CoapTarget): string {
+export function formatCoapTarget(
+  target: CoapTarget,
+  resolveSerial?: SerialAddressResolver,
+): string {
   switch (target.kind) {
     case "rloc":
       return `rloc:${target.rloc}`;
-    case "serial":
-      return `serial:${target.serial}`;
+    case "serial": {
+      const resolved = resolveSerial?.(target.serial);
+      return resolved ?? `serial:${target.serial}`;
+    }
     case "ipv6":
       return target.addr;
   }
@@ -101,6 +109,12 @@ export interface CoapNotification {
   path: string;
   mid: number;
   len: number;
+  /** Present when the firmware broadcast includes the IPv6 source. */
+  src?: string;
+  /** Present when the firmware broadcast includes the CoAP token (hex). */
+  token?: string;
+  /** Present when the firmware broadcast includes the CoAP payload (decoded from hex). */
+  payload?: Buffer;
 }
 
 // ── Text parsing helpers ─────────────────────────────────
@@ -175,22 +189,34 @@ export function parseCoapGetResponse(text: string): GetParse | null {
 }
 
 const BROADCAST_RE =
-  /^\[coap\]\s+(\d+)\.(\d+)\s+(?:(\S+)\s+)?mid=0x([0-9a-fA-F]+)\s+len=(\d+)/;
+  /^\[coap\]\s+(\d+)\.(\d+)(?:\s+src=(\S+))?(?:\s+(\S+))?\s+mid=0x([0-9a-fA-F]+)(?:\s+token=([0-9a-fA-F]+))?\s+len=(\d+)(?:\s+payload=([0-9a-fA-F]+))?/;
 
-/** Parse a single `[coap] X.XX [path] mid=0xABCD len=N` broadcast line. */
+/** Parse a single `[coap] X.XX [src=...] [path] mid=0xABCD [token=HH] len=N [payload=HEX]` broadcast line. */
 export function parseCoapBroadcast(line: string): CoapNotification | null {
   const m = BROADCAST_RE.exec(line.trim());
   if (!m) return null;
   const cls = Number(m[1]);
   const det = Number(m[2]);
-  const path = m[3] && !m[3].startsWith("mid=") ? m[3] : "";
-  const mid = Number.parseInt(m[4], 16);
-  const len = Number(m[5]);
+  const src = m[3];
+  const pathCandidate = m[4];
+  const mid = Number.parseInt(m[5], 16);
+  const token = m[6];
+  const len = Number(m[7]);
+  const payloadHex = m[8];
+  const path =
+    pathCandidate &&
+    !pathCandidate.startsWith("mid=") &&
+    !pathCandidate.startsWith("token=")
+      ? pathCandidate
+      : "";
   return {
     code: `${cls}.${det.toString().padStart(2, "0")}` as CoapCode,
     path,
     mid,
     len,
+    ...(src ? { src } : {}),
+    ...(token ? { token } : {}),
+    ...(payloadHex ? { payload: Buffer.from(payloadHex, "hex") } : {}),
   };
 }
 
@@ -365,6 +391,16 @@ export interface CoapRequestOptions {
   timeoutMs?: number;
 }
 
+export interface CcxCoapClientOptions {
+  /**
+   * Optional resolver for `{ kind: "serial" }` targets. When provided, the
+   * client emits the full `fd00::` IPv6 address (from Designer DB data)
+   * instead of the legacy `serial:N` form that depends on the firmware's
+   * live-learned peer table.
+   */
+  resolveSerial?: SerialAddressResolver;
+}
+
 /**
  * Typed CoAP client — serializes `ccx coap …` commands through a transport
  * and returns parsed responses. Construct with {@link createCcxCoapClient}
@@ -373,6 +409,7 @@ export interface CoapRequestOptions {
 export class CcxCoapClient {
   private readonly transport: CoapTransport;
   private readonly textListener: (text: string) => void;
+  private readonly resolveSerial?: SerialAddressResolver;
   private queue: Promise<unknown> = Promise.resolve();
   private current: PendingRequest | null = null;
   private readonly observeSubs: ObserveSub[] = [];
@@ -380,8 +417,9 @@ export class CcxCoapClient {
     (notif: CoapNotification) => void
   > = [];
 
-  constructor(transport: CoapTransport) {
+  constructor(transport: CoapTransport, options: CcxCoapClientOptions = {}) {
     this.transport = transport;
+    this.resolveSerial = options.resolveSerial;
     this.textListener = (text) => this.handleText(text);
     this.transport.on("text", this.textListener);
   }
@@ -457,7 +495,7 @@ export class CcxCoapClient {
     path: string,
     opts?: CoapRequestOptions,
   ): Promise<void> {
-    const command = `ccx coap probe ${formatCoapTarget(target)} ${path}`;
+    const command = `ccx coap probe ${formatCoapTarget(target, this.resolveSerial)} ${path}`;
     return this.enqueue(
       async () =>
         new Promise<void>((resolve, reject) => {
@@ -514,7 +552,7 @@ export class CcxCoapClient {
     handler: (notif: CoapNotification) => void,
     opts?: CoapRequestOptions,
   ): Promise<() => Promise<void>> {
-    const command = `ccx coap observe ${formatCoapTarget(target)} ${path}`;
+    const command = `ccx coap observe ${formatCoapTarget(target, this.resolveSerial)} ${path}`;
     await this.enqueue(
       () =>
         new Promise<CoapResponse>((resolve, reject) => {
@@ -536,7 +574,7 @@ export class CcxCoapClient {
     return async () => {
       const idx = this.observeSubs.indexOf(sub);
       if (idx >= 0) this.observeSubs.splice(idx, 1);
-      const derReg = `ccx coap observe ${formatCoapTarget(target)} ${path} dereg`;
+      const derReg = `ccx coap observe ${formatCoapTarget(target, this.resolveSerial)} ${path} dereg`;
       await this.enqueue(
         () =>
           new Promise<void>((resolve, reject) => {
@@ -567,7 +605,11 @@ export class CcxCoapClient {
     opts?: CoapRequestOptions,
   ): Promise<CoapResponse> {
     const verb = method;
-    const parts = [`ccx coap ${verb}`, formatCoapTarget(target), path];
+    const parts = [
+      `ccx coap ${verb}`,
+      formatCoapTarget(target, this.resolveSerial),
+      path,
+    ];
     if (payload && payload.length > 0) {
       parts.push(payload.toString("hex").toUpperCase());
     }

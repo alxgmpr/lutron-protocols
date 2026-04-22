@@ -12,6 +12,7 @@ import { fileURLToPath } from "url";
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dir, "..");
 const configPath = resolve(ROOT, "config.json");
+const examplePath = resolve(ROOT, "config.example.json");
 
 export interface ProcessorConfig {
   cert: string;
@@ -32,12 +33,23 @@ export interface Config {
 }
 
 function loadConfig(): Config {
-  if (!existsSync(configPath)) {
-    throw new Error(
-      `Missing config.json — copy config.example.json to config.json and fill in your values`,
+  // Fall back to the example so tests and CI don't need a real config.json.
+  // Placeholder IPs (10.x.x.x) can never reach production — any actual network
+  // call will fail with a clear connection error.
+  if (existsSync(configPath)) {
+    return JSON.parse(readFileSync(configPath, "utf-8"));
+  }
+  // Warn for interactive tool use, but stay quiet under the test runner so
+  // tests and CI don't get noise.
+  const underTest =
+    process.execArgv.some((a) => a === "--test" || a.startsWith("--test=")) ||
+    process.env.NODE_ENV === "test";
+  if (!underTest) {
+    process.stderr.write(
+      "config: using config.example.json (no config.json found) — copy config.example.json → config.json for real values\n",
     );
   }
-  return JSON.parse(readFileSync(configPath, "utf-8"));
+  return JSON.parse(readFileSync(examplePath, "utf-8"));
 }
 
 export const config = loadConfig();
