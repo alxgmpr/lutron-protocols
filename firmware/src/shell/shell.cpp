@@ -2100,24 +2100,94 @@ static bool parse_ipv6_addr(const char* str, uint8_t out[16])
         return parse_hex_bytes(str, out, 16) == 16;
     }
 
-    /* Colon-separated 16-bit groups: fe80:0000:0000:0000:220e:fb79:b4ce:f76f */
+    /* Colon-separated 16-bit groups, optionally with a single "::" run for zeros.
+     * Examples:
+     *   fe80:0000:0000:0000:220e:fb79:b4ce:f76f  (full 8 groups)
+     *   fd0d:2ef:a82c::ff:fe00:4800              (head + tail, gap = zeros)
+     *   ff03::1                                   (head + tail, big gap)
+     *   ::1                                       (tail only)
+     *   fd00::                                    (head only)
+     */
     memset(out, 0, 16);
-    int group = 0;
-    const char* p = str;
-    while (*p && group < 8) {
-        char* end;
-        unsigned long val = strtoul(p, &end, 16);
-        if (end == p || val > 0xFFFF) return false;
-        out[group * 2] = (uint8_t)(val >> 8);
-        out[group * 2 + 1] = (uint8_t)(val & 0xFF);
-        group++;
-        if (*end == ':')
-            end++;
-        else if (*end != '\0')
-            return false;
-        p = end;
+
+    /* Locate the "::" split, if present. At most one allowed. */
+    const char* dc = strstr(str, "::");
+    if (dc) {
+        if (strstr(dc + 2, "::") != NULL) return false; /* multiple :: */
     }
-    return group == 8;
+
+    uint16_t groups[8];
+    int head_count = 0, tail_count = 0;
+    int max_groups = dc ? 7 : 8; /* :: shrinks available explicit groups */
+
+    const char* p = str;
+    const char* head_end = dc ? dc : str + len;
+
+    /* Parse head (before ::). Skip if input starts with "::". */
+    if (dc != str) {
+        while (p < head_end && head_count < max_groups) {
+            char* end;
+            unsigned long val = strtoul(p, &end, 16);
+            if (end == p || val > 0xFFFF) return false;
+            groups[head_count++] = (uint16_t)val;
+            if (end < head_end) {
+                if (*end != ':') return false;
+                p = end + 1;
+            }
+            else {
+                p = end;
+                break;
+            }
+        }
+        if (p != head_end) return false;
+    }
+
+    /* Parse tail (after ::). Skip if input ends with "::". */
+    if (dc) {
+        p = dc + 2;
+        if (*p != '\0') {
+            while (*p && (head_count + tail_count) < 8) {
+                char* end;
+                unsigned long val = strtoul(p, &end, 16);
+                if (end == p || val > 0xFFFF) return false;
+                groups[head_count + tail_count] = (uint16_t)val;
+                tail_count++;
+                if (*end == ':') {
+                    p = end + 1;
+                }
+                else if (*end == '\0') {
+                    p = end;
+                    break;
+                }
+                else {
+                    return false;
+                }
+            }
+            if (*p != '\0') return false;
+        }
+    }
+
+    int total = head_count + tail_count;
+    if (dc) {
+        /* Shift tail groups to the right, padding the middle with zeros */
+        int gap = 8 - total;
+        if (gap < 0) return false; /* shouldn't happen; safety */
+        for (int i = 7; i >= head_count + gap; i--) {
+            groups[i] = groups[i - gap];
+        }
+        for (int i = head_count; i < head_count + gap; i++) {
+            groups[i] = 0;
+        }
+    }
+    else if (total != 8) {
+        return false;
+    }
+
+    for (int i = 0; i < 8; i++) {
+        out[i * 2] = (uint8_t)(groups[i] >> 8);
+        out[i * 2 + 1] = (uint8_t)(groups[i] & 0xFF);
+    }
+    return true;
 }
 
 /**
@@ -2616,9 +2686,28 @@ static void cmd_ccx_coap(const char* arg)
         memcpy(uri, p, ulen);
         uri[ulen] = '\0';
 
-        /* Parse hex payload */
+        /* Parse hex payload and optional trailing port: <hex> [port] */
         uint8_t payload[128];
-        size_t plen = parse_hex_bytes(space + 1, payload, sizeof(payload));
+        size_t plen = 0;
+        uint16_t port = 0; /* 0 = default 5683 */
+        const char* hex_start = space + 1;
+        const char* port_space = strchr(hex_start, ' ');
+        if (port_space) {
+            /* Hex up to the space, port after it */
+            size_t hex_len = (size_t)(port_space - hex_start);
+            char hex_buf[257];
+            if (hex_len >= sizeof(hex_buf)) {
+                printf("Hex payload too long\r\n");
+                return;
+            }
+            memcpy(hex_buf, hex_start, hex_len);
+            hex_buf[hex_len] = '\0';
+            plen = parse_hex_bytes(hex_buf, payload, sizeof(payload));
+            port = (uint16_t)strtoul(port_space + 1, NULL, 10);
+        }
+        else {
+            plen = parse_hex_bytes(hex_start, payload, sizeof(payload));
+        }
         if (plen == 0) {
             printf("Invalid hex payload\r\n");
             return;
@@ -2626,7 +2715,7 @@ static void cmd_ccx_coap(const char* arg)
 
         uint8_t code = is_put ? COAP_CODE_PUT : COAP_CODE_POST;
         ccx_coap_response_arm();
-        if (!ccx_send_coap(dst, code, uri, payload, plen)) {
+        if (!ccx_send_coap_port(dst, code, uri, payload, plen, port)) {
             printf("CoAP TX failed (not joined?)\r\n");
             return;
         }
@@ -2664,10 +2753,11 @@ coap_usage:
     printf("    Read a CoAP resource\r\n");
     printf("  ccx coap delete <addr> <uri_path>\r\n");
     printf("    Delete a CoAP resource\r\n");
-    printf("  ccx coap put <addr> <uri_path> <payload_hex>\r\n");
-    printf("    Write raw CBOR to a CoAP resource (PUT)\r\n");
-    printf("  ccx coap post <addr> <uri_path> <payload_hex>\r\n");
-    printf("    Write raw CBOR to a CoAP resource (POST)\r\n");
+    printf("  ccx coap put <addr> <uri_path> <payload_hex> [port]\r\n");
+    printf("    Write raw CBOR to a CoAP resource (PUT); port defaults to 5683\r\n");
+    printf("  ccx coap post <addr> <uri_path> <payload_hex> [port]\r\n");
+    printf("    Write raw CBOR to a CoAP resource (POST); port defaults to 5683\r\n");
+    printf("    Use port 61631 for TMF (Thread Management Framework) queries\r\n");
     printf("  addr: IPv6, rloc:XXXX (hex), or serial:NNN (decimal)\r\n");
 }
 

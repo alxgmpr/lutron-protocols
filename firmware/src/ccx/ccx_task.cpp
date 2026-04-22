@@ -907,6 +907,10 @@ static bool ccx_transmit_ipv6(const uint8_t* ipv6_pkt, size_t pkt_len)
             uint8_t status = (resp_len > 3) ? resp[3] : 0xFF;
             if (status == 0) return true; /* STATUS_OK */
             printf("[ccx] TX: NCP LAST_STATUS error=%u\r\n", status);
+            /* Also broadcast so TS-side tools see NCP rejection causes */
+            char msg[64];
+            int n = snprintf(msg, sizeof(msg), "[ccx] TX fail: NCP LAST_STATUS=%u\r\n", status);
+            if (n > 0) stream_broadcast_text(msg, (size_t)n);
             return false;
         }
     }
@@ -1166,7 +1170,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
 
     /* Forward CoAP traffic to host tools and auto-ACK CON responses so
      * programming database write transactions can complete end-to-end. */
-    if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT || src_port == 49136 || dst_port == 49136) {
+    if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT || src_port == 49136 || dst_port == 49136 ||
+        src_port == COAP_TMF_PORT || dst_port == COAP_TMF_PORT) {
         stream_send_ccx_packet(udp_data, udp_payload_len);
 
         uint8_t coap_type = 0;
@@ -1228,21 +1233,112 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 coap_response_armed = false;
                 coap_response_ready = true;
             }
-            /* Always broadcast CoAP response to stream (for probe/fuzz) */
+            /* Always broadcast CoAP response metadata to stream (for probe/fuzz).
+             * Format: [coap] X.YY src=<ipv6> [path] mid=0x<hex> token=<hex> len=<n> payload=<hex> [truncated=N]\r\n
+             * The whole line is emitted in a single stream_broadcast_text call so that
+             * downstream TS tooling always receives it as one UDP frame.
+             *
+             * Payload hex is capped so the total line fits in TX_ITEM_MAX_DATA (140 bytes,
+             * stream.cpp::TX_ITEM_MAX_DATA). For TMF Network Diagnostic responses the first
+             * ~30 payload bytes cover ExtMacAddress (TLV 0) + RLOC16 (TLV 1), which is all
+             * tools/tmf-diag.ts needs. The full packet bytes are still available via the
+             * binary stream_send_ccx_packet call above (flag STREAM_FLAG_CCX = 0x40) if
+             * downstream tooling needs the untruncated response. */
             {
                 const char* path = probe_table_lookup(coap_mid);
-                char buf[128];
-                int n;
+
+                /* Build src string "a:b:c:d:e:f:g:h" (8 groups, no leading zeros) */
+                char src_str[40];
+                {
+                    char* sp = src_str;
+                    for (int i = 0; i < 16; i += 2) {
+                        if (i > 0) *sp++ = ':';
+                        unsigned g = ((unsigned)src_addr[i] << 8) | src_addr[i + 1];
+                        sp += snprintf(sp, (size_t)(src_str + sizeof(src_str) - sp), "%x", g);
+                    }
+                    *sp = '\0';
+                }
+
+                /* Extract token hex (0..8 bytes) */
+                uint8_t tkl = udp_data[0] & 0x0F;
+                if (tkl > 8) tkl = 8;
+                char token_str[17] = {0};
+                for (uint8_t i = 0; i < tkl; i++) {
+                    snprintf(&token_str[i * 2], 3, "%02x", udp_data[4 + i]);
+                }
+
+                /* Locate payload (if any) past the 0xFF marker */
+                size_t pl_pos = 4 + tkl;
+                while (pl_pos < udp_payload_len && udp_data[pl_pos] != 0xFF) {
+                    uint8_t dn = udp_data[pl_pos] >> 4;
+                    uint8_t ln = udp_data[pl_pos] & 0x0F;
+                    pl_pos++;
+                    if (dn == 13)
+                        pl_pos++;
+                    else if (dn == 14)
+                        pl_pos += 2;
+                    else if (dn == 15)
+                        break;
+                    size_t olen = ln;
+                    if (ln == 13) {
+                        if (pl_pos < udp_payload_len) olen = udp_data[pl_pos] + 13;
+                        pl_pos++;
+                    }
+                    else if (ln == 14) {
+                        if (pl_pos + 1 < udp_payload_len)
+                            olen = ((size_t)udp_data[pl_pos] << 8 | udp_data[pl_pos + 1]) + 269;
+                        pl_pos += 2;
+                    }
+                    else if (ln == 15)
+                        break;
+                    pl_pos += olen;
+                }
+                size_t coap_payload_start = 0;
+                size_t coap_payload_len = 0;
+                if (pl_pos < udp_payload_len && udp_data[pl_pos] == 0xFF) {
+                    coap_payload_start = pl_pos + 1;
+                    coap_payload_len = udp_payload_len - coap_payload_start;
+                }
+
+                /* Assemble the single broadcast line. Buffer sized just under
+                 * TX_ITEM_MAX_DATA (140) so stream_broadcast_text won't silently truncate. */
+                char buf[140];
+                int pos;
                 if (path) {
-                    n = snprintf(buf, sizeof(buf), "[coap] %u.%02u %s mid=0x%04X len=%u\r\n",
-                                 (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), path, coap_mid,
-                                 (unsigned)udp_payload_len);
+                    pos = snprintf(buf, sizeof(buf), "[coap] %u.%02u src=%s %s mid=0x%04X token=%s len=%u",
+                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), src_str, path, coap_mid,
+                                   token_str, (unsigned)udp_payload_len);
                 }
                 else {
-                    n = snprintf(buf, sizeof(buf), "[coap] %u.%02u mid=0x%04X len=%u\r\n", (unsigned)(coap_code >> 5),
-                                 (unsigned)(coap_code & 0x1F), coap_mid, (unsigned)udp_payload_len);
+                    pos = snprintf(buf, sizeof(buf), "[coap] %u.%02u src=%s mid=0x%04X token=%s len=%u",
+                                   (unsigned)(coap_code >> 5), (unsigned)(coap_code & 0x1F), src_str, coap_mid,
+                                   token_str, (unsigned)udp_payload_len);
                 }
-                if (n > 0) stream_broadcast_text(buf, (size_t)n);
+                if (pos < 0) pos = 0;
+                if (pos >= (int)sizeof(buf)) pos = (int)sizeof(buf) - 1;
+
+                /* Append " payload=<hex>" if room remains. Reserve 18 bytes for
+                 * " truncated=NNNNN\r\n" worst-case suffix. */
+                if (coap_payload_len > 0 && pos + 18 < (int)sizeof(buf)) {
+                    int avail = (int)sizeof(buf) - pos - 18; /* bytes free for "=payload<hex>" */
+                    int header_extra = (int)snprintf(buf + pos, (size_t)(sizeof(buf) - pos), " payload=");
+                    pos += header_extra;
+                    avail -= header_extra;
+                    size_t emit_bytes = coap_payload_len;
+                    if ((int)(coap_payload_len * 2) > avail) emit_bytes = (size_t)(avail / 2);
+                    for (size_t i = 0; i < emit_bytes && pos + 2 < (int)sizeof(buf); i++) {
+                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%02x", udp_data[coap_payload_start + i]);
+                    }
+                    if (emit_bytes < coap_payload_len && pos + 18 < (int)sizeof(buf)) {
+                        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, " truncated=%u",
+                                        (unsigned)(coap_payload_len - emit_bytes));
+                    }
+                }
+
+                if (pos + 2 < (int)sizeof(buf)) {
+                    pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "\r\n");
+                }
+                if (pos > 0) stream_broadcast_text(buf, (size_t)pos);
             }
             if (ccx_rx_uart_log_enabled) {
                 printf("[ccx] CoAP RX from ");
@@ -1289,7 +1385,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 }
             }
         }
-        return;
+        /* Fall through — TMF port may carry Address Notification or Diagnostic
+         * responses that need additional per-branch handling below. */
     }
 
     /* TMF port — handle Address Notification (/a/an) responses */
@@ -1464,6 +1561,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         }
     }
 
+    /* Broadcast IPv6 src + msg type to help identify sleepy children
+     * whose RLOC-less ML-EID src isn't captured by peer_table. */
     {
         char buf[96];
         int n = snprintf(buf, sizeof(buf),

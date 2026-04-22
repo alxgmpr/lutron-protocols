@@ -6,12 +6,16 @@
  * Combines three data sources:
  *   1. Designer DB (tblPegasusLinkNode) — EUI-64 + serial number for every CCX device
  *   2. LEAP dump (data/leap-*.json) — device names, types, areas, zones
- *   3. Manual primary ML-EID map (data/ccx-device-map.json) — known reachable addresses
+ *   3. Manual primary ML-EID map (docs/reference/ccx-device-map.md) — optional RX-only alias
  *
  * Usage:
- *   bun run tools/ccx-device-map.ts                 # show full device inventory
- *   bun run tools/ccx-device-map.ts --save           # save to data/ccx-device-map.json
- *   bun run tools/ccx-device-map.ts --discover       # active discovery via CoAP (requires Nucleo)
+ *   npx tsx tools/ccx-device-map.ts                 # show full device inventory
+ *   npx tsx tools/ccx-device-map.ts --save          # save to data/ccx-device-map.json
+ *
+ * Addresses: stable secondary ML-EIDs (fd00::<modified-EUI-64>) are derived
+ * from each device's EUI-64 at write time. The legacy `primaryMleid` field is
+ * no longer saved (it rotates on every reboot); use tools/tmf-diag.ts for
+ * live-mesh enumeration.
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
@@ -213,20 +217,6 @@ function loadManualMap(): ManualEntry[] {
 }
 
 // ---------------------------------------------------------------------------
-// Load saved device map (with previously discovered primary ML-EIDs)
-// ---------------------------------------------------------------------------
-
-function loadSavedMap(): DeviceMap | null {
-  const file = join(__dir, "../data/ccx-device-map.json");
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Merge all data sources
 // ---------------------------------------------------------------------------
 
@@ -247,7 +237,6 @@ function buildDeviceMap(
   designerDevices: DesignerDevice[],
   leap: LeapData,
   manualMap: ManualEntry[],
-  savedMap: DeviceMap | null,
 ): DeviceMap {
   const devices: CCXDevice[] = [];
 
@@ -274,10 +263,10 @@ function buildDeviceMap(
       leapDeviceId = serialInfo.leapId;
     }
 
-    // Match manual ML-EID by area + station
+    // Primary ML-EID (fd0d::<random-IID>) rotates across reboots; do not write
+    // it to the device map unless it was explicitly stored in a manual markdown
+    // reference (kept only for RX-side identification in sniffers).
     let primaryMleid: string | undefined;
-
-    // Check manual map
     const manualMatch = manualMap.find(
       (m) =>
         m.area.toLowerCase() === dd.areaName.toLowerCase() &&
@@ -285,16 +274,6 @@ function buildDeviceMap(
     );
     if (manualMatch) {
       primaryMleid = manualMatch.primaryMleid;
-    }
-
-    // Check saved map (may have discovered addresses from previous runs)
-    if (!primaryMleid && savedMap) {
-      const savedDevice = savedMap.devices.find(
-        (d) => d.serial === dd.serial && d.primaryMleid,
-      );
-      if (savedDevice) {
-        primaryMleid = savedDevice.primaryMleid;
-      }
     }
 
     devices.push({
@@ -350,7 +329,7 @@ const CYAN = "\x1b[36m";
 
 function displayDeviceMap(map: DeviceMap): void {
   const total = map.devices.length;
-  const mapped = map.devices.filter((d) => d.primaryMleid).length;
+  const mapped = map.devices.filter((d) => d.secondaryMleid).length;
 
   console.log(
     `\n${BOLD}CCX Device Inventory${RESET}  ${DIM}(${mapped}/${total} addresses known)${RESET}\n`,
@@ -363,8 +342,8 @@ function displayDeviceMap(map: DeviceMap): void {
       console.log(`${BOLD}${dev.area}${RESET}`);
     }
 
-    const addrStatus = dev.primaryMleid
-      ? `${GREEN}${dev.primaryMleid}${RESET}`
+    const addrStatus = dev.secondaryMleid
+      ? `${GREEN}${dev.secondaryMleid}${RESET}`
       : `${RED}unknown${RESET}`;
 
     const typeShort = dev.deviceType
@@ -430,7 +409,6 @@ if (doFetchDesigner) {
 const designerDevices = await loadDesignerData();
 const leap = loadLeapData();
 const manualMap = loadManualMap();
-const savedMap = loadSavedMap();
 
 if (designerDevices.length === 0) {
   console.error(
@@ -439,7 +417,7 @@ if (designerDevices.length === 0) {
   process.exit(1);
 }
 
-const deviceMap = buildDeviceMap(designerDevices, leap, manualMap, savedMap);
+const deviceMap = buildDeviceMap(designerDevices, leap, manualMap);
 
 displayDeviceMap(deviceMap);
 

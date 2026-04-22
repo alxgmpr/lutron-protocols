@@ -1,183 +1,113 @@
 #!/usr/bin/env npx tsx
 
 /**
- * nRF52840 DFU Flasher — upload firmware via STM32 stream protocol.
- *
- * The nRF52840 dongle is connected to the STM32 via UART (Spinel).
- * When the nRF is in MCUboot bootloader mode, this tool sends the
- * firmware binary through the STM32's stream protocol:
- *
- *   1. STREAM_CMD_NRF_DFU_START (0x03) with image size
- *   2. STREAM_CMD_NRF_DFU_DATA (0x04) in 200-byte chunks
- *
- * The STM32 handles baud switching (460800 → 115200), SMP framing,
- * and bootloader communication internally.
+ * nRF NCP DFU flash wrapper.
  *
  * Usage:
- *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin
- *   bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host $NUCLEO_HOST
+ *   npx tsx tools/nrf-dfu-flash.ts --tmf         # flash the TMF-extension build
+ *   npx tsx tools/nrf-dfu-flash.ts --rollback    # reflash the known-good baseline
+ *
+ * Prompts the user to press the reset button on the Nucleo-soldered nRF52840
+ * dongle, detects the new DFU serial port, and runs nrfutil. See
+ * docs/superpowers/specs/2026-04-22-ncp-tmf-extension-design.md.
  */
 
-import { createSocket } from "dgram";
-import { readFileSync } from "fs";
+import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 
-const args = process.argv.slice(2);
-function getArg(name: string): string | undefined {
-  const idx = args.indexOf(name);
-  return idx !== -1 ? args[idx + 1] : undefined;
-}
+export type UsbmodemSnapshot = readonly string[];
 
-const STREAM_CMD_KEEPALIVE = 0x00;
-const STREAM_CMD_NRF_DFU_START = 0x03;
-const STREAM_CMD_NRF_DFU_DATA = 0x04;
-const STREAM_HEARTBEAT = 0xff;
-const DEFAULT_PORT = 9433;
-const CHUNK_SIZE = 200; // Stay under 255 limit with margin
+const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(__dir, "..");
 
-const firmwarePath = args.find((a) => !a.startsWith("--"));
-
-import { config } from "../lib/config";
-
-const host = getArg("--host") ?? config.openBridge;
-const port = parseInt(getArg("--port") ?? String(DEFAULT_PORT), 10);
-const chunkDelay = parseInt(getArg("--delay") ?? "250", 10);
-
-if (!firmwarePath) {
-  console.log(`
-nRF52840 DFU Flasher — upload firmware via STM32 stream protocol
-
-Usage:
-  bun run tools/nrf-dfu-flash.ts <firmware.bin> [options]
-
-Options:
-  --host <ip>      STM32 IP address (default: openBridge from config.json)
-  --port <n>       Stream UDP port (default: 9433)
-  --delay <ms>     Delay between chunks in ms (default: 250)
-
-Example:
-  bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd.bin --host $NUCLEO_HOST
-`);
-  process.exit(1);
-}
-
-function buildStreamCommand(cmd: number, data: Buffer): Buffer {
-  if (data.length > 255) {
-    throw new Error(`Stream command data too long: ${data.length} bytes`);
+export function chooseArtifact(flags: {
+  tmf: boolean;
+  rollback: boolean;
+}): string {
+  if (flags.tmf === flags.rollback) {
+    throw new Error("Specify exactly one of --tmf or --rollback");
   }
-  const out = Buffer.alloc(2 + data.length);
-  out[0] = cmd & 0xff;
-  out[1] = data.length & 0xff;
-  data.copy(out, 2);
-  return out;
+  const name = flags.tmf ? "ot-ncp-ftd-tmf-dfu.zip" : "ot-ncp-ftd-dfu.zip";
+  return join(REPO_ROOT, "firmware", "ncp", name);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function snapshotUsbmodem(): UsbmodemSnapshot {
+  try {
+    return readdirSync("/dev")
+      .filter((n) => n.startsWith("tty.usbmodem"))
+      .map((n) => `/dev/${n}`);
+  } catch {
+    return [];
+  }
 }
 
-async function main() {
-  const firmware = readFileSync(firmwarePath!);
-  const imageSize = firmware.length;
-  const totalChunks = Math.ceil(imageSize / CHUNK_SIZE);
+export function detectNewUsbmodem(
+  before: UsbmodemSnapshot,
+  after: UsbmodemSnapshot,
+): string | undefined {
+  const beforeSet = new Set(before);
+  return after.find((p) => !beforeSet.has(p));
+}
 
-  console.log(`nRF52840 DFU Flash`);
-  console.log(`==================`);
-  console.log(`Firmware: ${firmwarePath} (${imageSize} bytes)`);
-  console.log(`Target:   ${host}:${port}`);
-  console.log(
-    `Chunks:   ${totalChunks} × ${CHUNK_SIZE} bytes (${chunkDelay}ms interval)`,
-  );
-  console.log(`ETA:      ~${Math.ceil((totalChunks * chunkDelay) / 1000)}s`);
-  console.log();
-
-  const sock = createSocket("udp4");
-
-  const sendFrame = (frame: Buffer): Promise<void> =>
-    new Promise((resolve, reject) => {
-      sock.send(frame, port, host, (err) => (err ? reject(err) : resolve()));
-    });
-
-  // Keep-alive timer to stay registered as a client
-  const keepalive = buildStreamCommand(STREAM_CMD_KEEPALIVE, Buffer.alloc(0));
-  const keepaliveTimer = setInterval(() => {
-    sendFrame(keepalive).catch(() => {});
-  }, 2000);
-
-  // Listen for heartbeats and text responses from STM32
-  let _lastHeartbeat = 0;
-  const STREAM_RESP_TEXT = 0xfd;
-  sock.on("message", (msg) => {
-    if (msg.length >= 2 && msg[0] === STREAM_HEARTBEAT) {
-      _lastHeartbeat = Date.now();
-    } else if (msg.length >= 1 && msg[0] === STREAM_RESP_TEXT) {
-      // STM32 shell output (DFU progress goes here via text passthrough)
-      const text = msg.subarray(1).toString("utf8").trim();
-      if (text) console.log(`  [stm32] ${text}`);
-    }
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const artifact = chooseArtifact({
+    tmf: args.includes("--tmf"),
+    rollback: args.includes("--rollback"),
   });
 
-  try {
-    // Step 0: Register as client
-    console.log("Registering as stream client...");
-    await sendFrame(keepalive);
-    await sleep(500);
+  console.log(`Artifact: ${artifact}`);
 
-    // Step 1: Send DFU_START with image size (4 bytes LE)
-    const sizeLE = Buffer.alloc(4);
-    sizeLE.writeUInt32LE(imageSize, 0);
-    const startCmd = buildStreamCommand(STREAM_CMD_NRF_DFU_START, sizeLE);
-    console.log(`Sending DFU_START (image_size=${imageSize})...`);
-    await sendFrame(startCmd);
+  const before = snapshotUsbmodem();
+  console.log(`Ports before: ${before.join(", ") || "(none)"}`);
 
-    // Wait for STM32 to enter bootloader mode:
-    //   - 2s Spinel reset wait
-    //   - 1s baud switch to 115200
-    //   - ~1-2s SMP probe + response
-    console.log(
-      "Waiting for STM32 to enter bootloader mode (baud switch + SMP probe)...",
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  await rl.question(
+    "Press the RESET button on the dongle (LED pulses red in DFU mode), then press ENTER here: ",
+  );
+  rl.close();
+
+  // Give the kernel a moment to re-enumerate USB.
+  await new Promise((r) => setTimeout(r, 1500));
+
+  const after = snapshotUsbmodem();
+  console.log(`Ports after:  ${after.join(", ") || "(none)"}`);
+
+  const port = detectNewUsbmodem(before, after);
+  if (!port) {
+    throw new Error(
+      "No new usbmodem port appeared. Dongle may not be in DFU mode — re-press reset and retry.",
     );
-    await sleep(6000);
+  }
+  console.log(`Detected DFU port: ${port}`);
 
-    // Step 2: Send firmware in chunks
-    console.log("Uploading firmware...");
-    let offset = 0;
-    let chunkNum = 0;
-
-    while (offset < imageSize) {
-      const end = Math.min(offset + CHUNK_SIZE, imageSize);
-      const chunk = firmware.subarray(offset, end);
-      const dataCmd = buildStreamCommand(STREAM_CMD_NRF_DFU_DATA, chunk);
-
-      await sendFrame(dataCmd);
-      offset = end;
-      chunkNum++;
-
-      const pct = ((offset / imageSize) * 100).toFixed(1);
-      const bar = "=".repeat(Math.floor((offset / imageSize) * 40)).padEnd(40);
-      process.stdout.write(`\r  [${bar}] ${pct}% (${offset}/${imageSize})`);
-
-      await sleep(chunkDelay);
-    }
-
-    console.log();
-    console.log(`Upload complete: ${imageSize} bytes in ${chunkNum} chunks`);
-    console.log("Waiting for MCUboot validation and reboot...");
-    await sleep(5000);
-
-    console.log("Done. The nRF should now boot into NCP firmware.");
-    console.log(
-      "Verify with: connect to the STM32 CLI and run 'spinel get ncp-version'",
+  console.log(`Invoking nrfutil...`);
+  try {
+    execFileSync(
+      "nrfutil",
+      ["nrf5sdk-tools", "dfu", "usb-serial", "-pkg", artifact, "-p", port],
+      { stdio: "inherit" },
     );
   } catch (err) {
-    console.error(`\nDFU error: ${(err as Error).message}`);
-    process.exit(1);
-  } finally {
-    clearInterval(keepaliveTimer);
-    sock.close();
+    throw new Error(
+      `nrfutil DFU failed: ${(err as Error).message}. If this was --tmf, consider running --rollback.`,
+    );
   }
+
+  console.log(
+    `Done. Dongle should re-enumerate as a normal CDC port within a few seconds.`,
+  );
 }
 
-main().catch((err) => {
-  console.error(`Error: ${(err as Error).message}`);
-  process.exit(1);
-});
+// Only run main() when invoked as a script, not when imported by tests.
+const isMain =
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  main().catch((err) => {
+    console.error(`Error: ${(err as Error).message}`);
+    process.exit(1);
+  });
+}
