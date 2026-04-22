@@ -2,15 +2,19 @@
 #
 # Build OpenThread NCP firmware for the nRF52840 soldered to the Nucleo board.
 #
-# Clones ot-nrf528xx, applies the Nucleo UART patch (pins, baud, no HWFC),
-# builds ot-ncp-ftd with USB bootloader support, and packages a DFU zip.
+# Clones ot-nrf528xx, applies the Nucleo UART patch (pins, baud, no HWFC) and
+# the TMF extension patch (6 vendor Spinel props 0x3C00-0x3C05 for diag /
+# neighbor / child toolkit), builds ot-ncp-ftd with USB bootloader support and
+# OT_NETDIAG_CLIENT enabled, then packages a DFU zip.
 #
 # Prerequisites:
 #   - ARM GCC toolchain (arm-none-eabi-gcc)
 #   - CMake + Ninja
 #   - nrfutil with nrf5sdk-tools (pip install nrfutil; nrfutil install nrf5sdk-tools)
 #
-# Output: build/ot-ncp-ftd-nucleo.zip (ready to flash via USB DFU or nrf-dfu-flash.ts)
+# Outputs:
+#   build/ot-ncp-ftd-nucleo-tmf.hex — raw hex (for copy to firmware/ncp/)
+#   build/ot-ncp-ftd-nucleo-tmf.zip — DFU zip (for USB DFU or nrf-dfu-flash.ts)
 #
 set -euo pipefail
 
@@ -49,13 +53,19 @@ fi
 echo "==> Initializing submodules..."
 git submodule update --init --depth 1
 
-# Apply Nucleo UART patch
+# Apply Nucleo UART patch (edits ot-nrf528xx/src/nrf52840/transport-config.h)
 echo "==> Applying Nucleo UART patch..."
 git apply "$SCRIPT_DIR/nucleo-uart.patch"
 
+# Apply TMF extension patch (edits openthread/src/ncp/* — submodule, so cd first)
+echo "==> Applying TMF extension patch..."
+( cd openthread && git apply "$SCRIPT_DIR/tmf-extension.patch" )
+
 # Build NCP firmware
+# -DOT_NETDIAG_CLIENT=ON enables otThreadSendDiagnosticGet / otThreadSendDiagnosticReset
+# (required by the TMF extension; default is OFF for NCP-FTD)
 echo "==> Building ot-ncp-ftd..."
-./script/build nrf52840 USB_trans -DOT_BOOTLOADER=USB
+./script/build nrf52840 USB_trans -DOT_BOOTLOADER=USB -DOT_NETDIAG_CLIENT=ON
 
 # Find the built ELF
 ELF="$BUILD_DIR/build/nrf52840-usb/bin/ot-ncp-ftd"
@@ -68,15 +78,15 @@ if [ ! -f "$ELF" ]; then
   exit 1
 fi
 
-# Convert to HEX
-HEX="/tmp/ot-ncp-ftd-nucleo.hex"
+# Convert to HEX (copy into build/ for the commit-tracked artifact)
+HEX="$OUTPUT_DIR/ot-ncp-ftd-nucleo-tmf.hex"
 echo "==> Converting ELF to HEX..."
+mkdir -p "$OUTPUT_DIR"
 arm-none-eabi-objcopy -O ihex "$ELF" "$HEX"
 
 # Package DFU zip
-DFU_ZIP="$OUTPUT_DIR/ot-ncp-ftd-nucleo.zip"
+DFU_ZIP="$OUTPUT_DIR/ot-ncp-ftd-nucleo-tmf.zip"
 echo "==> Packaging DFU zip..."
-mkdir -p "$OUTPUT_DIR"
 nrfutil nrf5sdk-tools pkg generate \
   --hw-version 52 \
   --sd-req 0x00 \
@@ -85,11 +95,13 @@ nrfutil nrf5sdk-tools pkg generate \
   "$DFU_ZIP"
 
 echo ""
-echo "==> Done: $DFU_ZIP"
+echo "==> Done:"
+echo "    HEX: $HEX"
+echo "    DFU: $DFU_ZIP"
 echo ""
 echo "Flash via USB DFU (put dongle in bootloader mode first):"
 echo "  nrfutil nrf5sdk-tools dfu usb-serial -pkg $DFU_ZIP -p /dev/cu.usbmodem*"
 echo ""
 echo "Flash via Nucleo TCP stream:"
-echo "  arm-none-eabi-objcopy -O binary $ELF /tmp/ot-ncp-ftd-nucleo.bin"
-echo "  bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd-nucleo.bin --host \$NUCLEO_HOST"
+echo "  arm-none-eabi-objcopy -O binary $ELF /tmp/ot-ncp-ftd-nucleo-tmf.bin"
+echo "  bun run tools/nrf-dfu-flash.ts /tmp/ot-ncp-ftd-nucleo-tmf.bin --host \$NUCLEO_HOST"
