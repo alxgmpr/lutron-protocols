@@ -11,5 +11,8 @@
     "host": "10.x.x.x",
     "user": "user",
     "pass": "pass"
+  },
+  "homeassistant": {
+    "host": "10.x.x.x"
   }
 }

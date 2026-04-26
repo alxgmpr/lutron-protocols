@@ -1,22 +1,26 @@
 #!/usr/bin/env npx tsx
 
 /**
- * Gather preset/scene zone assignments from Designer LocalDB and generate
- * data/preset-zones.json — the lookup table used by the CCX-WiZ bridge
- * to handle scene BUTTON_PRESS events.
+ * Gather preset/scene zone assignments from a Designer project file and
+ * generate data/preset-zones.json — the lookup table used by the CCX-WiZ
+ * bridge to handle scene BUTTON_PRESS events.
  *
- * Requires Designer to be running with a project open (LocalDB active)
- * and the sql-http-api.ps1 listener on the VM.
+ * Reads directly from a .hw/.ra3 file via tools/designer-project.ts (Docker
+ * SQL Server). No VM, no live Designer install required.
  *
- * Usage: npx tsx tools/gather-presets.ts
+ * Usage:
+ *   npx tsx tools/gather-presets.ts --project <file.hw|.ra3>   Open + query
+ *   npx tsx tools/gather-presets.ts                            Use already-open project
  */
 
+import { execFileSync } from "child_process";
 import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { config } from "../lib/config";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__dir, "..");
+const DESIGNER_PROJECT_TS = join(__dir, "designer-project.ts");
 
 const dataDir = join(__dir, "../data");
 const outPath = join(dataDir, "preset-zones.json");
@@ -45,19 +49,21 @@ const CURVE_NAMES: Record<number, string> = {
   // 5 is unknown — fall back to default
 };
 
-async function queryDesignerDb(sql: string): Promise<string> {
-  const url = `http://${config.designer.host}:9999/query`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: sql,
-    signal: AbortSignal.timeout(30_000),
+function openProject(projectFile: string): void {
+  console.log(`Opening project ${projectFile}...`);
+  execFileSync("npx", ["tsx", DESIGNER_PROJECT_TS, "open", projectFile], {
+    stdio: "inherit",
+    cwd: PROJECT_ROOT,
   });
-  if (!res.ok)
-    throw new Error(
-      `Designer DB query failed: ${res.status} ${await res.text()}`,
-    );
-  return res.text();
+}
+
+function queryDesignerDb(sql: string): string {
+  return execFileSync("npx", ["tsx", DESIGNER_PROJECT_TS, "query", sql], {
+    encoding: "utf-8",
+    cwd: PROJECT_ROOT,
+    timeout: 120_000,
+    maxBuffer: 64 * 1024 * 1024,
+  });
 }
 
 function loadLeapPresetNames(): Record<string, string> {
@@ -81,18 +87,25 @@ function loadLeapPresetNames(): Record<string, string> {
   return lookup;
 }
 
-async function main() {
-  console.log(`Querying Designer DB at ${config.designer.host}...`);
-  const raw = await queryDesignerDb(SQL);
+function parseArg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i !== -1 ? process.argv[i + 1] : undefined;
+}
 
-  // Parse pipe-delimited output, skip header rows
+async function main() {
+  const projectFile = parseArg("--project");
+  if (projectFile) openProject(projectFile);
+
+  console.log("Querying preset assignments...");
+  const raw = queryDesignerDb(SQL);
+
+  // sqlcmd output is tab-separated; data rows always start with a numeric
+  // PresetID, so filter on that to skip headers, dashes, and "(N rows affected)".
   const lines = raw
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const dataLines = lines.filter(
-    (l) => !l.startsWith("PresetID") && !l.startsWith("--------"),
-  );
+  const dataLines = lines.filter((l) => /^\d/.test(l));
 
   const leapNames = loadLeapPresetNames();
 
@@ -112,7 +125,7 @@ async function main() {
 
   for (const line of dataLines) {
     const [presetId, designerName, zoneId, , levelStr, fadeStr, , curveIdStr] =
-      line.split("|");
+      line.split("\t");
     if (!presetId || !zoneId) continue;
 
     // Skip NULL levels (fan speed, CCO, etc.)
