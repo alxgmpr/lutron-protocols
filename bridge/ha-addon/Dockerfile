@@ -11,7 +11,6 @@ COPY lib/ lib/
 COPY ccx/ ccx/
 COPY protocol/ protocol/
 COPY bridge/main.ts bridge/
-COPY tools/leap-client.ts tools/
 COPY tsconfig.json ./
 COPY run.sh ./
 
