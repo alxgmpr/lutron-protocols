@@ -23,7 +23,7 @@ key = (key + 1) % 95    // starts at 0x49 (73), resets per blob
 
 **Extraction tool**: `tools/coproc-extract.py`
 
-Two variants of this cipher have been seen:
+Three variants of this cipher have been seen:
 
 - **Phoenix** (RA3 / 6 MB binary): `key0=0x49`, key resets per S0 blob, multiple
   blobs concatenated with the `=z}/}~` (= `S02B00`) signature.
@@ -31,9 +31,15 @@ Two variants of this cipher have been seen:
   `key0=0x29`, key advances **continuously** across the entire stream, single blob
   with no S0 header (begins directly with `S3` records). See
   [caseta-smartbridge-coproc.md](caseta-smartbridge-coproc.md) for details.
+- **RA2 Select REP2 / Caseta Pro** (1.5 MB binary): same continuous cipher, but
+  multiple blobs concatenated with **key0 changes between blobs** (no embedded
+  signature). Observed `key0` values: `0x25` (HCS08 + first EFR32) and `0x7E`
+  (second EFR32). Blobs start at offsets the SmartBridge's narrow search misses;
+  `tools/coproc-extract.py`'s `extract_multi_continuous_blobs()` walker scans the
+  full binary trying multiple `key0` candidates.
 
-The 6 MB caseta-ra2select and vive (production) binaries still lack any signature
-match and may use yet another variant or key.
+The 6 MB caseta-ra2select-bundled binary (if any) and vive (production) binaries
+remain unsolved.
 
 ## Extracted Firmware Images
 
@@ -69,6 +75,28 @@ memory setup (16K window at 0x8000-0xBFFF via PPAGE register).
 | phoenix_kinetis_4000-FF80C | 1006K | 0x4000-0xFF80C | 0x20040000 (256K) | 0x3649D |
 
 This is the **primary CCX reverse engineering target**. See detailed analysis below.
+
+### RA2 Select REP2 / Caseta Pro
+
+Extracted to `data/firmware/ra2select-device/coprocessor/`. Same coproc lineup as
+Phoenix (2 × HCS08 CCA + 2 × Cortex-M CCA), distinct binaries:
+
+| File | Address Range | Notes |
+|------|---------------|-------|
+| rr-sel-rep2_hcs08_3000-1E808 | 0x3000-0x1E808 | HCS08 (108K), key0=0x25, blob @ 0x5C860 |
+| rr-sel-rep2_efr32_8003000-801FB08 | 0x08003000-0x0801FB08 | Cortex-M (115K), key0=0x25, blob @ 0xAA646 |
+| rr-sel-rep2_hcs08_3000-7E808 | 0x3000-0x7E808 | HCS08-large (494K), key0=0x25, blob @ 0xEA7B2 |
+| rr-sel-rep2_efr32_8003000-803FF08 | 0x08003000-0x0803FF08 | Cortex-M (243K), key0=0x7E, blob @ 0x13B460 |
+
+The Cortex-M images contain the same CCA OTA framing constants as Phoenix's EFR32
+images (sync `55 55 55 FF FA DE`, CRC poly `0F CA`, 256-entry CRC lookup table) —
+confirming that the CCA OTA wire protocol RE'd from Phoenix applies to RA2 Select
+/ Caseta Pro as well. See [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol).
+
+The "efr32" label follows Phoenix's naming convention; whether RA2 Select REP2
+actually uses an EFR32 (vs STM32 or another Cortex-M part) is unverified pending
+chip ID. An earlier extraction (before the multi-blob walker landed) labeled these
+as `_stm32_` — those are stale duplicates.
 
 ## Ghidra Project
 
