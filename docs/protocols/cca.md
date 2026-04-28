@@ -395,7 +395,113 @@ Programming sequence: A3 format 0x1A → 0x81 format 0x0A → C/D status → for
 
 LED config during pairing uses format 0x0A with type 0x81 (broadcast). Different from runtime format 0x11.
 
-## 9. Hardware Notes
+## 9. Firmware OTA Wire Protocol
+
+Firmware updates use a **separate on-air framing** from the runtime CCA protocol described in sections 1-8. Same chip family, same 433 MHz band, same CRC polynomial — but different modem mode, no N81 byte encoding, no type-byte length rule, frequency hopping, and a self-describing length+opcode header.
+
+Statically RE'd from the Phoenix EFR32 coproc binary (`phoenix_efr32_8003000-803FF08.bin`), verified byte-for-byte against PowPak's RX-side flash anchors, and **independently corroborated** by the RA2 Select REP2 / Caseta Pro coproc images (`rr-sel-rep2_efr32_8003000-*.s19`) which carry the same framing constants in identical relative positions. **No live RF capture has been done yet** — TX/RX/cross-bridge consistency is the empirical evidence. See [docs/firmware-re/powpak.md](../firmware-re/powpak.md) for PowPak anchors, [docs/firmware-re/coproc.md](../firmware-re/coproc.md) for the cross-bridge comparison, and [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) for the bridge-side IPC orchestration.
+
+### 9.1. Framing
+
+```
+[55 55 55][FF][FA DE][LEN:1][OP:1][PAYLOAD:N][CRC16:2]
+```
+
+| Field | Bytes | Notes |
+|-------|-------|-------|
+| Preamble | `55 55 55` | 3 bytes (vs runtime's 32-bit `0xAA…` alternating) |
+| Sync delimiter | `FF` | 1 byte before sync word |
+| Sync word | `FA DE` | Same as runtime CCA (section 2). Software-detected — chip-side sync is disabled |
+| Length | 1 byte | Length of `[OP:1][PAYLOAD:N]`, excludes sync/preamble/CRC |
+| Opcode | 1 byte | One of the values in [§9.3](#93-opcodes) |
+| Payload | 0–~10 bytes | Opcode-specific |
+| CRC-16 | 2 bytes | Polynomial `0xCA0F` (same as runtime) over `[LEN][OP][PAYLOAD]` |
+
+Total packet 6–14 bytes — well under the runtime CCA short-packet ceiling (24).
+
+### 9.2. Modem config (CC1101)
+
+OTA uses a different CC1101 mode than the runtime CCA protocol. Key registers:
+
+| Reg | Runtime CCA | OTA |
+|-----|-------------|-----|
+| PKTCTRL0 | `0x00` (fixed-length packet engine) | `0x32` (**async serial mode** — MCU bit-bangs framing) |
+| MDMCFG2 | `0x30` (2-FSK, no sync) | `0x10` (**GFSK**, no sync) |
+| MDMCFG3 | `0x3B` (62.5 kBaud) | `0x3B` (**30.49 kbps**) |
+| MDMCFG4 | `0x0B` | `0x9C` |
+| DEVIATN | `0x45` (41.2 kHz) | `0x44` (**32 kHz**) |
+| Channel hopping | None (fixed channel 26 default) | **35-channel hop table** (codes 0x44..0x66, ~92 kHz spacing) |
+
+Both ends (Phoenix EFR32 coproc TX and PowPak RX) configure these registers byte-for-byte identically.
+
+### 9.3. Opcodes
+
+| Opcode | HDLC cmd ID | Name | Body | Purpose |
+|--------|-------------|------|------|---------|
+| `0x2A` | `0x113` | **BeginTransfer** | 7 | Wake-up — places target's bootloader into receive mode |
+| `0x32` | `0x119` / `0x11B` / `0x11D` | **Control** (multi-purpose) | 6 | ChangeAddressOffset / EndTransfer / ResetDevice — sub-opcode in body byte 0 (TBD, needs live capture) |
+| `0x33` | `0x125` | GetDeviceFirmwareRevisions | 4 | |
+| `0x34` | `0x127` | CancelDeviceFirmwareUpload | 6 | |
+| `0x35` | `0x129` | (broadcast — likely RemoteAddrDeviceDiscovery) | 0 | |
+| `0x36` | `0x11F` | CodeRevision | 4 | Query running version |
+| `0x3A` | `0x121` | ClearError | 8 | Recovery |
+| `0x3C` | `0x12B` | (ack/notify) | 4 | |
+| `0x41` | `0x115` | **TransferData** | 4 | Carries firmware bytes — small chunks, ~250 packets/sec |
+| `0x58` | `0x111` | QueryDevice | 5 | Initial probe |
+
+### 9.4. Phase → opcode mapping
+
+The bridge's lutron-core dispatches firmware updates via 8 IPC commands ([caseta-cca-ota.md §"OTA Wire Vocabulary"](../firmware-re/caseta-cca-ota.md#ota-wire-vocabulary)). Each IPC command translates inside the coproc to one of the on-air opcodes above:
+
+| Phase | IPC command | Opcode |
+|-------|-------------|--------|
+| 0 | `RequestFirmwareUpdateResetDevice` | `0x32` (Control) |
+| 1 | `RequestFirmwareUpdateQueryDevice` | `0x58` |
+| 2 | `RequestFirmwareUpdateBeginTransfer` | `0x2A` |
+| 3 | `RequestFirmwareUpdateChangeAddressOffset` | `0x32` (Control) |
+| 4 | `RequestFirmwareUpdateTransferData` | `0x41` |
+| 5 | `RequestFirmwareUpdateEndTransfer` | `0x32` (Control) |
+| 6 | `RequestFirmwareUpdateCodeRevision` | `0x36` |
+| — | `RequestFirmwareUpdateClearError` | `0x3A` |
+
+The three `0x32` phases share the same on-air opcode but differ via a sub-opcode byte inside the body. The HDLC cmd IDs (`0x119` / `0x11B` / `0x11D`) discriminate them on the host↔coproc UART side; the body-side sub-opcode mapping needs a live capture to confirm.
+
+### 9.5. Wake-up sequence
+
+```
+QueryDevice (0x58) → CodeRevision (0x36) → BeginTransfer (0x2A)
+  → ChangeAddressOffset (0x32) → TransferData (0x41) × N
+  → EndTransfer (0x32) → ResetDevice (0x32)
+```
+
+Phase 4 (TransferData) carries the bulk of the session — repeated until the entire `.pff` (or `.ldf` on PowPak) payload is shipped, with `ChangeAddressOffset` interleaved as the cursor advances. Manifest declares `EstimatedFastUploadTimeInSeconds: 1200` for app-class images — ~20 minutes of RF per device.
+
+### 9.6. DeviceClass enforcement
+
+The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate (whether a PowPak refuses an LMJ image when its in-flash DeviceClass says RMJ, etc.) is whatever the bootloader itself does. See [docs/firmware-re/powpak.md §"Bootloader unknowns"](../firmware-re/powpak.md#bootloader-unknowns-gates-paths-2-and-3).
+
+### 9.7. Reproducibility
+
+Source binary anchors (Phoenix EFR32 coproc, `phoenix_efr32_8003000-803FF08.bin`, load `0x08003000`):
+
+| Anchor | BN address |
+|--------|------------|
+| CC1101 register init table (regs / values) | `0x08018c18` / `0x08018c98` |
+| OTA framing template `55 55 55 FF FA DE 08 02` | `0x08018a8c` |
+| HDLC cmd dispatch chain | `0x08004706` |
+| FirmwareUpdate handler cluster | `0x0800ee80`–`0x0800f2d8` |
+| Frequency hop table (35 channels) | `0x08018e30` |
+
+PowPak RX-side anchors (`PowPakRelay434L1-53.bin`):
+
+| Anchor | BN address |
+|--------|------------|
+| Sync word check (`CPHX #$FADE; BNE`) | `0x92C0` |
+| OTA framing template + CRC poly | `0x9714` |
+| Opcode `0x41` dispatch (TransferData) | `0x8680` |
+| Opcode `0x32` dispatch (Control) | `0x1423A` |
+
+## 10. Hardware Notes
 
 ### CC1101 RX Limitations
 
@@ -427,14 +533,14 @@ Format: 0B [seq] [response_class] [seq^0x26] [response_subtype]
 - CC1101 decodes bytes 2,4 with systematic 0xFE XOR error — RTL-SDR confirms correct values
 - 3 ACKs at ~25ms intervals per command
 
-## 10. Known Unknowns
+## 11. Known Unknowns
 
 - **Pico fast fade**: Pico payload is 5 bytes (no room for fade). Extended packets and alternative framings all failed. Likely requires solving the DEVICE→OUTPUT path.
 - **Trim phase encoding**: Forward/reverse phase location unknown — byte 22 (0x23) is constant across captures.
 - **Format 0x0E bytes 20-21**: Always 0x00 in captures. Could be delay field (untested).
 - **Component byte 0x40 vs 0x50**: May unlock different parameter spaces (scene vs dimmer config).
 
-## 11. Discovery Notes
+## 12. Discovery Notes
 
 > **Discovery (2026-02-05): Fade Time Control**
 >

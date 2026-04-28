@@ -1,8 +1,12 @@
 # Caseta Bridge CCA OTA Orchestration
 
 How the Caseta SmartBridge / RA2 Select bridge (L-BDG2-WH, deviceclass `080F0101`)
-orchestrates CCA device firmware updates over 433 MHz. Static analysis only —
-RF wire format byte still unknown, blocked on a live capture.
+orchestrates CCA device firmware updates over 433 MHz.
+
+The on-air opcode bytes have since been RE'd from the Phoenix EFR32 coproc (see
+[powpak.md](powpak.md) and [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol)).
+Whether the Caseta Pro coproc emits the same wire format is still TBD pending
+either coproc-image extraction or a live RF capture.
 
 Companion to [coproc.md](coproc.md), which covers Phoenix's analogous path on RA3.
 
@@ -118,10 +122,30 @@ Phase 4 (`TransferData`) is the bulk of the session — repeated until the entir
 `.pff` payload is shipped, with `ChangeAddressOffset` interleaved as the cursor
 advances.
 
-The CCA RF packet type byte for these phases is **not yet known** — coproc translates
-abstract IPC into RF, and the byte values live in the coproc firmware (STM32), not
-in `lutron-core`. The current Caseta coproc image isn't extracted in our tree (only
-old `caseta-sb-0205/0210_stm32_*.s19` blobs in `data/firmware/caseta-device/coproc-old/`).
+The on-air opcode for each IPC phase has since been RE'd from the **Phoenix EFR32
+coproc** (`phoenix_efr32_8003000-803FF08.bin`). See
+[powpak.md §"CCA OTA wire protocol"](powpak.md#cca-ota-wire-protocol-red-from-phoenix-efr32-coproc)
+for full framing, and [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol)
+for the protocol-spec form. Phase → opcode mapping:
+
+| Phase | Opcode | HDLC cmd ID |
+|-------|--------|-------------|
+| ResetDevice | `0x32` (Control) | `0x11D` |
+| QueryDevice | `0x58` | `0x111` |
+| BeginTransfer | `0x2A` | `0x113` |
+| ChangeAddressOffset | `0x32` (Control) | `0x119` |
+| TransferData | `0x41` | `0x115` |
+| EndTransfer | `0x32` (Control) | `0x11B` |
+| CodeRevision | `0x36` | `0x11F` |
+| ClearError | `0x3A` | `0x121` |
+
+Three phases share opcode `0x32` — body-byte sub-opcode discriminator still TBD
+(see Open Question #1 below). Whether the **Caseta Pro coproc** (separate STM32
+image, not extracted yet — only old `caseta-sb-0205/0210_stm32_*.s19` SmartBridge
+blobs in `data/firmware/caseta-device/coproc-old/`) emits the same on-air
+opcodes is also TBD; could be confirmed either by extracting the Caseta coproc
+image (cipher work — see [caseta-smartbridge-coproc.md](caseta-smartbridge-coproc.md)
+for the related cipher cracked on the older SmartBridge) or by live RF capture.
 
 ## Auto-trigger paths inside `lutron-core`
 
@@ -204,10 +228,15 @@ images — boot updates would require physical access.
    ```
    (Or just let `-p` pull live from cloud — easier if version delta is real.)
 
-3. **Arm the openBridge** sniffer at 433.602844 MHz, FSK, set the channel to match
-   the bridge's CCA link channel (per `addressing-mode-link-receiver` logs in
-   lutron-core, channel and subnet address are stored in the runtime DB).
-   Capture window ≥ 1500 s.
+3. **Arm a wideband sniffer** — RTL-SDR is the safer choice here than CC1101-based
+   sniffers (openBridge or Nucleo+CC1101) because OTA traffic uses a different
+   modem mode than runtime CCA (GFSK 30 kbps async serial, 35-channel hopping
+   across 92 kHz spacing — see [docs/protocols/cca.md §9.2](../protocols/cca.md#92-modem-config-cc1101)).
+   The CC1101-based sniffers would need to be reconfigured to OTA mode and
+   either parked on a single hop channel or made to follow the hop sequence.
+   For RTL-SDR, capture ≥ 1500 s at the broadest-feasible bandwidth covering
+   all 35 channels (≈ ~3.2 MHz centered on the band — adjust based on hop
+   table extent).
 
 4. **Trigger** from SSH:
    ```sh
@@ -219,10 +248,15 @@ images — boot updates would require physical access.
    tail -F /var/log/messages | grep -E "firmware-update|cca|coproc"
    ```
 
-6. **Decode**: With the 8-phase vocabulary above, segment the capture by long
-   inter-packet gaps (Reset/Query/BeginTransfer are sparse; TransferData is a long
-   burst). Match phase boundaries to log timestamps to identify each phase's RF
-   packet type byte. Once known, add to [protocols/cca.md](../protocols/cca.md).
+6. **Decode**: with the phase→opcode mapping already documented (above and in
+   [docs/protocols/cca.md §9.4](../protocols/cca.md#94-phase--opcode-mapping)),
+   the capture's main remaining purpose is to (a) **verify** the Caseta Pro
+   coproc emits the same wire format as Phoenix's, and (b) **resolve** the
+   body sub-opcode that distinguishes the three `0x32` Control phases
+   (ChangeAddressOffset / EndTransfer / ResetDevice). Segment the capture by
+   long inter-packet gaps (sparse handshake phases vs. the dense TransferData
+   burst), match boundaries to log timestamps, and read the body bytes of
+   each `0x32` packet to identify the discriminator.
 
 ## Cross-system applicability (RMJ / Phoenix LMJ / Vive RMJS)
 
@@ -244,13 +278,24 @@ images — boot updates would require physical access.
 
 ## Open questions after this pass
 
-1. **CCA RF packet type byte for OTA phases** — needs live capture (this experiment).
-2. **PFF symmetric key** — encrypted payload, key burned in device bootloader at
+1. ~~**CCA RF packet type byte for OTA phases**~~ — **Resolved at the static-RE
+   level** by RE'ing the Phoenix EFR32 coproc; see the phase→opcode table above
+   and [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol).
+   What's still open: the body sub-opcode that distinguishes the three `0x32`
+   (Control) phases (ChangeAddressOffset / EndTransfer / ResetDevice) — the
+   HDLC cmd IDs differ on the host↔coproc UART side but the on-air body bytes
+   haven't been read out. Live capture would resolve this in one shot.
+2. ~~**Caseta Pro coproc wire format equivalence**~~ — **Resolved** by
+   extracting the RA2 Select REP2 (= Caseta Pro) coproc images from
+   `data/rr-sel-rep2/usr/sbin/lutron-coproc-firmware-update-app` (cipher
+   variant: continuous, multiple `key0` values per blob — see
+   [coproc.md](coproc.md#obfuscation)) and confirming the Cortex-M images
+   contain the same CCA OTA framing constants (sync `55 55 55 FF FA DE`,
+   CRC poly `0F CA`, 256-entry CRC lookup table) as Phoenix's EFR32 images
+   in identical relative positions. The wire protocol generalizes.
+3. **PFF symmetric key** — encrypted payload, key burned in device bootloader at
    manufacture. Recovering it likely needs SWD/JTAG on a CCA device. Without it
    we can replay/relay but can't author firmware.
-3. **Caseta coproc firmware location** — current STM32 coproc image isn't in the
-   rootfs we have. Likely embedded in `lutron-coproc-firmware-update-app`'s
-   `.rodata` (similar to Phoenix). Worth a follow-up extraction.
 4. **`MinimumRevisions` semantics** — empty for all entries in current Caseta
    manifest; on Phoenix it gates app upgrades on boot version. May trigger boot
    image transfer in future bundles.
