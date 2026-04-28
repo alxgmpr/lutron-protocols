@@ -191,25 +191,33 @@ in v08.25.17f000):
 
 **Codename → device-class map** (15 classes covered):
 
-| Codename | Device classes | Files |
-|---|---|---|
-| BASENJI (Diva) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 |
-| BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 |
-| EO / eagle-owl | `0x03120101/0102/0103` | v2.025 |
-| Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 |
-| Antillean | (in firmware list, class TBD) | v1.001 |
-| Caseta Dimmer (legacy) | `0x04320501` | v2.05 |
+| Codename | Device classes | Files | MCU |
+|---|---|---|---|
+| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
+| BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
+| EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
+| Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
+| Antillean | (in firmware list, class TBD) | v1.001 | TBD |
+| Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
+
+**EFR32FG23 implication for PFF key recovery**: BASENJI uses FG23, which is xG2x
+(Cortex-M33 + Secure Vault Mid, AAP token-based unlock, Secure Boot RTSL, OTP
+key storage). Older xG1/xG12/xG14 (Cortex-M4) glitch attacks (LimitedResults /
+Riscure et al.) do not apply directly — newer xG2x glitch research exists
+(LimitedResults / Quarkslab on xG21+) but is harder. Crucially, Secure Boot and
+debug-lock on FG23 are configurable, so empirically check what Lutron actually
+enabled before assuming the worst case.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device**. Plan capture
 buffer / streaming accordingly.
 
 ## .pff format (Pegasus Firmware Format)
 
-Same container as CCX device firmware (per [coproc.md](coproc.md)):
-- 8-byte header (Major/Minor 4 bytes each, big-endian)
-- Encrypted payload (AES, per-device-model key burned at manufacture)
-- Bridge does NOT decrypt — it ships the .pff bytes unmodified to the device
-  bootloader, which decrypts in place
+Same container as CCX device firmware. See [coproc.md §"PFF File Format"](coproc.md#pff-file-format)
+for the verified layout. Headline: 4-byte BE Major (0=boot, 1=app), 4-byte BE Minor,
+64-byte unique field (likely ECDSA-P256 signature), 195 reserved zero bytes, then
+the AES ciphertext starting at offset `0x10B`. Bridge does NOT decrypt — it ships
+the .pff bytes unmodified to the device bootloader, which decrypts in place.
 
 Format identifier (in path component): `App` images, distinct from `Boot` images
 (format 0 = boot ~20K, format 1 = app 100–900K). Caseta manifest only ships App
