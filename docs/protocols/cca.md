@@ -636,3 +636,105 @@ Format: 0B [seq] [response_class] [seq^0x26] [response_subtype]
 - Sequence bytes vary but don't affect basic function
 - Zone ID placement varies by packet format (byte 9 for 0x28, byte 24 for 0x12)
 - Format 0x28 byte 10 (`zone_id + 0x23`) is non-critical; format 0x12 byte 24 is authoritative
+
+## 10. Non-OTA Opcode Map (from EFR32MG12 RE)
+
+This section documents the **bridge-side** TX dispatch found while reverse
+engineering the Phoenix CCA EFR32 coprocessor binaries
+(`phoenix_efr32_8003000-801FB08.bin` and `phoenix_efr32_8004000-803A008.bin`).
+
+The dispatch is NOT a single master `switch(op)` table the way the OTA opcodes
+are; it is split across:
+
+1. A **TX message-class builder** (`FUN_08006784` in 801FB08, `FUN_08008848` in
+   803A008). Selects an OP byte from a small message-class index and writes it
+   to byte 5 of the outgoing packet buffer (after a 4-byte header). 6 cases.
+2. A set of **format-specific TX wrappers** (~13 callers of the generic packet
+   allocator `FUN_0800fbd4` in 801FB08). Each one writes its specific OP byte
+   and format byte (offset 0x0E) for the wire packet.
+3. An **OTA pairing/transfer state machine** (`FUN_0800bfe0` in 803A008,
+   `FUN_08009e08` in 801FB08). 12 states, drives the OTA wake-up sequence
+   documented in [docs/firmware-re/powpak.md](../firmware-re/powpak.md).
+
+Because of this split, "the master CCA RX dispatch" doesn't appear as a single
+TBB/TBH lookup — instead, an RX packet flows through CRC verification (using
+the `0xCA0F` table at `0x0801E8D0` in 801FB08), then through cmp-cascades that
+classify by length-band first (`cmp r0, #0x80` paired with `cmp r0, #0xa0` in
+3 spots in 803A008 at `0x080130bc`, `0x08013e6a`, `0x080118ce`) before fanning
+out to per-format handlers.
+
+### TX Builder Cases (mirror in both CCA-side EFR32 binaries)
+
+The 6-case TX message-class builder (`FUN_08008848` / `FUN_08006784`):
+
+| Case | OP byte written | Length | Mapping to existing TS catalog |
+|------|-----------------|--------|--------------------------------|
+| 0 | `0x88 \| (cfg & 7)` → `0x88-0x8F` | 24-byte short pkt | NEW — short-packet state report range above documented `0x80-0x83`; matches CCA "type 0x80-0x9F = 24 bytes" rule from §3 |
+| 1 | `0xA0 \| (cfg & 7)` → `0xA0-0xA7` | 53-byte long pkt | Partial — `CONFIG_A1` (0xA1), `SET_LEVEL` (0xA2), `CONFIG_A3` (0xA3) already in `protocol/cca.protocol.ts`; `0xA0/0xA4-0xA7` are NEW |
+| 2 | `0xCE` | 24-byte short pkt | KNOWN — `HS_CE` "Handshake round 3 (bridge)" |
+| 3 | `0xFC` (length=1, byte+0xb=3, byte+0xd=1) | 1-byte | NEW — short broadcast with length=1 only. Distinct from the existing virtual `SENSOR_VACANT` (0xFC, 24-byte, format 0x0C). On-air this is a short control beacon |
+| 4 | `0xFD` followed by `0x82 0x80 ... <product-id-LE16> ...` (14 bytes total) | 14-byte | KNOWN family — UNPAIR group. The product-ID short differs per binary: `0x5006` in 801FB08, `0xA812` in 803A008 — likely the bridge's own QS hardware ID literal |
+| 5 | `0xE9` (variable) | reads from external buffer; bitfield-encoded byte 7 | NEW — **multi-part transmit**, encodes a 4-bit flag mask (lower nibble bits 3..6) into byte 7 alongside an 8-bit address-class field. Likely a sensor-event echo or a multi-target dispatch (4 flag bits = 4 destinations) |
+
+After the OP byte selection the builder calls `FUN_08004c7c` (in 801FB08) or
+`FUN_08006d34` (in 803A008) — those are the queued-TX submit routines.
+
+### OTA pairing / transfer state machine (12 states)
+
+`FUN_0800bfe0` in 803A008 / `FUN_08009e08` in 801FB08. State variable lives at
+`*DAT_0800c218` (803A008) / `*DAT_0800a040` (801FB08). States:
+
+| State | Behavior |
+|-------|----------|
+| 0 | Idle — wait for tick, set retry counter (4-byte field +4 = `0xc2 0x01 0x00 0x00`), advance to 1 |
+| 1 | Pairing-tx — call `FUN_080066c6` (TX builder), advance to 2 |
+| 2 | Quiet — clear retry counter, wait |
+| 3, 4 | Idle hold — countdown then `FUN_080141b8` (kick scheduler) |
+| 5 | Bulk-broadcast — `FUN_0800b1dc(7)`, build 7-byte packet `FF FF FF FF FF 02 04` (broadcast addr + cmd 2 op 4), submit, advance to 6 |
+| 6 | Multi-target loop — increment slot ptr+0x16, decrement remaining ptr+0x13; for each, build packet `FF FF FF FF FF 02 03 <slot+1> <remaining-1>` then payload from `FUN_0801431a`; when both counters exhaust, fall back to baseline state (max(ptr[1], 2)) or to state 7 |
+| 7 | Final TX — uses *separate* buffer at `DAT_0800c2a4`, packet `FF FF FF FF FF 02 05`, submit, advance to baseline; conditionally writes packet trailer `60 EA 00 00` at offsets +4..+7 if state ∈ {3,4} |
+| 8 | Search — call `FUN_08014c48(slot, 1)`, advance to 9 if found |
+| 9 | Confirm — call `FUN_08014c48(slot, 0)`, then write `60 EA 00 00` trailer; on transient error log |
+| 10 | Tear-down — countdown then `FUN_08014bb0` (release/finalize) |
+| 11 | Pre-tx wait — countdown calls `FUN_0800aea0`, otherwise spinner via `FUN_0800676a` and `FUN_0800b1c0` |
+
+The constants `02 04`, `02 03`, `02 05` written into byte+5..6 of the broadcast
+packets correspond to STATE_RPT cmd_class + op pairs — these are the bridge-side
+"broadcast pair / pair-confirm / pair-end" sequence that appears during
+multi-device pairing. These overlap with the OTA opcode 0x32 multi-purpose-control
+path documented in [docs/firmware-re/powpak.md](../firmware-re/powpak.md).
+
+### Verifying which binary is which (CCA classification)
+
+Both `phoenix_efr32_8003000-801FB08.bin` and `phoenix_efr32_8004000-803A008.bin`
+contain:
+
+- The strings `"Cordless wakeup unsupported event received"` and
+  `"Link event unsupported event received"` (CCA-specific debug logs — not
+  present in the other two EFR32 binaries).
+- The `0xFADE` sync word as a 16-bit BE constant adjacent to the CRC-16 lookup
+  table for poly `0xCA0F` — at `0x0801E8C8` / `0x0801E8D0` in 801FB08.
+- The `"L-BDG"` product code string (Lutron SmartBridge Pro / DC32_CCT_PROCESSOR
+  `0x08030101`).
+
+The other two EFR32 binaries (`8003000-803FF08.bin`, `8003000-807F808.bin`)
+have neither and are CCX-side. See [docs/firmware-re/coproc.md](../firmware-re/coproc.md)
+for the full classification table.
+
+### TODO / open questions
+
+- Locate the **format-byte 0x0E** discriminator on the RX path. The TX wrappers
+  set it via individual functions but the RX-side handler that dispatches on it
+  hasn't been pinned. The 3 cmp-`0x80`-then-cmp-`0xa0` sites in 803A008 are TX
+  builders; the RX path may live in an interrupt handler or a dispatch table
+  in RAM populated at boot (which doesn't show in static analysis).
+- The OP `0xE9` (case 5) bitfield encoding suggests a 4-target multicast or a
+  4-button keypad event echo. Not yet mapped to any existing packet type.
+- Cross-check between the two CCA binaries: the per-firmware constant in case 4
+  (`0x5006` vs `0xA812`) should encode the bridge's own QS hardware ID — verify
+  against a live capture of the bridge sending an UNPAIR.
+- The 64-entry TBB/TBH "tables" found by the `WalkARMSwitchTables.java`
+  walker are largely false positives — Cortex-M TBB tables don't include a
+  size word, so the walker over-reads into the next basic block. The
+  decompile-side switch reveals real sizes (e.g. 6 cases for the TX builder,
+  12 for the OTA state machine).
