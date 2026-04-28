@@ -313,6 +313,7 @@ def main():
         ("caseta-sb-0205", "data/firmware/caseta-smartbridge/rootfs-02.05.00a000/usr/sbin/lutron-coproc-firmware-update-app"),
         ("caseta-sb-0210", "data/firmware/caseta-smartbridge/rootfs-02.10.03a000/usr/sbin/lutron-coproc-firmware-update-app"),
         ("rr-sel-rep2", "data/rr-sel-rep2/usr/sbin/lutron-coproc-firmware-update-app"),
+        ("lite-heron", "data/firmware/lite-heron-decrypted/sbin/lutron-coproc-firmware-update-app"),
     ]
 
     repo_root = Path(__file__).resolve().parent.parent
