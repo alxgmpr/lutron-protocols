@@ -241,11 +241,21 @@ State machine at FUN_000186b4, transfer at FUN_000183d4:
 PFF = "Pegasus Firmware Format" (update-file-format-{0,1}.pff)
 
 ```
-Offset  Size  Field
-0x00    4     Version Major (big-endian, usually 0 or 1)
-0x04    4     Version Minor (big-endian, usually 1)
-0x08    ...   Encrypted payload (AES, 0.96 byte entropy)
+Offset  Size  Field                     Notes
+0x000     4   Version Major (BE u32)    0 = boot, 1 = app
+0x004     4   Version Minor (BE u32)    1
+0x008    64   Per-file unique field     likely ECDSA-P256 sig (r‖s) or HMAC-SHA512
+0x048   195   Reserved                  all-zero, universal across every PFF observed
+0x10B   var   Encrypted body            AES, chi²≈229 on a 160 KB body (uniform expectation 255)
 ```
+
+Verified across all 48 sample PFFs (9 Caseta/RA2-Select + 39 Phoenix). The reserved
+195-zero run at offset 0x48 is identical in every file regardless of device class,
+boot-vs-app split, or build version — strong signal that bytes 0x008..0x10A are a
+fixed-layout file header and the encrypted blob does not begin until offset 0x10B.
+
+Use `tools/pff-parse.ts` to dump the layout and run the chi-square / structural
+sanity check on any `.pff`.
 
 - Format 0 = boot images (~20K)
 - Format 1 = app images (100K-900K)
