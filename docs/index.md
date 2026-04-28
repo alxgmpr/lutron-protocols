@@ -45,6 +45,7 @@ Documentation for the Lutron reverse engineering toolkit, organized by topic.
 | [firmware-re/apk.md](firmware-re/apk.md) | LEAP Android APK — decompilation, endpoint discovery, command surfaces |
 | [firmware-re/wink-hub.md](firmware-re/wink-hub.md) | Wink hub firmware — legacy Lutron hub analysis |
 | [firmware-re/grafik-eye.md](firmware-re/grafik-eye.md) | Grafik Eye QS firmware — extraction from Designer install, encrypted payload format |
+| [firmware-re/powpak.md](firmware-re/powpak.md) | PowPak (RMJ/LMJ/RMJS) HCS08 firmware — LDF format, CC1101 config, DeviceClass byte location, CCA OTA wire protocol (sync FADE / CRC 0xCA0F / opcode set), RMJ→LMJ conversion attack analysis |
 
 ## Infrastructure
 
