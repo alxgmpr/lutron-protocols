@@ -23,9 +23,17 @@ key = (key + 1) % 95    // starts at 0x49 (73), resets per blob
 
 **Extraction tool**: `tools/coproc-extract.py`
 
-Only the Phoenix binary has this obfuscation. Caseta/Vive/SmartBridge binaries (~276K) don't
-embed firmware — they use external S19 files or a different scheme. The 6MB caseta-ra2select
-and vive binaries also lack the `=z}/}~` signature; may use a different key or format.
+Two variants of this cipher have been seen:
+
+- **Phoenix** (RA3 / 6 MB binary): `key0=0x49`, key resets per S0 blob, multiple
+  blobs concatenated with the `=z}/}~` (= `S02B00`) signature.
+- **Caseta SmartBridge** (older L-BDG2/SBP2 / 0.3 MB binary) and **Vive prototype**:
+  `key0=0x29`, key advances **continuously** across the entire stream, single blob
+  with no S0 header (begins directly with `S3` records). See
+  [caseta-smartbridge-coproc.md](caseta-smartbridge-coproc.md) for details.
+
+The 6 MB caseta-ra2select and vive (production) binaries still lack any signature
+match and may use yet another variant or key.
 
 ## Extracted Firmware Images
 
