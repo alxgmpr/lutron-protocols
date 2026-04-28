@@ -45,36 +45,64 @@ remain unsolved.
 
 All extracted to `data/firmware/phoenix-device/coprocessor/`:
 
-### EFR32 — CCA Radio Firmware (bare-metal, CC110L SPI driver)
+### EFR32 — CCA + CCX Radio Coprocessor Firmware (Silicon Labs MG12, bare-metal)
 
-| File | Size | Address Range | Git Hash | Notes |
-|------|------|---------------|----------|-------|
-| phoenix_efr32_8003000-801FB08 | 112K | 0x8003000-0x801FB08 | 64034cd9e8 | L-BDG (bridge), Copyright 2014 |
-| phoenix_efr32_8003000-803FF08 | 243K | 0x8003000-0x803FF08 | ee2e4c2efb | Copyright 2017, newer variant |
-| phoenix_efr32_8003000-807F808 | 498K | 0x8003000-0x807F808 | cb12f859dd | Large, mostly data tables |
-| phoenix_efr32_8004000-803A008 | 216K | 0x8004000-0x803A008 | 64034cd9e8 | Superset of 112K (32K RAM) |
+Phoenix carries **two EFR32MG12 coprocessors** — one driving a CC110L over SPI for
+433 MHz CCA (bit-banged, async serial mode), the other handling Thread/802.15.4
+via the MG12's internal radio. Larger Phoenix variants ship two CCA EFR32 binaries
+(probably master + slave, or two different SKUs sharing a build); smaller variants
+appear to ship one of each.
 
-**Key finding**: These do NOT use Silicon Labs SDK/RAIL/EMLIB. The EFR32 is used purely as a
-Cortex-M MCU driving an external CC110L over SPI for 433 MHz CCA. No internal 2.4 GHz radio.
+| File | Size | Base | Role | Evidence |
+|------|------|------|------|----------|
+| phoenix_efr32_8003000-801FB08 | 115K | 0x08003000 | CCA | Strings "Cordless wakeup unsupported event received" / "Link event unsupported event received", "L-BDG", `0xFADE` sync (BE) at `0x0801E8C8`, CRC-16 table (poly `0xCA0F`) at `0x0801E8D0` |
+| phoenix_efr32_8004000-803A008 | 216K | 0x08004000 | CCA | Same Cordless / Link event strings, `0xFADE` sync (5 occurrences), `0xCA0F` CRC poly, "L-BDG" |
+| phoenix_efr32_8003000-803FF08 | 243K | 0x08003000 | CCX (likely) | No CCA debug strings; `fe80::` LL IPv6 prefix and `fd12::` Thread mesh-local prefix present in data; Copyright 2017 (newer build) |
+| phoenix_efr32_8003000-807F808 | 498K | 0x08003000 | CCX (likely) | No CCA debug strings, no `0xFADE` sync match; deepest stack pointer (SP=0x20028000 = 160 KB) consistent with full mbedTLS + OpenThread footprint |
 
-### HCS08 — CCA Radio Firmware (Freescale 8-bit)
+**CCA classification ground truth** is the Cordless / Link event log strings — those
+two strings appear ONLY in 801FB08 and 803A008. Both also contain the CCA-specific
+sync word `0xFADE` followed by the 256-entry CRC-16 lookup table for poly `0xCA0F`.
 
-| File | Size | Address Range | Notes |
-|------|------|---------------|-------|
-| phoenix_hcs08_3000-1E808 | 108K | 0x3000-0x1E808 | S0: "CoProcApplication" |
-| phoenix_hcs08_3000-3E808 | 151K | 0x3000-0x3E808 | eagle-owl CCA app |
-| phoenix_hcs08_3000-7E808 | 149K | 0x3000-0x7E808 | bananaquit/basenji larger flash |
+**CCX classification** is by exclusion — the other two EFR32 binaries have neither
+of those CCA fingerprints. They contain `fe80::` and `fd12::` IPv6 prefix bytes
+in their data segments (Thread link-local + mesh-local), which is the only
+Thread-side fingerprint that survived stripping. We have not yet located internal
+RAIL or OpenThread strings — those appear to be heavily compiled out / log-IDed.
 
-Uses banked/global addressing (S2 records, 24-bit). Ghidra import requires manual paged
-memory setup (16K window at 0x8000-0xBFFF via PPAGE register).
+**Note**: These coprocs do NOT use Silicon Labs SDK/RAIL/EMLIB strings in plaintext
+(no `RAIL_*` / `RAIL_StateXXX` markers). All RAIL hooks are inlined or stripped.
+This is consistent with a release-mode Lutron build that has been size-optimized.
 
-### Kinetis — CCX Coprocessor (NXP ARM Cortex-M, FreeRTOS + OpenThread)
+### HCS08 — End-Device Firmware (NOT bridge dispatch)
+
+These are the **firmware images Phoenix flashes OUT** to dimmers / picos / fan
+controls over CCA OTA. They are NOT the EFR32 bridge dispatch — earlier notes
+incorrectly grouped them as such.
+
+| File | Size | Codename / Role |
+|------|------|-----------------|
+| phoenix_hcs08_3000-1E808 | 108K | "CoProcApplication" — actually this S0 banner is misleading; binary is end-device class (small flash) |
+| phoenix_hcs08_3000-3E808 | 151K | eagle-owl CCA dimmer end-device firmware |
+| phoenix_hcs08_3000-7E808 | 149K | bananaquit / basenji end-device firmware (larger flash variant) |
+
+These are MC9S08-class 8-bit binaries with banked addressing (S2 records, 24-bit).
+The CCA RX dispatch in these files is the **device side** of the protocol — what
+listens for SET_LEVEL / BEACON / pairing packets and acts on them. The
+**bridge / coordinator side** RX dispatch lives in the EFR32 binaries above.
+
+### Kinetis — CCX Coprocessor (suspected NXP, FreeRTOS + OpenThread)
 
 | File | Size | Address Range | SP | Reset |
 |------|------|---------------|-----|-------|
 | phoenix_kinetis_4000-FF80C | 1006K | 0x4000-0xFF80C | 0x20040000 (256K) | 0x3649D |
 
-This is the **primary CCX reverse engineering target**. See detailed analysis below.
+This is the **primary CCX reverse engineering target**. The "Kinetis" tag came from
+the original `coproc-extract.py` heuristic (address range starting at 0x4000)
+rather than a chip-ID confirmation; given that the rest of the Phoenix radio
+coproc family is EFR32MG12, this binary may actually be a third EFR32 / different
+Cortex-M part. Vector layout matches Cortex-M; chip-ID-by-strings is inconclusive.
+See detailed analysis below for the OpenThread/CoAP framework.
 
 ### RA2 Select REP2 / Caseta Pro
 
@@ -113,16 +141,29 @@ HCS08 images need manual import with MC9S08GB60 variant and banked memory config
 ```
 Phoenix Processor (AM335x Linux)
   │
-  ├── UART /dev/ttyS2, 230400 ──→ EFR32 (CCA coprocessor)
-  │   Link 1, LinkType 9            Bare-metal, CC110L SPI driver
-  │   "James RF"                     433 MHz FSK, 8N1 codec
-  │                                  Variants: L-BDG bridge, sensors
+  ├── UART /dev/ttyS2, 230400 ──→ EFR32MG12 (CCA coprocessor)
+  │   Link 1, LinkType 9            Bare-metal, drives external CC110L over SPI
+  │   "James RF"                     433 MHz FSK (CC110L is bit-banged in async
+  │                                  serial mode, PKTCTRL0=0x32 — MCU does
+  │                                  preamble + sync + CRC + 8N1 codec).
+  │                                  Variants ship 1-2 EFR32 CCA binaries.
   │
-  └── UART /dev/ttyS1, 230400 ──→ Kinetis (CCX coprocessor)
+  └── UART /dev/ttyS1, 230400 ──→ EFR32MG12 (CCX coprocessor)
       Link 0, LinkType 31 (0x1f)    FreeRTOS + OpenThread FTD
-      "Pegasus"                      802.15.4 / Thread mesh
+      "Pegasus"                      MG12's internal 2.4 GHz radio handles
+                                     802.15.4 / Thread mesh
                                      HDLC/Spinel transport
 ```
+
+**Hardware confirmation (from owner of physical units, 2026-04-28):** main MCU is
+the TI AM335x (Cortex-A8 Linux host). Both radio coprocs are Silicon Labs
+EFR32MG12. The CC110L is a passive analog/digital sub-GHz transceiver — no MCU,
+no firmware — bit-banged by the EFR32 over SPI. RA3-class Phoenix typically
+carries two EFR32MG12s (one per radio); smaller Phoenix may carry only the CCX
+one with a fixed-function CC110L driver still present. The HCS08 binaries we
+extract from `lutron-coproc-firmware-update-app` are *end-device* firmware
+(eagle-owl dimmers, basenji picos, bananaquit fan controls) — they are what
+Phoenix flashes OUT, not the bridge dispatch.
 
 ## Kinetis CCX Firmware Deep Analysis
 
