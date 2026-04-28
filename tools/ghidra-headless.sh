@@ -13,8 +13,8 @@
 #     -preScript ListProjectPrograms.java -scriptPath tools/ghidra-scripts -noanalysis
 #
 #   tools/ghidra-headless.sh /tmp/ghidra-test myproj \
-#     -import some.bin -processor HCS08:BE:16:default -loader BinaryLoader \
-#     -loader-baseAddr 0x3000 -overwrite
+#     -import some.bin -processor ARM:LE:32:Cortex -loader BinaryLoader \
+#     -loader-baseAddr 0x08003000 -overwrite
 
 set -euo pipefail
 
