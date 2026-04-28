@@ -1748,6 +1748,84 @@ export const LENGTHS = {
   PAIRING: 53,
 } as const;
 
+/**
+ * CCA Firmware OTA wire protocol.
+ *
+ * Separate framing from runtime CCA — uses CC1101 async serial mode (PKTCTRL0=0x32),
+ * GFSK at 30.49 kbps, no N81 byte encoding, length-prefixed self-describing packets,
+ * 35-channel frequency hopping. Same chip family, same band, same CRC polynomial as
+ * runtime CCA. See docs/protocols/cca.md §9 and docs/firmware-re/powpak.md.
+ *
+ * RE'd statically from Phoenix EFR32 coproc binary; verified byte-for-byte against
+ * PowPak's RX-side flash anchors.
+ */
+export const OTA = {
+  /** On-air framing (preamble + sync delimiter + sync word, raw bytes) */
+  PREAMBLE: [0x55, 0x55, 0x55],
+  SYNC_DELIMITER: 0xff,
+  SYNC_WORD: [0xfa, 0xde],
+  /** Min/max packet size including CRC, excluding preamble/sync */
+  MIN_PACKET_BYTES: 6,
+  MAX_PACKET_BYTES: 14,
+  /** CC1101 modem config differences from runtime CCA */
+  MODEM: {
+    PKTCTRL0: 0x32, // async serial mode
+    MDMCFG2: 0x10, // GFSK, no chip-side sync
+    MDMCFG3: 0x3b, // 30.49 kbps
+    MDMCFG4: 0x9c,
+    DEVIATN: 0x44, // 32 kHz
+  },
+  /** Frequency hopping */
+  HOP_CHANNELS: 35,
+  HOP_CHANNEL_RANGE: [0x44, 0x66] as const, // channel codes
+} as const;
+
+/**
+ * CCA OTA opcode values (on-air, after [LEN] byte).
+ *
+ * Three IPC commands map to opcode CONTROL (0x32) — distinguished by a body
+ * sub-opcode that needs a live capture to confirm.
+ */
+export const OTAOpcode = {
+  BEGIN_TRANSFER: 0x2a,
+  /** Multi-purpose: ChangeAddressOffset / EndTransfer / ResetDevice */
+  CONTROL: 0x32,
+  GET_DEVICE_FW_REVISIONS: 0x33,
+  CANCEL_DEVICE_FW_UPLOAD: 0x34,
+  BROADCAST: 0x35,
+  CODE_REVISION: 0x36,
+  CLEAR_ERROR: 0x3a,
+  ACK_NOTIFY: 0x3c,
+  TRANSFER_DATA: 0x41,
+  QUERY_DEVICE: 0x58,
+} as const;
+
+export type OTAOpcode = (typeof OTAOpcode)[keyof typeof OTAOpcode];
+
+/** OTA opcode name lookup by value */
+export const OTAOpcodeNames: Record<number, string> = Object.fromEntries(
+  Object.entries(OTAOpcode).map(([k, v]) => [v, k]),
+);
+
+/**
+ * HDLC command IDs that lutron-core sends to the CCA coproc, mapped to the
+ * on-air opcode the coproc emits. Three HDLC IDs collapse onto opcode 0x32.
+ */
+export const OTAHdlcCmd = {
+  QUERY_DEVICE: 0x111,
+  BEGIN_TRANSFER: 0x113,
+  TRANSFER_DATA: 0x115,
+  CHANGE_ADDRESS_OFFSET: 0x119,
+  END_TRANSFER: 0x11b,
+  RESET_DEVICE: 0x11d,
+  CODE_REVISION: 0x11f,
+  CLEAR_ERROR: 0x121,
+  GET_DEVICE_FW_REVISIONS: 0x125,
+  CANCEL_DEVICE_FW_UPLOAD: 0x127,
+  BROADCAST: 0x129,
+  ACK_NOTIFY: 0x12b,
+} as const;
+
 /** Transmission sequences */
 export const Sequences = CCA.sequences;
 

@@ -2,7 +2,7 @@
 """
 Extract and deobfuscate embedded S19 firmware from lutron-coproc-firmware-update-app binaries.
 
-Two obfuscation variants observed:
+Three obfuscation variants observed (all share the same cipher core):
 
 PHOENIX (bridge with CCA + CCX coprocs, 6MB binary):
   decoded = ((encoded - key + 0x3F) % 95) + 0x20
@@ -16,8 +16,12 @@ CASETA-SMARTBRIDGE (older L-BDG2/SBP2, 0.3MB binary, 03.03.x firmware):
   directly with S3 records (32-bit address, STM32 Cortex-M target at 0x08000000).
   Located shortly after a 256-byte substitution-table data block in .rodata.
 
-Both variants share core code: same ASCII-printable-only stream cipher, both have
-the substitution table embedded. The difference is the starting key and chunking.
+RA2 SELECT REP2 / Caseta Pro (1.5MB binary, 08.x firmware):
+  Same cipher, continuous (no per-record reset), but multiple blobs concatenated
+  with key0 changes between blobs (no embedded signature like Phoenix). Observed
+  key0 values: 0x25 (HCS08 + first EFR32) and 0x7E (second EFR32). The blobs
+  start at offsets the SmartBridge's narrow (0x6000, 0x20000) search misses —
+  walker scans the full binary trying multiple key0 candidates.
 """
 
 import hashlib
@@ -39,25 +43,17 @@ def deobfuscate(data: bytes, key0: int = 0x49) -> str:
     return out.decode('ascii', errors='replace')
 
 
-def find_continuous_blob_start(data: bytes, key0: int = 0x29, search_range: tuple = (0x6000, 0x20000)) -> int:
-    """Caseta-SmartBridge variant: scan for an offset where data decodes to a valid S-record."""
-    lo, hi = search_range
-    for start in range(max(0, lo), min(len(data), hi)):
-        decoded = deobfuscate(data[start:start + 8], key0)
-        if decoded.startswith(("S31508", "S20800", "S00500", "S00600", "S214", "S31408", "S107", "S207")):
-            return start
-    return -1
+VALID_BLOB_PREFIXES = (
+    "S31508", "S20800", "S00500", "S00600", "S214", "S31408",
+    "S107", "S207", "S22300", "S2080000", "S31300", "S205",
+    "S006", "S00F", "S00E",
+)
 
 
-def extract_continuous_blob(data: bytes, key0: int = 0x29) -> str | None:
-    """Caseta-SmartBridge variant: extract one continuous S19 stream (no per-record key reset)."""
-    start = find_continuous_blob_start(data, key0)
-    if start == -1:
-        return None
-    big = deobfuscate(data[start:start + 300_000], key0)
-    lines = big.split("\r\n")
+def _walk_srecords(decoded: str) -> str | None:
+    """Take a deobfuscated stream and return the contiguous S-record run as text."""
     valid = []
-    for line in lines:
+    for line in decoded.split("\r\n"):
         if len(line) >= 4 and line[0] == "S" and line[1] in "0123789":
             try:
                 int(line[2:], 16)
@@ -71,6 +67,69 @@ def extract_continuous_blob(data: bytes, key0: int = 0x29) -> str | None:
     if not valid:
         return None
     return "\r\n".join(valid) + "\r\n"
+
+
+def _extract_blob_at(data: bytes, start: int, key0: int, max_len: int = 2_000_000) -> str | None:
+    """Deobfuscate from start with key0, return contiguous S-record run."""
+    return _walk_srecords(deobfuscate(data[start:start + max_len], key0))
+
+
+def find_continuous_blob_start(data: bytes, key0: int = 0x29, search_range: tuple = (0x6000, 0x20000)) -> int:
+    """Caseta-SmartBridge variant: scan for an offset where data decodes to a valid S-record."""
+    lo, hi = search_range
+    for start in range(max(0, lo), min(len(data), hi)):
+        decoded = deobfuscate(data[start:start + 8], key0)
+        if decoded.startswith(VALID_BLOB_PREFIXES):
+            return start
+    return -1
+
+
+def extract_continuous_blob(data: bytes, key0: int = 0x29) -> str | None:
+    """Caseta-SmartBridge variant: extract one continuous S19 stream (no per-record key reset)."""
+    start = find_continuous_blob_start(data, key0)
+    if start == -1:
+        return None
+    return _extract_blob_at(data, start, key0, max_len=300_000)
+
+
+def extract_multi_continuous_blobs(
+    data: bytes,
+    key0_candidates: tuple[int, ...] = (0x25, 0x29, 0x7E),
+    cursor: int = 0x1000,
+    min_lines: int = 50,
+    min_bytes: int = 1024,
+) -> list[tuple[int, int, str]]:
+    """
+    RA2 Select REP2 variant: walk binary advancing past each found blob, trying
+    each key0 candidate at every plausible offset. Returns [(offset, key0, s19_text), ...].
+    """
+    blobs: list[tuple[int, int, str]] = []
+    while cursor < len(data):
+        found = None
+        for start in range(cursor, len(data)):
+            if not (0x20 <= data[start] <= 0x7E):
+                continue
+            for key0 in key0_candidates:
+                decoded = deobfuscate(data[start:start + 12], key0)
+                if not decoded.startswith(VALID_BLOB_PREFIXES):
+                    continue
+                s19 = _extract_blob_at(data, start, key0)
+                if s19 is None or s19.count("\r\n") < min_lines:
+                    continue
+                info = parse_s19_info(s19)
+                if info["data_bytes"] < min_bytes:
+                    continue
+                found = (start, key0, s19)
+                break
+            if found:
+                break
+        if not found:
+            break
+        blobs.append(found)
+        # Advance past this blob (encoded length ≈ decoded length, since the
+        # cipher is byte-for-byte over printable chars).
+        cursor = found[0] + len(found[2]) + 1
+    return blobs
 
 
 def find_signature_offsets(data: bytes) -> list[int]:
@@ -179,6 +238,14 @@ def process_binary(binary_path: str, output_dir: Path, prefix: str, global_seen:
             blobs = [(offset, s19)]
             is_continuous = True
 
+    # Final fallback: RA2 Select REP2 multi-blob walker (continuous, multiple
+    # key0 values, no embedded signature).
+    if not blobs:
+        multi = extract_multi_continuous_blobs(data)
+        if multi:
+            blobs = [(off, s19) for (off, _key0, s19) in multi]
+            is_continuous = True
+
     if not blobs:
         return 0
 
@@ -200,9 +267,9 @@ def process_binary(binary_path: str, output_dir: Path, prefix: str, global_seen:
             print(f"      -> Duplicate of {global_seen[h]}")
         else:
             lo = info["addr_min"]
-            if is_continuous:
-                # Caseta SmartBridge runs the bridge SoC itself (STM32 @ 0x08000000),
-                # not an external coprocessor.
+            if is_continuous and prefix.startswith("caseta-sb"):
+                # SmartBridge runs the bridge SoC itself (STM32 @ 0x08000000),
+                # single blob, not an external coprocessor.
                 arch = "stm32"
             elif lo >= 0x08000000:
                 arch = "efr32"
@@ -213,11 +280,14 @@ def process_binary(binary_path: str, output_dir: Path, prefix: str, global_seen:
             name = f"{prefix}_{arch}_{info['addr_min']:X}-{info['addr_max']:X}.s19"
             target_dir = output_dir
             if is_continuous:
-                # Route SmartBridge variants to caseta-device, vive-* to vive-prototype.
+                # Route SmartBridge variants to caseta-device, vive-* to
+                # vive-prototype, RA2 Select REP2 to ra2select-device.
                 if prefix.startswith("caseta-sb"):
                     target_dir = output_dir.parent.parent / "caseta-device" / "coproc-old"
                 elif prefix.startswith("vive-proto"):
                     target_dir = output_dir.parent.parent / "vive-prototype" / "extracted"
+                elif prefix.startswith("rr-sel-rep2"):
+                    target_dir = output_dir.parent.parent / "ra2select-device" / "coprocessor"
                 target_dir.mkdir(parents=True, exist_ok=True)
             out_path = target_dir / name
             with open(out_path, 'w') as f:
