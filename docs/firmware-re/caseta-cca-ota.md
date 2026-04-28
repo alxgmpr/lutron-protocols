@@ -193,18 +193,20 @@ in v08.25.17f000):
 
 | Codename | Device classes | Files | MCU |
 |---|---|---|---|
-| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | EFR32 (Silicon Labs Gecko) |
+| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
 | BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
 | EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
 | Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
 | Antillean | (in firmware list, class TBD) | v1.001 | TBD |
 | Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
 
-**EFR32 implication for PFF key recovery**: BASENJI confirmed EFR32. Older xG1/xG12/xG14
-(Cortex-M4) variants have well-documented voltage-glitch attacks against the AAP
-debug-lock (LimitedResults / Riscure et al.). Newer xG2x (Cortex-M33 + Secure Vault)
-is much harder. Exact part determines feasibility — chip photo or FCC internal photo
-of DVRF-6L settles it.
+**EFR32FG23 implication for PFF key recovery**: BASENJI uses FG23, which is xG2x
+(Cortex-M33 + Secure Vault Mid, AAP token-based unlock, Secure Boot RTSL, OTP
+key storage). Older xG1/xG12/xG14 (Cortex-M4) glitch attacks (LimitedResults /
+Riscure et al.) do not apply directly — newer xG2x glitch research exists
+(LimitedResults / Quarkslab on xG21+) but is harder. Crucially, Secure Boot and
+debug-lock on FG23 are configurable, so empirically check what Lutron actually
+enabled before assuming the worst case.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device**. Plan capture
 buffer / streaming accordingly.
