@@ -222,9 +222,11 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
 
     if (key.return) return submit();
     if (key.backspace || key.delete) {
-      // Ink's `delete` is forward-delete; `backspace` is erase left.
-      if (key.delete) deleteForward();
-      else backspace();
+      // Ink 5 maps the Backspace key (\x7f) to key.delete and only Ctrl-H
+      // (\b) to key.backspace, so we cannot distinguish Backspace from
+      // Forward-Delete (\x1b[3~) here — both arrive as key.delete. Treat
+      // both as erase-left; Ctrl-D handles forward-delete.
+      backspace();
       return;
     }
     if (key.tab) return tabComplete();
