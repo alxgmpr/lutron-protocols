@@ -46,7 +46,8 @@ test:
 	    tests/test_cmd_stubs.cpp tests/test_hdlc.cpp \
 	    tests/test_spinel.cpp tests/test_ccx_coap.cpp \
 	    tests/test_smp_dfu.cpp tests/test_ota_tx.cpp \
-	    src/cca/cca_commands.cpp \
+	    tests/test_ota_session.cpp tests/test_ota_full_tx.cpp \
+	    src/cca/cca_commands.cpp src/cca/cca_ota_session.cpp \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \
 	    src/ccx/coap.c src/ccx/smp_serial.c \
