@@ -1677,6 +1677,50 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca ota-poll <subnet_hex> <target_hex> [duration_sec] [bcast]
+     * Synth-OTA Device-poll burst (sub-op 06 03) — SAFE pre-flight, no
+     * flash side effects. Should be sent BEFORE `cca ota-begin` to verify
+     * device reachability without risking a brick. Default unicast (carrier
+     * 0x92, byte[13]=0xFE); pass literal "bcast" as 4th arg for broadcast
+     * (carrier 0x83, byte[13]=0xFD) where target is a DeviceClass.
+     * Refs docs/firmware-re/powpak-conversion-attack.md §"Brick incident". */
+    if (strncmp(arg, "ota-poll ", 9) == 0) {
+        char* p;
+        uint16_t subnet = (uint16_t)strtoul(arg + 9, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca ota-poll <subnet_hex> <target_hex> [dur] [bcast]\r\n");
+            return;
+        }
+        uint32_t target = (uint32_t)strtoul(p + 1, &p, 16);
+        uint16_t dur = 3;
+        /* "bcast" can appear anywhere after target — strstr keeps parsing simple. */
+        bool is_broadcast = (strstr(arg, " bcast") != NULL);
+        if (*p == ' ') {
+            char* dur_end;
+            unsigned long maybe_dur = strtoul(p + 1, &dur_end, 10);
+            if (dur_end != p + 1) dur = (uint16_t)maybe_dur;
+        }
+
+        uint8_t carrier_type = is_broadcast ? 0x83 : 0x92;
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_OTA_POLL_TX;
+        item.device_id = target;
+        item.raw_payload[0] = (subnet >> 8) & 0xFF;
+        item.raw_payload[1] = subnet & 0xFF;
+        item.raw_payload[2] = carrier_type;
+        item.raw_payload[3] = is_broadcast ? 1 : 0;
+        item.duration_sec = dur;
+        if (cca_cmd_enqueue(&item)) {
+            printf("OTA poll queued (%s subnet=%04X target=%08X carrier=%02X dur=%us) — safe pre-flight\r\n",
+                   is_broadcast ? "BCAST" : "UNICAST", subnet, (unsigned)target, carrier_type, dur);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca ota-begin <subnet_hex> <serial_hex> [duration_sec]
      * Synth-OTA BeginTransfer burst — Phase 2a subnet recon for the
      * PowPak RMJ/RMJS → LMJ conversion attack. Watch the device's `0x0B`
@@ -1999,6 +2043,7 @@ static void cmd_cca(const char* arg)
     printf("  cca announce <serial> <class> <subnet> [dur] — spoofed B0 announce\r\n");
     printf("  cca hybrid-pair <bridge> <class> <subnet> <zone> [dur] — Vive→RA3 pair (blocking)\r\n");
     printf("  cca subnet-pair <bridge> <zone> [dur]  — BB beacon + RA3 subnet config\r\n");
+    printf("  cca ota-poll <subnet> <target> [dur] [bcast] — synth-OTA Device-poll (SAFE pre-flight)\r\n");
     printf("  cca ota-begin <subnet> <serial> [dur] — synth-OTA BeginTransfer (subnet recon)\r\n");
     printf("  cca auto-pair <hub> <class> <subnet> <zone> [dur]   — Vive→RA3 pair (TDMA, interleaved)\r\n");
     printf("  cca auto-pair-stop                                   — stop auto-pair\r\n");

@@ -51,7 +51,12 @@ static const uint8_t OTA_TYPE_CHANGE_ADDR_OFF = 0x91;
 /* Body length signatures at packet[7]. */
 static const uint8_t OTA_BODY_LEN_SIG_BEGIN = 0x0E;  /* short, payload 6 bytes  */
 static const uint8_t OTA_BODY_LEN_SIG_CHADDR = 0x0C; /* short, payload 4 bytes  */
+static const uint8_t OTA_BODY_LEN_SIG_POLL = 0x08;   /* short, payload filler   */
 static const uint8_t OTA_BODY_LEN_SIG_LONG = 0x2B;   /* long,  payload 35 bytes */
+
+/* Byte[13] markers — distinguishes broadcast vs unicast addressing. */
+static const uint8_t OTA_BCAST_MARKER = 0xFD;
+static const uint8_t OTA_UNICAST_MARKER = 0xFE;
 
 static const uint8_t OTA_CHUNK_SIZE = 31;
 static const uint32_t OTA_PAGE_SIZE = 0x10000; /* 64 KB */
@@ -125,6 +130,43 @@ inline size_t cca_ota_build_change_addr_offset(uint8_t* pkt, uint16_t subnet, ui
     pkt[18] = (next_page >> 8) & 0xFF;
     pkt[19] = next_page & 0xFF;
     /* pkt[20..21] = 0xCC from memset. */
+    return 22;
+}
+
+/* -----------------------------------------------------------------------
+ * Device-poll (sub-op 06 03) — SAFE pre-flight, no flash side effects.
+ *
+ * Two variants distinguished by carrier byte and byte[13] marker:
+ *   BROADCAST: type 0x81/82/83, byte[13]=0xFD, target_id is DeviceClass
+ *              at bytes 9-12 (e.g. 0x16030201 for RMJ-16R-DV-B).
+ *   UNICAST:   type 0x91/92,    byte[13]=0xFE, target_id is device serial
+ *              at bytes 9-12.
+ *
+ * Body bytes [16..21] are filler (0xCC). Body length sig 0x08.
+ *
+ * SHOULD be sent BEFORE BeginTransfer (sub-op 06 00) in any OTA workflow:
+ * BeginTransfer erases the application section, while Device-poll has
+ * no payload and confirms reachability without touching flash. See
+ * docs/firmware-re/powpak-conversion-attack.md §"Brick incident".
+ *
+ * Returns 22 (pre-CRC packet length); 0 on validation error.
+ * ----------------------------------------------------------------------- */
+inline size_t cca_ota_build_poll(uint8_t* pkt, uint8_t carrier_type, uint16_t subnet, uint32_t target_id,
+                                 bool is_broadcast)
+{
+    if (is_broadcast) {
+        if (carrier_type < 0x81 || carrier_type > 0x83) return 0;
+    }
+    else {
+        if (carrier_type != 0x91 && carrier_type != 0x92) return 0;
+    }
+
+    memset(pkt, 0xCC, 22);
+    cca_ota_write_header(pkt, carrier_type, OTA_BODY_LEN_SIG_POLL, subnet, target_id);
+    if (is_broadcast) pkt[13] = OTA_BCAST_MARKER;
+    pkt[14] = 0x06;
+    pkt[15] = OTA_SUB_POLL;
+    /* pkt[16..21] = 0xCC from memset (header writes pkt[0..13] only). */
     return 22;
 }
 
