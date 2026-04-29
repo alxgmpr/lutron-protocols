@@ -117,7 +117,7 @@ Because every table is bundled with the ciphertext, anyone with `sysconfig32.dll
 
 ## Extraction — working
 
-Decryptor at [tools/grafik-eye-decrypt.py](../../tools/grafik-eye-decrypt.py) implements the full pipeline. Running against `sysconfig32.dll`:
+Decryptor at [exploits/firmware-unlock/grafik-eye-decrypt.py](../../exploits/firmware-unlock/grafik-eye-decrypt.py) implements the full pipeline. Running against `sysconfig32.dll`:
 
 ```
 Description:     '10 GRX 08.027 (434 | 434L | 865 | 868 | 868L) SQHR'
