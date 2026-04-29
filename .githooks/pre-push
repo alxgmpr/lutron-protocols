@@ -1,52 +1,152 @@
 #!/bin/bash
-# Pre-push hook: run all CI checks before allowing push
+# Pre-push hook: run only the CI checks relevant to what's being pushed.
+#
+# - Worktree-aware: resolves biome/tsc against the main repo's node_modules
+#   (so a fresh worktree without `npm install` still works).
+# - Change-aware: skips firmware checks when no firmware/ files changed
+#   (saves ~90s on TS-only PRs) and skips TS checks when no TS files changed.
+# - Parallel: independent checks run concurrently; first-failure wins, all
+#   results are reported at the end.
+#
+# Repo policy forbids --no-verify. Fix issues; do not bypass.
 
-echo "Running CI checks before push..."
+set -o pipefail
 
-# Lint (TS)
-echo "  Lint..."
-npx biome check . 2>&1
-if [ $? -ne 0 ]; then
-  echo "❌ Lint failed. Fix errors before pushing."
+t_start=$(date +%s)
+
+# Resolve the main repo working tree (works from any worktree).
+common_dir=$(git rev-parse --git-common-dir)
+case "$common_dir" in
+  /*) ;;
+  *) common_dir="$(cd "$common_dir" && pwd)" ;;
+esac
+main_repo="$(dirname "$common_dir")"
+worktree_root="$(git rev-parse --show-toplevel)"
+
+# Pick a node_modules: prefer the worktree's own, else fall back to main's.
+if [ -x "$worktree_root/node_modules/.bin/biome" ]; then
+  bin="$worktree_root/node_modules/.bin"
+elif [ -x "$main_repo/node_modules/.bin/biome" ]; then
+  bin="$main_repo/node_modules/.bin"
+else
+  echo "❌ node_modules missing in worktree and in $main_repo." >&2
+  echo "   Run 'npm install' in $main_repo before pushing." >&2
   exit 1
 fi
 
-# Typecheck
-echo "  Typecheck..."
-npx tsc --noEmit 2>&1
-if [ $? -ne 0 ]; then
-  echo "❌ Typecheck failed. Fix errors before pushing."
-  exit 1
-fi
-
-# Firmware format check
-if command -v clang-format &>/dev/null; then
-  echo "  Firmware format..."
-  make -C firmware format-check 2>&1
-  if [ $? -ne 0 ]; then
-    echo "❌ Firmware format-check failed. Run 'make -C firmware format' to fix."
-    exit 1
+# Compute the set of paths changed in this push so we can skip irrelevant
+# checks. pre-push receives '<local_ref> <local_sha> <remote_ref> <remote_sha>'
+# on stdin, one line per ref.
+changed=""
+unknown_scope=1
+if [ ! -t 0 ]; then
+  refs_in=$(cat)
+  if [ -n "$refs_in" ]; then
+    unknown_scope=0
+    while IFS=' ' read -r local_ref local_sha remote_ref remote_sha; do
+      [ -z "$local_sha" ] && continue
+      [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+      if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        base=$(git merge-base "$local_sha" origin/HEAD 2>/dev/null \
+            || git merge-base "$local_sha" origin/main 2>/dev/null \
+            || true)
+        if [ -z "$base" ]; then
+          unknown_scope=1
+          break
+        fi
+        range="$base..$local_sha"
+      else
+        range="$remote_sha..$local_sha"
+      fi
+      paths=$(git diff --name-only "$range" 2>/dev/null) || { unknown_scope=1; break; }
+      changed+="$paths"$'\n'
+    done <<< "$refs_in"
   fi
 fi
 
-# Firmware lint
-if command -v cppcheck &>/dev/null; then
-  echo "  Firmware lint..."
-  make -C firmware lint 2>&1
-  if [ $? -ne 0 ]; then
-    echo "❌ Firmware cppcheck failed. Fix errors before pushing."
-    exit 1
+run_ts=1
+run_firmware=1
+if [ "$unknown_scope" -eq 0 ]; then
+  if echo "$changed" | grep -qE '\.tsx?$|^biome\.json$|^tsconfig|^package(-lock)?\.json$'; then
+    run_ts=1
+  else
+    run_ts=0
+  fi
+  if echo "$changed" | grep -qE '^firmware/'; then
+    run_firmware=1
+  else
+    run_firmware=0
+  fi
+  if [ "$run_ts" -eq 0 ] && [ "$run_firmware" -eq 0 ]; then
+    elapsed=$(( $(date +%s) - t_start ))
+    echo "✅ No code paths changed in this push — nothing to verify (${elapsed}s)."
+    exit 0
   fi
 fi
 
-# Firmware build warning check (requires ARM toolchain)
-if command -v arm-none-eabi-gcc &>/dev/null; then
-  echo "  Firmware build warnings..."
-  bash firmware/check-build-warnings.sh
-  if [ $? -ne 0 ]; then
-    echo "❌ Firmware build has warnings. Fix before pushing."
-    exit 1
+cd "$worktree_root" || exit 1
+
+tmp=$(mktemp -d -t precheck.XXXXXX) || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+start_check() {
+  local name=$1 desc=$2
+  shift 2
+  echo "  ▶ $desc"
+  (
+    "$@" > "$tmp/$name.log" 2>&1
+    echo $? > "$tmp/$name.exit"
+  ) &
+}
+
+echo "Pre-push checks (binaries: $bin)"
+[ "$unknown_scope" -eq 1 ] && echo "  Scope: unknown — running all checks."
+
+if [ "$run_ts" -eq 1 ]; then
+  start_check biome "biome lint"   "$bin/biome" check .
+  start_check tsc   "typecheck"    "$bin/tsc" --noEmit
+fi
+
+if [ "$run_firmware" -eq 1 ]; then
+  if command -v clang-format &>/dev/null; then
+    start_check fwfmt "firmware format-check" make -C firmware format-check
+  fi
+  if command -v cppcheck &>/dev/null; then
+    start_check fwlint "firmware cppcheck" make -C firmware lint
+  fi
+  if command -v arm-none-eabi-gcc &>/dev/null; then
+    start_check fwbuild "firmware build (warnings as errors)" \
+      bash firmware/check-build-warnings.sh
   fi
 fi
 
-echo "✅ All checks passed."
+wait
+
+failed=0
+report() {
+  local name=$1 desc=$2
+  [ -f "$tmp/$name.exit" ] || return
+  local exit
+  exit=$(cat "$tmp/$name.exit")
+  if [ "$exit" = "0" ]; then
+    echo "  ✅ $desc"
+  else
+    echo "  ❌ $desc (exit $exit):"
+    sed 's/^/      /' "$tmp/$name.log"
+    failed=1
+  fi
+}
+
+report biome   "biome lint"
+report tsc     "typecheck"
+report fwfmt   "firmware format-check"
+report fwlint  "firmware cppcheck"
+report fwbuild "firmware build (warnings as errors)"
+
+elapsed=$(( $(date +%s) - t_start ))
+if [ "$failed" -eq 0 ]; then
+  echo "✅ All checks passed in ${elapsed}s."
+  exit 0
+fi
+echo "❌ Pre-push failed in ${elapsed}s. Fix issues above and push again."
+exit 1
