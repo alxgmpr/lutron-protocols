@@ -1,0 +1,1 @@
+This bridge is for bridging CCX commands to WiZ WiFi lights via Home Assistant. It's not related directly to Lutron factory bridges.

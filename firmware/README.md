@@ -1,0 +1,1 @@
+This folder contains the source necessary to run the STM32H7 as an open CCA/CCX bridge. This is not Lutron factory firmware or related to it at all.
