@@ -19,9 +19,9 @@ Opens Lutron Designer `.hw`/`.ra3` project files via Docker SQL Server and queri
 ## Opening a Project
 
 ```bash
-npx tsx tools/designer-project.ts open <project-file>
-npx tsx tools/designer-project.ts status   # check if already open
-npx tsx tools/designer-project.ts close    # close when done
+npx tsx tools/designer/designer-project.ts open <project-file>
+npx tsx tools/designer/designer-project.ts status   # check if already open
+npx tsx tools/designer/designer-project.ts close    # close when done
 ```
 
 Only one project can be open at a time. Check status first.
@@ -134,14 +134,14 @@ Three different address spaces coexist:
 ## Tool Commands Reference
 
 ```bash
-npx tsx tools/designer-project.ts open <file>        # Open project
-npx tsx tools/designer-project.ts query "<sql>"       # Run SQL
-npx tsx tools/designer-project.ts tables [filter]     # List tables
-npx tsx tools/designer-project.ts describe <table>    # Show schema
-npx tsx tools/designer-project.ts dump <table> [N]    # Dump rows
-npx tsx tools/designer-project.ts close               # Close project
-npx tsx tools/designer-project.ts status              # Check state
-npx tsx tools/designer-project.ts save <output>       # Save modified (needs VM)
+npx tsx tools/designer/designer-project.ts open <file>        # Open project
+npx tsx tools/designer/designer-project.ts query "<sql>"       # Run SQL
+npx tsx tools/designer/designer-project.ts tables [filter]     # List tables
+npx tsx tools/designer/designer-project.ts describe <table>    # Show schema
+npx tsx tools/designer/designer-project.ts dump <table> [N]    # Dump rows
+npx tsx tools/designer/designer-project.ts close               # Close project
+npx tsx tools/designer/designer-project.ts status              # Check state
+npx tsx tools/designer/designer-project.ts save <output>       # Save modified (needs VM)
 ```
 
 ## Key Tables

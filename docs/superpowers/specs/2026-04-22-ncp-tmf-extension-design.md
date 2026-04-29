@@ -14,7 +14,7 @@ Add a vendor Spinel extension to the OpenThread NCP firmware running on the Nucl
 - `otThreadGetNextNeighborInfo()` — local neighbor table read.
 - `otThreadGetNextChildInfo()` — local child table read.
 
-Once landed, the STM32 host gains a Spinel-level channel to the mesh control plane. Specifically, this unblocks `tools/tmf-diag.ts` (which currently fails because host-injected CoAP on port 61631 is dropped by the NCP with `LAST_STATUS=14`) and gives us general TMF / diagnostic read access we can extend later.
+Once landed, the STM32 host gains a Spinel-level channel to the mesh control plane. Specifically, this unblocks `tools/ccx/tmf-diag.ts` (which currently fails because host-injected CoAP on port 61631 is dropped by the NCP with `LAST_STATUS=14`) and gives us general TMF / diagnostic read access we can extend later.
 
 ## Non-goals
 
@@ -27,7 +27,7 @@ Once landed, the STM32 host gains a Spinel-level channel to the mesh control pla
 
 ## Success criterion (Plan 1)
 
-> From a dev machine, running `npx tsx tools/nrf-ncp-probe.ts diag-get ff03::1 0 1 8` against the Nucleo sends a multicast `/d/dg` TypeList request through the new Spinel property, collects streamed TLV responses from every responder over ~5 seconds, and prints one `src=<ipv6> tlv=<hex>` line per responder, terminated by a `DONE` event. The Office Entrance keypad appears in the output on its first button press. Existing CCX comms (zone dimming, keypad events, bridge) continue to function with no regression.
+> From a dev machine, running `npx tsx tools/nrf/nrf-ncp-probe.ts diag-get ff03::1 0 1 8` against the Nucleo sends a multicast `/d/dg` TypeList request through the new Spinel property, collects streamed TLV responses from every responder over ~5 seconds, and prints one `src=<ipv6> tlv=<hex>` line per responder, terminated by a `DONE` event. The Office Entrance keypad appears in the output on its first button press. Existing CCX comms (zone dimming, keypad events, bridge) continue to function with no regression.
 
 ## Context & background
 
@@ -45,7 +45,7 @@ OT has an `otVendor*` extension point meant for vendor-specific property handler
   ┌──────── STM32H723 (FreeRTOS) ────────┐       ┌────── nRF52840 NCP ──────┐
   │                                       │       │                          │
   │  Plan 2: ccx_send_diag_get()          │       │  ot-ncp-ftd              │
-  │  Plan 1: tools/nrf-ncp-probe.ts ─────────┬─────►  + tmf-extension.patch   │
+  │  Plan 1: tools/nrf/nrf-ncp-probe.ts ─────────┬─────►  + tmf-extension.patch   │
   │          (raw Spinel frames over      │  │    │   - VENDOR_DIAG_GET_*    │
   │           stream :9433 → HDLC → NCP)  │  │    │   - VENDOR_DIAG_RESET   │
   │                                       │  │    │   - VENDOR_NEIGHBOR_TBL │
@@ -173,7 +173,7 @@ Each entry:
 
 ## NCP patch structure
 
-`tools/nrf-ncp/tmf-extension.patch` — applied by `build.sh` after `nucleo-uart.patch`.
+`tools/nrf/ncp-build/tmf-extension.patch` — applied by `build.sh` after `nucleo-uart.patch`.
 
 ### Files in the patch
 
@@ -226,7 +226,7 @@ Exact line-numbered decisions in `src/ncp/ncp_base.*` are deferred to implementa
 
 ### Build
 
-`tools/nrf-ncp/build.sh` extended to apply both patches in sequence:
+`tools/nrf/ncp-build/build.sh` extended to apply both patches in sequence:
 
 ```bash
 git apply "$SCRIPT_DIR/nucleo-uart.patch"
@@ -249,11 +249,11 @@ Build command unchanged (`./script/build nrf52840 USB_trans -DOT_BOOTLOADER=USB`
 
 ### DFU wrapper
 
-New helper `tools/nrf-dfu-flash.ts`:
+New helper `tools/nrf/nrf-dfu-flash.ts`:
 
 ```bash
-npx tsx tools/nrf-dfu-flash.ts --tmf         # flash ot-ncp-ftd-tmf-dfu.zip
-npx tsx tools/nrf-dfu-flash.ts --rollback    # flash ot-ncp-ftd-dfu.zip (known-good)
+npx tsx tools/nrf/nrf-dfu-flash.ts --tmf         # flash ot-ncp-ftd-tmf-dfu.zip
+npx tsx tools/nrf/nrf-dfu-flash.ts --rollback    # flash ot-ncp-ftd-dfu.zip (known-good)
 ```
 
 Flow (same for both flags):
@@ -267,16 +267,16 @@ Human-in-the-loop for the button press because the Nucleo-soldered dongle can on
 
 ## Verification (Plan 1)
 
-New probe tool `tools/nrf-ncp-probe.ts` bypasses all STM32 CCX logic. It constructs Spinel frames from scratch and sends them via the STM32's existing `spinel raw <hex>` shell passthrough on UDP `:9433`.
+New probe tool `tools/nrf/nrf-ncp-probe.ts` bypasses all STM32 CCX logic. It constructs Spinel frames from scratch and sends them via the STM32's existing `spinel raw <hex>` shell passthrough on UDP `:9433`.
 
 Command surface:
 
 ```bash
-npx tsx tools/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
-npx tsx tools/nrf-ncp-probe.ts diag-get <fd00::addr> 0 1 8
-npx tsx tools/nrf-ncp-probe.ts diag-reset <fd00::addr> 9
-npx tsx tools/nrf-ncp-probe.ts neighbors
-npx tsx tools/nrf-ncp-probe.ts children
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get <fd00::addr> 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-reset <fd00::addr> 9
+npx tsx tools/nrf/nrf-ncp-probe.ts neighbors
+npx tsx tools/nrf/nrf-ncp-probe.ts children
 ```
 
 Each command:
@@ -289,7 +289,7 @@ Each command:
 
 ### Verification checklist
 
-1. **Smoke — dispatch works at all.** `npx tsx tools/nrf-ncp-probe.ts neighbors` prints a non-empty table. Confirms the new property dispatch reached our code.
+1. **Smoke — dispatch works at all.** `npx tsx tools/nrf/nrf-ncp-probe.ts neighbors` prints a non-empty table. Confirms the new property dispatch reached our code.
 2. **Unicast diag-get — single responder.** `diag-get <fd00::known-device> 0 1 8` returns one response with EUI-64 matching Designer DB, RLOC16 matching the sniff, `DONE reason=0 count=1`.
 3. **Multicast diag-get — many responders.** `diag-get ff03::1 0 1 8` returns ≥ 10 responses (all routers) within 5 s, terminated by `DONE reason=0 count=N`. **Office Entrance keypad appears in the output on first button press during the window.** This is the canonical acceptance case for the entire Phase B effort.
 4. **Regression — CCX comms unaffected.** `ccx` shell status still shows `ROUTER` role. `RX`/`TX` counters still increment during normal CCA/CCX activity. A zone-dim command still dims the zone. Keypad button presses still produce CCX broadcasts in `tools/nucleo.ts`.
@@ -299,7 +299,7 @@ Each command:
 If any of the above fails persistently:
 
 ```bash
-npx tsx tools/nrf-dfu-flash.ts --rollback
+npx tsx tools/nrf/nrf-dfu-flash.ts --rollback
 ```
 
 Restores the known-good firmware. No git-surgery required.
@@ -311,13 +311,13 @@ Once Plan 1 is green, Plan 2 wires the proven Spinel properties into production:
 - `firmware/src/ccx/tmf_ext.{h,cpp}` — `ccx_send_diag_get()`, `ccx_send_diag_reset()`, `ccx_neighbor_table()`, `ccx_child_table()`. Callback hook that emits `[diag]` stream broadcasts.
 - `firmware/src/shell/shell.cpp` — new `ccx diag get/reset/neighbors/children` shell commands.
 - `lib/ccx-diag.ts` — TS parser for `[diag] src=... tlv=...\r\n` broadcasts.
-- `tools/tmf-diag.ts` — switch from the dead port-61631 path to the new Spinel channel. Original Phase B success criterion satisfied.
+- `tools/ccx/tmf-diag.ts` — switch from the dead port-61631 path to the new Spinel channel. Original Phase B success criterion satisfied.
 
 ## References
 
 - `docs/superpowers/plans/2026-04-21-stable-ccx-addressing-tmf-diag.md` — predecessor plan; its Phase 5 TMF discovery path ran into the NCP filter, establishing the need for this spec.
 - `docs/protocols/ccx-coap.md` § "NCP restriction on port 61631" — reproducer for the original failure, committed 2026-04-21.
-- `tools/nrf-ncp/build.sh` — existing NCP build pipeline.
-- `tools/nrf-ncp/nucleo-uart.patch` — existing patch (UART pins / baud / HWFC override).
+- `tools/nrf/ncp-build/build.sh` — existing NCP build pipeline.
+- `tools/nrf/ncp-build/nucleo-uart.patch` — existing patch (UART pins / baud / HWFC override).
 - `.claude/skills/nrf/SKILL.md` — nRF52840 dongle / NCP / sniffer workflow notes.
 - `openthread/openthread#853` — upstream issue documenting which OT APIs are not exposed via Spinel.

@@ -236,7 +236,7 @@ all squarely within the OTA window) revealed:
    peak in the average PSD reflects one **mode of the FSK** of the same-channel
    signal (peak energy at the lower deviation), not a separate carrier.
 
-2. **The existing runtime CCA decoder (`tools/rtlsdr-cca-decode.ts`) decodes
+2. **The existing runtime CCA decoder (`tools/cca/rtlsdr-cca-decode.ts`) decodes
    the OTA capture cleanly** at the runtime CCA carrier with N81 framing —
    49 packets in a 2-second window at t=200 s, mix of two recurring formats:
 
@@ -274,7 +274,7 @@ the prime candidates — they show structure but also vary across packet types.
 Pulled `firmware/07911506_v3.021_VogelkopDimmerAppCaseta.pff` from the bridge
 (`/opt/lutron/device_firmware/firmware/`, hash `dc5325d2…be16` matches the
 manifest). Then decoded the entire OTA window (37 s … 1130 s, 19 chunks ×
-60 s) with `tools/rtlsdr-cca-decode.ts`, extracted the long
+60 s) with `tools/cca/rtlsdr-cca-decode.ts`, extracted the long
 `0xB1`/`0xB2`/`0xB3` packets, and matched each one's payload against the
 firmware file at every plausible offset.
 
@@ -326,7 +326,7 @@ indicator is **not in the B1/B2/B3 header** — it's set by a control packet
 that I haven't yet pinned down on-air. Future work: identify the control
 packet that announces the next 64 KB page boundary.
 
-`tools/ota-extract.ts` (script, future PR) can now reassemble a partial
+`tools/cca/ota-extract.ts` (script, future PR) can now reassemble a partial
 firmware image from any OTA capture — useful for verifying that an OTA push
 landed the correct version, or for capturing payload to attempt offline
 decryption.
@@ -359,7 +359,7 @@ decryption.
 ## Methodology validation
 
 Cross-reference of the runtime CCA pairing capture (separate session, same
-laptop+SDR setup) decoded cleanly via the existing `tools/rtlsdr-cca-decode.ts`
+laptop+SDR setup) decoded cleanly via the existing `tools/cca/rtlsdr-cca-decode.ts`
 with all 8 documented pairing phases visible (idle/active beacons, PAIR_B0
 device announce, A1/A2/A3 config, format 0x15 trim, format 0x0A LED, 6-round
 handshake commit). The pairing capture corroborates PR #35 (no-crypto handshake)

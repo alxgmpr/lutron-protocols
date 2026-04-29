@@ -11,7 +11,7 @@ user_invocable: false
 
 Methodology for tracing what a named flag controls, through the .NET UI stack, and deciding whether a DLL patch will actually change observable behavior.
 
-For actual patch implementation see [tools/dll-patcher/DllPatcher/Program.cs](../../../tools/dll-patcher/DllPatcher/Program.cs) (dnlib-based — do not hand-edit IL bytes). For deploy, use `anthropic-skills:designer-deploy`.
+For actual patch implementation see [exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs](../../../exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs) (dnlib-based — do not hand-edit IL bytes). For deploy, use `anthropic-skills:designer-deploy`.
 
 ## Prerequisites
 
@@ -79,7 +79,7 @@ The flag is one gate; the predicate chain is typically the rest. A flag toggle w
 
 ## Step 4 — Patching
 
-Don't hand-edit IL bytes. All patches go through [tools/dll-patcher/DllPatcher/Program.cs](../../../tools/dll-patcher/DllPatcher/Program.cs) (dnlib-based). To add a new patch:
+Don't hand-edit IL bytes. All patches go through [exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs](../../../exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs) (dnlib-based). To add a new patch:
 
 1. Add a new section in `Program.cs` that loads the target DLL, finds the method/type via dnlib, and rewrites it.
 2. Clearing strong-name signing and stripping `InternalsVisibleTo` attributes is handled by the patcher — don't reimplement it.

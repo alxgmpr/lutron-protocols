@@ -338,7 +338,7 @@ uint16 BE  delay               (quarter-seconds)
 `const ushort MAX_LEVEL = 65279` (0xFEFF). `const ushort FadeTime = 0` and
 `Delay = 0` are the GoToLevelCommand defaults.
 
-Verified end-to-end on 2026-04-19 against RA3 @ 10.1.1.133 using `tools/ipl-cmd.ts`:
+Verified end-to-end on 2026-04-19 against RA3 @ 10.1.1.133 using `tools/ipl/ipl-cmd.ts`:
 `gotolevel 546 50 1 0` drove zone 546 "Standing Desk Lamps" to 50% with a 1s fade and
 got a `Telemetry/Runtime` feedback frame back with `obj=0x0222 prop=0x000F val=0x7F80`.
 
@@ -794,19 +794,19 @@ monitor identifiers or LEAP-side RPC wrappers rather than raw IPL operationIds:
 
 | Tool | Purpose |
 |------|---------|
-| `tools/ipl-client.ts` | Read-only: connect, decode, display IPL traffic (uses old framing — needs update) |
-| `tools/ipl-cmd.ts` | Write-path: send a proper Version3 Command with correct length-prefixed body (verified GoToLevel) |
-| `tools/leap-explore.ts` | Comprehensive LEAP endpoint scanner |
+| `tools/ipl/ipl-client.ts` | Read-only: connect, decode, display IPL traffic (uses old framing — needs update) |
+| `tools/ipl/ipl-cmd.ts` | Write-path: send a proper Version3 Command with correct length-prefixed body (verified GoToLevel) |
+| `tools/leap/leap-explore.ts` | Comprehensive LEAP endpoint scanner |
 | ~~`tools/leap-frida.js`~~ | Removed — Frida TLS hook, blocked by SIP |
 | ~~`tools/leap-lldb-intercept.py`~~ | Removed — LLDB TLS breakpoint, blocked by hardened runtime |
 
 ### IPL Client Usage
 
 ```bash
-bun run tools/ipl-client.ts                    # Connect and show all messages
-bun run tools/ipl-client.ts --quiet            # Only state changes + commands
-bun run tools/ipl-client.ts --save             # Save raw + parsed data to data/
-bun run tools/ipl-client.ts --host <ra3-ip>  # Specify processor IP
+bun run tools/ipl/ipl-client.ts                    # Connect and show all messages
+bun run tools/ipl/ipl-client.ts --quiet            # Only state changes + commands
+bun run tools/ipl/ipl-client.ts --save             # Save raw + parsed data to data/
+bun run tools/ipl/ipl-client.ts --host <ra3-ip>  # Specify processor IP
 ```
 
 ---
@@ -850,7 +850,7 @@ All in `certs/designer/`:
    fields hidden on RA3's LEAP API.
 6. **WSS transport**: Capture a Designer session with `EnableWSS` flag on to confirm
    the WebSocket framing (port, sub-protocol name, ping/pong handling).
-7. **Update `tools/ipl-client.ts`**: Replace the old "LEIC=keepalive" logic with
+7. **Update `tools/ipl/ipl-client.ts`**: Replace the old "LEIC=keepalive" logic with
    the corrected Event/Telemetry/Control decode + operationId lookup.
 
 ## 12. Telnet Integration Protocol (ESN Interface)

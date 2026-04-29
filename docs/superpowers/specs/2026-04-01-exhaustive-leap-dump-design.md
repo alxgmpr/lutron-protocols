@@ -8,7 +8,7 @@ Extend `leap-dump.ts` with a `--full` flag that recursively walks all known LEAP
 
 ### Endpoint Registry
 
-A typed array in `tools/leap-client.ts` defines every known LEAP endpoint:
+A typed array in `lib/leap-client.ts` defines every known LEAP endpoint:
 
 ```typescript
 interface EndpointDef {
@@ -167,12 +167,12 @@ File: `data/leap-{host}-full.json`
 
 All changes in two existing files:
 
-**`tools/leap-client.ts`** (additions):
+**`lib/leap-client.ts`** (additions):
 - `EndpointDef`, `ChildDef`, `PerItemDef` type definitions
 - `LEAP_REGISTRY` constant array
 - `walkEndpoints()` function
 
-**`tools/leap-dump.ts`** (modifications):
+**`tools/leap/leap-dump.ts`** (modifications):
 - Parse `--full` flag
 - When `--full`: call `walkEndpoints()` instead of `fetchLeapData()`
 - When `--full --save`: write to `data/leap-{host}-full.json`

@@ -63,7 +63,7 @@ The few isolated `FA DE` / `DE FA` bigrams in our three binaries (1-2 per file) 
   Four init calls — typical bare-metal Cortex-M C runtime startup.
 - S0 record of the S19 says `bin/CoProcApplication/CoProcApplication.` (truncated). This file was likely renamed from a build-tree path that wraps a Cortex-M binary into the same delivery mechanism HCS08 would have used — the build-tree path does not, by itself, prove an HCS08 chip.
 - Copyright string: `Copyright 2016 Lutron Electronics` at `0x1D704`.
-- Ghidra processor: `ARM:LE:32:Cortex` with `BinaryLoader -loader-baseAddr 0x3000`. (PR #34 originally found this; the tool now does it automatically — see [tools/ghidra-load-arm-coproc.sh](../../tools/ghidra-load-arm-coproc.sh).)
+- Ghidra processor: `ARM:LE:32:Cortex` with `BinaryLoader -loader-baseAddr 0x3000`. (PR #34 originally found this; the tool now does it automatically — see [tools/ghidra/ghidra-load-arm-coproc.sh](../../tools/ghidra/ghidra-load-arm-coproc.sh).)
 
 ### phoenix_hcs08_3000-3E808 (medium variant, supposed "eagle-owl CCA app")
 
@@ -115,7 +115,7 @@ Until the orchestration prompt's premise is reconfirmed against actual end-devic
 
 ## Tooling notes
 
-- Use [tools/ghidra-load-arm-coproc.sh](../../tools/ghidra-load-arm-coproc.sh) (renamed from `ghidra-load-cca-hcs08.sh`) to import these binaries — uses `-processor ARM:LE:32:Cortex` with the base address auto-detected from the filename pattern `*_<starthex>-<endhex>.bin`. The whole file is loaded as one block (no carving — these are flat Cortex-M images, not banked HCS08).
+- Use [tools/ghidra/ghidra-load-arm-coproc.sh](../../tools/ghidra/ghidra-load-arm-coproc.sh) (renamed from `ghidra-load-cca-hcs08.sh`) to import these binaries — uses `-processor ARM:LE:32:Cortex` with the base address auto-detected from the filename pattern `*_<starthex>-<endhex>.bin`. The whole file is loaded as one block (no carving — these are flat Cortex-M images, not banked HCS08).
 - Capstone (`/tmp/cca-arm-venv` Python venv) provides a workable disassembly path without needing Ghidra: `capstone.Cs(CS_ARCH_ARM, CS_MODE_THUMB)`. Reset-handler dumps and instruction-byte stats above all came from this path.
 
 ## Cross-reference vs bridge-side knowledge

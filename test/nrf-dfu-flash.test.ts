@@ -4,7 +4,7 @@ import {
   chooseArtifact,
   detectNewUsbmodem,
   type UsbmodemSnapshot,
-} from "../tools/nrf-dfu-flash";
+} from "../tools/nrf/nrf-dfu-flash";
 
 test("chooseArtifact resolves --tmf to the -tmf-dfu.zip", () => {
   const path = chooseArtifact({ tmf: true, rollback: false });

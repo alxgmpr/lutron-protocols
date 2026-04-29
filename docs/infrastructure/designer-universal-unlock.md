@@ -1,6 +1,6 @@
 # Designer Universal Platform-Compat Unlock
 
-Five IL patches in `tools/dll-patcher/DllPatcher/Program.cs` that make every device
+Five IL patches in `exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs` that make every device
 model, link type, and user-channel combination report compatible. Result: models
 from any product line (RA3, HW, Athena, etc.) show up in every toolbox and attach to
 any link, without touching the SQLMODELINFO or SQLREFERENCEINFO databases.
