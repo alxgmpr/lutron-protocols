@@ -200,40 +200,93 @@ demod uses the empirical rate.
   (~40 packets/sec, well within the 250-packets/sec ceiling implied by the
   manifest's 1200 s budget for ~200 kB of payload).
 
-## Open: real-capture decode needs symbol synchronization
+## Symbol synchronization shipped — but real-capture still doesn't decode as raw-bit FA DE
 
-The demod recovers the alternating preamble pattern cleanly and the `0xFF`
-sync delimiter is visible in the bit stream after the preamble. But bit
-errors accumulate at byte boundaries — the FA DE sync word doesn't appear
-intact at any tested offset, so `extractPacketsFromBits` returns 0 packets.
-Symptoms suggest **the bit clock isn't being tracked** — the demod assumes
-bit 0 starts at sample 0 of the burst, but actual bit boundaries are at
-random fractional offsets.
+`lib/cca-ota-demod.ts` now has the full bit-clock recovery toolkit (PR #40
+follow-up):
 
-What's needed for clean decode (next session):
+- **`recoverBitPhase`** — sub-sample correlation of a ±1 alternating square
+  wave against the freq array to find the bit phase from the preamble.
+- **`demodulateFskWithSync`** — `demodulateFsk` plus phase recovery and
+  median-DC slicing threshold (per-burst carrier offset).
+- **`findSyncOffset`** — sliding zero-mean cross-correlation of an arbitrary
+  bit pattern against the freq array. Anchors decoding on a transition-rich
+  word (FA DE) so bit-clock drift through the 8-bit `0xFF` sync delimiter is
+  bypassed.
+- **`demodulateFskFromSample`** — slice bits from a known sample anchor with
+  a fixed bit clock.
+- **`findPatternOffsets`** — brute-force scan of every sample offset, demods
+  the candidate's bits, returns offsets where the bits match a target pattern
+  within a Hamming distance. Stricter than correlation (rejects partial-match
+  preamble peaks).
 
-1. **Symbol synchronization** — track the bit clock from the preamble. A
-   simple max-correlation search (slide a `±dev` square wave past the freq
-   array, find best phase) would do it.
-2. **DC offset estimation** — each burst has a slight carrier-offset variation
-   (we observed −4 kHz on one burst vs −36 kHz overall). A per-burst median
-   subtraction would clean this up.
-3. **Possibly Gaussian shaping inverse** — the freq array shows transition
-   smear ~10 µs wide; a matched filter using the actual GFSK pulse shape
-   would tighten the bit decisions.
+**All 20 demod tests pass** including a regression for the 1-bit drift through
+the 8-bit `0xFF` sync delimiter (the originally-suspected blocker).
 
-The demod library is structured so these can be added incrementally — none
-of them break the synth round-trip tests.
+## Real-capture finding: on-air OTA is not raw-bit, it's N81-framed runtime CCA
+
+After the symbol-sync work landed, the real capture still produced 0 OTA
+packets via `extractPacketsFromBits`. Detailed investigation of bursts at
+multiple time points (60 s, 100 s, 200 s, 600 s, 1000 s into the recording —
+all squarely within the OTA window) revealed:
+
+1. **No bursts have median frequency near −36 kHz** in this capture, despite
+   the spectrogram peak. All detected bursts cluster in `±25 kHz` from the
+   tuned center (= the runtime CCA channel at `433.602844 MHz`). The −36 kHz
+   peak in the average PSD reflects one **mode of the FSK** of the same-channel
+   signal (peak energy at the lower deviation), not a separate carrier.
+
+2. **The existing runtime CCA decoder (`tools/rtlsdr-cca-decode.ts`) decodes
+   the OTA capture cleanly** at the runtime CCA carrier with N81 framing —
+   49 packets in a 2-second window at t=200 s, mix of two recurring formats:
+
+   - **Short type `0x0B` packets every ~25 ms (≈40 Hz, ~2.0 ms each)** — these
+     match the writeup's predicted "TransferData rate" of ~40 packets/sec.
+     Body shape: `0b 02 d0 24 85 cf f7` and similar with varying tail bytes.
+
+   - **Long type `0xB1`/`0xB2`/`0xB3` packets every ~150 ms (≈6.7 Hz, ~9 ms
+     each)** with body bytes 9–12 = the target device's serial
+     `06 fe 80 20` (= `0x06FE8020` = 117342240 decimal, the paired DVRF-6L)
+     and bytes 18-19 incrementing by `0x1F` = 31 between packets — strongly
+     suggestive of TransferData chunk addresses.
+
+3. **`findPatternOffsets` brute-force-scanning every sample for `FA DE` (LSB-
+   first or MSB-first, Hamming 0–4, data rates 30.49/38.4/62.5 kbps, mix
+   offsets `0/-36500/+36500/-12500/+12500`) returns zero CRC-valid OTA
+   packets** at any time point in the OTA window.
+
+The simplest explanation: **the static-RE'd raw-bit framing
+`[55 55 55][FF][FA DE][LEN][OP][BODY][CRC]` doesn't describe the actual
+on-air OTA traffic.** What's on-air for a 2.5 GHz Caseta Pro REP2 → DVRF-6L
+firmware push is N81-framed CCA-shaped traffic on the runtime channel, with
+device serial in the body, identical framing to runtime CCA. The opcode
+mapping `0x2A`/`0x32`/`0x36`/`0x41`/`0x58` from the static RE may refer to
+**host↔coproc IPC commands**, not on-air bytes.
+
+This pivots the open question: instead of a body sub-opcode for the three
+`0x32` Control phases, the question is **"what's the on-air encoding inside
+the `0xB1+` long packets that distinguishes ChangeAddressOffset / EndTransfer
+/ ResetDevice?"** Body bytes 13-17 (after the 12-byte addressing header) are
+the prime candidates — they show structure but also vary across packet types.
 
 ## Outstanding work for full transcript
 
-1. Implement symbol sync per above
-2. Run the demod over the full 19-minute active window (~5 min wall-clock
-   for 6.1 GB at 2.56 MHz)
-3. Extract opcodes and bodies via `extractPacketsFromBits`
-4. Resolve the body sub-opcode discriminator that distinguishes the three
-   `0x32` Control phases (`ChangeAddressOffset` / `EndTransfer` / `ResetDevice`),
-   completing Open Question #1 in [caseta-cca-ota.md](caseta-cca-ota.md).
+1. **Decode the type `0x0B` short packet body structure** — body has 3-5
+   bytes after the type+length header; a sequence number is plausibly in
+   there (the runtime CCA decoder finds these pass CRC after the polarity
+   flip and N81 alignment).
+2. **Decode the type `0xB1`/`0xB2`/`0xB3` long packet body** — bytes 9-12
+   are the device serial; bytes 13-17 are the OTA sub-header; bytes 18-19
+   appear to be a chunk address (incrementing 31 bytes/packet); bytes 20+
+   are the firmware payload.
+3. **Reconcile the static-RE'd opcodes with on-air bytes** — `0x2A`/`0x32`/
+   `0x36`/`0x41`/`0x58` may live as command IDs on the host-side IPC
+   (`leap-server` ↔ `lutron-core` ↔ coproc) rather than on-air. Cross-
+   reference against [caseta-cca-ota.md](caseta-cca-ota.md)'s HDLC cmd ID
+   table (`0x119`/`0x11B`/`0x11D` etc.).
+4. **Resolve the body sub-opcode discriminator** for the three `0x32`
+   Control phases (Open Question #1) — likely now needs to be answered at
+   the IPC layer, not the on-air layer.
 
 ## Methodology validation
 

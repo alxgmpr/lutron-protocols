@@ -8,8 +8,13 @@ import {
 import {
   complexFromUint8,
   demodulateFsk,
+  demodulateFskFromSample,
+  demodulateFskWithSync,
+  findPatternOffsets,
+  findSyncOffset,
   instantaneousFrequency,
   mix,
+  recoverBitPhase,
   synthesizeFsk,
   uint8FromComplex,
 } from "../lib/cca-ota-demod";
@@ -303,6 +308,295 @@ test("synthesizeFsk has continuous phase across bit transitions", () => {
       `|z[${n}]|=${mag.toFixed(4)} should be 1 (constant amplitude)`,
     );
   }
+});
+
+test("recoverBitPhase locates bit phase for an alternating preamble truncated at fractional sample offsets", () => {
+  // Real-capture parameters
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 38_000,
+  };
+  const spb = params.sampleRateHz / params.dataRateHz; // ≈40.96
+  // 40 alternating bits: 0x55 0x55 0x55 ... LSB-first preamble
+  const preamble = new Uint8Array(40);
+  for (let i = 0; i < 40; i++) preamble[i] = i % 2 === 0 ? 1 : 0;
+  const fullIq = synthesizeFsk(preamble, params);
+
+  for (const skipSamples of [0, 3, 10, 18, 25, 33, 40]) {
+    const truncated = fullIq.subarray(2 * skipSamples);
+    const freq = instantaneousFrequency(truncated, params.sampleRateHz);
+    const phi = recoverBitPhase(freq, params);
+    // Expected: smallest non-negative offset where the next bit boundary lies.
+    // bit_k of the original synth starts at sample k*spb; in the truncated array,
+    // that's at index k*spb - skipSamples. The smallest non-negative such index is the bit phase.
+    let expected = -skipSamples;
+    while (expected < 0) expected += spb;
+    while (expected >= spb) expected -= spb;
+    // Account for circular distance — phi=0 and phi=spb are equivalent mod spb.
+    const wrapDiff = Math.min(
+      Math.abs(phi - expected),
+      Math.abs(phi - expected + spb),
+      Math.abs(phi - expected - spb),
+    );
+    assert.ok(
+      wrapDiff < 1.0,
+      `skip=${skipSamples}: phi=${phi.toFixed(2)} expected≈${expected.toFixed(2)} (spb=${spb.toFixed(2)})`,
+    );
+  }
+});
+
+test("demodulateFskWithSync round-trips packets at fractional bit-start offsets", () => {
+  // Real-capture parameters: 2.56 MHz fs, 62.5 kbps, 38 kHz dev.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 38_000,
+  };
+  // 4-byte body for a TransferData-like packet
+  const opcode = 0x41;
+  const body = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+  const wireBytes = buildOtaPacket(opcode, body);
+  const wireBits = bytesToBits(wireBytes);
+  // Trailing bits to flush the matched filter past the CRC
+  const padded = new Uint8Array(wireBits.length + 16);
+  padded.set(wireBits, 0);
+  const fullIq = synthesizeFsk(padded, params);
+
+  // Try a range of fractional sample offsets that the burst can start at.
+  for (const skipSamples of [0, 5, 12, 17, 25, 35, 45]) {
+    const truncated = fullIq.subarray(2 * skipSamples);
+    const recoveredBits = demodulateFskWithSync(truncated, params);
+    let packets = extractPacketsFromBits(recoveredBits);
+    if (packets.length === 0) {
+      // Polarity-ambiguous demod — try the inverse bit stream.
+      const flipped = new Uint8Array(recoveredBits.length);
+      for (let i = 0; i < recoveredBits.length; i++)
+        flipped[i] = 1 - recoveredBits[i];
+      packets = extractPacketsFromBits(flipped);
+    }
+    assert.equal(
+      packets.length,
+      1,
+      `skip=${skipSamples}: expected 1 packet, got ${packets.length}`,
+    );
+    assert.equal(packets[0].opcode, opcode);
+    assert.deepEqual(packets[0].body, body);
+  }
+});
+
+test("findSyncOffset locates a known bit pattern in synthesized freq", () => {
+  // Embed FA DE inside a longer bit stream and verify findSyncOffset
+  // returns the sample where it starts.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 32_000,
+  };
+  const spb = params.sampleRateHz / params.dataRateHz;
+  // Pre-fade fluff (32 bits of preamble + 8-bit "delim") + FA DE (16 bits) + 64 trailing bits
+  const preBits = 40;
+  const before = new Uint8Array(preBits);
+  for (let i = 0; i < preBits; i++) before[i] = i % 2; // alternating
+  const fadeBits = bytesToBits(new Uint8Array([0xfa, 0xde]));
+  const after = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) after[i] = i % 3 === 0 ? 1 : 0;
+  const allBits = new Uint8Array(preBits + fadeBits.length + after.length);
+  allBits.set(before, 0);
+  allBits.set(fadeBits, preBits);
+  allBits.set(after, preBits + fadeBits.length);
+  const iq = synthesizeFsk(allBits, params);
+  const freq = instantaneousFrequency(iq, params.sampleRateHz);
+  const result = findSyncOffset(freq, fadeBits, params);
+  assert.notEqual(result, null);
+  const expectedSample = preBits * spb;
+  // Within ±2 samples (sub-sample precision is limited by sliding correlation step of 1 sample)
+  const diff = Math.abs(result!.sampleOffset - expectedSample);
+  assert.ok(
+    diff < 2,
+    `expected FA DE at ~sample ${expectedSample.toFixed(1)}, got ${result!.sampleOffset} (diff=${diff.toFixed(1)})`,
+  );
+  assert.equal(result!.polarity, 1);
+});
+
+test("findSyncOffset detects inverted polarity", () => {
+  // Synth the pattern with bit-flipped FSK convention (bit 0 → +dev), and
+  // check that findSyncOffset still locates it but reports polarity=-1.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 32_000,
+  };
+  const spb = params.sampleRateHz / params.dataRateHz;
+  const fadeBits = bytesToBits(new Uint8Array([0xfa, 0xde]));
+  const inverted = new Uint8Array(fadeBits.length);
+  for (let i = 0; i < fadeBits.length; i++) inverted[i] = 1 - fadeBits[i];
+  const padBefore = new Uint8Array(20);
+  const padAfter = new Uint8Array(40);
+  for (let i = 0; i < padBefore.length; i++) padBefore[i] = i % 2;
+  const allBits = new Uint8Array(
+    padBefore.length + inverted.length + padAfter.length,
+  );
+  allBits.set(padBefore, 0);
+  allBits.set(inverted, padBefore.length);
+  allBits.set(padAfter, padBefore.length + inverted.length);
+  const iq = synthesizeFsk(allBits, params);
+  const freq = instantaneousFrequency(iq, params.sampleRateHz);
+  const result = findSyncOffset(freq, fadeBits, params);
+  assert.notEqual(result, null);
+  // When the pattern is bit-flipped on air, the correlation goes negative.
+  assert.equal(result!.polarity, -1);
+  const expectedSample = padBefore.length * spb;
+  const diff = Math.abs(result!.sampleOffset - expectedSample);
+  assert.ok(
+    diff < 2,
+    `inverted polarity FA DE: sample ${result!.sampleOffset}`,
+  );
+});
+
+test("findSyncOffset + demodulateFskFromSample decodes a packet through a long-constant region", () => {
+  // The motivating bug: bit-clock drifts through long-constant regions like
+  // the 8-bit `0xFF` sync delimiter. Synth a stream with FA DE preceded by
+  // constant 1s, and verify the sync-anchored decode reads the bits correctly
+  // even when a fixed bit clock would slip a bit.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 32_000,
+  };
+  const opcode = 0x41;
+  const body = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+  const wireBytes = buildOtaPacket(opcode, body);
+  const wireBits = bytesToBits(wireBytes);
+  // Pad with random pre/post bits to simulate burst edges
+  const padded = new Uint8Array(wireBits.length + 32);
+  padded.set(wireBits, 0);
+  const iq = synthesizeFsk(padded, params);
+  const freq = instantaneousFrequency(iq, params.sampleRateHz);
+  // The codec writes [PREAMBLE 24 bits][SYNC_DELIM 8 bits][FA DE 16 bits][LEN][OP][BODY][CRC]
+  // FA DE thus starts at bit 32 of the wire — confirm findSyncOffset finds it.
+  const fadeBits = bytesToBits(new Uint8Array([0xfa, 0xde]));
+  const result = findSyncOffset(freq, fadeBits, params);
+  assert.notEqual(result, null);
+  // Decode forward from the FA DE sample. We need FA DE (16) + LEN (8) + OP (8) + BODY (32) + CRC (16) = 80 bits
+  const numBits = 80;
+  const decodedBits = demodulateFskFromSample(
+    iq,
+    params,
+    result!.sampleOffset,
+    numBits,
+  );
+  // The decoded stream starts at FA DE; pass to extractPacketsFromBits.
+  let bits = decodedBits;
+  if (result!.polarity === -1) {
+    bits = new Uint8Array(decodedBits.length);
+    for (let i = 0; i < decodedBits.length; i++) bits[i] = 1 - decodedBits[i];
+  }
+  const packets = extractPacketsFromBits(bits);
+  assert.equal(packets.length, 1, `expected 1 packet, got ${packets.length}`);
+  assert.equal(packets[0].opcode, opcode);
+  assert.deepEqual(packets[0].body, body);
+});
+
+test("findPatternOffsets returns FA DE positions verified by exact bit-level match", () => {
+  // Build a synth signal with FA DE embedded inside an alternating preamble
+  // (which would yield false-positive cross-correlation peaks). Verify that
+  // findPatternOffsets returns the FA DE position but NOT preamble positions.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 32_000,
+  };
+  const spb = params.sampleRateHz / params.dataRateHz;
+  const fadeBits = bytesToBits(new Uint8Array([0xfa, 0xde]));
+  // 24-bit alternating preamble + 8-bit 0xFF + FA DE + 32 bits trailing
+  const preBits = new Uint8Array(24);
+  for (let i = 0; i < 24; i++) preBits[i] = i % 2; // 0,1,0,1,... = NOT what 0x55 LSB-first would produce, but alternating is the false-positive risk
+  const sync = new Uint8Array([1, 1, 1, 1, 1, 1, 1, 1]); // 0xFF LSB-first all 1s
+  const trail = new Uint8Array(32);
+  for (let i = 0; i < trail.length; i++) trail[i] = (i * 7) % 2;
+  const allBits = new Uint8Array(
+    preBits.length + sync.length + fadeBits.length + trail.length,
+  );
+  let off = 0;
+  allBits.set(preBits, off);
+  off += preBits.length;
+  allBits.set(sync, off);
+  off += sync.length;
+  allBits.set(fadeBits, off);
+  const fadeStartBit = off;
+  off += fadeBits.length;
+  allBits.set(trail, off);
+  const iq = synthesizeFsk(allBits, params);
+  const freq = instantaneousFrequency(iq, params.sampleRateHz);
+  const candidates = findPatternOffsets(freq, fadeBits, params);
+  assert.ok(
+    candidates.length > 0,
+    `expected at least one FA DE candidate, got 0`,
+  );
+  // The expected sample where FA DE starts: fadeStartBit * spb.
+  const expectedSample = fadeStartBit * spb;
+  // At least ONE candidate should be within ±2 samples of expectedSample with polarity 1.
+  const hit = candidates.find(
+    (c) => c.polarity === 1 && Math.abs(c.sampleOffset - expectedSample) <= 2,
+  );
+  assert.ok(
+    hit !== undefined,
+    `expected a FA DE candidate near sample ${expectedSample.toFixed(0)} with polarity 1, got candidates: ${JSON.stringify(candidates.slice(0, 5))}`,
+  );
+});
+
+test("findPatternOffsets + demodulateFskFromSample decodes the OTA wire under realistic constraints", () => {
+  // Build a full OTA packet, synth it, run findPatternOffsets + demod from
+  // each candidate, parse, and confirm exactly one valid packet decodes.
+  const params = {
+    sampleRateHz: 2_560_000,
+    dataRateHz: 62_500,
+    deviationHz: 32_000,
+  };
+  const opcode = 0x32;
+  const body = new Uint8Array([0x01, 0x12, 0x34, 0x56, 0x78, 0x9a]);
+  const wireBytes = buildOtaPacket(opcode, body);
+  const wireBits = bytesToBits(wireBytes);
+  const padded = new Uint8Array(wireBits.length + 32);
+  padded.set(wireBits, 0);
+  const iq = synthesizeFsk(padded, params);
+  const freq = instantaneousFrequency(iq, params.sampleRateHz);
+  const fadeBits = bytesToBits(new Uint8Array([0xfa, 0xde]));
+  const candidates = findPatternOffsets(freq, fadeBits, params);
+  // Try each candidate; at least one should give a CRC-valid parse.
+  let decoded = 0;
+  for (const cand of candidates) {
+    const numBits = Math.min(
+      2080,
+      Math.floor(
+        (freq.length - cand.sampleOffset) /
+          (params.sampleRateHz / params.dataRateHz),
+      ),
+    );
+    let bits = demodulateFskFromSample(iq, params, cand.sampleOffset, numBits);
+    if (cand.polarity === -1) {
+      const f = new Uint8Array(bits.length);
+      for (let i = 0; i < bits.length; i++) f[i] = 1 - bits[i];
+      bits = f;
+    }
+    const packets = extractPacketsFromBits(bits);
+    for (const p of packets) {
+      if (p.opcode === opcode && p.body.length === body.length) {
+        let ok = true;
+        for (let i = 0; i < body.length; i++)
+          if (p.body[i] !== body[i]) {
+            ok = false;
+            break;
+          }
+        if (ok) decoded++;
+      }
+    }
+  }
+  assert.ok(
+    decoded > 0,
+    `expected at least one decoded packet, got ${decoded}`,
+  );
 });
 
 test("uint8FromComplex round-trips through complexFromUint8", () => {
