@@ -654,8 +654,8 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
 
     case STREAM_CMD_OTA_UPLOAD_START: {
         if (data_len >= 4) {
-            uint32_t expected = (uint32_t)buf[2] | ((uint32_t)buf[3] << 8) | ((uint32_t)buf[4] << 16) |
-                                ((uint32_t)buf[5] << 24);
+            uint32_t expected =
+                (uint32_t)buf[2] | ((uint32_t)buf[3] << 8) | ((uint32_t)buf[4] << 16) | ((uint32_t)buf[5] << 24);
             bool ok = cca_ota_session_start(expected);
             printf("[stream] OTA upload start: %lu bytes (%s)\r\n", (unsigned long)expected, ok ? "ok" : "REJECTED");
         }
@@ -674,8 +674,7 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
     }
     case STREAM_CMD_OTA_UPLOAD_END: {
         printf("[stream] OTA upload end: %lu/%lu bytes (%s)\r\n", (unsigned long)cca_ota_session_body_len(),
-               (unsigned long)cca_ota_session_expected_len(),
-               cca_ota_session_complete() ? "complete" : "INCOMPLETE");
+               (unsigned long)cca_ota_session_expected_len(), cca_ota_session_complete() ? "complete" : "INCOMPLETE");
         break;
     }
 

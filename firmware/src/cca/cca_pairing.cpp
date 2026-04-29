@@ -1436,7 +1436,7 @@ static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t dura
  * ----------------------------------------------------------------------- */
 struct OtaFullTxCtx {
     uint32_t count;
-    uint8_t  seq;
+    uint8_t seq;
 };
 
 static void ota_full_tx_send(const uint8_t* pkt, size_t len, void* ctx_v)
