@@ -25,6 +25,19 @@ set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${MCU_FLAGS}")
 # ------------------------------------------------------------------
 # FetchContent: STM32CubeH7 (sources only) and FreeRTOS-Kernel
 # ------------------------------------------------------------------
+# Default the FetchContent cache to a shared per-user location so fresh
+# worktrees don't re-download FreeRTOS + STM32CubeH7 (~2 GB). Override
+# with -DFETCHCONTENT_BASE_DIR=... or the LUTRON_FW_DEPS_DIR env var.
+if(NOT DEFINED CACHE{FETCHCONTENT_BASE_DIR})
+    if(DEFINED ENV{LUTRON_FW_DEPS_DIR})
+        set(FETCHCONTENT_BASE_DIR "$ENV{LUTRON_FW_DEPS_DIR}"
+            CACHE PATH "Directory for FetchContent downloads")
+    elseif(DEFINED ENV{HOME})
+        set(FETCHCONTENT_BASE_DIR "$ENV{HOME}/.cache/lutron-fw-deps"
+            CACHE PATH "Directory for FetchContent downloads")
+    endif()
+endif()
+
 include(FetchContent)
 
 # STM32CubeH7 — no top-level CMakeLists.txt, just download sources
@@ -70,14 +83,19 @@ target_compile_definitions(freertos_config INTERFACE
 set(FREERTOS_PORT "GCC_ARM_CM7" CACHE STRING "FreeRTOS port")
 set(FREERTOS_HEAP "4" CACHE STRING "FreeRTOS heap implementation")
 
-# Now add FreeRTOS as subdirectory
-add_subdirectory(${freertos_SOURCE_DIR} ${freertos_BINARY_DIR})
+# Add FreeRTOS as subdirectory. Use a build dir under our own CMAKE_BINARY_DIR
+# (not freertos_BINARY_DIR, which lives under the shared FETCHCONTENT_BASE_DIR
+# and would race with other worktrees building in parallel).
+add_subdirectory(${freertos_SOURCE_DIR} ${CMAKE_BINARY_DIR}/freertos-build)
 
 # Suppress -Wunused-variable in FreeRTOS V11.1.0 port.c (`pxVectorTable` is
 # only used under specific configMPU* flags). Third-party code, not ours.
-if(TARGET freertos_kernel)
-    target_compile_options(freertos_kernel PRIVATE -Wno-unused-variable)
-endif()
+# port.c is in the freertos_kernel_port target, not freertos_kernel.
+foreach(_t freertos_kernel freertos_kernel_port)
+    if(TARGET ${_t})
+        target_compile_options(${_t} PRIVATE -Wno-unused-variable)
+    endif()
+endforeach()
 
 # ------------------------------------------------------------------
 # Paths derived from FetchContent
