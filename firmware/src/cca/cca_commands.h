@@ -42,6 +42,7 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_AUTO_PAIR = 0x19,       /* Non-blocking auto-pair (B9 beacon + B0 announce via TDMA) */
     CCA_CMD_AUTO_PAIR_STOP = 0x1A,  /* Stop auto-pair engine */
     CCA_CMD_SUBNET_PAIR = 0x1B,     /* Hybrid Vive beacon + RA3 subnet config */
+    CCA_CMD_OTA_BEGIN_TX = 0x1C,    /* Synth-OTA BeginTransfer burst (Phase 2a subnet recon) */
 };
 
 /* -----------------------------------------------------------------------

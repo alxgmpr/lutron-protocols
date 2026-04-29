@@ -1,6 +1,6 @@
 # PowPak RMJ/RMJS → LMJ conversion attack — plan & state
 
-**Status (2026-04-29):** Protocol RE complete, bootloader RE shows no active DeviceClass cross-check, tooling ready for synth-TX validation. Hardware test pending.
+**Status (2026-04-29):** Protocol RE complete, bootloader RE shows no active DeviceClass cross-check, **synth-OTA-TX builders + Phase 2a `cca ota-begin` shell command landed** (TDD against captured-on-air ground truth, all 154 firmware tests pass, ARM build clean). Awaiting hardware test for Phase 2a (subnet recon).
 
 **Goal:** flash a non-smart PowPak (RMJ standalone for ESN, or RMJS for Vive) with smart firmware (LMJ for RA2/RA3/HWQS), entirely RF-side from a Nucleo+CC1101, bypassing every Lutron host system. End state: a device that physically exists as an RMJ/RMJS now boots as an LMJ and pairs to an RA3 processor.
 
@@ -199,17 +199,43 @@ Constructing a valid TX requires picking values for fields that are normally bri
 
 ### Step-by-step protocol
 
-1. **Self-receive validation (no target device)** — synth-TX an LMJ image to ourselves via the SDR loopback. `tools/ota-extract.ts --capture <our-iq> --firmware <lmj-body>` should reassemble at 100% coverage. Confirms the TX firmware emits valid runtime-CCA-framed packets.
-2. **TX to a real RMJS, monitor ACK transitions** —
-   - Power on the target RMJS unit (factory-fresh, no paired controller)
-   - Start RTL-SDR capture of the runtime CCA channel (433.602844 MHz)
-   - Run synth-TX OTA: BeginTransfer → ~3,200 chunks (102KB / 31B) → ChangeAddrOff at page boundaries
-   - Watch device-side `0x0B` ACKs in real-time. Decode XOR (the rule is in `firmware/src/cca/cca_decoder.h:309`) and watch the `format` byte:
-     - Expected start: `0xC1` (ready) — if NEVER seen, device didn't enter receive mode → BeginTransfer payload may need revisiting
-     - Expected mid-OTA: `0x2E` (in-progress) — if stalls, decoder/CRC issue on our TX side
-     - Expected at page wraps: `0xC2` (advancing) — if missing, ChangeAddrOff format is wrong
-     - Expected at end: `0xEC` (committing) — **success signal**. If never seen, the device received chunks but bootloader rejected commit — likely CRC verification failure.
-3. **Power-cycle and pair test** — after seeing `0xEC`, power-cycle the device. Try to pair it to an RA3 processor. If it pairs as LMJ, attack succeeded.
+**Phase 2a — subnet recon (LANDED, awaiting hardware)**
+
+The captured-OTA subnet `0xEFFD` is `Project.SubnetAddress` from a paired bridge's runtime DB. Per [cca-ota-live-capture.md §"On-air OTA wire protocol"](cca-ota-live-capture.md#byte-2-7-are-the-standard-cca-header-not-ota-specific), devices learn their subnet during pairing and filter incoming packets that don't match. **An unpaired RMJ never pairs (no host system addresses it via subnet) and an unpaired RMJS hasn't yet learned a subnet — both presumably fall back to the factory default `0xFFFF`.** That's hypothesis #1 to test.
+
+`cca ota-begin <subnet> <serial> [dur]` — emits BeginTransfer packets at the captured cadence (~75 ms apart). Wired into the existing CCA TX engine via `CCA_CMD_OTA_BEGIN_TX`; uses the new builders in `firmware/src/cca/cca_ota_tx.h` (TDD against captured-on-air ground truth, all bytes byte-for-byte verified).
+
+Hardware test procedure:
+
+1. Read the target RMJ's serial off the product label (8 hex digits).
+2. Power on RMJ (factory-fresh, never paired).
+3. Start RTL-SDR capture at the runtime CCA channel (`433.602844 MHz`) and stream into a JSONL via `npx tsx tools/cca/ota-extract.ts --dump-all <out>.jsonl --capture <iq>` running in the background.
+4. From the Nucleo shell: `cca ota-begin ffff <serial> 5` (TX BeginTransfer for 5 s with subnet `0xFFFF`).
+5. Look for `type:0x0B` packets in the JSONL stream. The decoder (`firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`) XOR-decodes the format byte; we want `format=0xC1` (READY) to indicate the device entered OTA receive mode.
+6. If no `0xC1` seen with `0xFFFF`: sweep candidates `0x0000`, `0xFFFE`, `0x82D7`, `0xEFFD`. Record which, if any, triggers `0xC1`.
+7. If still no `0xC1`: the bootloader RX path may not accept on-runtime-channel packets in factory state at all. Next step: capture an actual ESN→RMJ transaction (if user has access to ESN) to see what address path the host uses for unpaired devices, OR drill into the bootloader's RX dispatcher (BN `0x92be` containing the FA DE sync check) to identify factory-state acceptance criteria.
+
+**Phase 2b — full OTA TX (NOT YET BUILT — needs subnet recon result first)**
+
+Adds `CCA_CMD_OTA_FULL_TX` that:
+1. Receives an LMJ LDF body via the TCP stream protocol (one or more ~32 KB chunks)
+2. Buffers it in Nucleo SRAM (~102 KB; well within RAM_D1 320 KB)
+3. Runs the full BeginTransfer → 3,300× TransferData → ChangeAddrOff sequence at the captured cadence
+4. Emits progress to UART log
+
+Once Phase 2a confirms a working subnet, building Phase 2b is mechanical (the builders + chunk iterator are already done in `cca_ota_tx.h` — only the orchestration is missing).
+
+**Phase 2c — monitor ACK transitions**
+
+Watch device-side `0x0B` ACKs in real-time during the full OTA. Decode XOR via `try_parse_dimmer_ack` and watch the `format` byte:
+- Expected start: `0xC1` (READY) — if NEVER seen, device didn't enter receive mode → BeginTransfer payload may need revisiting
+- Expected mid-OTA: `0x2E` (IN_PROGRESS) — if stalls, decoder/CRC issue on our TX side
+- Expected at page wraps: `0xC2` (ADVANCING_PAGE) — if missing, ChangeAddrOff format is wrong
+- Expected at end: `0xEC` (COMMITTING) — **success signal**. If never seen, the device received chunks but bootloader rejected commit — likely CRC verification failure.
+
+**Phase 3 — power-cycle and pair test**
+
+After seeing `0xEC`, power-cycle the RMJ. Try to pair to an RA3 processor. If it pairs as LMJ, attack succeeded. **RMJS unit is not to be bricked — only test on RMJS once the protocol is fully validated against RMJ.**
 
 ### Decision tree at each stall point
 
@@ -226,6 +252,61 @@ Constructing a valid TX requires picking values for fields that are normally bri
 - **HCS08 SEC bit blocks BDM read.** If the device boots and we can't read its flash post-attack, we can still erase + re-flash via BDM blind. So worst-case we lose factory data but not the device.
 - **Subnet rejection at every value.** If the bootloader requires a SPECIFIC subnet (e.g., one matching its prior commissioning), we may need to capture the RMJS during pairing to learn its expected subnet. Easy enough to set up.
 - **Signature/CRC at commit.** If the commit step verifies a signature over the body (not just CRC), we may need to RE the verification logic. The Phoenix EFR32 coproc IPC `0x2A` handler is the place to start (BN entry points at `0x08018c18` / `0x08018c98`; load the larger phoenix binary `_8003000-803FF08.bin`).
+
+## 2026-04-29: Brick incident on RMJ 0x00BC2107 (line-voltage RMJ-16R-DV-B)
+
+**Status: device is non-responsive.** No power-up LED flash, no button-press LED flash, no relay click. Pre-test it had normal LED behavior (intermittent flash on power-up + button press). Recovery via RF unsuccessful through 25+ attempts. Recovery requires BDM — see [powpak-bdm-recovery.md](powpak-bdm-recovery.md).
+
+### TX sequence in chronological order
+
+All transmits at 433.602844 MHz, runtime CCA framing, against unpaired factory-fresh RMJ (serial `0x00BC2107`, DeviceClass `0x16/0x03/0x02/0x01`):
+
+1. **`cca ota-begin ffff 00bc2107 1`** — 1-second BeginTransfer burst (~13 packets). `0x92` unicast, sub-op `06 00`, payload `02 20 00 00 00 1F`, subnet `0xFFFF`.
+   - This is the most likely culprit. The bootloader's BeginTransfer handler at section-A `0x1a23` likely (a) accepted the packet despite no prior pairing, (b) executed a flash-erase of the application section in preparation for the new image, (c) parked the chip in OTA-receive mode waiting for chunks.
+   - We never sent valid TransferData chunks. The application section was erased but never refilled. The bootloader is alive but has nothing to boot.
+2. Subsequent broadcasts (`cca broadcast`, `cca level`, `cca raw` with various class/component bytes) — these likely had no effect because the chip was already in OTA-wait mode and only listens for `06 nn` sub-opcodes, not runtime control packets.
+3. **`cca ota-begin ffff 00bc2107 5`** — 58 BeginTransfer packets at subnet `0xFFFF`. If the chip was already in OTA mode from step 1, this resent the same Begin which may have re-erased and reset the OTA window.
+4. **Subnet sweep** (`0x0000`, `0xFFFE`, `0xEFFD`, `0x82D7`, `0x1234`, `0xABCD`) — 105 BeginTransfer packets across 6 subnets.
+5. **Recovery attempts** (`cca raw` with sub-ops `0x04`, `0x05`, `0x06`-`0x0F`, `0xFF` against unicast 0x91 and broadcast 0x81) — none recovered.
+6. **`cca ota-begin` then sub-op `04` spam** — sequence intended to BeginTransfer + immediately abort. No effect.
+
+### Hypothesis on the brick mechanism
+
+**Most likely**: BeginTransfer (sub-op `0x00`) at any subnet was sufficient to make the unpaired bootloader execute a flash-erase of the application region. The bootloader has no `subnet` filter at the BeginTransfer-RX stage in factory state — it simply matches its serial in bytes 9-12 (`0x00BC2107`) and accepts. Once erased, it cannot revert to the old app because the old app no longer exists in flash. It can only be reflashed.
+
+This is consistent with the observed symptoms:
+- Power-up LED flash gone: the application owns the LED toggle in the boot sequence; if the app is erased, the LED never gets driven.
+- Button-press LED flash gone: same code path (application).
+- Relay never clicks: relay is application-controlled.
+- No on-air response to any sub-op: the bootloader's RX dispatcher requires the chip to first execute `cc1101_init` (or equivalent), which runs in the application's startup code. With no application, the radio never initializes.
+
+### Implications for RMJS / LMJ targets
+
+**DO NOT send `cca ota-begin` against the RMJS unit (the unit we don't want to brick) until subnet/handshake is fully validated against a sacrificial RMJ.** The same flash-erase will fire on first BeginTransfer regardless of what we plan to do next.
+
+Lessons:
+1. BeginTransfer is destructive, not exploratory. The first packet erases the application.
+2. Need a way to test reachability *without* triggering the OTA flash-erase. Probable candidates: `06 03` Device-poll (no payload, observed in captured OTA pre-flight, less likely to trigger erase) or pairing-stage packets (B0/B8/B9). Verify what response, if any, an unpaired device gives to those before attempting BeginTransfer.
+3. The next live-fire test should target a DIFFERENT sacrificial RMJ — not the bricked one — and use Device-poll (`06 03`) first to confirm RX is alive, *then* BeginTransfer only after confirming the device responds.
+
+### Reachability matrix that yielded no response (pre-brick, first RMJ)
+
+For the record — none of these elicited an `0x0B` ACK from the unpaired RMJ before it was bricked:
+
+| Method | bytes 3-4 (subnet) | bytes 9-12 | byte 13 | Result |
+|---|---|---|---|---|
+| `cca level` (unicast) | zone bytes | serial BE | FE | silent |
+| `cca broadcast` | zone | FF FF FF FF | FF | silent |
+| Raw broadcast w/ DevClass | 00 00 | 16 03 02 01 | FF | silent |
+| Raw broadcast w/ DevClass + subnet=FFFF | FF FF | 16 03 02 01 | FF | silent |
+| Raw 0x83 + DevClass + RELAY component (06 38) | 00 00 | 16 03 02 01 | FF | silent |
+| Raw 0x83 + DevClass + format 09 CTRL | 00 00 | 16 03 02 01 | FF | silent |
+| Raw 0x83 + DevClass + pair_flag=7F | 00 00 | 16 03 02 01 | FF | silent |
+| Raw 0x83 + 5-byte broadcast (FF×5) | 00 00 | FF FF FF FF FF | (n/a) | silent |
+
+**No subnet, no addressing mode, and no command class produced an `0x0B` XOR-ACK from the unpaired device on any of those tests** — *before* the brick. This is a separate concern from the brick itself: it suggests an unpaired factory-fresh RMJ does not respond to runtime CCA commands of any kind we tried. Either the bootloader RX path is dormant until something specific wakes it, or the application's RX-side filtering rejects everything that doesn't match a paired-state subnet+zone.
+
+The successful capture we have (Caseta REP2 → DVRF-6L) was always against a *paired* device. We have no captured ESN→RMJ exchange to compare against. Acquiring such a capture (if an ESN system is available) is now the highest-value next step before any further OTA work.
 
 ## Open questions (in rough priority order)
 
@@ -257,7 +338,13 @@ tools/
 
 firmware/src/cca/
 ├── cca_decoder.h:309                 ← try_parse_dimmer_ack — XOR-ACK decoder rule
-└── cca_tx_builder.h                  ← existing CCA TX builder (target for synth-TX additions)
+├── cca_tx_builder.h                  ← existing CCA TX builder
+├── cca_ota_tx.h                      ← NEW: synth-OTA-TX builders (BeginTransfer, TransferData, ChangeAddrOff, chunk iter)
+├── cca_pairing.cpp                   ← exec_ota_begin (Phase 2a subnet recon TX loop)
+└── cca_commands.h                    ← CCA_CMD_OTA_BEGIN_TX = 0x1C
+
+firmware/tests/
+└── test_ota_tx.cpp                   ← 15 TDD tests against captured-on-air ground truth
 
 data/
 ├── captures/cca-ota-20260428-190439.rf.bin             ← 19-min IQ capture (gitignored)

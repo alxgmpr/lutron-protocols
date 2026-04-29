@@ -45,7 +45,7 @@ test:
 	    tests/test_tdma_jobs.cpp tests/test_cmd_builders.cpp \
 	    tests/test_cmd_stubs.cpp tests/test_hdlc.cpp \
 	    tests/test_spinel.cpp tests/test_ccx_coap.cpp \
-	    tests/test_smp_dfu.cpp \
+	    tests/test_smp_dfu.cpp tests/test_ota_tx.cpp \
 	    src/cca/cca_commands.cpp \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \

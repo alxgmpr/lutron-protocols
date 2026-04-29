@@ -458,6 +458,7 @@ void cca_cmd_execute(const CcaCmdItem* item)
     case CCA_CMD_ANNOUNCE:
     case CCA_CMD_HYBRID_PAIR:
     case CCA_CMD_SUBNET_PAIR:
+    case CCA_CMD_OTA_BEGIN_TX:
         cca_pairing_execute(item);
         break;
     case CCA_CMD_AUTO_PAIR:

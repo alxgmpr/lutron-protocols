@@ -600,13 +600,18 @@ bool cc1101_transmit_raw(const uint8_t* data, size_t len)
         }
     }
 
-    /* Wait for TX to finish. Check for ALL non-TX states, not just IDLE/RX.
-     * Critical: infinite-length mode (>64 bytes) ends in TX_UNDERFLOW (0x16),
-     * not IDLE or RX. Missing this state caused a 200ms timeout per long packet. */
+    /* Wait for TX to actually finish — chip goes IDLE→STARTCAL(0x08)→BWBOOST→
+     * FS_LOCK→IFADCON→ENDCAL→TXRX_SWITCH→TX(0x13)→TX_END(0x14)→{RX(0x0D) or
+     * IDLE(0x01) or TXFIFO_UNDERFLOW(0x16) or RXFIFO_OVERFLOW(0x11)}.
+     *
+     * The previous version broke as soon as state was "not TX/TX_END/SETTLING",
+     * which fired on the very first poll while the chip was still in STARTCAL —
+     * before it had ever reached TX. The next call then strobed SIDLE, aborting
+     * calibration; the chip never radiated. */
     int timeout = 200;
     while (timeout-- > 0) {
         uint8_t s = cc1101_get_state();
-        if (s != 0x13 && s != 0x14 && s != 0x15) break; /* not TX/TX_END/SETTLING */
+        if (s == 0x01 || s == 0x0D || s == 0x11 || s == 0x16) break; /* IDLE/RX/RXOVR/TXUNDER */
         delay_us(100);
     }
 

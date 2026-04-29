@@ -14,6 +14,7 @@
 #include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
+#include "cca_ota_tx.h"
 #include "cca_types.h"
 #include "cca_task.h"
 #include "cc1101.h"
@@ -1380,6 +1381,47 @@ static void exec_subnet_pair(uint32_t bridge_id, uint8_t zone_byte, uint8_t dura
 }
 
 /* -----------------------------------------------------------------------
+ * Synth-OTA BeginTransfer burst — Phase 2a subnet reconnaissance.
+ *
+ * Transmits `cca_ota_build_begin_transfer` packets at the captured-OTA
+ * cadence (~75 ms) for `duration_sec` seconds. Watch for the device's
+ * `0x0B` XOR-ACK with `format=0xC1` (READY) to confirm the chosen subnet
+ * was accepted. See docs/firmware-re/powpak-conversion-attack.md Phase 2.
+ *
+ * For unpaired RMJ/RMJS targets, start with subnet=0xFFFF (factory
+ * default per docs/firmware-re/cca-ota-live-capture.md). Sweep candidates
+ * if no ACK seen.
+ * ----------------------------------------------------------------------- */
+static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t duration_sec)
+{
+    if (duration_sec == 0) duration_sec = 5;
+
+    printf("[cca] CMD ota_begin serial=%08X subnet=%04X dur=%us\r\n", (unsigned)target_serial, subnet, duration_sec);
+
+    uint8_t packet[22];
+    uint32_t start = HAL_GetTick();
+    uint32_t count = 0;
+    uint8_t seq = 0x01;
+
+    while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
+        cca_ota_build_begin_transfer(packet, subnet, target_serial);
+        packet[1] = seq;
+        /* Stop/start RX around each TX so the device's 0x0B ACK at 25 ms
+         * cadence has a window to be received between BeginTransfer packets.
+         * Without this, 5s of TX completely starves the RX path. */
+        cc1101_stop_rx();
+        transmit_one(packet, 22);
+        cc1101_start_rx();
+        count++;
+        seq = (seq + 6) & 0xFF;
+        if (seq >= 0x48) seq = 0x01;
+        vTaskDelay(pdMS_TO_TICKS(75));
+    }
+
+    printf("[cca] CMD ota_begin complete (%lu pkts) — watch for 0x0B ACK fmt=0xC1\r\n", (unsigned long)count);
+}
+
+/* -----------------------------------------------------------------------
  * Public dispatcher — called from cca_cmd_execute()
  * ----------------------------------------------------------------------- */
 void cca_pairing_execute(const CcaCmdItem* item)
@@ -1405,6 +1447,10 @@ void cca_pairing_execute(const CcaCmdItem* item)
         break;
     case CCA_CMD_SUBNET_PAIR:
         exec_subnet_pair(item->device_id, item->zone_byte, item->duration_sec);
+        break;
+    case CCA_CMD_OTA_BEGIN_TX:
+        exec_ota_begin(item->device_id, (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
+                       item->duration_sec);
         break;
     default:
         printf("[cca] Unknown pairing command: 0x%02X\r\n", item->cmd);
