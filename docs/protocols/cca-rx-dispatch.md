@@ -376,36 +376,36 @@ during its decoder pass.)
 ```bash
 # Import binaries into a fresh scratch project
 mkdir -p /tmp/cca-rx-scratch
-bash tools/ghidra-headless.sh /tmp/cca-rx-scratch rx -import \
+bash tools/ghidra/ghidra-headless.sh /tmp/cca-rx-scratch rx -import \
   data/firmware/phoenix-device/coprocessor/phoenix_efr32_8003000-801FB08.bin \
   -processor ARM:LE:32:Cortex -loader BinaryLoader \
   -loader-baseAddr 0x08003000 -overwrite
 
 # Find the RX classifier (look for the function with `(type & 0xC0)` plus
 # multiple cmp #0x80, #0x40, #0xC0)
-bash tools/ghidra-headless.sh /tmp/cca-rx-scratch rx \
+bash tools/ghidra/ghidra-headless.sh /tmp/cca-rx-scratch rx \
   -process phoenix_efr32_8003000-801FB08.bin \
   -postScript FindCCAByteMaskC0.java -scriptPath tools/ghidra-scripts \
   -noanalysis -readOnly
 
 # Decompile a candidate
-bash tools/ghidra-headless.sh /tmp/cca-rx-scratch rx \
+bash tools/ghidra/ghidra-headless.sh /tmp/cca-rx-scratch rx \
   -process phoenix_efr32_8003000-801FB08.bin \
   -postScript DecompileFunctionAt.java 0x0800CC74 \
   -scriptPath tools/ghidra-scripts -noanalysis -readOnly
 ```
 
 Helper scripts added in this PR:
-- `tools/ghidra-scripts/FindCCAByteMaskC0.java` — locates the RX classifier by its
+- `tools/ghidra/scripts/FindCCAByteMaskC0.java` — locates the RX classifier by its
   byte-mask compare signature (`& 0xC0` + cmp `0x40`/`0x80`/`0xC0`).
-- `tools/ghidra-scripts/FindFADESync.java` — locates the sync-delimiter check.
-- `tools/ghidra-scripts/FindCRCAndCallers.java` — locates CRC poly references and
+- `tools/ghidra/scripts/FindFADESync.java` — locates the sync-delimiter check.
+- `tools/ghidra/scripts/FindCRCAndCallers.java` — locates CRC poly references and
   functions that consume them.
-- `tools/ghidra-scripts/FindRXDispatcher.java` — coarse first-pass enumerator;
+- `tools/ghidra/scripts/FindRXDispatcher.java` — coarse first-pass enumerator;
   superseded by `FindCCAByteMaskC0.java` for RX.
-- `tools/ghidra-scripts/FindRXClassifier.java` — looks for cmp-cascades against
+- `tools/ghidra/scripts/FindRXClassifier.java` — looks for cmp-cascades against
   RX type bytes; useful for finding individual handler clusters.
-- `tools/ghidra-scripts/DumpStrings.java` — read-only string dumper. (No useful
+- `tools/ghidra/scripts/DumpStrings.java` — read-only string dumper. (No useful
   strings in EFR32 image — fully stripped.)
 
 ## 10. Outstanding work

@@ -8,7 +8,7 @@ Overview of the three communication layers in Lutron lighting systems and how th
 |-------|------|----------|---------|-----------|
 | **CCA** (Clear Connect Type A) | 433 MHz FSK | Proprietary N81+CRC | Picos, dimmers, switches, sensors, hubs | ESP32/CC1101, RTL-SDR |
 | **CCX** (Clear Connect Type X) | 2.4 GHz | Thread (802.15.4) | Smart dimmers, keypads, processors | nRF52840 sniffer, tshark |
-| **LEAP** | IP/TLS | JSON over TCP | Processor API (read-only on port 8081) | `tools/leap-dump.ts`, pylutron-caseta |
+| **LEAP** | IP/TLS | JSON over TCP | Processor API (read-only on port 8081) | `tools/leap/leap-dump.ts`, pylutron-caseta |
 
 All three carry the same logical commands. The telnet integration protocol documents them as abstract action numbers; CCA and CCX are the RF transports for those actions.
 

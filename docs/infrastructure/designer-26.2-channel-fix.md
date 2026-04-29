@@ -33,7 +33,7 @@ Deleting the 37 `tblLinkNode` rows referencing 4890 might remove real CCX device
 
 IL patch `ChannelManager.IsProjectCompatibleWithChannel()` in `Lutron.Gulliver.DomainObjects.dll` to always return true. Single method, `bool` return, only callers are `ProjectTypeConversionManager.ChannelCompatibilityStatus()` and `ShowInCompatibleDeviceViewModel` — safe to stub.
 
-Patcher section in `tools/dll-patcher/DllPatcher/Program.cs`, Section 3 (DomainObjects.dll):
+Patcher section in `exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs`, Section 3 (DomainObjects.dll):
 
 ```csharp
 var chanMgr = mod.Find("Lutron.Gulliver.DomainObjects.Database.ChannelManager", false);
