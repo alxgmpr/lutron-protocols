@@ -224,3 +224,52 @@ inline bool cca_ota_chunk_iter_advance(OtaChunkIter* it)
     it->addr_lo = (uint16_t)next;
     return false;
 }
+
+/* -----------------------------------------------------------------------
+ * Full-OTA orchestrator — walks the LDF body in cca_ota_session, invoking
+ * `cb` for each on-air packet (1× BeginTransfer, then TransferData× chunks
+ * with carrier rotation B1/B2/B3, plus a ChangeAddressOffset between
+ * packets that span a 64 KB page boundary).
+ *
+ * Pure orchestration — no TX side effects. The caller chooses how to
+ * deliver each packet (TDMA queue, test logger, file dump, etc.). The
+ * sequence byte at offset 1 is left as 0x00; whoever delivers the packet
+ * is responsible for setting it (the TDMA engine does this in firmware).
+ *
+ * Use this for unit-testing the orchestration layer and for the
+ * exec_ota_full_tx shell command in cca_pairing.cpp.
+ * ----------------------------------------------------------------------- */
+typedef void (*OtaTxPacketCallback)(const uint8_t* pkt, size_t len, void* ctx);
+
+extern "C" const uint8_t* cca_ota_session_body(void);
+extern "C" uint32_t cca_ota_session_body_len(void);
+
+inline void cca_ota_full_tx_walk(uint16_t subnet, uint32_t target_serial, OtaTxPacketCallback cb, void* ctx)
+{
+    /* 1× BeginTransfer */
+    uint8_t pkt22[22];
+    cca_ota_build_begin_transfer(pkt22, subnet, target_serial);
+    cb(pkt22, 22, ctx);
+
+    /* TransferData stream + ChangeAddrOff at page wraps */
+    OtaChunkIter it;
+    cca_ota_chunk_iter_init(&it, cca_ota_session_body(), cca_ota_session_body_len());
+
+    static const uint8_t carriers[3] = {0xB1, 0xB2, 0xB3};
+    uint32_t chunk_count = 0;
+    while (!cca_ota_chunk_iter_done(&it)) {
+        uint8_t carrier = carriers[chunk_count % 3];
+        uint8_t chunk[OTA_CHUNK_SIZE];
+        cca_ota_chunk_iter_fill(&it, chunk);
+        uint8_t pkt51[51];
+        cca_ota_build_transfer_data(pkt51, carrier, subnet, target_serial, it.sub_counter, it.addr_lo, chunk,
+                                    OTA_CHUNK_SIZE);
+        cb(pkt51, 51, ctx);
+        bool wrapped = cca_ota_chunk_iter_advance(&it);
+        if (wrapped && !cca_ota_chunk_iter_done(&it)) {
+            cca_ota_build_change_addr_offset(pkt22, subnet, target_serial, (uint16_t)(it.page - 1), (uint16_t)it.page);
+            cb(pkt22, 22, ctx);
+        }
+        chunk_count++;
+    }
+}

