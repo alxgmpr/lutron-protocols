@@ -11,6 +11,7 @@
     "leap:dump": "npx tsx tools/leap/leap-dump.ts",
     "cca:ota-tx": "npx tsx tools/cca/ota-tx.ts",
     "cca:ota-upload": "npx tsx tools/cca/ota-upload.ts",
+    "cca:ota-tx-loopback": "npx tsx tools/cca/ota-tx-loopback.ts",
     "gather-presets": "npx tsx tools/designer/gather-presets.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --fix .",
