@@ -1381,6 +1381,13 @@ static void exec_subnet_pair(uint32_t bridge_id, uint8_t zone_byte, uint8_t dura
     printf("[cca] CMD subnet_pair complete (%d devices paired)\r\n", devices_paired);
 }
 
+/* Captured-ground-truth inter-packet cadence for OTA TX. The Caseta REP2 →
+ * DVRF-6L recording (cca-ota-20260428-190439.packets.jsonl) shows a clean
+ * 150ms histogram for adjacent TransferData packets (4076 deltas, p10=p90=
+ * 150ms). The 300ms gaps in the capture are the unrecorded B1 arm; the
+ * underlying on-air inter-packet rate is 150ms across all 3 TDMA arms. */
+#define OTA_INTER_PACKET_MS 150
+
 /* -----------------------------------------------------------------------
  * Synth-OTA BeginTransfer burst — Phase 2a subnet reconnaissance.
  *
@@ -1416,7 +1423,7 @@ static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t dura
         count++;
         seq = (seq + 6) & 0xFF;
         if (seq >= 0x48) seq = 0x01;
-        vTaskDelay(pdMS_TO_TICKS(75));
+        vTaskDelay(pdMS_TO_TICKS(OTA_INTER_PACKET_MS));
     }
 
     printf("[cca] CMD ota_begin complete (%lu pkts) — watch for 0x0B ACK fmt=0xC1\r\n", (unsigned long)count);
@@ -1462,7 +1469,7 @@ static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_t
         count++;
         seq = (seq + 6) & 0xFF;
         if (seq >= 0x48) seq = 0x01;
-        vTaskDelay(pdMS_TO_TICKS(75));
+        vTaskDelay(pdMS_TO_TICKS(OTA_INTER_PACKET_MS));
     }
 
     printf("[cca] CMD ota_poll complete (%lu pkts) — safe pre-flight done\r\n", (unsigned long)count);
@@ -1473,7 +1480,9 @@ static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_t
  *
  * Walks the LDF body in cca_ota_session via cca_ota_full_tx_walk, sending
  * each packet (BeginTransfer, TransferData× chunks, ChangeAddrOff at page
- * wraps) at the captured 75 ms cadence. Sequence byte is incremented per
+ * wraps) at the captured 150 ms cadence (see OTA_INTER_PACKET_MS — the
+ * full-capture histogram across 4076 deltas confirms 150ms inter-packet,
+ * not the 75ms originally claimed). Sequence byte is incremented per
  * packet to mirror the captured TDMA pattern. Logs progress every 100
  * packets via stream_broadcast_text so the host TUI sees it.
  *
@@ -1509,8 +1518,7 @@ static void ota_full_tx_send(const uint8_t* pkt, size_t len, void* ctx_v)
         if (n > 0) stream_broadcast_text(line, (size_t)n);
     }
 
-    /* Captured cadence ~75 ms between packets (DVRF-6L OTA average). */
-    vTaskDelay(pdMS_TO_TICKS(75));
+    vTaskDelay(pdMS_TO_TICKS(OTA_INTER_PACKET_MS));
 }
 
 static void exec_ota_full_tx(uint16_t subnet, uint32_t target_serial)
