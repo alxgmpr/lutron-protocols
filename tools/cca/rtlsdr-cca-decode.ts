@@ -655,7 +655,32 @@ function formatPacket(bytes: number[], crcBoundary: number | null): string {
 }
 
 // --- Main decode pipeline ---
-function decodeIQ(iq: Uint8Array, debug: boolean) {
+/* When --jsonl is set, emit one JSON line per CRC-valid packet to stdout —
+ * `{tMs, type, crcOk, hex}` — matching the format that tools/ota-extract.ts
+ * produces. All other diagnostic output is suppressed inside decodeIQ. */
+function emitPacket(
+  _ignored: boolean,
+  burstTimeMs: number | string,
+  _burstIdx: number,
+  bytes: number[],
+  _crcBoundary: number,
+  _countStr: string,
+): void {
+  const type = bytes[0];
+  const hex = bytes.map(hexByte).join(" ");
+  // burstTimeMs may arrive as a string (call sites use toFixed(1)). Coerce.
+  const tMs =
+    typeof burstTimeMs === "number" ? burstTimeMs : Number(burstTimeMs);
+  process.stdout.write(JSON.stringify({ tMs, type, crcOk: true, hex }) + "\n");
+}
+
+function decodeIQ(iq: Uint8Array, debug: boolean, jsonl = false) {
+  /* In JSONL mode, swallow all the human-readable diagnostic output below
+   * so stdout stays parseable. The only stdout writes that survive are the
+   * `emitPacket` calls inside the burst loop further down. */
+  const origLog = console.log;
+  if (jsonl) console.log = () => {};
+
   const numSamples = Math.floor(iq.length / 2);
   const durationSec = numSamples / SAMPLE_RATE;
 
@@ -821,23 +846,25 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
     }
 
     // Output: show unique CRC-valid packets for this burst
-    for (const [key, { bytes, crcBoundary, count }] of burstCrcPackets) {
-      const type = bytes[0];
-      const typeStr = getTypeName(type);
+    for (const [, { bytes, crcBoundary, count }] of burstCrcPackets) {
       const countStr = count > 1 ? " (" + count + "x)" : "";
-      console.log(
-        "#" +
-          bi +
-          " @ " +
-          burstTimeMs +
-          "ms: " +
-          typeStr +
-          " | CRC OK at " +
-          crcBoundary +
-          countStr +
-          " | " +
-          key,
-      );
+      if (jsonl) {
+        emitPacket(true, burstTimeMs, bi, bytes, crcBoundary, countStr);
+      } else {
+        origLog(
+          "#" +
+            bi +
+            " @ " +
+            burstTimeMs +
+            "ms: " +
+            getTypeName(bytes[0]) +
+            " | CRC OK at " +
+            crcBoundary +
+            countStr +
+            " | " +
+            bytes.map(hexByte).join(" "),
+        );
+      }
     }
 
     // If no CRC-valid packets, try majority-vote combining across retransmissions
@@ -876,23 +903,25 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
         }
         const votedCrc = findCrcBoundary(voted);
         if (votedCrc) {
-          const key = voted.slice(0, votedCrc).map(hexByte).join(" ");
-          const type = voted[0];
-          const typeStr = getTypeName(type);
-          console.log(
-            "#" +
-              bi +
-              " @ " +
-              burstTimeMs +
-              "ms: " +
-              typeStr +
-              " | CRC OK at " +
-              votedCrc +
-              " (voted " +
-              matching.length +
-              "x) | " +
-              key,
-          );
+          const votedBytes = voted.slice(0, votedCrc);
+          const countStr = " (voted " + matching.length + "x)";
+          if (jsonl) {
+            emitPacket(true, burstTimeMs, bi, votedBytes, votedCrc, countStr);
+          } else {
+            origLog(
+              "#" +
+                bi +
+                " @ " +
+                burstTimeMs +
+                "ms: " +
+                getTypeName(votedBytes[0]) +
+                " | CRC OK at " +
+                votedCrc +
+                countStr +
+                " | " +
+                votedBytes.map(hexByte).join(" "),
+            );
+          }
           crcOk++;
         } else {
           const p = burstNoCrc[0];
@@ -960,10 +989,12 @@ function decodeIQ(iq: Uint8Array, debug: boolean) {
   console.log("  Retransmissions found: " + totalRetx);
   console.log("  Decoded: " + decoded);
   console.log("  CRC OK: " + crcOk);
+
+  if (jsonl) console.log = origLog;
 }
 
 // --- Live capture ---
-async function captureLive(durationSec: number, debug: boolean) {
+async function captureLive(durationSec: number, debug: boolean, jsonl = false) {
   const numSamples = SAMPLE_RATE * durationSec;
   const tmpFile = "/tmp/rtl_cca_" + Date.now() + ".bin";
 
@@ -993,13 +1024,14 @@ async function captureLive(durationSec: number, debug: boolean) {
 
   console.log("\nDecoding...\n");
   const iq = new Uint8Array(readFileSync(tmpFile));
-  decodeIQ(iq, debug);
+  decodeIQ(iq, debug, jsonl);
 }
 
 // --- Main ---
 async function main() {
   const args = process.argv.slice(2);
   const debug = args.includes("--debug");
+  const jsonl = args.includes("--jsonl");
 
   // Parse --rate option
   const rateIdx = args.indexOf("--rate");
@@ -1010,6 +1042,7 @@ async function main() {
   const filteredArgs = args.filter(
     (a, i) =>
       a !== "--debug" &&
+      a !== "--jsonl" &&
       a !== "--rate" &&
       (i === 0 || args[i - 1] !== "--rate"),
   );
@@ -1018,7 +1051,7 @@ async function main() {
     const durIdx = filteredArgs.indexOf("--duration");
     const duration =
       durIdx >= 0 ? parseInt(filteredArgs[durIdx + 1], 10) || 10 : 10;
-    await captureLive(duration, debug);
+    await captureLive(duration, debug, jsonl);
     return;
   }
 
@@ -1055,16 +1088,18 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("Reading " + filename + "...");
-  console.log(
-    "Sample rate: " +
-      (SAMPLE_RATE / 1e6).toFixed(1) +
-      " MHz (" +
-      SAMPLES_PER_BIT +
-      " samples/bit)",
-  );
+  if (!jsonl) {
+    console.log("Reading " + filename + "...");
+    console.log(
+      "Sample rate: " +
+        (SAMPLE_RATE / 1e6).toFixed(1) +
+        " MHz (" +
+        SAMPLES_PER_BIT +
+        " samples/bit)",
+    );
+  }
   const iq = new Uint8Array(readFileSync(filename));
-  decodeIQ(iq, debug);
+  decodeIQ(iq, debug, jsonl);
 }
 
 main().catch(console.error);
