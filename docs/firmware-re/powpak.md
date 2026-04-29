@@ -117,7 +117,7 @@ A second similar table at BN `0x09A4F` adds writes to PATABLE (0x7E), TX FIFO (0
 | 0x0C | FSCTRL0 | 0x00 | freq offset = 0 |
 | 0x0D-0x0F | FREQ2/1/0 | — | **NOT in this table — set per-band elsewhere** |
 | 0x10 | **MDMCFG4** | **0x9C** | CHANBW_E=2, CHANBW_M=1, DRATE_E=12 → bandwidth ≈ 162 kHz |
-| 0x11 | **MDMCFG3** | **0x3B** | DRATE_M=0x3B → **30.49 kbps** ← Lutron CCA's 30 kbps |
+| 0x11 | **MDMCFG3** | **0x3B** | DRATE_M=0x3B; the static-RE decode here gave 30.49 kbps but the **2026-04-28 live capture measured ~62.5 kbps** empirically (preamble peak-to-peak measurement). Register decode formula likely misapplied, or OTA reuses runtime CCA's bit clock. See [cca-ota-live-capture.md](cca-ota-live-capture.md). |
 | 0x12 | **MDMCFG2** | **0x10** | **GFSK**, no Manchester, **SYNC_MODE=0 (sync detection disabled)** |
 | 0x13 | MDMCFG1 | 0x00 | no preamble bytes inserted, no FEC |
 | 0x14 | MDMCFG0 | 0x00 | channel spacing M=0 |
@@ -140,7 +140,7 @@ A second similar table at BN `0x09A4F` adds writes to PATABLE (0x7E), TX FIFO (0
 ### Key takeaways
 
 - **CC1101 in async serial mode** (PKTCTRL0 = 0x32). The chip handles physical-layer FSK, but **the MCU bit-bangs the entire CCA framing** — preamble, sync word, length, CRC. This is consistent with Lutron's custom CCA protocol that doesn't use CC1101's built-in packet engine.
-- **30 kbps GFSK, 32 kHz deviation, 162 kHz channel bandwidth.** Matches existing CCA protocol notes.
+- ~~**30 kbps GFSK, 32 kHz deviation, 162 kHz channel bandwidth.**~~ Empirically **~62.5 kbps GFSK, ~38 kHz deviation, 162 kHz channel bandwidth** (2026-04-28 live capture). The 30 kbps claim was a register-decode error.
 - **No SYNC word in CC1101** (MDMCFG2 SYNC_MODE = 0). All Lutron CCA sync detection is in firmware via 8N1 bit decoder + sync byte search.
 - **FREQ registers excluded** — the band (434 vs 868) is configured by a separate code path not in this main init table.
 
@@ -408,7 +408,7 @@ Verified against PowPak's RX side — both ends configured byte-for-byte identic
 ### Modem config (CC1101)
 
 Phoenix coproc (TX) and PowPak (RX) share:
-- GFSK, 30.49 kbps, 32 kHz deviation, ~162 kHz channel bandwidth
+- GFSK, **~62.5 kbps** (empirically — see [cca-ota-live-capture.md](cca-ota-live-capture.md); was earlier claimed as 30.49 kbps from static-RE register decode but live capture disproved that), ~38 kHz deviation, ~162 kHz channel bandwidth
 - PKTCTRL0 = 0x32 — async serial mode (MCU bit-bangs framing on both ends)
 - MDMCFG2 = 0x10 — sync-mode = 0 (chip does NOT do sync detection — software does)
 - ~~35-channel frequency hopping table~~ — empirically single-channel at ~433.566 MHz; the 35-row table is something else (see [cca-ota-live-capture.md](cca-ota-live-capture.md))

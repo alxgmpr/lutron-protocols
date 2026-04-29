@@ -427,12 +427,14 @@ OTA uses a different CC1101 mode than the runtime CCA protocol. Key registers:
 |-----|-------------|-----|
 | PKTCTRL0 | `0x00` (fixed-length packet engine) | `0x32` (**async serial mode** — MCU bit-bangs framing) |
 | MDMCFG2 | `0x30` (2-FSK, no sync) | `0x10` (**GFSK**, no sync) |
-| MDMCFG3 | `0x3B` (62.5 kBaud) | `0x3B` (**30.49 kbps**) |
+| MDMCFG3 | `0x3B` (62.5 kBaud) | `0x3B` (**~62.5 kbps observed** — empirical, not 30.49 kbps as static-RE register decode claimed) |
 | MDMCFG4 | `0x0B` | `0x9C` |
-| DEVIATN | `0x45` (41.2 kHz) | `0x44` (**32 kHz**) |
+| DEVIATN | `0x45` (41.2 kHz) | `0x44` (**~38 kHz**) |
 | Channel | 433.602844 MHz (channel 26) | **~433.566 MHz** (offset −36 kHz, single channel) |
 
 Both ends (Phoenix EFR32 coproc TX and PowPak RX) configure these registers byte-for-byte identically.
+
+**Data rate is ~62.5 kbps, NOT 30.49 kbps** (revised 2026-04-28). The earlier static-RE register decode in [powpak.md](../firmware-re/powpak.md) claimed 30.49 kbps, but a 1010-preamble peak-to-peak measurement on the live capture gives 31 µs per cycle = 2 bits per 31 µs → ~64 kHz (close to runtime CCA's documented 62.5 kbps). Possible explanations: register decode formula was misapplied, or the OTA mode reuses runtime CCA's bit clock by design. Either way, demod and synth in [`lib/cca-ota-demod.ts`](../../lib/cca-ota-demod.ts) use the empirical rate.
 
 **Single-channel — empirically confirmed 2026-04-28.** The 35-row table at PowPak BN `0x9B30` and Phoenix BN `0x08018e30` was earlier suspected to be a frequency-hop table (channel codes `0x44..0x66`, 2 bytes each), but a 90 s spectrogram of an active OTA shows energy concentrated in a **single ~80 kHz band centered at 433.566 MHz** with no hop pattern. The 35-row table is something else — calibration LUT, retry-channel list, or unrelated feature. See [cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) for the spectrogram evidence.
 

@@ -167,18 +167,70 @@ This means an empirical **per-phase-byte correlation must come from the RF
 capture, not the log**. The log gives us start/end timestamps; everything
 between is in the IQ stream.
 
-## Outstanding work
+## Demod progress + correction to the static-RE data rate
 
-To turn the 6.1 GB capture into a phase-byte transcript:
+`lib/cca-ota-demod.ts` (committed in this PR) implements the DSP primitives:
 
-1. Build a GFSK demodulator (30.49 kbps, ~32 kHz deviation, ~162 kHz BW) on
-   the existing `lib/cca-ota-codec.ts` byte/bit primitives. Validate against
-   synthesized signals first (TDD) then against this real capture.
-2. Run the demod over the full 19-minute active window. Expect ~5 minutes of
-   wall-clock processing for 6.1 GB at 2.56 MHz.
-3. Extract opcodes and bodies via `extractPacketsFromBits`. The single-channel
-   center makes mixing/decimation trivial — just frequency-shift by -36 kHz
-   and decimate to ~256 ksps.
+- `complexFromUint8` / `uint8FromComplex` — rtl_sdr file ↔ complex IQ
+- `mix` — frequency shift (used to bring the −36 kHz carrier to DC)
+- `instantaneousFrequency` — phase-difference discriminator
+- `synthesizeFsk` — bits → IQ (CPFSK, for round-trip testing)
+- `demodulateFsk` — IQ → bits (matched filter over middle 50% of each bit)
+
+**13 demod tests pass** including a full end-to-end synth → demod → codec
+round-trip for the four primary OTA opcodes (0x2A / 0x32 / 0x41 / 0x58),
+proving the framing and the codec layer agree on synthesized signals.
+
+**Critical empirical correction** (revises [`docs/protocols/cca.md` §9.2](../protocols/cca.md#92-modem-config-cc1101)):
+
+> **Data rate is ~62.5 kbps, NOT 30.49 kbps** as the static-RE register
+> decode in [powpak.md](powpak.md) claimed.
+
+Measurement: peak-to-peak in a 1010-preamble alternating pattern on the live
+capture is ~31 µs (= 2 bit periods), giving a bit rate of ~64 kHz. Closer to
+runtime CCA's 62.5 kbps than to the doc's 30.49 kbps. Either the register
+formula was misapplied or the OTA reuses runtime CCA's bit clock — the
+demod uses the empirical rate.
+
+**Other empirical numbers:**
+- Deviation: 10/90 percentiles of instantaneous frequency on a real burst land
+  at ±48 kHz, consistent with ~38 kHz CC1101-spec deviation (DEVIATN=0x44 →
+  ~38 kHz, not 32 kHz as some doc rows claimed) plus transition smear.
+- Burst structure: ~2.1 ms bursts every ~25 ms during TransferData
+  (~40 packets/sec, well within the 250-packets/sec ceiling implied by the
+  manifest's 1200 s budget for ~200 kB of payload).
+
+## Open: real-capture decode needs symbol synchronization
+
+The demod recovers the alternating preamble pattern cleanly and the `0xFF`
+sync delimiter is visible in the bit stream after the preamble. But bit
+errors accumulate at byte boundaries — the FA DE sync word doesn't appear
+intact at any tested offset, so `extractPacketsFromBits` returns 0 packets.
+Symptoms suggest **the bit clock isn't being tracked** — the demod assumes
+bit 0 starts at sample 0 of the burst, but actual bit boundaries are at
+random fractional offsets.
+
+What's needed for clean decode (next session):
+
+1. **Symbol synchronization** — track the bit clock from the preamble. A
+   simple max-correlation search (slide a `±dev` square wave past the freq
+   array, find best phase) would do it.
+2. **DC offset estimation** — each burst has a slight carrier-offset variation
+   (we observed −4 kHz on one burst vs −36 kHz overall). A per-burst median
+   subtraction would clean this up.
+3. **Possibly Gaussian shaping inverse** — the freq array shows transition
+   smear ~10 µs wide; a matched filter using the actual GFSK pulse shape
+   would tighten the bit decisions.
+
+The demod library is structured so these can be added incrementally — none
+of them break the synth round-trip tests.
+
+## Outstanding work for full transcript
+
+1. Implement symbol sync per above
+2. Run the demod over the full 19-minute active window (~5 min wall-clock
+   for 6.1 GB at 2.56 MHz)
+3. Extract opcodes and bodies via `extractPacketsFromBits`
 4. Resolve the body sub-opcode discriminator that distinguishes the three
    `0x32` Control phases (`ChangeAddressOffset` / `EndTransfer` / `ResetDevice`),
    completing Open Question #1 in [caseta-cca-ota.md](caseta-cca-ota.md).
