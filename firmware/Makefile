@@ -64,6 +64,7 @@ format-check:
 lint:
 	cppcheck --enable=warning,style,performance \
 	    --error-exitcode=1 \
+	    -j$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) \
 	    --std=c11 --std=c++17 \
 	    --suppressions-list=.cppcheck-suppress \
 	    $(INCLUDE_DIRS) src/
