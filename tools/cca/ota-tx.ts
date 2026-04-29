@@ -21,12 +21,7 @@
 import { createSocket, type Socket } from "node:dgram";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import {
-  buildBeginTransfer,
-  buildChangeAddressOffset,
-  buildTransferData,
-  OtaChunkIter,
-} from "../../lib/cca-ota-tx-builder";
+import { walkOtaPackets } from "../../lib/cca-ota-tx-builder";
 import { config } from "../../lib/config";
 import { stripLdfHeader } from "../../lib/ldf";
 
@@ -119,58 +114,36 @@ async function main(): Promise<void> {
     await sleep(100);
   }
 
-  const sendPacket = async (pkt: Uint8Array, label: string): Promise<void> => {
+  let chunkCount = 0;
+  let totalCount = 0;
+  for (const { label, pkt } of walkOtaPackets(body, subnet, targetSerial)) {
+    if (
+      label.startsWith("TransferData") &&
+      maxChunks > 0 &&
+      chunkCount >= maxChunks
+    ) {
+      console.log(`[ota-tx] stopping early: --max-chunks=${maxChunks} reached`);
+      break;
+    }
     if (dryRun || !sock) {
       console.log(`[dry] ${label.padEnd(18)} ${hex(pkt)}`);
     } else {
       sendStream(sock, host, STREAM_CMD_TX_RAW_CCA, pkt);
     }
     await sleep(cadenceMs);
-  };
-
-  // 1× BeginTransfer
-  await sendPacket(buildBeginTransfer(subnet, targetSerial), "BeginTransfer");
-
-  // TransferData stream + ChangeAddrOff at every page wrap
-  const carriers = [0xb1, 0xb2, 0xb3];
-  const it = new OtaChunkIter(body);
-  let chunkCount = 0;
-  while (!it.done()) {
-    if (maxChunks > 0 && chunkCount >= maxChunks) {
-      console.log(`[ota-tx] stopping early: --max-chunks=${maxChunks} reached`);
-      break;
-    }
-    const carrier = carriers[chunkCount % carriers.length];
-    const chunk = it.fill();
-    const td = buildTransferData(
-      carrier,
-      subnet,
-      targetSerial,
-      it.subCounter,
-      it.addrLo,
-      chunk,
-    );
-    await sendPacket(td, `TransferData[${chunkCount}]`);
-    const wrapped = it.advance();
-    if (wrapped && !it.done()) {
-      const cao = buildChangeAddressOffset(
-        subnet,
-        targetSerial,
-        it.page - 1,
-        it.page,
-      );
-      await sendPacket(cao, "ChangeAddrOff");
-    }
-    chunkCount++;
-    if (chunkCount % 100 === 0) {
-      console.log(
-        `[ota-tx] sent ${chunkCount} chunks (page=${it.page} addrLo=0x${it.addrLo.toString(16).padStart(4, "0")})`,
-      );
+    if (label.startsWith("TransferData")) chunkCount++;
+    totalCount++;
+    if (
+      chunkCount > 0 &&
+      chunkCount % 100 === 0 &&
+      label.startsWith("TransferData")
+    ) {
+      console.log(`[ota-tx] sent ${chunkCount} chunks`);
     }
   }
 
   console.log(
-    `[ota-tx] complete: ${chunkCount} chunks, ended at page=${it.page} addrLo=0x${it.addrLo.toString(16).padStart(4, "0")}`,
+    `[ota-tx] complete: ${chunkCount} chunks (${totalCount} packets total)`,
   );
   if (sock) sock.close();
 }

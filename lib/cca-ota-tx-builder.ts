@@ -208,3 +208,78 @@ export class OtaChunkIter {
     return false;
   }
 }
+
+/** One packet in an OTA TX sequence — labelled for diagnostics. */
+export interface OtaPacket {
+  label: string;
+  pkt: Uint8Array;
+}
+
+/**
+ * Generator that yields the full on-air packet sequence for an OTA TX:
+ * 1× BeginTransfer, then TransferData per chunk (carriers cycle B1/B2/B3),
+ * with ChangeAddressOffset injected at every 64 KB page wrap.
+ *
+ * Mirrors the firmware-side `cca_ota_full_tx_walk` in
+ * firmware/src/cca/cca_ota_tx.h. Used by both the host-side OTA driver
+ * and the loopback validator to know what packets to expect on the wire.
+ */
+export function* walkOtaPackets(
+  body: Uint8Array,
+  subnet: number,
+  targetSerial: number,
+): Generator<OtaPacket> {
+  yield {
+    label: "BeginTransfer",
+    pkt: buildBeginTransfer(subnet, targetSerial),
+  };
+
+  const carriers = [0xb1, 0xb2, 0xb3];
+  const it = new OtaChunkIter(body);
+  let i = 0;
+  while (!it.done()) {
+    const carrier = carriers[i % carriers.length];
+    const chunk = it.fill();
+    yield {
+      label: `TransferData[${i}]`,
+      pkt: buildTransferData(
+        carrier,
+        subnet,
+        targetSerial,
+        it.subCounter,
+        it.addrLo,
+        chunk,
+      ),
+    };
+    const wrapped = it.advance();
+    if (wrapped && !it.done()) {
+      yield {
+        label: "ChangeAddrOff",
+        pkt: buildChangeAddressOffset(
+          subnet,
+          targetSerial,
+          it.page - 1,
+          it.page,
+        ),
+      };
+    }
+    i++;
+  }
+}
+
+/**
+ * Byte-equal comparison ignoring the sequence byte at offset 1.
+ *
+ * The TDMA engine writes the sequence byte at TX time, so a packet built
+ * with seq=0x00 and the same packet observed off-air with seq=0x07 are
+ * functionally the same. Used by the loopback validator to match expected
+ * packets against TX echoes and SDR-decoded packets.
+ */
+export function packetsEqualIgnoringSeq(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (i === 1) continue;
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}

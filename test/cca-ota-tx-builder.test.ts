@@ -18,6 +18,8 @@ import {
   buildChangeAddressOffset,
   buildTransferData,
   OtaChunkIter,
+  packetsEqualIgnoringSeq,
+  walkOtaPackets,
 } from "../lib/cca-ota-tx-builder";
 
 // Captured: 92 01 a1 ef fd 00 21 0e 00 06 fe 80 20 fe 06 00 02 20 00 00 00 1f
@@ -207,4 +209,71 @@ test("OtaChunkIter done() returns true when cursor reaches body length", () => {
   assert.equal(it.done(), false);
   it.advance();
   assert.equal(it.done(), true);
+});
+
+// walkOtaPackets — orchestrator generator (mirrors cca_ota_full_tx_walk in firmware)
+
+test("walkOtaPackets emits BeginTransfer first", () => {
+  const body = new Uint8Array(31); // exactly 1 chunk
+  const packets = [...walkOtaPackets(body, 0xeffd, 0x06fe8020)];
+  assert.equal(packets.length, 2);
+  assert.equal(packets[0].label, "BeginTransfer");
+  assert.equal(packets[0].pkt[0], 0x92);
+  assert.equal(packets[1].label, "TransferData[0]");
+  assert.equal(packets[1].pkt[0], 0xb1);
+});
+
+test("walkOtaPackets cycles carriers B1/B2/B3", () => {
+  const body = new Uint8Array(31 * 6);
+  const packets = [...walkOtaPackets(body, 0xeffd, 0x06fe8020)];
+  // 1 BeginTransfer + 6 TransferData
+  assert.equal(packets.length, 7);
+  assert.equal(packets[1].pkt[0], 0xb1);
+  assert.equal(packets[2].pkt[0], 0xb2);
+  assert.equal(packets[3].pkt[0], 0xb3);
+  assert.equal(packets[4].pkt[0], 0xb1);
+  assert.equal(packets[5].pkt[0], 0xb2);
+  assert.equal(packets[6].pkt[0], 0xb3);
+});
+
+test("walkOtaPackets emits ChangeAddrOff at page wrap (and not on body that ends at the boundary)", () => {
+  // 64 KB exactly -> no ChangeAddrOff (no further TransferData follows)
+  const body1 = new Uint8Array(0x10000);
+  const labels1 = [...walkOtaPackets(body1, 0xeffd, 0x06fe8020)].map(
+    (p) => p.label,
+  );
+  assert.equal(labels1.filter((l) => l === "ChangeAddrOff").length, 0);
+
+  // 64 KB + 31 bytes -> exactly one ChangeAddrOff before the wrapping TransferData
+  const body2 = new Uint8Array(0x10000 + 31);
+  const labels2 = [...walkOtaPackets(body2, 0xeffd, 0x06fe8020)].map(
+    (p) => p.label,
+  );
+  const changeIdx = labels2.indexOf("ChangeAddrOff");
+  assert.equal(labels2.filter((l) => l === "ChangeAddrOff").length, 1);
+  // ChangeAddrOff comes after the last page-0 TransferData and before the page-1 TransferData
+  assert.ok(changeIdx > 0);
+  assert.ok(labels2[changeIdx - 1].startsWith("TransferData"));
+  assert.ok(labels2[changeIdx + 1].startsWith("TransferData"));
+});
+
+// packetsEqualIgnoringSeq — comparison helper for TX echo / SDR validation
+
+test("packetsEqualIgnoringSeq returns true when bytes match except offset 1", () => {
+  const a = new Uint8Array([0x92, 0x00, 0xa1, 0xef, 0xfd]);
+  const b = new Uint8Array([0x92, 0x07, 0xa1, 0xef, 0xfd]); // seq byte differs
+  assert.equal(packetsEqualIgnoringSeq(a, b), true);
+});
+
+test("packetsEqualIgnoringSeq returns false when other bytes differ", () => {
+  const a = new Uint8Array([0x92, 0x00, 0xa1, 0xef, 0xfd]);
+  const b = new Uint8Array([0x92, 0x00, 0xa1, 0xff, 0xff]); // subnet differs
+  assert.equal(packetsEqualIgnoringSeq(a, b), false);
+});
+
+test("packetsEqualIgnoringSeq returns false on different lengths", () => {
+  assert.equal(
+    packetsEqualIgnoringSeq(new Uint8Array(22), new Uint8Array(51)),
+    false,
+  );
 });
