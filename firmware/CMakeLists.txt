@@ -73,6 +73,12 @@ set(FREERTOS_HEAP "4" CACHE STRING "FreeRTOS heap implementation")
 # Now add FreeRTOS as subdirectory
 add_subdirectory(${freertos_SOURCE_DIR} ${freertos_BINARY_DIR})
 
+# Suppress -Wunused-variable in FreeRTOS V11.1.0 port.c (`pxVectorTable` is
+# only used under specific configMPU* flags). Third-party code, not ours.
+if(TARGET freertos_kernel)
+    target_compile_options(freertos_kernel PRIVATE -Wno-unused-variable)
+endif()
+
 # ------------------------------------------------------------------
 # Paths derived from FetchContent
 # ------------------------------------------------------------------
