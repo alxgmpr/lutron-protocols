@@ -16,7 +16,7 @@ The device's identity is determined by **a 4-byte DeviceClass at body offset `0x
 **The CCA OTA wire protocol is fully decoded** (from RE'ing the Phoenix EFR32 coproc):
 - Sync word `0xFADE`, preamble `55 55 55 FF`, CRC poly `0xCA0F`
 - Packet layout `[len][op][payload][CRC16]`, 6-14 bytes typical
-- 35-channel hop table (codes 0x44..0x66, ~92 kHz spacing)
+- 35-row table at BN `0x9B30` (codes 0x44..0x66) — earlier suspected to be a hop table; the **2026-04-28 live OTA capture shows single-channel operation** at ~433.566 MHz, not hopping. The table is something else (calibration LUT, retry channels, or unrelated). See [cca-ota-live-capture.md](cca-ota-live-capture.md).
 - 10 OTA opcodes; the wake-up sequence is `QueryDevice(0x58) → CodeRevision(0x36) → BeginTransfer(0x2A) → ChangeAddressOffset(0x32) → TransferData(0x41)×N → EndTransfer(0x32) → ResetDevice(0x32)`
 - The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks it to send
 
@@ -144,7 +144,7 @@ A second similar table at BN `0x09A4F` adds writes to PATABLE (0x7E), TX FIFO (0
 - **No SYNC word in CC1101** (MDMCFG2 SYNC_MODE = 0). All Lutron CCA sync detection is in firmware via 8N1 bit decoder + sync byte search.
 - **FREQ registers excluded** — the band (434 vs 868) is configured by a separate code path not in this main init table.
 
-## Frequency hopping table (suspected)
+## 35-row stepping table (NOT a frequency hop table)
 
 Region at BN `0x9B30-0x9B7F` contains a stepping table:
 
@@ -156,7 +156,15 @@ Region at BN `0x9B30-0x9B7F` contains a stepping table:
 64 6E  65 6A  66 66
 ```
 
-35 entries, 2 bytes each. First byte increments by 1; second byte decrements by ~4. Possibly a (channel_index, FREQ1_or_FREQ0_byte) mapping for frequency hopping, but interpretation as `(FREQ1, FREQ0)` pairs with implied FREQ2 = 0x10 yields ~423-425 MHz which is *below* the 433 MHz ISM band — so this isn't a direct CC1101 freq table. More likely a calibration / hop sequence index.
+35 entries, 2 bytes each. First byte increments by 1; second byte decrements by ~4.
+
+**Empirically NOT a frequency hop table.** The 2026-04-28 live OTA capture
+([cca-ota-live-capture.md](cca-ota-live-capture.md)) shows the OTA runs on a
+single channel at ~433.566 MHz for the entire 19-minute transfer — no hop
+pattern. Interpretation as `(FREQ1, FREQ0)` pairs with implied FREQ2 = 0x10
+yielded ~423-425 MHz (below the 433 MHz ISM band) for the same reason: it
+isn't a direct CC1101 freq table. Probably a calibration LUT, retry-channel
+offset list, or unrelated feature.
 
 Adjacent at BN `0x9B2D`: explicit `21 63 b1` = FREQ2/1/0 for **868.1249 MHz** — the 868 MHz "anchor" frequency, despite this being the 1.53 RA HWQS firmware that should be 434 MHz only. Possibly leftover from shared codebase, dead code.
 
@@ -403,7 +411,7 @@ Phoenix coproc (TX) and PowPak (RX) share:
 - GFSK, 30.49 kbps, 32 kHz deviation, ~162 kHz channel bandwidth
 - PKTCTRL0 = 0x32 — async serial mode (MCU bit-bangs framing on both ends)
 - MDMCFG2 = 0x10 — sync-mode = 0 (chip does NOT do sync detection — software does)
-- 35-channel frequency hopping table (channel codes 0x44..0x66, ~92 kHz spacing)
+- ~~35-channel frequency hopping table~~ — empirically single-channel at ~433.566 MHz; the 35-row table is something else (see [cca-ota-live-capture.md](cca-ota-live-capture.md))
 
 ### On-air framing
 

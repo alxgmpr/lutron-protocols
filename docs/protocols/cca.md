@@ -397,9 +397,9 @@ LED config during pairing uses format 0x0A with type 0x81 (broadcast). Different
 
 ## 9. Firmware OTA Wire Protocol
 
-Firmware updates use a **separate on-air framing** from the runtime CCA protocol described in sections 1-8. Same chip family, same 433 MHz band, same CRC polynomial — but different modem mode, no N81 byte encoding, no type-byte length rule, frequency hopping, and a self-describing length+opcode header.
+Firmware updates use a **separate on-air framing** from the runtime CCA protocol described in sections 1-8. Same chip family, same 433 MHz band, same CRC polynomial — but different modem mode, no N81 byte encoding, no type-byte length rule, and a self-describing length+opcode header.
 
-Statically RE'd from the Phoenix EFR32 coproc binary (`phoenix_efr32_8003000-803FF08.bin`), verified byte-for-byte against PowPak's RX-side flash anchors, and **independently corroborated** by the RA2 Select REP2 / Caseta Pro coproc images (`rr-sel-rep2_efr32_8003000-*.s19`) which carry the same framing constants in identical relative positions. **No live RF capture has been done yet** — TX/RX/cross-bridge consistency is the empirical evidence. See [docs/firmware-re/powpak.md](../firmware-re/powpak.md) for PowPak anchors, [docs/firmware-re/coproc.md](../firmware-re/coproc.md) for the cross-bridge comparison, and [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) for the bridge-side IPC orchestration.
+Statically RE'd from the Phoenix EFR32 coproc binary (`phoenix_efr32_8003000-803FF08.bin`), corroborated against PowPak's RX-side flash anchors and the RA2 Select REP2 / Caseta Pro coproc images (`rr-sel-rep2_efr32_8003000-*.s19`) carrying the same framing constants. **First live RF capture: 2026-04-28** against a Caseta Pro REP2 + DVRF-6L (Vogelkop). See [docs/firmware-re/cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) for the empirical confirmation, [docs/firmware-re/powpak.md](../firmware-re/powpak.md) for PowPak anchors, [docs/firmware-re/coproc.md](../firmware-re/coproc.md) for the cross-bridge comparison, and [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) for the bridge-side IPC orchestration.
 
 ### 9.1. Framing
 
@@ -430,9 +430,11 @@ OTA uses a different CC1101 mode than the runtime CCA protocol. Key registers:
 | MDMCFG3 | `0x3B` (62.5 kBaud) | `0x3B` (**30.49 kbps**) |
 | MDMCFG4 | `0x0B` | `0x9C` |
 | DEVIATN | `0x45` (41.2 kHz) | `0x44` (**32 kHz**) |
-| Channel hopping | None (fixed channel 26 default) | **35-channel hop table** (codes 0x44..0x66, ~92 kHz spacing) |
+| Channel | 433.602844 MHz (channel 26) | **~433.566 MHz** (offset −36 kHz, single channel) |
 
 Both ends (Phoenix EFR32 coproc TX and PowPak RX) configure these registers byte-for-byte identically.
+
+**Single-channel — empirically confirmed 2026-04-28.** The 35-row table at PowPak BN `0x9B30` and Phoenix BN `0x08018e30` was earlier suspected to be a frequency-hop table (channel codes `0x44..0x66`, 2 bytes each), but a 90 s spectrogram of an active OTA shows energy concentrated in a **single ~80 kHz band centered at 433.566 MHz** with no hop pattern. The 35-row table is something else — calibration LUT, retry-channel list, or unrelated feature. See [cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) for the spectrogram evidence.
 
 ### 9.3. Opcodes
 
@@ -464,7 +466,7 @@ The bridge's lutron-core dispatches firmware updates via 8 IPC commands ([caseta
 | 6 | `RequestFirmwareUpdateCodeRevision` | `0x36` |
 | — | `RequestFirmwareUpdateClearError` | `0x3A` |
 
-The three `0x32` phases share the same on-air opcode but differ via a sub-opcode byte inside the body. The HDLC cmd IDs (`0x119` / `0x11B` / `0x11D`) discriminate them on the host↔coproc UART side; the body-side sub-opcode mapping needs a live capture to confirm.
+The three `0x32` phases share the same on-air opcode but differ via a sub-opcode byte inside the body. The HDLC cmd IDs (`0x119` / `0x11B` / `0x11D`) discriminate them on the host↔coproc UART side. The body-side sub-opcode mapping is **still TBD** — a 6.1 GB live capture exists ([cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md)) but resolving the discriminator requires a working GFSK demod against the IQ stream.
 
 ### 9.5. Wake-up sequence
 
@@ -490,7 +492,7 @@ Source binary anchors (Phoenix EFR32 coproc, `phoenix_efr32_8003000-803FF08.bin`
 | OTA framing template `55 55 55 FF FA DE 08 02` | `0x08018a8c` |
 | HDLC cmd dispatch chain | `0x08004706` |
 | FirmwareUpdate handler cluster | `0x0800ee80`–`0x0800f2d8` |
-| Frequency hop table (35 channels) | `0x08018e30` |
+| 35-row table (was suspected hop table — empirically NOT) | `0x08018e30` |
 
 PowPak RX-side anchors (`PowPakRelay434L1-53.bin`):
 

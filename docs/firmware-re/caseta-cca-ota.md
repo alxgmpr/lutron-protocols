@@ -5,8 +5,13 @@ orchestrates CCA device firmware updates over 433 MHz.
 
 The on-air opcode bytes have since been RE'd from the Phoenix EFR32 coproc (see
 [powpak.md](powpak.md) and [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol)).
-Whether the Caseta Pro coproc emits the same wire format is still TBD pending
-either coproc-image extraction or a live RF capture.
+The Caseta Pro coproc was confirmed to use the same wire format via static RE
+of the RA2 Select REP2 image, and an end-to-end **live OTA capture against a
+Caseta Pro REP2 + DVRF-6L on 2026-04-28** confirmed the channel parameters
+empirically — see [cca-ota-live-capture.md](cca-ota-live-capture.md). The
+single remaining wire-protocol unknown is the body-side sub-opcode that
+discriminates the three `0x32` Control phases, which awaits a working GFSK
+demod against the captured 6.1 GB IQ stream.
 
 Companion to [coproc.md](coproc.md), which covers Phoenix's analogous path on RA3.
 
@@ -286,13 +291,18 @@ images — boot updates would require physical access.
 
 ## Open questions after this pass
 
-1. ~~**CCA RF packet type byte for OTA phases**~~ — **Resolved at the static-RE
-   level** by RE'ing the Phoenix EFR32 coproc; see the phase→opcode table above
-   and [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol).
-   What's still open: the body sub-opcode that distinguishes the three `0x32`
-   (Control) phases (ChangeAddressOffset / EndTransfer / ResetDevice) — the
-   HDLC cmd IDs differ on the host↔coproc UART side but the on-air body bytes
-   haven't been read out. Live capture would resolve this in one shot.
+1. ~~**CCA RF packet type byte for OTA phases**~~ — **Resolved**. The static
+   RE from the Phoenix EFR32 coproc gave us the opcode table (see
+   [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol)),
+   and the **2026-04-28 live capture** ([cca-ota-live-capture.md](cca-ota-live-capture.md))
+   confirmed the channel parameters: single-channel at ~433.566 MHz, 30 kbps
+   GFSK, NOT the 35-channel hop the suspected hop table implied. Per-phase
+   body byte decoding still requires building the GFSK demod against the
+   captured IQ — that's the next milestone, not a new static-RE question.
+
+   The body sub-opcode that distinguishes the three `0x32` (Control) phases
+   (ChangeAddressOffset / EndTransfer / ResetDevice) will fall out of that
+   demod work.
 2. ~~**Caseta Pro coproc wire format equivalence**~~ — **Resolved** by
    extracting the RA2 Select REP2 (= Caseta Pro) coproc images from
    `data/rr-sel-rep2/usr/sbin/lutron-coproc-firmware-update-app` (cipher
