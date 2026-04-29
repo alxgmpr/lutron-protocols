@@ -49,7 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y clang cppcheck
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: clang cppcheck
+          version: v1
       - run: make -C firmware test
       - run: make -C firmware format-check
       - run: make -C firmware lint
@@ -58,10 +61,75 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y clang-format
+      - uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: clang-format
+          version: v1
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run codegen:check
+
+  arm-build:
+    # Cross-compiles the firmware with the ARM GNU toolchain and runs
+    # firmware/check-build-warnings.sh. Catches regressions (vendor warnings,
+    # linker errors, ARM-specific issues) the Linux unit tests can't.
+    runs-on: ubuntu-latest
+    env:
+      ARM_VERSION: 15.2.rel1
+      ARM_DIR: /home/runner/arm-gnu-toolchain
+      LUTRON_FW_DEPS_DIR: /home/runner/.cache/lutron-fw-deps
+      CCACHE_DIR: /home/runner/.cache/ccache
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache ARM GCC toolchain
+        id: arm-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ARM_DIR }}
+          key: arm-gnu-${{ env.ARM_VERSION }}-x86_64-linux
+
+      - name: Download ARM GCC toolchain
+        if: steps.arm-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$ARM_DIR"
+          URL="https://developer.arm.com/-/media/Files/downloads/gnu/${ARM_VERSION}/binrel/arm-gnu-toolchain-${ARM_VERSION}-x86_64-arm-none-eabi.tar.xz"
+          curl -fsSL "$URL" | tar -xJ -C "$ARM_DIR" --strip-components=1
+
+      - name: Add ARM toolchain to PATH
+        run: echo "$ARM_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Install ninja + ccache
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: ninja-build ccache
+          version: v1
+
+      - name: Cache FetchContent deps (FreeRTOS + STM32CubeH7)
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LUTRON_FW_DEPS_DIR }}
+          key: lutron-fw-deps-${{ hashFiles('firmware/CMakeLists.txt') }}
+          restore-keys: |
+            lutron-fw-deps-
+
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-arm-${{ github.sha }}
+          restore-keys: |
+            ccache-arm-
+
+      - name: Materialize thread_config.h from example
+        run: cp firmware/src/ccx/thread_config.example.h firmware/src/ccx/thread_config.h
+
+      - name: Build firmware (warnings as errors)
+        run: bash firmware/check-build-warnings.sh
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
