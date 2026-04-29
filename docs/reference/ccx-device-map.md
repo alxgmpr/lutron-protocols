@@ -34,9 +34,9 @@ Identified 2026-03-06 by sending AHA brightness commands one-by-one and visually
 
 ```bash
 # Set keypad LED brightness (k4=active level, k5=inactive level, 0-255)
-NUCLEO_HOST= bun run tools/ccx-coap-send.ts aha --dst <full-address> --k4 <level> --k5 <level>
+NUCLEO_HOST= bun run tools/ccx/ccx-coap-send.ts aha --dst <full-address> --k4 <level> --k5 <level>
 
 # Example: set office keypad very dim
-NUCLEO_HOST= bun run tools/ccx-coap-send.ts aha \
+NUCLEO_HOST= bun run tools/ccx/ccx-coap-send.ts aha \
   --dst fd0d:2ef:a82c:0:b7cf:f63c:a031:a637 --k4 10 --k5 10
 ```

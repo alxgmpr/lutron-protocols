@@ -792,7 +792,7 @@ Example commands:
 
 ```bash
 # HIGH
-bun run tools/ccx-coap-send.ts aha \
+bun run tools/ccx/ccx-coap-send.ts aha \
   --stm32-host <nucleo-ip> \
   --dst <dst-ipv6> \
   --src <src-ipv6> \
@@ -800,7 +800,7 @@ bun run tools/ccx-coap-send.ts aha \
   --repeat 3 --interval 150 --timeout-ms 9000
 
 # LOW
-bun run tools/ccx-coap-send.ts aha \
+bun run tools/ccx/ccx-coap-send.ts aha \
   --stm32-host <nucleo-ip> \
   --dst <dst-ipv6> \
   --src <src-ipv6> \
@@ -832,7 +832,7 @@ Use the trim sender:
 
 ```bash
 # Example: write high/low trim raw values to AAI
-bun run tools/ccx-coap-send.ts trim \
+bun run tools/ccx/ccx-coap-send.ts trim \
   --stm32-host <nucleo-ip> \
   --dst <dst-ipv6> \
   --src <src-ipv6> \
@@ -932,7 +932,7 @@ This highlights only changed request signatures (`dst + method + path + payload`
 > - Command key 4 = delay time in quarter-seconds (`key4 = seconds * 4`)
 > - Default fade = `1` (0.25s, instant). Delay omitted = no delay.
 > - Full LEVEL_CONTROL: `[0, { 0: {0: level, 3: fade, 4: delay}, 1: [16, zoneId], 5: seq }]`
-> - `tools/ccx-send.ts --fade <seconds> --delay <seconds>`
+> - `tools/ccx/ccx-send.ts --fade <seconds> --delay <seconds>`
 
 > **Discovery (2026-03-05): Thread Frame Decryption (RESOLVED)**
 >

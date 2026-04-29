@@ -34,7 +34,7 @@ ls /dev/tty.usbmodem*
 #### 3. Flash RCP firmware
 Build the NCP/RCP firmware using the build script (clones OpenThread, applies Nucleo UART patch):
 ```bash
-tools/nrf-ncp/build.sh
+tools/nrf/ncp-build/build.sh
 # Output: build/ot-ncp-ftd-nucleo.zip
 ```
 
@@ -75,13 +75,13 @@ Wait ~5 seconds, then check: `state` — should show `router` or `child`.
 #### 7. Ready
 Once joined, you can:
 - Ping devices: `ping fd0d:2ef:a82c::ff:fe00:<rloc>`
-- Send CoAP via udp6 transport: `NUCLEO_HOST= bun run tools/ccx-coap-send.ts ...`
+- Send CoAP via udp6 transport: `NUCLEO_HOST= bun run tools/ccx/ccx-coap-send.ts ...`
 - Discover devices: `ping ff03::1`
 
 ### Key Facts (RCP mode)
 - **Thread credentials**: channel 25, PAN ID <your-panid>, in .env file
 - **ot-daemon binaries**: `~/bin/ot-daemon`, `~/bin/ot-ctl`
-- **RCP firmware build**: `tools/nrf-ncp/build.sh` (clones ot-nrf528xx, applies patch, builds)
+- **RCP firmware build**: `tools/nrf/ncp-build/build.sh` (clones ot-nrf528xx, applies patch, builds)
 - **Socket**: `/tmp/openthread-utun<N>.sock` (auto-created by ot-daemon)
 
 ---
@@ -200,12 +200,12 @@ tshark -r captures/<file>.pcapng -T fields -e ipv6.src -e ipv6.dst | \
   tr '\t' '\n' | sort -u | grep -v '^$'
 
 # Decode CCX CBOR payloads using our tool
-bun run tools/ccx-sniffer.ts --file captures/<file>.pcapng
+bun run tools/ccx/ccx-sniffer.ts --file captures/<file>.pcapng
 
 # Detailed CCX analysis
-bun run tools/ccx-analyzer.ts --file captures/<file>.pcapng types
-bun run tools/ccx-analyzer.ts --file captures/<file>.pcapng timeline
-bun run tools/ccx-analyzer.ts --file captures/<file>.pcapng devices
+bun run tools/ccx/ccx-analyzer.ts --file captures/<file>.pcapng types
+bun run tools/ccx/ccx-analyzer.ts --file captures/<file>.pcapng timeline
+bun run tools/ccx/ccx-analyzer.ts --file captures/<file>.pcapng devices
 ```
 
 ### Key Facts (Capture)
@@ -226,7 +226,7 @@ bun run tools/ccx-analyzer.ts --file captures/<file>.pcapng devices
 **Button Press Capture:**
 1. Start capture: `tshark -i /dev/cu.usbmodem<ID> -w captures/ccx-button-test.pcapng -a duration:30 -q`
 2. Press buttons on keypads during the 30 seconds
-3. Decode: `bun run tools/ccx-sniffer.ts --file captures/ccx-button-test.pcapng`
+3. Decode: `bun run tools/ccx/ccx-sniffer.ts --file captures/ccx-button-test.pcapng`
 
 ### Troubleshooting
 - **No packets**: Check sniffer is detected (`tshark -D | grep nrf`), verify channel 25 in Wireshark GUI

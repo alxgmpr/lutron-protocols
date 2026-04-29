@@ -62,7 +62,7 @@ Extracted binaries at `data/firmware-re/powpak/*.bin` (gitignored).
 0x80+     : binary body (HCS08 image)
 ```
 
-Extractor at [tools/ldf-extract.py](../../tools/ldf-extract.py) (TODO promote from /tmp).
+Extractor at [tools/firmware/ldf-extract.py](../../tools/firmware/ldf-extract.py) (TODO promote from /tmp).
 
 ## Body layout
 
@@ -170,7 +170,7 @@ Adjacent at BN `0x9B2D`: explicit `21 63 b1` = FREQ2/1/0 for **868.1249 MHz** �
 
 ## Tooling
 
-- [tools/ldf-extract.py](../../tools/ldf-extract.py) — TODO promote from `/tmp/ldf-extract.py`. Strips 0x80-byte LDF header.
+- [tools/firmware/ldf-extract.py](../../tools/firmware/ldf-extract.py) — TODO promote from `/tmp/ldf-extract.py`. Strips 0x80-byte LDF header.
 - [tools/ldf-find-cc1101.py](../../tools/ldf-find-cc1101.py) — TODO promote. Locates `LEC` magic + extracts CC1101 register tables.
 
 ## DeviceClass and SKU identity

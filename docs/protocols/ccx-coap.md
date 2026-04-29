@@ -230,7 +230,7 @@ boot).
 - **Static** (via Designer DB): see `data/designer-ccx-devices.json` — exported
   from `tblPegasusLinkNode`. Each row has `eui64` and precomputed
   `secondaryMleid`.
-- **Live**: run `npx tsx tools/tmf-diag.ts --save`. This POSTs a TMF Network
+- **Live**: run `npx tsx tools/ccx/tmf-diag.ts --save`. This POSTs a TMF Network
   Diagnostic request to `ff03::1:61631/d/dg` and writes
   `data/ccx-mesh-inventory.json` with every responder's EUI-64, RLOC16, and
   derived secondary ML-EID. See next section.
@@ -283,7 +283,7 @@ ccx coap post ff03::1 d/dg 1203000108 61631
 The Nucleo forwards the multicast, and every responder's reply is broadcast
 on the `:9433` stream as
 `[coap] 2.05 src=<ipv6> mid=<hex> token=<hex> len=<n> payload=<hex>`.
-`tools/tmf-diag.ts` consumes this stream and produces
+`tools/ccx/tmf-diag.ts` consumes this stream and produces
 `data/ccx-mesh-inventory.json`.
 
 ### ⚠ NCP restriction on port 61631
@@ -307,7 +307,7 @@ client (secured with MLE), not from a host-injected STREAM_NET packet.
 To enable the mesh sweep as originally designed, the NCP would need a
 dedicated Spinel property that routes through `otThreadSendDiagnosticGet()`
 internally (bypassing STREAM_NET's port filtering). Deferred to a follow-up
-plan; `tools/tmf-diag.ts` and the TLV codec remain in tree so that path can
+plan; `tools/ccx/tmf-diag.ts` and the TLV codec remain in tree so that path can
 pick them up when the firmware side lands.
 
 ### Scope of multicast

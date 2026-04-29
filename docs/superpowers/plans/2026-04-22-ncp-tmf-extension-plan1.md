@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Land a vendor Spinel extension to `ot-ncp-ftd` that exposes `otThreadSendDiagnosticGet/Reset` and the neighbor/child table iterators, rebuild the firmware for the Nucleo-soldered nRF52840, flash via DFU, and verify end-to-end with a standalone `tools/nrf-ncp-probe.ts` — all without touching the STM32 firmware.
+**Goal:** Land a vendor Spinel extension to `ot-ncp-ftd` that exposes `otThreadSendDiagnosticGet/Reset` and the neighbor/child table iterators, rebuild the firmware for the Nucleo-soldered nRF52840, flash via DFU, and verify end-to-end with a standalone `tools/nrf/nrf-ncp-probe.ts` — all without touching the STM32 firmware.
 
 **Architecture:** The extension patches OpenThread's `NcpBase` source directly (six new vendor properties at IDs `0x3C00–0x3C05`), registers an async callback for diagnostic-get responses, and emits streaming `PROP_INSERTED` frames. The STM32's existing `shell spinel raw <hex>` passthrough lets a TS probe talk Spinel directly to the NCP without any firmware changes on the host. Two DFU artifacts live in tree so rollback to the known-good firmware is one command.
 
@@ -15,7 +15,7 @@
 ## Orientation for the executor
 
 - Working worktree: `/Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037` on branch `claude/pedantic-johnson-77c037`. Run all `git` / `npm` commands from there. If the Bash tool resets `cwd` to a stale path, `cd` explicitly.
-- OT source clone lives at `build/ot-nrf528xx` (created by `tools/nrf-ncp/build.sh` on first run). Edits inside this clone are **discarded** by `build.sh` (`git checkout -- .` at the top). All source modifications live in the patch files at `tools/nrf-ncp/*.patch`.
+- OT source clone lives at `build/ot-nrf528xx` (created by `tools/nrf/ncp-build/build.sh` on first run). Edits inside this clone are **discarded** by `build.sh` (`git checkout -- .` at the top). All source modifications live in the patch files at `tools/nrf/ncp-build/*.patch`.
 - Hardware: Nucleo with soldered nRF52840, reachable via ST-LINK USB (for STM32 flash/monitor) AND via a second USB cable to the nRF dongle bootloader (for NCP DFU). User puts the dongle in DFU mode by pressing its reset button.
 - **Never use `st-flash`.** STM32 programming uses `cd firmware && make flash` (OpenOCD + ST-LINK). The NCP uses `nrfutil` DFU only.
 - TS test runner: `npm run test:ts` = `node --import tsx --test test/**/*.test.ts`. Node `node:test` + `node:assert/strict`.
@@ -31,13 +31,13 @@
 ### Task 1.1: Clone `ot-nrf528xx` and pin the commit
 
 **Files:**
-- Create: `tools/nrf-ncp/tmf-ext-notes.md`
+- Create: `tools/nrf/ncp-build/tmf-ext-notes.md`
 
 - [ ] **Step 1: Run build.sh up to the clone/submodule step**
 
 The first run of `build.sh` clones `ot-nrf528xx` into `build/ot-nrf528xx`. Run it, but when it reaches the `./script/build` step let it complete the build (we need the known-good baseline binary anyway for Phase 9 rollback comparison).
 
-Run: `cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037 && tools/nrf-ncp/build.sh`
+Run: `cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037 && tools/nrf/ncp-build/build.sh`
 
 Expected: clones `ot-nrf528xx` into `build/ot-nrf528xx`, applies `nucleo-uart.patch`, builds firmware, packages DFU zip to `build/ot-ncp-ftd-nucleo.zip`. Takes 3–8 minutes.
 
@@ -52,7 +52,7 @@ cd third_party/openthread/repo 2>/dev/null || cd openthread 2>/dev/null || pwd
 echo "openthread HEAD: $(git rev-parse HEAD)"
 ```
 
-Write both hashes into `tools/nrf-ncp/tmf-ext-notes.md` as the pinned state for this plan's patch. Format:
+Write both hashes into `tools/nrf/ncp-build/tmf-ext-notes.md` as the pinned state for this plan's patch. Format:
 
 ```markdown
 # TMF Extension — Source Investigation Notes
@@ -70,14 +70,14 @@ All `ncp_base.hpp` / `ncp_base.cpp` line numbers in this document refer to these
 
 ```bash
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037
-git add tools/nrf-ncp/tmf-ext-notes.md
+git add tools/nrf/ncp-build/tmf-ext-notes.md
 git commit -m "docs(nrf-ncp): seed tmf-ext-notes with OT commit pin"
 ```
 
 ### Task 1.2: Locate the NcpBase property dispatch table
 
 **Files:**
-- Modify: `tools/nrf-ncp/tmf-ext-notes.md`
+- Modify: `tools/nrf/ncp-build/tmf-ext-notes.md`
 
 - [ ] **Step 1: Find the property handler dispatch**
 
@@ -191,7 +191,7 @@ Commit:
 
 ```bash
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037
-git add tools/nrf-ncp/tmf-ext-notes.md
+git add tools/nrf/ncp-build/tmf-ext-notes.md
 git commit -m "docs(nrf-ncp): record NcpBase hook points and OT diag-get API shape"
 ```
 
@@ -789,7 +789,7 @@ In the body of `NcpBase::NcpBase(otInstance *aInstance)` (locate via Phase 1 Tas
 ### Task 4.1: `git diff` to produce the patch
 
 **Files:**
-- Create: `tools/nrf-ncp/tmf-extension.patch`
+- Create: `tools/nrf/ncp-build/tmf-extension.patch`
 
 - [ ] **Step 1: Stage nothing, diff everything**
 
@@ -797,7 +797,7 @@ In the body of `NcpBase::NcpBase(otInstance *aInstance)` (locate via Phase 1 Tas
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/build/ot-nrf528xx
 # Diff only the openthread submodule (all our edits live there):
 cd openthread  # adjust path if submodule root differs
-git diff src/ncp/ > /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf-ncp/tmf-extension.patch
+git diff src/ncp/ > /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf/ncp-build/tmf-extension.patch
 ls src/ncp/ncp_tmf_ext.cpp src/ncp/ncp_tmf_ext.hpp  # confirm both new files exist
 ```
 
@@ -806,15 +806,15 @@ ls src/ncp/ncp_tmf_ext.cpp src/ncp/ncp_tmf_ext.hpp  # confirm both new files exi
 ```bash
 # Inside openthread submodule:
 git add -N src/ncp/ncp_tmf_ext.hpp src/ncp/ncp_tmf_ext.cpp  # intent-to-add so diff sees them
-git diff src/ncp/ > /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf-ncp/tmf-extension.patch
+git diff src/ncp/ > /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf/ncp-build/tmf-extension.patch
 ```
 
 - [ ] **Step 2: Sanity check the patch**
 
 ```bash
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037
-head -30 tools/nrf-ncp/tmf-extension.patch
-wc -l tools/nrf-ncp/tmf-extension.patch
+head -30 tools/nrf/ncp-build/tmf-extension.patch
+wc -l tools/nrf/ncp-build/tmf-extension.patch
 ```
 
 Expected: a unified diff header (`diff --git a/src/ncp/...`), new-file markers for the two `.cpp`/`.hpp`, modification hunks for `ncp_base.{hpp,cpp}`. Total somewhere between 300 and 600 lines.
@@ -822,7 +822,7 @@ Expected: a unified diff header (`diff --git a/src/ncp/...`), new-file markers f
 - [ ] **Step 3: Commit the patch**
 
 ```bash
-git add tools/nrf-ncp/tmf-extension.patch
+git add tools/nrf/ncp-build/tmf-extension.patch
 git commit -m "feat(nrf-ncp): tmf-extension patch — 6 vendor Spinel props for diag/neighbor/child"
 ```
 
@@ -833,12 +833,12 @@ git commit -m "feat(nrf-ncp): tmf-extension patch — 6 vendor Spinel props for 
 ### Task 5.1: Apply both patches, rename outputs
 
 **Files:**
-- Modify: `tools/nrf-ncp/build.sh`
+- Modify: `tools/nrf/ncp-build/build.sh`
 
 - [ ] **Step 1: Read current build.sh**
 
 ```bash
-cat /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf-ncp/build.sh
+cat /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037/tools/nrf/ncp-build/build.sh
 ```
 
 - [ ] **Step 2: Patch to apply both patches and rename outputs**
@@ -873,7 +873,7 @@ cp "$BUILD_DIR/build/bin/ot-ncp-ftd.hex" "$OUTPUT_DIR/ot-ncp-ftd-nucleo-tmf.hex"
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/nrf-ncp/build.sh
+git add tools/nrf/ncp-build/build.sh
 git commit -m "build(nrf-ncp): apply tmf-extension patch; rename outputs to -tmf suffix"
 ```
 
@@ -888,12 +888,12 @@ git commit -m "build(nrf-ncp): apply tmf-extension patch; rename outputs to -tmf
 ```bash
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037
 rm -rf build/ot-nrf528xx
-tools/nrf-ncp/build.sh
+tools/nrf/ncp-build/build.sh
 ```
 
 Expected: clone, both patches apply cleanly, compile succeeds, outputs `build/ot-ncp-ftd-nucleo-tmf.zip` and `build/ot-ncp-ftd-nucleo-tmf.hex`. Build time 3–8 minutes.
 
-If a patch fails to apply, `build.sh` exits with `set -e`. To debug: re-run the `git apply --check tools/nrf-ncp/tmf-extension.patch` manually from inside the clone, fix the patch, commit, re-run.
+If a patch fails to apply, `build.sh` exits with `set -e`. To debug: re-run the `git apply --check tools/nrf/ncp-build/tmf-extension.patch` manually from inside the clone, fix the patch, commit, re-run.
 
 If compile fails, read the error, fix the source in the clone directly, **regenerate the patch** (Phase 4 Task 4.1), commit, re-run.
 
@@ -917,12 +917,12 @@ git commit -m "feat(firmware/ncp): add ot-ncp-ftd-tmf DFU artifacts"
 
 ---
 
-## Phase 7 — `tools/nrf-dfu-flash.ts`
+## Phase 7 — `tools/nrf/nrf-dfu-flash.ts`
 
 ### Task 7.1: Scaffold + tests
 
 **Files:**
-- Create: `tools/nrf-dfu-flash.ts`
+- Create: `tools/nrf/nrf-dfu-flash.ts`
 - Create: `test/nrf-dfu-flash.test.ts`
 
 - [ ] **Step 1: Write failing tests**
@@ -971,7 +971,7 @@ Expected: MODULE_NOT_FOUND.
 
 - [ ] **Step 2: Write the tool**
 
-Create `tools/nrf-dfu-flash.ts`:
+Create `tools/nrf/nrf-dfu-flash.ts`:
 
 ```ts
 #!/usr/bin/env npx tsx
@@ -980,8 +980,8 @@ Create `tools/nrf-dfu-flash.ts`:
  * nRF NCP DFU flash wrapper.
  *
  * Usage:
- *   npx tsx tools/nrf-dfu-flash.ts --tmf         # flash the TMF-extension build
- *   npx tsx tools/nrf-dfu-flash.ts --rollback    # reflash the known-good baseline
+ *   npx tsx tools/nrf/nrf-dfu-flash.ts --tmf         # flash the TMF-extension build
+ *   npx tsx tools/nrf/nrf-dfu-flash.ts --rollback    # reflash the known-good baseline
  *
  * Prompts the user to press the reset button on the Nucleo-soldered nRF52840
  * dongle, detects the new DFU serial port, and runs nrfutil. See
@@ -1093,20 +1093,20 @@ Expected: 5 tests pass, no type/lint errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/nrf-dfu-flash.ts test/nrf-dfu-flash.test.ts
+git add tools/nrf/nrf-dfu-flash.ts test/nrf-dfu-flash.test.ts
 git commit -m "feat(tools): nrf-dfu-flash — --tmf / --rollback DFU wrapper"
 ```
 
 ---
 
-## Phase 8 — `tools/nrf-ncp-probe.ts`
+## Phase 8 — `tools/nrf/nrf-ncp-probe.ts`
 
 **Purpose:** Self-contained Spinel client for Plan-1 verification. Builds frames, sends via the STM32's `shell spinel raw <hex>` passthrough on UDP `:9433`, parses responses. Uses only the TLV codec from `ccx/tmf-diag.ts` (already landed); all Spinel encoding is implemented in this file.
 
 ### Task 8.1: Spinel frame primitives + tests
 
 **Files:**
-- Create: `tools/nrf-ncp-probe.ts` (start of file with Spinel primitives)
+- Create: `tools/nrf/nrf-ncp-probe.ts` (start of file with Spinel primitives)
 - Create: `test/nrf-ncp-probe.test.ts`
 
 - [ ] **Step 1: Write failing tests for frame construction**
@@ -1196,7 +1196,7 @@ Run: `node --import tsx --test test/nrf-ncp-probe.test.ts` → MODULE_NOT_FOUND.
 
 - [ ] **Step 2: Write the Spinel + probe code**
 
-Create `tools/nrf-ncp-probe.ts`:
+Create `tools/nrf/nrf-ncp-probe.ts`:
 
 ```ts
 #!/usr/bin/env npx tsx
@@ -1578,7 +1578,7 @@ Expected: 5 tests pass. Lint may want auto-fix — run `npm run lint:fix`.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tools/nrf-ncp-probe.ts test/nrf-ncp-probe.test.ts
+git add tools/nrf/nrf-ncp-probe.ts test/nrf-ncp-probe.test.ts
 git commit -m "feat(tools): nrf-ncp-probe — standalone Spinel client for Plan-1 verification"
 ```
 
@@ -1594,7 +1594,7 @@ git commit -m "feat(tools): nrf-ncp-probe — standalone Spinel client for Plan-
 
 ```bash
 cd /Users/alex/lutron-tools/.claude/worktrees/pedantic-johnson-77c037
-npx tsx tools/nrf-dfu-flash.ts --tmf
+npx tsx tools/nrf/nrf-dfu-flash.ts --tmf
 ```
 
 Follow the prompts (press reset button on dongle, press ENTER). Expected: nrfutil completes DFU; dongle re-enumerates as a normal CDC port.
@@ -1615,7 +1615,7 @@ Expected: `Thread role: ROUTER`.
 - [ ] **Step 1: Run the neighbors probe**
 
 ```bash
-npx tsx tools/nrf-ncp-probe.ts neighbors
+npx tsx tools/nrf/nrf-ncp-probe.ts neighbors
 ```
 
 Expected: non-empty output, at least one entry with a 64-bit ext address and a sensible RLOC (e.g. `rloc=0x3800` for the processor). If empty: smoke test fails → flash rollback and debug.
@@ -1631,7 +1631,7 @@ Pick any entry from `data/designer-ccx-devices.json` (user-local). Its `secondar
 - [ ] **Step 2: Run unicast diag-get with TLVs 0 (ExtMac), 1 (RLOC16), 8 (IPv6 List)**
 
 ```bash
-npx tsx tools/nrf-ncp-probe.ts diag-get fd00::e079:8dff:fe92:85fe 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get fd00::e079:8dff:fe92:85fe 0 1 8
 ```
 
 Expected: one `src=…` line where the EUI-64 matches Designer DB, followed by `# DONE reason=0 responders=1`.
@@ -1641,7 +1641,7 @@ Expected: one `src=…` line where the EUI-64 matches Designer DB, followed by `
 - [ ] **Step 1: Run multicast diag-get**
 
 ```bash
-npx tsx tools/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
 ```
 
 Expected: ≥ 10 `src=…` lines within 5 seconds, followed by `# DONE reason=0 responders=N`. **The Office Entrance keypad should appear when its button is pressed during the window** — canonical acceptance case.
@@ -1692,12 +1692,12 @@ git commit --allow-empty -m "verify(nrf-ncp): Plan-1 hardware acceptance passed 
 Roll back and open debugging:
 
 ```bash
-npx tsx tools/nrf-dfu-flash.ts --rollback
+npx tsx tools/nrf/nrf-dfu-flash.ts --rollback
 sleep 60
 npx tsx tools/nucleo-cmd.ts "ccx"   # expect ROUTER, CCX still works
 ```
 
-Note the failure in `tools/nrf-ncp/tmf-ext-notes.md`, decide on remediation (code fix → regenerate patch → re-run Phase 6 onward).
+Note the failure in `tools/nrf/ncp-build/tmf-ext-notes.md`, decide on remediation (code fix → regenerate patch → re-run Phase 6 onward).
 
 ---
 
@@ -1716,7 +1716,7 @@ Find the existing section (added 2026-04-21). Replace the closing paragraph:
 To enable the mesh sweep as originally designed, the NCP would need a
 dedicated Spinel property that routes through `otThreadSendDiagnosticGet()`
 internally (bypassing STREAM_NET's port filtering). Deferred to a follow-up
-plan; `tools/tmf-diag.ts` and the TLV codec remain in tree so that path can
+plan; `tools/ccx/tmf-diag.ts` and the TLV codec remain in tree so that path can
 pick them up when the firmware side lands.
 ```
 
@@ -1727,7 +1727,7 @@ With:
 extension (`0x3C00..0x3C05`) that exposes `otThreadSendDiagnosticGet` and
 related APIs directly to the host, bypassing the STREAM_NET port filter.
 See `docs/superpowers/specs/2026-04-22-ncp-tmf-extension-design.md` and
-`tools/nrf-ncp-probe.ts`. STM32 host-side integration + `tools/tmf-diag.ts`
+`tools/nrf/nrf-ncp-probe.ts`. STM32 host-side integration + `tools/ccx/tmf-diag.ts`
 wiring land in Plan 2.
 ```
 
@@ -1761,23 +1761,23 @@ Two DFU artifacts live in `firmware/ncp/`:
 ### Flash the TMF build
 
 ```bash
-npx tsx tools/nrf-dfu-flash.ts --tmf
+npx tsx tools/nrf/nrf-dfu-flash.ts --tmf
 ```
 
 ### Roll back to known-good
 
 ```bash
-npx tsx tools/nrf-dfu-flash.ts --rollback
+npx tsx tools/nrf/nrf-dfu-flash.ts --rollback
 ```
 
 ### Probe the TMF extension
 
 ```bash
-npx tsx tools/nrf-ncp-probe.ts neighbors
-npx tsx tools/nrf-ncp-probe.ts children
-npx tsx tools/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
-npx tsx tools/nrf-ncp-probe.ts diag-get <fd00::addr> 0 1 8
-npx tsx tools/nrf-ncp-probe.ts diag-reset <fd00::addr> 9
+npx tsx tools/nrf/nrf-ncp-probe.ts neighbors
+npx tsx tools/nrf/nrf-ncp-probe.ts children
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get ff03::1 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-get <fd00::addr> 0 1 8
+npx tsx tools/nrf/nrf-ncp-probe.ts diag-reset <fd00::addr> 9
 ```
 
 The probe talks Spinel directly to the NCP via the STM32's `shell spinel raw`
@@ -1803,4 +1803,4 @@ Plan 1 deliberately treats the OT source modifications as a patch-and-verify loo
 
 If Phase 9 uncovers issues that suggest deeper instability (e.g. intermittent BUSY, frame corruption), consider adding a fifth hardware phase for soak testing before declaring Plan 1 done.
 
-Plan 2 will cover: `ccx_send_diag_get()` + stream broadcasts on the STM32, switching `tools/tmf-diag.ts` from the dead port-61631 path to this Spinel channel, and retiring the stale predecessor plan's Phase 5 commentary.
+Plan 2 will cover: `ccx_send_diag_get()` + stream broadcasts on the STM32, switching `tools/ccx/tmf-diag.ts` from the dead port-61631 path to this Spinel channel, and retiring the stale predecessor plan's Phase 5 commentary.

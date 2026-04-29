@@ -19,8 +19,8 @@ Designer uses SQL Server LocalDB with three attached databases:
 
 ### Infrastructure
 
-- `tools/sql-http-api.ps1` — HTTP SQL API on the VM (port 9999), auto-discovers LocalDB
-- `tools/mcp-designer-db.ts` — MCP server wrapping the HTTP API with SSH fallback
+- `tools/designer/sql-http-api.ps1` — HTTP SQL API on the VM (port 9999), auto-discovers LocalDB
+- `tools/designer/mcp-designer-db.ts` — MCP server wrapping the HTTP API with SSH fallback
 - HTTP endpoints: `POST /query` (project DB), `POST /query-modelinfo` (SQLMODELINFO), `GET /databases`
 
 ## Part 1: Processor Identity Injection
@@ -168,7 +168,7 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 
 | File | Purpose |
 |------|---------|
-| `tools/dll-patcher/` | DLL patcher — universal cross-platform unlock |
-| `tools/sql-http-api.ps1` | HTTP SQL API for Designer VM |
-| `tools/mcp-designer-db.ts` | MCP server for Designer DB queries |
-| `tools/project-convert.ts` | Project file converter (RA3↔HW) |
+| `exploits/designer-jailbreak/dll-patcher/` | DLL patcher — universal cross-platform unlock |
+| `tools/designer/sql-http-api.ps1` | HTTP SQL API for Designer VM |
+| `tools/designer/mcp-designer-db.ts` | MCP server for Designer DB queries |
+| `tools/designer/project-convert.ts` | Project file converter (RA3↔HW) |

@@ -63,7 +63,7 @@ leap --cacert lutron-ra3-ca.pem --cert lutron-ra3-cert.pem --key lutron-ra3-key.
   "<ra3-ip>/area"
 
 # Using leap-dump (walks full hierarchy)
-bun run tools/leap-dump.ts
+bun run tools/leap/leap-dump.ts
 ```
 
 ### Key Endpoints
@@ -438,7 +438,7 @@ Implication:
 - HomeWorks UI visibility for local device programming depends on the full local-button chain, not just `ModelInfoID` + zone records.
 
 Repair script:
-- `<project-root>/tools/sql/hw-add-hqr3ld-local-programming.sql`
+- `<project-root>/tools/designer/sql/hw-add-hqr3ld-local-programming.sql`
 - Dry-run currently reports:
   - `3272`: `WILL_ADD_CHAIN`
   - `3289`: `WILL_ADD_CHAIN`
@@ -497,11 +497,11 @@ Root cause for Office/Guest mismatch:
 ### L01 Pico normalization scripts
 
 1) Programming cleanup script:
-- `<project-root>/tools/sql/hw-normalize-l01-pico-programming.sql`
+- `<project-root>/tools/designer/sql/hw-normalize-l01-pico-programming.sql`
 - Removes legacy `tblPresetAssignment` + `tblAssignmentCommandParameter` rows under L01 button presets.
 
 2) Template/binding repair script:
-- `<project-root>/tools/sql/hw-fix-l01-pico-template-bindings.sql`
+- `<project-root>/tools/designer/sql/hw-fix-l01-pico-template-bindings.sql`
 - Aligns all `PJ2-4B-XXX-L01` devices to canonical bindings:
   - `AssociatedTemplateId -> 424`
   - `ButtonGroupInfoID -> 1459`

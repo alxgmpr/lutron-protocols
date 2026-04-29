@@ -22,23 +22,23 @@ handle scene BUTTON_PRESS events.
 ## Run
 
 ```bash
-npx tsx tools/gather-presets.ts --project <file.hw|.ra3>
+npx tsx tools/designer/gather-presets.ts --project <file.hw|.ra3>
 ```
 
 This:
-1. Opens the project via `tools/designer-project.ts open` (extracts the embedded
+1. Opens the project via `tools/designer/designer-project.ts open` (extracts the embedded
    `.bak`, restores into Docker SQL Server)
 2. Runs the preset query
 3. Merges in human-readable preset names from `data/leap-*.json`
 4. Writes `data/preset-zones.json`
 5. Reports preset/zone counts and a sample (preset 3116 "Dimmed")
 
-If a project is already open via `tools/designer-project.ts open`, omit
+If a project is already open via `tools/designer/designer-project.ts open`, omit
 `--project` to query it without reopening.
 
 ## SQL
 
-The query lives inside [tools/gather-presets.ts](../../../tools/gather-presets.ts).
+The query lives inside [tools/designer/gather-presets.ts](../../../tools/designer/gather-presets.ts).
 Key bits:
 
 ```sql

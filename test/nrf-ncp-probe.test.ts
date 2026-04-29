@@ -14,7 +14,7 @@ import {
   SPINEL_PROP_VENDOR_DIAG_GET_REQUEST,
   SPINEL_PROP_VENDOR_DIAG_GET_RESPONSE,
   SPINEL_PROP_VENDOR_NEIGHBOR_TABLE,
-} from "../tools/nrf-ncp-probe";
+} from "../tools/nrf/nrf-ncp-probe";
 
 test("buildPropGet emits [header][cmd][prop-encoded]", () => {
   const f = buildPropGet(0x81, SPINEL_PROP_VENDOR_NEIGHBOR_TABLE);

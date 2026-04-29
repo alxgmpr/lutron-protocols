@@ -15,7 +15,7 @@
 ### Task 1: Add Registry Types and Walker to leap-client.ts
 
 **Files:**
-- Modify: `tools/leap-client.ts:648-653` (append after `buildDumpData`)
+- Modify: `lib/leap-client.ts:648-653` (append after `buildDumpData`)
 - Test: `test/leap-walker.test.ts`
 
 - [ ] **Step 1: Write the failing test for walkEndpoints**
@@ -230,11 +230,11 @@ test("LEAP_REGISTRY is a non-empty array with required fields", () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `node --import tsx --test test/leap-walker.test.ts`
-Expected: FAIL — `walkEndpoints` and `LEAP_REGISTRY` not exported from `tools/leap-client.ts`
+Expected: FAIL — `walkEndpoints` and `LEAP_REGISTRY` not exported from `lib/leap-client.ts`
 
 - [ ] **Step 3: Add types, registry, and walker to leap-client.ts**
 
-Append to `tools/leap-client.ts` after the closing `}` of `buildDumpData` (line 653):
+Append to `lib/leap-client.ts` after the closing `}` of `buildDumpData` (line 653):
 
 ```typescript
 // --- Endpoint Registry & Walker ---
@@ -431,13 +431,13 @@ Expected: All existing tests still PASS
 
 - [ ] **Step 6: Run lint and typecheck**
 
-Run: `npx biome check tools/leap-client.ts && npx tsc --noEmit`
+Run: `npx biome check lib/leap-client.ts && npx tsc --noEmit`
 Expected: No errors
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/leap-client.ts test/leap-walker.test.ts
+git add lib/leap-client.ts test/leap-walker.test.ts
 git commit -m "feat(leap): add endpoint registry and walkEndpoints walker
 
 Registry-driven recursive LEAP endpoint walker for exhaustive dumps.
@@ -452,12 +452,12 @@ Refs: GLAB-56"
 ### Task 2: Wire --full Flag Into leap-dump.ts
 
 **Files:**
-- Modify: `tools/leap-dump.ts:50-53` (add FULL_OUTPUT flag)
-- Modify: `tools/leap-dump.ts:63-93` (branch main() on --full)
+- Modify: `tools/leap/leap-dump.ts:50-53` (add FULL_OUTPUT flag)
+- Modify: `tools/leap/leap-dump.ts:63-93` (branch main() on --full)
 
 - [ ] **Step 1: Add --full flag parsing**
 
-In `tools/leap-dump.ts`, after line 52 (`const SAVE_OUTPUT = hasFlag("--save");`), add:
+In `tools/leap/leap-dump.ts`, after line 52 (`const SAVE_OUTPUT = hasFlag("--save");`), add:
 
 ```typescript
 const FULL_OUTPUT = hasFlag("--full");
@@ -465,7 +465,7 @@ const FULL_OUTPUT = hasFlag("--full");
 
 - [ ] **Step 2: Add walkEndpoints import**
 
-In `tools/leap-dump.ts`, update the import from `./leap-client` (lines 24-31) to also import `walkEndpoints` and `LEAP_REGISTRY`:
+In `tools/leap/leap-dump.ts`, update the import from `./leap-client` (lines 24-31) to also import `walkEndpoints` and `LEAP_REGISTRY`:
 
 ```typescript
 import {
@@ -578,7 +578,7 @@ async function runStandardDump(leap: LeapConnection) {
 
 - [ ] **Step 4: Run lint and typecheck**
 
-Run: `npx biome check tools/leap-dump.ts tools/leap-client.ts && npx tsc --noEmit`
+Run: `npx biome check tools/leap/leap-dump.ts lib/leap-client.ts && npx tsc --noEmit`
 Expected: No errors
 
 - [ ] **Step 5: Run all tests**
@@ -589,7 +589,7 @@ Expected: All tests PASS (including new walker tests)
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tools/leap-dump.ts
+git add tools/leap/leap-dump.ts
 git commit -m "feat(leap): wire --full flag into leap-dump.ts
 
 --full runs exhaustive walk of all LEAP endpoints.
@@ -611,17 +611,17 @@ This task requires network access to the RA3 processor at 10.0.0.1.
 
 - [ ] **Step 1: Verify existing dump still works**
 
-Run: `npx tsx tools/leap-dump.ts --save 2>&1 | tail -5`
+Run: `npx tsx tools/leap/leap-dump.ts --save 2>&1 | tail -5`
 Expected: Connects, dumps, saves to `data/leap-10.0.0.1.json` — same as before.
 
 - [ ] **Step 2: Run full dump in summary mode**
 
-Run: `npx tsx tools/leap-dump.ts --full 2>&1`
+Run: `npx tsx tools/leap/leap-dump.ts --full 2>&1`
 Expected: Progress log showing each endpoint, then summary table with item counts and total time. Some endpoints will show "(skipped — no data)" — that's expected for RA3 (e.g. `/occupancygroup` returns 204).
 
 - [ ] **Step 3: Run full dump with --save**
 
-Run: `npx tsx tools/leap-dump.ts --full --save 2>&1`
+Run: `npx tsx tools/leap/leap-dump.ts --full --save 2>&1`
 Expected: Saves to `data/leap-10.0.0.1-full.json`. File should be larger than the standard dump.
 
 - [ ] **Step 4: Inspect the full dump output**
@@ -636,7 +636,7 @@ Expected: Shows zone and control station counts for the Office area.
 
 - [ ] **Step 6: Test against Caseta (if available)**
 
-Run: `npx tsx tools/leap-dump.ts --full --host 10.0.0.2 --certs caseta --save 2>&1`
+Run: `npx tsx tools/leap/leap-dump.ts --full --host 10.0.0.2 --certs caseta --save 2>&1`
 Expected: Saves to `data/leap-10.0.0.2-full.json`. Caseta should have more endpoints returning data (presetassignment, programmingmodel, occupancygroup, facade, countdowntimer).
 
 - [ ] **Step 7: Commit the full dump data files**

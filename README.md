@@ -70,10 +70,10 @@ npx tsx tools/nucleo-cmd.ts "ccx coap get rloc:4800 fw/it/md"
 npx tsx tools/nucleo-cmd.ts "cca button 001D94EF on"
 
 # LEAP
-npx tsx tools/leap-dump.ts --save
+npx tsx tools/leap/leap-dump.ts --save
 
 # IPL (Designer integration protocol)
-npx tsx tools/ipl-monitor.ts
+npx tsx tools/ipl/ipl-monitor.ts
 ```
 
 ## Firmware
@@ -108,21 +108,21 @@ status                                  # Radio/network status
 | ---------------------------- | --------------------------------------------------------- |
 | `cli/nucleo.ts`              | Interactive TUI — packet display, commands, CoAP explorer |
 | `tools/nucleo-cmd.ts`        | Scriptable one-shot Nucleo commands                       |
-| `tools/coap-probe.ts`        | Scan all CCX devices for CoAP endpoints                   |
-| `tools/coap-fuzz.ts`         | Rapid CoAP path fuzzer                                    |
-| `tools/leap-dump.ts`         | Dump LEAP device/zone hierarchy                           |
-| `tools/leap-cmd.ts`          | LEAP zone control (level, on, off, raise, lower)          |
-| `tools/ipl-monitor.ts`       | Live IPL stream decoder — color-coded LEI frames, name resolution |
-| `tools/ipl-cmd.ts`           | Send IPL commands (ping, gotolevel, gotoscene, raise/lower) |
-| `tools/ipl-correlate.ts`     | Correlate IPL events with CCA/CCX radio captures          |
-| `tools/ipl-nucleo-capture.ts` | Multi-source NDJSON capture (IPL + CCA + CCX + sniffer)  |
-| `tools/ccx-sniffer.ts`       | Thread traffic sniffer                                    |
-| `tools/ccx-send.ts`          | Send CCX multicast commands                               |
+| `tools/ccx/coap-probe.ts`        | Scan all CCX devices for CoAP endpoints                   |
+| `tools/ccx/coap-fuzz.ts`         | Rapid CoAP path fuzzer                                    |
+| `tools/leap/leap-dump.ts`         | Dump LEAP device/zone hierarchy                           |
+| `tools/leap/leap-cmd.ts`          | LEAP zone control (level, on, off, raise, lower)          |
+| `tools/ipl/ipl-monitor.ts`       | Live IPL stream decoder — color-coded LEI frames, name resolution |
+| `tools/ipl/ipl-cmd.ts`           | Send IPL commands (ping, gotolevel, gotoscene, raise/lower) |
+| `tools/ipl/ipl-correlate.ts`     | Correlate IPL events with CCA/CCX radio captures          |
+| `tools/ipl/ipl-nucleo-capture.ts` | Multi-source NDJSON capture (IPL + CCA + CCX + sniffer)  |
+| `tools/ccx/ccx-sniffer.ts`       | Thread traffic sniffer                                    |
+| `tools/ccx/ccx-send.ts`          | Send CCX multicast commands                               |
 | `tools/codegen.ts`           | Generate C headers from TS protocol definitions           |
-| `tools/thread-decrypt.ts`    | Decrypt 802.15.4 frames                                   |
-| `tools/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
-| `tools/dll-patcher/`         | .NET DLL patcher — universal unlock for Designer          |
-| `tools/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
+| `tools/ccx/thread-decrypt.ts`    | Decrypt 802.15.4 frames                                   |
+| `tools/cca/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
+| `exploits/designer-jailbreak/dll-patcher/`         | .NET DLL patcher — universal unlock for Designer          |
+| `tools/designer/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
 | `bridge/`                    | CCX→WiZ bridge (HA add-on) — Thread sniffer to WiZ UDP    |
 
 
@@ -150,7 +150,7 @@ Host addresses, cert paths, and Designer VM credentials live in `config.json` (g
 
 Processor type (RA3 / HomeWorks QSX / Caseta) is auto-detected from the LEAP `/server` ProtocolVersion. LEAP tools require mutual TLS certs (`lutron-{name}-{cert,key,ca}.pem` in project root).
 
-Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than static config — pull them from a processor with `npx tsx tools/leap-dump.ts --save`.
+Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than static config — pull them from a processor with `npx tsx tools/leap/leap-dump.ts --save`.
 
 ## Prior Work
 
@@ -160,7 +160,7 @@ Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than sta
 ## Future Work
 
 - Native Vive cross-compatibility. The custom bridge handles this at the application layer, but native pairing requires flashing the Caseta NCP with Vive (link type 30) CCA instead of Caseta/HWQS (type 9/11). So far only MRF2/MRF2S devices have paired natively.
-- Harden `LeapConnection` (`tools/leap-client.ts`) for long-running use: periodic `/server/1/status/ping` heartbeat + auto-reconnect on disconnect, bulk `/zone/status` and `/area/status` subscriptions instead of per-zone, typed error classes (`BridgeResponseError`, `BridgeDisconnectedError`), UUID ClientTags. Patterns to borrow from [gurumitts/pylutron-caseta](https://github.com/gurumitts/pylutron-caseta). Matters most for the CCX→WiZ bridge, which currently has no LEAP-side watchdog.
+- Harden `LeapConnection` (`lib/leap-client.ts`) for long-running use: periodic `/server/1/status/ping` heartbeat + auto-reconnect on disconnect, bulk `/zone/status` and `/area/status` subscriptions instead of per-zone, typed error classes (`BridgeResponseError`, `BridgeDisconnectedError`), UUID ClientTags. Patterns to borrow from [gurumitts/pylutron-caseta](https://github.com/gurumitts/pylutron-caseta). Matters most for the CCX→WiZ bridge, which currently has no LEAP-side watchdog.
 - Port a LEAP pairing helper (port 8083 CSR flow from `pylutron-caseta/pairing.py`) so tools can enroll their own client certs instead of copying them out of the Designer VM.
 - Fork `pylutron-caseta` to add RA3/HWQS scene support (`/areascene` + `/preset/{id}/presetassignment` for target levels), timeclock/event exposure, and optional CCX Thread credential extraction — lets Home Assistant surface scenes and bridge pairing for RA3 processors.
 

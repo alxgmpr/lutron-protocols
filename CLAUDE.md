@@ -85,8 +85,8 @@ Binary framing: `[FLAGS:1][LEN:1][TS:4 LE][DATA:N]`. Host→STM32: `[CMD:1][LEN:
 npx tsx cli/nucleo.ts               # Connect to Nucleo interactive shell
 npx tsx tools/nucleo-cmd.ts "cmd"   # Scriptable one-shot command to Nucleo
 npx tsx tools/codegen.ts            # Regenerate C headers from TS protocol defs
-npx tsx tools/ccx-sniffer.ts --live # Sniff Thread traffic
-npx tsx tools/leap-dump.ts          # Dump LEAP device hierarchy
+npx tsx tools/ccx/ccx-sniffer.ts --live # Sniff Thread traffic
+npx tsx tools/leap/leap-dump.ts          # Dump LEAP device hierarchy
 
 # NPM script shortcuts
 npm run codegen        # Regenerate C headers from TS protocol defs
@@ -137,7 +137,7 @@ CCX sequence numbers persist to `.ccx-seq` file in project root to survive resta
 
 ### LEAP Client
 
-`tools/leap-client.ts` provides `LeapConnection` class wrapping TLS with request/response pairing via auto-incrementing client tags (`lt-1`, `lt-2`, ...). Messages are newline-delimited JSON. Constructor takes `{ host }` — certs are resolved from `config.json` by processor IP.
+`lib/leap-client.ts` provides `LeapConnection` class wrapping TLS with request/response pairing via auto-incrementing client tags (`lt-1`, `lt-2`, ...). Messages are newline-delimited JSON. Constructor takes `{ host }` — certs are resolved from `config.json` by processor IP.
 
 The client auto-detects RA3 vs Caseta by probing the `/zone` endpoint — RA3 uses area-walk (`/area/{id}/associatedzone`), Caseta exposes zones directly.
 
@@ -207,7 +207,7 @@ VM at 192.168.64.4 — `sshpass -p alex ssh -o StrictHostKeyChecking=no -o Prefe
 
 - **NEVER launch Designer automatically** — only the user launches it manually
 - **ConnectSyncService.exe** locks DLLs in the MSIX directory — kill it before deploying patched DLLs
-- DLL patcher: `dotnet run --project tools/dll-patcher/DllPatcher/DllPatcher.csproj -- <src-dir> <out-dir>`
+- DLL patcher: `dotnet run --project exploits/designer-jailbreak/dll-patcher/DllPatcher/DllPatcher.csproj -- <src-dir> <out-dir>`
 - Original DLLs cached at `/tmp/designer-rox/`, patched output to `/tmp/designer-patched/`
 - Deploy: `scp /tmp/designer-patched/*.dll alex@192.168.64.4:c:/temp-patch/` then `ssh` and run `powershell -ExecutionPolicy Bypass -File C:\temp-patch\deploy.ps1` (kill ConnectSyncService first)
 - dnfile Python venv at `/tmp/dnfile-env/` for .NET metadata inspection

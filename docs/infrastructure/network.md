@@ -16,13 +16,13 @@ Managed switch supports port mirroring for LAN capture.
 ## LEAP Infrastructure
 
 - Two processors: RA3 (10.0.0.1, v03.247) and Caseta (10.0.0.2, v01.123)
-- LEAP API is **read-write**, `tools/leap-client.ts` auto-detects RA3 vs Caseta
+- LEAP API is **read-write**, `lib/leap-client.ts` auto-detects RA3 vs Caseta
 - **Cloud LEAP Proxy**: `api.iot.lutron.io/api/v2/leap/{bridge-id}` relays ANY LEAP command
 - **Key URL**: `/link/{id}/associatedlinknode/expanded` — ALL devices + firmware in one call
 - Caseta config: tuningsettings, phasesettings, countdowntimer, presetassignment (DELAY CONFIRMED)
 - RA3 links: CCX=`/link/234`, CCA=`/link/236`
 - Full details: `docs/infrastructure/cloud-proxy.md`, `docs/protocols/leap.md`
-- **LEAP API explorer**: `tools/leap-explore.ts` — probes 200+ endpoints, `data/leap-explore-*.json`
+- **LEAP API explorer**: `tools/leap/leap-explore.ts` — probes 200+ endpoints, `data/leap-explore-*.json`
 
 ## IPL Protocol (Designer)
 
@@ -109,8 +109,8 @@ Managed switch supports port mirroring for LAN capture.
 Universal cross-reference between LEAP and CCA. RA3 link data includes CCA SubnetAddress (0x82E7) and full CCX credentials (Base64).
 
 ### Code Architecture (2026-02-15)
-- `tools/leap-client.ts` — shared LeapConnection + fetchLeapData() with auto-detect
-- `tools/leap-dump.ts` — CLI for dumps, uses leap-client, supports `--certs`/`--save`
+- `lib/leap-client.ts` — shared LeapConnection + fetchLeapData() with auto-detect
+- `tools/leap/leap-dump.ts` — CLI for dumps, uses leap-client, supports `--certs`/`--save`
 - `ccx/config.ts` — override mechanism via `setLeapData()`, `getSerialName()` export
 - `cli/nucleo.ts` — `--update-leap` flag fetches live LEAP data at startup
 - Saved data goes to `data/leap-<host>.json`
