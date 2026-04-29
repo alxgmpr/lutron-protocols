@@ -1423,6 +1423,52 @@ static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t dura
 }
 
 /* -----------------------------------------------------------------------
+ * Synth-OTA Device-poll burst — SAFE pre-flight (no flash side effects).
+ *
+ * Transmits `cca_ota_build_poll` packets at the captured-OTA cadence
+ * (~75 ms) for `duration_sec` seconds. Device-poll has no payload, only
+ * filler bytes — it CANNOT erase or write flash. Use this BEFORE
+ * BeginTransfer to confirm the device is alive on the chosen subnet
+ * without risking a brick.
+ *
+ * Refs docs/firmware-re/powpak-conversion-attack.md §"Brick incident".
+ * ----------------------------------------------------------------------- */
+static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_type, bool is_broadcast,
+                          uint8_t duration_sec)
+{
+    if (duration_sec == 0) duration_sec = 3;
+
+    printf("[cca] CMD ota_poll %s target=%08X subnet=%04X carrier=%02X dur=%us\r\n", is_broadcast ? "BCAST" : "UNICAST",
+           (unsigned)target_id, subnet, carrier_type, duration_sec);
+
+    uint8_t packet[22];
+    if (cca_ota_build_poll(packet, carrier_type, subnet, target_id, is_broadcast) == 0) {
+        printf("[cca] CMD ota_poll: invalid carrier/flag combination\r\n");
+        return;
+    }
+
+    uint32_t start = HAL_GetTick();
+    uint32_t count = 0;
+    uint8_t seq = 0x01;
+
+    while ((HAL_GetTick() - start) < (uint32_t)duration_sec * 1000) {
+        cca_ota_build_poll(packet, carrier_type, subnet, target_id, is_broadcast);
+        packet[1] = seq;
+        /* Stop/start RX around each TX so any 0x0B ACK at 25 ms cadence
+         * has a window between poll packets (matches exec_ota_begin). */
+        cc1101_stop_rx();
+        transmit_one(packet, 22);
+        cc1101_start_rx();
+        count++;
+        seq = (seq + 6) & 0xFF;
+        if (seq >= 0x48) seq = 0x01;
+        vTaskDelay(pdMS_TO_TICKS(75));
+    }
+
+    printf("[cca] CMD ota_poll complete (%lu pkts) — safe pre-flight done\r\n", (unsigned long)count);
+}
+
+/* -----------------------------------------------------------------------
  * Synth-OTA full TX — Phase 2b PowPak conversion attack.
  *
  * Walks the LDF body in cca_ota_session via cca_ota_full_tx_walk, sending
@@ -1514,6 +1560,11 @@ void cca_pairing_execute(const CcaCmdItem* item)
     case CCA_CMD_OTA_BEGIN_TX:
         exec_ota_begin(item->device_id, (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
                        item->duration_sec);
+        break;
+    case CCA_CMD_OTA_POLL_TX:
+        exec_ota_poll(item->device_id, (uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]),
+                      /* carrier_type */ item->raw_payload[2],
+                      /* is_broadcast */ item->raw_payload[3] != 0, item->duration_sec);
         break;
     case CCA_CMD_OTA_FULL_TX:
         exec_ota_full_tx((uint16_t)((item->raw_payload[0] << 8) | item->raw_payload[1]), item->device_id);

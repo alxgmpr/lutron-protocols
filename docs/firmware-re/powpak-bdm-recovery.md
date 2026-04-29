@@ -103,6 +103,35 @@ If the bricked unit has a *different* DeviceClass (check the SKU on the label: `
 | `RFCCO434_1-51.bin` | RMJ-CCO1-24-B (contact closure) | 16 07 04 01 |
 | `RFZeroTen434_1-34.bin` | RMJ-2DSC-1-B (0-10V) | 16 06 02 01 |
 
+## Confirmed PCB layout (visual recon, 2026-04-29)
+
+Photos of the bricked unit's PCB confirmed before disassembly for BDM:
+
+- **MCU**: 44-LQFP, ~10×10 mm, Freescale "M" curved-swirl logo on the package. Pin count + footprint are consistent with `MC9S08QE128CLH` — matches the static-RE'd part-family guess in [powpak.md](powpak.md). The 102 KB combined section A+B image fits the QE128's 128 KB flash; the 32-LQFP variants (≤64 KB) wouldn't. Center of the board.
+- **Radio**: under a soldered-on metal RF shield can to the left of the MCU. Photo with shield removed shows a small QFN (CC1101 candidate, QFN20 4×4 mm) plus an adjacent crystal — both inside the shield footprint.
+- **BDM access candidate — TP1, TP2, TP3, TP4**: cluster of four tinned through-holes immediately to the right of the MCU. Four pads is exactly the BDM minimum (BKGD / RESET / VDD / GND). These are the most-likely BDM access points on this PCB. No populated header.
+- **ET-prefixed test points** (ET5, ET6, ET22, ET26, ET28, ET31, ET32, ET39): scattered across the board. These are production/factory engineering test pads — likely test coverage for SMPS, relay drive, sense lines. Not BDM. Don't probe these for recovery unless TP1-4 doesn't pan out.
+
+**Probing TP1-TP4 to identify which pad is which** (do this before connecting USBDM):
+
+1. Power up the device (3.3V on the MCU rail) but leave BDM disconnected.
+2. Probe each TPn with a scope or multimeter:
+   - **GND** = 0 V steady.
+   - **VDD** = 3.3 V steady.
+   - **RESET** = 3.3 V at idle, briefly pulled low (~µs to ms) on power-on.
+   - **BKGD** = 3.3 V at idle (pull-up to VDD), the remaining one once GND/VDD/RESET are identified.
+3. If two pads both look like 3.3V idle, BKGD is the one without a strong pull source — flick the device's reset (cycle power) and watch which pad shows brief activity. RESET twitches; BKGD stays high.
+
+Once mapped, USBDM connects to those four pads (pogo-pin clips or tack-soldered fly wires).
+
+### FCC filings searched
+
+No filing exists under FCC ID `JPZ0082` for RMJ-16R-DV-B (gap between JPZ0079 and JPZ0083 in the JPZ grantee listing on fccid.io). The visible-on-photo PowPak hardware family is covered by:
+- [JPZ0096](https://fccid.io/JPZ0096) (2013) — LMJ CCO modules (LMJ-CCO1-24-B, LMJ-CCO1-B, LMJ-101-DV-B)
+- [JPZ0105](https://fccid.io/JPZ0105) (2014) — LMJ-5T-DV-B 0-10V dimmer
+
+PowPak modules likely share PCB family across SKUs (`470-3xxx REV B` board), so JPZ0096/0105 internal photos are decent proxies for layout-level recon if needed in future. Disassembly was the faster path for this recovery.
+
 ## Procedure
 
 ### Step 1 — Identify the MCU

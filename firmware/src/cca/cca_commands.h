@@ -43,6 +43,7 @@ enum CcaCmdType : uint8_t {
     CCA_CMD_AUTO_PAIR_STOP = 0x1A,  /* Stop auto-pair engine */
     CCA_CMD_SUBNET_PAIR = 0x1B,     /* Hybrid Vive beacon + RA3 subnet config */
     CCA_CMD_OTA_BEGIN_TX = 0x1C,    /* Synth-OTA BeginTransfer burst (Phase 2a subnet recon) */
+    CCA_CMD_OTA_POLL_TX = 0x1D,     /* Synth-OTA Device-poll burst (safe pre-flight, no flash side effects) */
     CCA_CMD_OTA_FULL_TX = 0x1E,     /* Synth-OTA full transmit from uploaded LDF body (Phase 2b) */
 };
 
