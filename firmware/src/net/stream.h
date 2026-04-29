@@ -53,6 +53,10 @@ extern "C" {
 #define STREAM_CMD_CCA_VIVE_PAIR 0x15
 #define STREAM_CMD_TX_RAW_CCX_CBOR 0x16
 #define STREAM_CMD_CCA_HYBRID_PAIR 0x17
+/* OTA full-TX session upload (host → STM32). See cca_ota_session.h. */
+#define STREAM_CMD_OTA_UPLOAD_START 0x18 /* [u32 body_len LE] */
+#define STREAM_CMD_OTA_UPLOAD_CHUNK 0x19 /* [u16 chunk_idx BE][bytes...] (chunk = idx * 240) */
+#define STREAM_CMD_OTA_UPLOAD_END 0x1A   /* [] — verify expected/body match, log */
 #define STREAM_CMD_TEXT 0x20
 
 /**
