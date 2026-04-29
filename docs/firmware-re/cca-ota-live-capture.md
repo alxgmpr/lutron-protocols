@@ -299,13 +299,15 @@ This conclusively settles the protocol layout:
   byte  field             value/notes
   ────────────────────────────────────────────────────────────
   0     type              0xB1, 0xB2, or 0xB3 (3-way TDMA cycle)
-  1     0x01              constant
-  2-4   a1 ef fd          static prefix (likely src-addr or hub ID)
-  5     0x00              constant
-  6-7   21 2b             constant (length-ish, 53 bytes total)
+  1     sequence          (within the OTA stream)
+  2     flags             0xA1 (retx; first-pkt = 0xA0; high nibble = packet class)
+  3-4   subnet            BE 16-bit, this bridge = 0xEFFD (= Project.SubnetAddress in /var/db/lutron-db.sqlite)
+  5     pair_flag         0x00 normal (0x7F during pairing)
+  6     proto             0x21 = QS_PROTO_RADIO_TX
+  7     body length sig   0x2B = 43 (long-pkt body length; short variants use 0x08/0x0C/0x0E)
   8     0x00              constant
-  9-12  device serial     0x06FE8020 (the paired DVRF-6L)
-  13    0xfe              constant
+  9-12  device serial     BE 4-byte (0x06FE8020 = the paired DVRF-6L)
+  13    0xFE              unicast marker (broadcast packets carry 0xFF instead, with bytes 9-12 = DeviceClass)
   14-15 06 02             OTA sub-opcode = TransferData
   16    sub-counter       0..0x3F (cycles)
   17-18 chunk addr LO     16-bit BE; advances 0x1F = 31 / packet
@@ -331,30 +333,283 @@ firmware image from any OTA capture — useful for verifying that an OTA push
 landed the correct version, or for capturing payload to attempt offline
 decryption.
 
-## Outstanding work
+## Control-packet decode (2026-04-29) — `06 nn` sub-opcode mapping
 
-1. **Identify the page-change control packet** — at the t-boundary where
-   chunks transition from page 0 → page 1 → page 2, look for a non-B1/B2/B3
-   packet that announces the new page. Most likely a `0x91`/`0x92` short
-   packet with body `06 nn` where `nn ≠ 02` (TransferData) — `0x91/92`'s
-   body `01 a1 ef fd 00 21 0e 00 06 fe 80 20 fe 06 ?? ??` mirrors B1+ but
-   short, so probably the control class.
-2. **Decode the type `0x0B` short packet body** — present every 25 ms
-   throughout the OTA, body shape `0b 02 d0 24 85 cf f7` and similar.
-   Likely an ACK from the device or a per-chunk inter-pacing pulse.
-3. **Decode the type `0x83` device-class-broadcast** — packets carry
-   the Vogelkop class `04 63 02 01` and `fd 06 03 cc cc cc cc cc cc`,
-   appearing during early-OTA (t=0.3 s..1.2 s and t=16-18 s in the
-   capture). Likely a "all Vogelkop devices, prepare for OTA" broadcast.
-4. **Reconcile the static-RE'd opcodes with on-air bytes** — `0x2A`/
-   `0x32`/`0x36`/`0x41`/`0x58` from the static RE almost certainly map to
-   `06 nn` sub-opcodes in the on-air `0xB1+` body bytes 14-15:
-   - `06 02` confirmed = TransferData (`0x41` in static RE)
-   - `06 03` likely = device-class-broadcast (CodeRevision? `0x36`?)
-   - `06 00` seen once at OTA start — likely BeginTransfer (`0x2A`)
-5. **Resolve the body sub-opcode discriminator** for the three `0x32`
-   Control phases (Open Question #1) — at the on-air layer this is
-   likely byte 15 (`02`/`03`/`00`/...) of the short `0x91`/`0x92` packets.
+Building on the chunk-decode work, `tools/ota-extract.ts --dump-all` was extended
+to emit every decoded packet (not just B1+) as JSONL, and a new
+`tools/ota-control-analyze.ts` surfaces non-chunk packets at phase boundaries
+(OTA start, page wraps, OTA end). Across the full 1093 s OTA window, 45,130
+total packets decoded — 3,767 chunks plus 41,363 of every other type.
+
+### Sub-opcode histogram across the full OTA (`06 nn` only)
+
+| Type | `06 nn` | Count | Role |
+|------|---------|-------|------|
+| `0x81` | `06 03` | 12 | Beacon-ish broadcast (DeviceClass at bytes 9-12) |
+| `0x82` | `06 03` | 24 | Same shape as `0x81/06 03`, fired at OTA end |
+| `0x83` | `06 03` | 48 | Same shape — fires at OTA start AND end |
+| `0x91` | `06 01` | **1** | **ChangeAddressOffset (page advance)** |
+| `0x91` | `06 03` | 407 | Unicast device-poll (filler `cc cc cc cc cc cc`) |
+| `0x92` | `06 00` | **1** | **BeginTransfer (open OTA session)** |
+| `0x92` | `06 03` | 408 | Unicast device-poll (mirror of `0x91/06 03`) |
+| `0xB2` | `06 02` | 2,037 | TransferData chunk (TDMA arm) |
+| `0xB3` | `06 02` | 2,041 | TransferData chunk (TDMA arm) |
+
+(Chunks of type `0xB1` were decoded zero times — see "TDMA arms" note below.)
+
+### Confirmed on-air opcode table
+
+| `06 nn` | Operation | Static-RE IPC | Confirmation |
+|---------|-----------|---------------|--------------|
+| `06 00` | **BeginTransfer** — open OTA session, declare chunk size | `0x2A` | One-shot at t=37.263 s, 19 s before first chunk. Carrier type = `0x92` (unicast to device serial). Payload `02 20 00 00 00 1F` (last byte = chunk size 31, leading bytes still under analysis). |
+| `06 01` | **ChangeAddressOffset** — advance to next 64 KB page | `0x32` (sub-A) | One-shot at t=801.946 s, 150 ms after the last chunk of page 1 (`addrLo=0xFFFC`) and 150 ms before the first chunk of page 2 (`addrLo=0x001B`). Carrier type = `0x91`. Payload bytes 16-19 = `00 01 00 02` = (prev_page=1, new_page=2). |
+| `06 02` | TransferData | `0x41` | 4,078 occurrences (all chunks). Confirmed by 90.7% PFF byte-match (PR #40). |
+| `06 03` | **Device-poll / pre-flight broadcast** — multi-purpose "are you alive / prepare" probe | unclear (likely `0x36` CodeRevision and/or `0x58` QueryDevice multiplexed) | 899 occurrences. Body always `cc cc cc cc cc cc` (no payload). Carrier type encodes scope: `0x81/0x83` broadcast (DeviceClass at bytes 9-12), `0x91/0x92` unicast (serial at bytes 9-12), `0x82` beacon-tail variant. |
+
+### Confirmed full-packet layouts
+
+**BeginTransfer (`0x92/06 00`)** — t=37.263 s, 24 bytes:
+```
+92 01 a1 ef fd 00 21 0e 00 06 fe 80 20 fe 06 00 02 20 00 00 00 1f 9e 83
+└─ ──────────── ─────────── ─────────── ────── ────────────────── ─────
+   addressing   length-ish  serial(BE)  sub-op payload (6 bytes)  CRC16
+                            of 06FE8020       └─ tail = 0x1F (chunk size)
+```
+
+**ChangeAddressOffset (`0x91/06 01`)** — t=801.946 s, 24 bytes:
+```
+91 01 a1 ef fd 00 21 0c 00 06 fe 80 20 fe 06 01 00 01 00 02 cc cc 7b f3
+                                              ────── ─────────── ─────
+                                              sub-op prev=1 new=2 CRC16
+                                                     filler = cc cc
+```
+
+**TransferData (`0xB2/06 02`)** — 31 bytes payload from PFF, 53 bytes total
+(see existing layout earlier in this doc; sub-counter at byte 16, addrLo at
+bytes 17-18, fixed `0x1F` chunk-size at byte 19, payload at bytes 20..50, CRC
+at 51-52).
+
+**Device-poll (`0xNN/06 03`)** — 24 bytes, payload always filler:
+```
+9X 01 a1 ef fd 00 21 08 00 06 fe 80 20 fe 06 03 cc cc cc cc cc cc CC CC
+└─ broadcast (8N) or unicast (9N), DeviceClass or serial at 9-12 ───────
+```
+
+### Byte 2-7 are the standard CCA header, not OTA-specific
+
+The bytes that earlier notes called a "static prefix" `a1 ef fd` decompose
+into the **standard CCA packet header** documented in
+[cca-pairing.md §"PAIR_B0"](../protocols/cca-pairing.md#pair_b0--device-announces-itself-initial-enrollment).
+Byte position is class-dependent, but the **subnet** is invariant for a
+given bridge.
+
+**For commands / beacons / state types (0x80, 0x81, 0x83, 0x91, 0x92, 0x93, 0xA1-0xA3, 0xB0-0xB3):**
+
+```
+[0]   type
+[1]   sequence (TDMA / retx counter)
+[2]   flags          0xA0 first / 0xA1 retx (high nibble = packet class: 0xA for cmd, 0x2 for state)
+[3-4] subnet         BE 16-bit, PER-BRIDGE runtime config
+[5]   pair_flag      0x00 normal / 0x7F during pairing
+[6]   proto          0x21 = QS_PROTO_RADIO_TX
+[7]   body length sig
+[8]   0x00
+[9-12] device serial (unicast) OR DeviceClass (broadcast)
+[13]   0xFE unicast / 0xFF broadcast
+[14+]  body
+```
+
+**For response/ACK cluster (0xC1, 0xC7, 0xCD, 0xD3, 0xD9, 0xDF):**
+
+```
+[0]   type
+[1]   const 0x20 (no sequence byte)
+[2-3] subnet         BE 16-bit, same value, shifted left one byte
+[4]   variant flag (0x01 in OTA, 0x41 during pairing)
+[5+]  body
+```
+
+**Confirmed empirically (2026-04-29):**
+The bridge's SQLite at `/var/db/lutron-db.sqlite` row `Project` has columns
+`SubnetAddress` and `SystemRFChannel`:
+
+```
+SystemRFChannel = 26  → 433.602844 MHz (matches SDR center freq exactly)
+SubnetAddress   = 61437 = 0xEFFD       (matches bytes 3-4 of every on-air packet)
+```
+
+The subnet is generated at bridge commissioning (default `0xFFFF`, set to a
+random 16-bit value) and devices learn it during pairing. It is the network
+discriminator a device uses to filter incoming packets — packets stamped with
+a different subnet are dropped.
+
+**For synth-TX from Nucleo+CC1101 against a paired device:**
+- Learn the target's **subnet** (sniff one packet from the bridge it's
+  paired to, or read `Project.SubnetAddress` from a rooted bridge), OR pair
+  the device to a bridge under our control first
+- Set flags byte (`0xA1` for command-class retx; `0x21` for state-class retx)
+- Use unicast marker `0xFE` at byte 13 + target serial at bytes 9-12, OR
+  broadcast marker `0xFF` at byte 13 + DeviceClass at bytes 9-12
+
+This also explains why no `a1 ef fd` literal appears in any coproc binary:
+the subnet is loaded from per-bridge non-volatile storage at boot, the flags
+bit toggles per retx, and the unicast marker is derived from packet context —
+none are static literals.
+
+### Known gaps
+
+1. **Page 0 → page 1 wrap had no surviving control packet** in the capture.
+   At t=437.0 s..437.4 s the chunk addrLo wraps from `0xFFFE` (page 0 last)
+   to `0x003C` (page 1 first), but no `06 01` decoded in that window.
+   Likely lost to bit errors (only 1 of 2 expected `06 01`s survived). The
+   page 1→2 announce confirms the layout, so the page 0→1 announce is
+   inferred to follow the same `(prev_page, new_page)` encoding with payload
+   `00 00 00 01`.
+
+2. **No EndTransfer / ResetDevice / CodeRevision / QueryDevice on-air opcode
+   identified**. After the last chunk at t=1124.642 s, only `06 03` poll
+   clusters and a 6-packet response cluster (`0xC1/0xC7/0xCD/0xD3/0xD9/0xDF`)
+   appear before the OTA-end log line. Hypotheses (pick one to test next):
+   - `06 03` is multiplexed: the carrier type byte (`0x81` vs `0x82` vs
+     `0x83`) encodes the IPC sub-operation (CodeRevision vs QueryDevice vs
+     ResetDevice). The 24-byte `cc cc cc cc cc cc` filler is consistent with
+     "no payload" probes.
+   - The `0xC1+` response family encodes the non-`06 nn` IPCs in their own
+     framing (note byte 6 changes across boundaries: `0x3F` at OTA start →
+     `0x12` at OTA end → `0x3C` at page-2 wrap).
+   - The device's bootloader auto-resets on receiving the BeginTransfer
+     payload's `02 20 00 00 00 1F` directives without needing a closing
+     EndTransfer/ResetDevice (would explain why none seen).
+
+3. **TDMA arms**: only `0xB2`/`0xB3` chunk types observed (zero `0xB1`
+   despite the writeup hypothesizing 3-way cycling). Either 2-way TDMA in
+   this OTA, or `0xB1` got persistently bit-errored. The 90.7% chunk match
+   doesn't depend on which two arms; both deliver the same payload-by-addrLo.
+
+### Tooling
+
+```sh
+# Dump every decoded packet to JSONL (~3-4 min, runs rtlsdr-cca-decode in 60s slices).
+npx tsx tools/ota-extract.ts \
+  --capture data/captures/cca-ota-20260428-190439.rf.bin \
+  --firmware data/firmware/dvrf6l-v3.021.pff \
+  --start-sec 37 --duration-sec 1093 \
+  --dump-all data/captures/cca-ota-20260428-190439.packets.jsonl
+```
+
+The phase-boundary inspection that produced the `06 nn` table above was a
+one-shot Python pass over the JSONL — group packets by `(type, bytes[14], bytes[15])`,
+locate `addrLo` wraps in the chunk stream, dump the rare-count rows. No
+permanent tool needed; the JSONL itself is the corpus.
+
+## Device-side ACK stream (`0x0B` XOR-decoded, 2026-04-29)
+
+The 39,486 `0x0B` packets in the dump (~89% of all decoded packets, dismissed
+as noise pre-decode) are the **device-to-bridge dimmer-ACK channel**. Per
+`firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack` they're 5 bytes,
+NOT 8N1, with XOR validation:
+
+- Validate: `b[3] == b[1] ^ 0x26`
+- Correct: `format = b[2] ^ 0xFE`, `level = b[4] ^ 0xFE`
+- During this OTA: `format ^ level == 0x55` invariant, so `level` is just a
+  redundant XOR-shadow of `format`. The "format" byte carries the device-side
+  status code.
+
+Applying that rule to the JSONL: **39,468 / 39,486 (99.95%) validate**. The
+`format` byte changes across OTA phases:
+
+| `format` | Count | When | Inferred state |
+|----------|-------|------|----------------|
+| `0x2E` | 35,424 (89.7%) | Steady-state TransferData | "in-progress, idle ACK" |
+| `0xC1` | 32 | OTA start, before first chunk | "ready / handshaking" |
+| `0xC2` | 32 | Around page 1→2 wrap (~t=798..805 s) | "advancing page" |
+| `0xEC` | 35 | OTA end, after last chunk | "committing / done" |
+| `0x9B` | 407 | spread across OTA | unclear (count matches `0x91/06 03` poll count) |
+| `0x85` | 392 | spread across OTA | unclear (count matches `0x92/06 03` poll count) |
+| `0xFA` | 7 | one-shots near boundaries | unclear |
+
+The device emits an ACK every 25 ms (40 Hz) regardless of bridge traffic.
+Sequence byte cycles `0x02 → 0x04 → 0x06 → 0x08 → 0x0A → 0x0C` (6 even values)
+between consecutive chunks; odd sequence values are sparse (~100 each).
+
+**Architectural conclusion** — the device-to-bridge channel is **status-only**,
+no per-chunk NACK or retransmit-request mechanism visible. The device just
+broadcasts "I'm in state X" continuously; the bridge fires chunks and stops.
+No on-air handshake required to advance.
+
+## `0xC1+` response cluster — bridge-side beacon, NOT a device response
+
+The `{0xC1, 0xC7, 0xCD, 0xD3, 0xD9, 0xDF}` 6-packet cluster (593 packets in
+99 bursts across the OTA) turns out to be a **bridge-side periodic beacon**,
+not a device response or boundary marker:
+
+- Fires every ~10.85 s for the full OTA window (regular cadence, not
+  boundary-triggered)
+- Same body across all 6 types within a burst (only the type byte differs —
+  6-way TDMA cycle, like `0xB1/B2/B3` for chunks but with 6 arms)
+- Byte 6 is a **decrementing counter** that cycles `0x3F → 0x00`, then wraps:
+  burst 1=`0x3F`, burst 27=`0x25`, burst 65=`0x00`, burst 66=`0x3F` (wraps),
+  burst 99=`0x12` (OTA end). Some bit-error anomalies (burst 28 = `0x65`).
+- Byte 11 ∈ `{0x3F, 0x3A, 0x24, 0x00}` — switches between modes at certain
+  points; rough correlation with current page but not a clean page index.
+- Byte 12 toggles `0x39 / 0x00` every other burst.
+
+This is bridge-internal beacon traffic (RA-Select-style master-presence), NOT
+part of the OTA wire protocol. Synth-TX from Nucleo+CC1101 does NOT need to
+emit these.
+
+## Updated picture for synth-TX from Nucleo+CC1101
+
+What the bridge transmits during an OTA, and what we need to replicate:
+
+**Required (the OTA conversation itself):**
+1. **BeginTransfer** (`0x92/06 00`) — once at t=session-start. Payload
+   `02 20 00 00 00 1F` (last byte = chunk size 31; leading 5 bytes' meaning
+   still open — needs Phoenix coproc RE at IPC `0x2A` handler).
+2. **TransferData** (`0xB2`/`0xB3` cycling, `06 02`) — one packet per 31-byte
+   chunk, addressed by `chunkAddrLo` advancing 31 per packet.
+3. **ChangeAddressOffset** (`0x91/06 01`) — at each 64 KB page boundary,
+   payload bytes 16-19 = `(prev_page, new_page)`.
+
+**Optional (we can ignore these for TX, monitor for diagnostics):**
+- `0x0B` device ACKs — listen for `format=0xEC` to detect commit/reboot
+- `06 03` device-poll broadcasts (bridge pre-flight) — the device does not
+  appear to require these to enter OTA mode
+- `0xC1+` heartbeat cluster — bridge-internal, irrelevant to the device
+
+**Eliminated** — there is no on-air EndTransfer / ResetDevice / CodeRevision
+/ QueryDevice. The bridge just stops sending TransferData; the device's
+bootloader autonomously commits once it has the full firmware (likely gated
+by total-size in BeginTransfer's `02 20 00 00` payload), validates per its
+internal rules (LDF body CRC32 at minimum, possibly more), and reboots.
+
+The conversion-attack feasibility now hinges entirely on **the device
+bootloader's validation rules** when the LMJ `.ldf` arrives at an RMJS chip
+— specifically:
+1. Does the bootloader cross-check the LDF's declared DeviceClass (at body
+   offset `0x8AD`) against the in-flash one before accepting?
+2. Is there a signature / HMAC over the LDF body, or is CRC32 the only seal?
+
+These are answerable by RE'ing the PowPak HCS08 bootloader OTA-receive
+handler — already partially identified at BN `0x4290` (flash-write primitive)
++ `sub_8bb4` (the calling site).
+
+## Outstanding work (after the 2026-04-29 control-packet + ACK decode)
+
+1. **Decode BeginTransfer payload `02 20 00 00`** — need to know what to TX
+   for an LMJ firmware bundle. Phoenix EFR32 coproc RE at IPC opcode `0x2A`
+   handler (BN `0x08018c18` / `0x08018c98`).
+2. **Recover the page 0→1 wrap announcer** — only the page 1→2 announcer
+   survived in the capture. Replay t=435..440 s with majority-vote across
+   retransmissions to confirm inferred payload `00 00 00 01`.
+3. **PowPak HCS08 bootloader validation rules** — start at BN `0x4290` /
+   `sub_8bb4` and trace what the OTA-receive path checks. Determines
+   whether cross-family flash can succeed (Path 2 viable vs BDM-only).
+4. **Build the synth OTA TX firmware module** — extend `firmware/src/cca/`
+   with an OTA-TX mode emitting BeginTransfer + TransferData + Change
+   AddressOffset. Validate by self-receive via SDR + the existing
+   `tools/ota-extract.ts` reassembler reaching 100% PFF coverage on
+   synthesized output.
 
 ## Methodology validation
 

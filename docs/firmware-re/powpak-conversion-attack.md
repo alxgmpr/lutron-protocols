@@ -1,0 +1,290 @@
+# PowPak RMJ/RMJS → LMJ conversion attack — plan & state
+
+**Status (2026-04-29):** Protocol RE complete, bootloader RE shows no active DeviceClass cross-check, tooling ready for synth-TX validation. Hardware test pending.
+
+**Goal:** flash a non-smart PowPak (RMJ standalone for ESN, or RMJS for Vive) with smart firmware (LMJ for RA2/RA3/HWQS), entirely RF-side from a Nucleo+CC1101, bypassing every Lutron host system. End state: a device that physically exists as an RMJ/RMJS now boots as an LMJ and pairs to an RA3 processor.
+
+## Architectural framing
+
+The PowPak family (RMJ / RMJS / LMJ / LMQ / LMK across 434 MHz / 868 MHz variants) shares physical hardware. They differ in:
+
+- **DeviceClass byte at LDF body offset `0x8AD`** — `0x16/0x03/0x02/0x01` for RMJ vs `0x16/0x08/0x02/0x01` for LMJ
+- **Host system pairing** — RMJ pairs only to ESN, RMJS only to Vive, LMJ only to RA2/3/HWQS
+- **Compiled firmware** — LMJ and RMJ `.ldf` images differ by **95.98% of bytes** (only 4.02% identical). They are NOT "same code with one byte patched"; they are separately compiled.
+- **Strings** — both binaries carry the same Lutron hardware-SKU strings (`RMJ-16R-DV-B`, `RMJ-CCO1-24-B`, `RMJ-UNDEFINED`) regardless of protocol family. The "RMJ-" prefix is Lutron's hardware naming, distinct from the protocol-family designation we use elsewhere.
+
+## What we know (RE complete)
+
+### On-air OTA wire protocol — runtime CCA, not raw-bit (live-capture confirmed 2026-04-28..04-29)
+
+Earlier static-RE claimed OTA used a separate raw-bit framing on a different channel. Live capture against a Caseta Pro REP2 + DVRF-6L disproved this:
+
+- **Same channel as runtime CCA** (`433.602844 MHz`, `Project.SystemRFChannel = 26` in bridge SQLite)
+- **N81 framing** with `0xFA DE` sync, CRC-16 / `0xCA0F`
+- **OTA-specific packet types** ride the standard CCA framing, with sub-opcodes at body bytes 14-15
+
+### Standard CCA packet header (bytes 2-7)
+
+| Byte | Field | Notes |
+|---|---|---|
+| 0 | type | `0xB1`-`0xB3` long chunk; `0x91`/`0x92` short unicast; `0x81`/`0x83` short broadcast; etc. |
+| 1 | sequence | TDMA / retx counter |
+| 2 | flags | `0xA0` first packet / `0xA1` retx; high nibble varies by class (0xA cmd, 0x2 state) |
+| 3-4 | **subnet** | BE 16-bit, **`Project.SubnetAddress`** in bridge SQLite (`0xEFFD` for the captured Caseta) |
+| 5 | pair_flag | `0x00` normal / `0x7F` during pairing |
+| 6 | proto | `0x21 = QS_PROTO_RADIO_TX` |
+| 7 | body length sig | `0x2B` long, `0x0E`/`0x0C`/`0x08` short variants |
+
+The `0xC1+` response cluster has a slightly shifted layout (no sequence byte at offset 1, subnet at bytes 2-3).
+
+### On-air sub-opcodes (bytes 14-15 = `06 nn`)
+
+| `06 nn` | Operation | Carrier | Confirmed |
+|---|---|---|---|
+| `06 00` | **BeginTransfer** | `0x92` unicast | YES — payload `02 20 00 00 00 1F` (trailing `1F` = chunk size 31; leading 5 bytes' meaning open) |
+| `06 01` | **ChangeAddressOffset** | `0x91` unicast | YES — payload `00 PREV 00 NEW` (16-bit BE page indices) |
+| `06 02` | **TransferData** | `0xB2`/`0xB3` long (3-arm TDMA, `0xB1` rare/absent) | YES — 31-byte chunk verbatim from PFF/LDF body |
+| `06 03` | **Device-poll / pre-flight** | `0x81/82/83` broadcast (DeviceClass at bytes 9-12) or `0x91/92` unicast (serial at bytes 9-12) | YES — body filler `cc cc cc cc cc cc` |
+
+**The bootloader's dispatcher accepts MORE sub-opcodes than seen on-air:**
+
+| Sub-op | Bootloader CALL | Notes |
+|---|---|---|
+| `02` TransferData | `CALL $009B, #$2F` | seen on-air |
+| `01` ChangeAddrOff | `CALL $009A, #$F6` | seen on-air |
+| `03` Poll | `CALL $009A, #$B0` | seen on-air |
+| **`04` (new)** | `CALL $009B, #$CD` | NOT seen on-air — likely EndTransfer/CommitImage/CodeRevision |
+| **`05` (new)** | `CALL $009B, #$B5` | NOT seen on-air |
+| (default) | `CALL $0292, #$67` | error/fallback |
+
+### Device-side ACK channel (`0x0B` XOR-encoded, NOT 8N1)
+
+99.95% of `0x0B` packets validate as dimmer-ACKs. 5 bytes:
+- `[0]` = `0x0B`
+- `[1]` = sequence (cycles `0x02→04→06→08→0A→0C` between chunks)
+- `[2]` = format ^ 0xFE (the actual status code)
+- `[3]` = byte[1] ^ 0x26 (integrity check)
+- `[4]` = format ^ 0x55 ^ 0xFE (redundant XOR-shadow of [2])
+
+The corrected `format` byte is the **device's state code** during OTA:
+
+| `format` | Phase | Inferred state |
+|---|---|---|
+| `0x2E` | Steady-state TransferData | "in-progress, idle" (89.7% of OTA) |
+| `0xC1` | Pre-first-chunk | "ready / handshake" |
+| `0xC2` | Around page wrap | "advancing page" |
+| `0xEC` | Post-last-chunk | "committing / done" — **the one we watch for to confirm successful flash** |
+
+Decoder rule: `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`. The device emits 1 ACK every 25 ms regardless of bridge traffic. **Status-only — there is no per-chunk NACK or retransmit-request channel.**
+
+### `0xC1+` response cluster — bridge-internal beacon, NOT device response
+
+6-packet cluster (`0xC1, 0xC7, 0xCD, 0xD3, 0xD9, 0xDF`) fires every ~10.85 s for the full OTA window. Same body across all 6 types within a burst (6-way TDMA, like B1/B2/B3 chunks). Byte 6 is a decrementing counter `0x3F → 0x00 → wrap`; byte 11 toggles between `0x3F`/`0x3A`/`0x24`. **This is the bridge's master-presence beacon, NOT a device response.** Synth-TX from Nucleo doesn't need to emit these.
+
+### EndTransfer / ResetDevice / CodeRevision / QueryDevice on-air
+
+**Were NOT seen on-air during the captured 19-minute OTA.** The bridge fires BeginTransfer + chunk stream + ChangeAddressOffset and stops. The device's bootloader autonomously commits when it has the full firmware, then reboots.
+
+**However** — bootloader sub-ops `0x04` and `0x05` (above) might be on-air-callable variants the bridge didn't exercise during the captured OTA. Worth probing during hardware test.
+
+## What we know (PowPak HCS08 bootloader RE)
+
+### Section structure (PowPakRelay434L1-53.ldf body, 102KB total)
+
+- **Section A** = bootloader / platform code (`0x00..0xe92b`, 59,539 bytes)
+- **Section B** = relay application (`0xe92c..end`, 42,977 bytes)
+- Boundary marked by `Copyright 2008 Lutron Electronics` banner at `0x038a` (start of A) and `0xe92c` (start of B).
+- LDF body bit-identical to the `.bin` loaded in BN/Ghidra — both sections present.
+
+### Key bootloader code anchors (Section A offsets)
+
+| Offset | What |
+|---|---|
+| `0x0000..0x001F` | 32-byte load-directive table (byte-identical between LMJ and RMJ; format not yet decoded) |
+| `0x008AD` | **DeviceClass** = `16 08 02 01` (LMJ for this binary; the byte that distinguishes RMJ from LMJ) |
+| `0x01a23` | **OTA sub-op dispatcher** (reads byte 6 of an inner buffer, branches to handlers via banked CALL) |
+| `0x02d70..0x02d80` | **DeviceClass match function** (`CMP #$16; CMP #$08; CMP #$02; CMP #$01` with wildcard support) — **DEAD CODE: zero references anywhere in the binary** |
+| `0x052c0` / `0x05714` | CCA `0xFA DE` sync detection (bootloader has its own CCA RX) |
+| `0x05900..0x05f30` | Flash-write region — OTA chunk-receive flash programming |
+| `0x05e78` / `0x05f1b` / `0x05f23` | FSTAT/FCMD writes (HCS08 flash control) |
+| `0x49b2..0x49f1` | String table: `RMJ-16R-DV-B`, `RMJ-CCO1-24-B`, `RMJ-UNDEFINED` (Lutron hardware SKU names) |
+| `0xbfb2` | FCDIV write (chip clock divider — only one per binary, runs at boot) |
+
+### Chip family
+
+Has `LDA $181E` (LAP register) used **143 times** in Section A — characteristic of HCS08 PA/LH/LL family with linear flash addressing. **Not** standard DZ/QE-family banked PPAGE-at-`$001F`. Page bytes in CALL instructions (0x2F, 0xF6, 0xB0, etc.) likely index into function-pointer tables resolved via LAP, not into 16KB physical flash banks.
+
+### Trampolines (RAM-resident, populated at boot)
+
+Three banked CALL trampolines at zero-page RAM addresses:
+- `$009A` (used by sub-ops `0x01`, `0x03` and other call sites — 9 callers total)
+- `$009B` (used by sub-ops `0x02`, `0x04`, `0x05` — 5 callers total)
+- `$0292` (default fallback, 28 call sites — most often page byte `0x67`)
+
+Each trampoline takes the page byte as an argument and dispatches to flash code. The exact handler addresses are not yet decoded (would require disassembling extended-flash regions and the RAM-init code that copies the trampolines from flash).
+
+### Deadly silent: NO DeviceClass cross-check active in the bootloader
+
+**Critical finding for the conversion attack.** The bootloader contains the hardware to compare an incoming DeviceClass against its own (the function at `0x2db1`), but **nothing calls it**. Verified:
+- Zero JSR ext (`CD HH LL`) targeting `0x2d70..0x2d80`
+- Zero banked CALL (`AC HH LL PP`) targeting it
+- Zero relative branches reaching it
+- Zero data references (function pointer tables) to it
+- BN's xrefs view also reports zero
+
+So the implied gate "the bootloader rejects cross-class flashes" is empirically absent. The OTA path has no active DeviceClass validation we've found.
+
+### What's still unknown about the bootloader
+
+1. **CRC32 / signature verification at OTA-end** — likely exists. The expected value source is unknown (could be derived from BeginTransfer payload `02 20 00 00 00 1F`, or computed at OTA-end and compared against a known good).
+2. **NVPROT-imposed flash write-protection range** — `NVPROT byte = 0xCC`, but PA/LH chip family decoding of FPS bits is chip-specific. Worst case: bootloader region itself is write-protected. Best case: only specific small regions are protected (e.g., the load-directive table at `0x00..0x1F`).
+3. **Sub-ops `0x04` and `0x05` semantics** — the bootloader handles them but we never saw them on-air. Hypothesis: they're EndTransfer / ResetDevice / CommitImage variants triggered by the bridge in conditions our captured OTA didn't exercise.
+4. **Banked function-pointer table** — reading the RAM-init code that populates the trampolines would tell us where the actual handler functions live.
+
+## What we know (live capture corpus + tooling)
+
+### Capture artifacts on disk
+
+- `/Users/alex/lutron-tools/data/captures/cca-ota-20260428-190439.rf.bin` (5.7 GB, gitignored) — 19-min IQ capture of Caseta Pro REP2 → DVRF-6L OTA at 2 Mhz sample rate
+- `/Users/alex/lutron-tools/data/captures/cca-ota-20260428-190439.packets.jsonl` — every decoded packet (45,130 entries) over the OTA window 37s..1130s
+- `/Users/alex/lutron-tools/data/captures/cca-pair-20260428-175549.rf.bin` + transcript — 547-packet pairing capture, same Caseta bridge
+- `/Users/alex/lutron-tools/data/firmware/dvrf6l-v3.021.pff` (187,060 bytes) — source firmware that 90.7% of decoded chunks match byte-exact
+
+### Tooling that landed in this PR
+
+- `tools/ota-extract.ts --dump-all <jsonl>` — extends existing chunk reassembler to emit every decoded packet (all types) as JSONL for downstream analysis. **The JSONL is the corpus** — no other tool needed for control-packet decode.
+- `tools/decrypt-lutron-firmware.sh` (existing) — bundle decryption with `6cba80b2bf3cf2a63be017340f1801d8`
+- `tools/ldf-extract.py` (existing) — strips 0x80-byte LDF header to expose plaintext HCS08 image
+
+### Updated reference docs
+
+- [docs/protocols/cca.md §9 Firmware OTA Wire Protocol](../protocols/cca.md#9-firmware-ota-wire-protocol) — full rewrite to reflect on-air format (vs the old static-RE'd raw-bit description, which we now know is the host↔coproc IPC layer)
+- [docs/firmware-re/cca-ota-live-capture.md](cca-ota-live-capture.md) — capture writeup with decoded sub-opcodes, packet layouts, ACK-channel state machine
+- [docs/firmware-re/powpak.md](powpak.md) Bootloader-unknowns section — partial PowPak HCS08 RE findings
+- [docs/firmware-re/caseta-cca-ota.md](caseta-cca-ota.md) — Phoenix EFR32 coproc dispatcher RE notes
+
+### Updated TypeScript constants (`protocol/cca.protocol.ts`)
+
+- New: `OTAOnAirSubOpcode` (`BEGIN_TRANSFER=0x00, CHANGE_ADDRESS_OFFSET=0x01, TRANSFER_DATA=0x02, POLL=0x03`)
+- New: `OTADeviceAckState` (`IN_PROGRESS=0x2E, READY=0xC1, ADVANCING_PAGE=0xC2, COMMITTING=0xEC`)
+- Renamed: `OTAOpcode → OTACoprocIPCOpcode` (with backward-compat alias) — these are the static-RE'd values, now correctly labeled as host↔coproc IPC, not on-air
+- Removed wrong claim: `HOP_CHANNELS: 35` (it's single-channel)
+
+## Hardware test plan (next session)
+
+### Goal
+
+Validate the conversion attack end-to-end: TX an LMJ `.ldf` body to a real RMJS device via Nucleo+CC1101, watch the device's ACK fmt byte transition through `0xC1 → 0x2E → 0xC2 → 0xEC`, then power-cycle and verify it pairs to an RA3 processor as LMJ.
+
+### What's needed
+
+| Item | Source | Notes |
+|---|---|---|
+| Nucleo H723ZG + CC1101 module | existing benchtop setup | the firmware in `firmware/src/cca/` already does runtime CCA TX/RX |
+| RTL-SDR (RTL2832U/R820T2) | existing | for monitoring device ACKs |
+| Target RMJS unit | TBD by user | factory-fresh or unpaired from any Vive controller |
+| LMJ `.ldf` source firmware | already on disk | `data/designer-firmware/QuantumResi/.../powpak modules/PowPakRelay434L1-53.ldf` |
+| LDF body extraction | `tools/ldf-extract.py` | strip 0x80 header → 102,516-byte plaintext body |
+| Subnet to use | TBD | for a fresh attack, use a benign value like `0xEFFD` (matches our captured Caseta) or generate fresh; see "Attack params" below |
+
+### Attack params
+
+Constructing a valid TX requires picking values for fields that are normally bridge-side state:
+
+- **Subnet** (bytes 3-4 of every packet) — `0xEFFD` works for our captured Caseta. For a fresh attack, the device may accept any subnet during initial pairing or factory state. Empirically test by trying multiple subnets.
+- **Target device serial** (bytes 9-12) — read off the RMJS unit's product label.
+- **BeginTransfer payload `02 20 00 00 00 1F`** — copy from our captured OTA verbatim. The trailing `0x1F` is the chunk size (31 bytes); leading 5 bytes' meaning is unknown but the captured value is known-good for at least the DVRF-6L case.
+- **ChangeAddressOffset** — fire at every 64 KB page boundary in the LDF body. Payload bytes 16-19 = `00 PREV 00 NEW` where PREV/NEW are the page indices (0, 1, 2, ...).
+- **TransferData chunks** — 31 bytes each from the LDF body, in order, with `addrLo` advancing by `0x1F` (31) per packet, wrapping at 64 KB.
+
+### Step-by-step protocol
+
+1. **Self-receive validation (no target device)** — synth-TX an LMJ image to ourselves via the SDR loopback. `tools/ota-extract.ts --capture <our-iq> --firmware <lmj-body>` should reassemble at 100% coverage. Confirms the TX firmware emits valid runtime-CCA-framed packets.
+2. **TX to a real RMJS, monitor ACK transitions** —
+   - Power on the target RMJS unit (factory-fresh, no paired controller)
+   - Start RTL-SDR capture of the runtime CCA channel (433.602844 MHz)
+   - Run synth-TX OTA: BeginTransfer → ~3,200 chunks (102KB / 31B) → ChangeAddrOff at page boundaries
+   - Watch device-side `0x0B` ACKs in real-time. Decode XOR (the rule is in `firmware/src/cca/cca_decoder.h:309`) and watch the `format` byte:
+     - Expected start: `0xC1` (ready) — if NEVER seen, device didn't enter receive mode → BeginTransfer payload may need revisiting
+     - Expected mid-OTA: `0x2E` (in-progress) — if stalls, decoder/CRC issue on our TX side
+     - Expected at page wraps: `0xC2` (advancing) — if missing, ChangeAddrOff format is wrong
+     - Expected at end: `0xEC` (committing) — **success signal**. If never seen, the device received chunks but bootloader rejected commit — likely CRC verification failure.
+3. **Power-cycle and pair test** — after seeing `0xEC`, power-cycle the device. Try to pair it to an RA3 processor. If it pairs as LMJ, attack succeeded.
+
+### Decision tree at each stall point
+
+| Stall | Likely cause | Fix |
+|---|---|---|
+| No `0xC1` after BeginTransfer | Subnet mismatch | Try subnet from RMJS's prior pairing (capture during pairing first); or sweep a few subnet values |
+| `0xC1` but no `0x2E` after first chunk | Chunk format wrong | Verify CRC, byte ordering, sequence-byte advancement |
+| `0x2E` but no `0xC2` at page boundary | ChangeAddrOff format wrong | Verify payload byte ordering, the 16-bit page index encoding |
+| `0xC2` reached but no `0xEC` at OTA end | CRC verification failed at commit | The `02 20 00 00 00 1F` BeginTransfer payload may need a real value (not the captured DVRF-6L value); coproc RE needed (Phoenix EFR32, IPC opcode `0x2A` handler) |
+
+### Risks & mitigations
+
+- **Brick the device.** Mitigation: only target devices we're willing to lose. After successful BDM-recovery becomes possible (or deemed a viable backup), the risk drops.
+- **HCS08 SEC bit blocks BDM read.** If the device boots and we can't read its flash post-attack, we can still erase + re-flash via BDM blind. So worst-case we lose factory data but not the device.
+- **Subnet rejection at every value.** If the bootloader requires a SPECIFIC subnet (e.g., one matching its prior commissioning), we may need to capture the RMJS during pairing to learn its expected subnet. Easy enough to set up.
+- **Signature/CRC at commit.** If the commit step verifies a signature over the body (not just CRC), we may need to RE the verification logic. The Phoenix EFR32 coproc IPC `0x2A` handler is the place to start (BN entry points at `0x08018c18` / `0x08018c98`; load the larger phoenix binary `_8003000-803FF08.bin`).
+
+## Open questions (in rough priority order)
+
+1. **Will the device subnet-filter our packets?** Empirical: try a few subnet values, watch for any ACK at all. Highest-priority unknown.
+2. **What does the leading 5 bytes of BeginTransfer payload mean?** May affect commit success. RE Phoenix EFR32 coproc IPC handler.
+3. **Sub-ops `0x04`/`0x05` — when does the bridge send them?** May be required for commit. If our OTA stalls at `0x2E → no 0xEC`, this is the suspect.
+4. **NVPROT flash-protection range** — does it cover Section A? If yes, can't update bootloader. Empirically test by attempting to write to Section A region first; observe via SDR whether device acknowledges.
+5. **Does the RMJ→LMJ DeviceClass change persist across power cycle?** Required for the device to pair as LMJ after commit. Tested implicitly by pair-test step 3.
+
+## Files reference (this branch)
+
+```
+docs/firmware-re/
+├── powpak-conversion-attack.md       ← THIS FILE (plan)
+├── cca-ota-live-capture.md           ← capture writeup, on-air protocol decode
+├── caseta-cca-ota.md                 ← Phoenix EFR32 coproc dispatcher RE
+└── powpak.md                         ← PowPak HCS08 bootloader RE
+
+docs/protocols/
+└── cca.md                            ← rewritten §9 with on-air format
+
+protocol/
+└── cca.protocol.ts                   ← OTAOnAirSubOpcode, OTADeviceAckState constants
+
+tools/
+├── ota-extract.ts                    ← --dump-all flag for full-packet JSONL
+├── ldf-extract.py                    ← strip LDF header (existing)
+└── decrypt-lutron-firmware.sh        ← bundle decryption (existing)
+
+firmware/src/cca/
+├── cca_decoder.h:309                 ← try_parse_dimmer_ack — XOR-ACK decoder rule
+└── cca_tx_builder.h                  ← existing CCA TX builder (target for synth-TX additions)
+
+data/
+├── captures/cca-ota-20260428-190439.rf.bin             ← 19-min IQ capture (gitignored)
+├── captures/cca-ota-20260428-190439.packets.jsonl      ← 45,130 decoded packets
+├── captures/cca-pair-20260428-175549.transcript.txt    ← 547-pkt pairing capture
+├── firmware/dvrf6l-v3.021.pff                          ← reference firmware (90.7% match)
+└── designer-firmware/.../powpak modules/
+    ├── PowPakRelay434L1-53.ldf                         ← LMJ source (target firmware)
+    └── PowPakRelay434_1-49.LDF                         ← RMJ comparison (4.02% body match)
+
+data/firmware-re/powpak/
+├── PowPakRelay434L1-53.bin                             ← LDF body, BN binary
+├── split/section_a_bootloader.bin                      ← bootloader (0..0xe92b)
+├── split/section_b_app.bin                             ← application (0xe92c..end)
+└── ghidra_project/                                     ← Ghidra project, both sections imported
+```
+
+## Anchors for the next RE session (if needed before hardware)
+
+If hardware test stalls and deeper RE is needed:
+
+- **Phoenix EFR32 coproc IPC `0x2A` handler** — load `data/firmware/phoenix-device/coprocessor/phoenix_efr32_8003000-803FF08.bin` (249KB, the larger binary — Ghidra currently has the smaller 117KB one) into Ghidra. The 5 dispatcher functions identified earlier (`0x080190a8`, `0x080192d4`, `0x08019490`, `0x08019724`, `0x080199d8`) construct outgoing packets; the data structures they reference live past the current Ghidra segment's end.
+- **PowPak banked CALL targets** — the trampoline at RAM `$009A`/`$009B` is populated at boot from flash. Find the RAM-init code (`memcpy`-style copy from flash to `0x009A`) to learn what handler addresses the page bytes index into. Once decoded, load the relevant flash region into Ghidra and disassemble the TransferData / sub-op-04 / sub-op-05 handlers.
+
+## Memory pointers (`/Users/alex/.claude/projects/-Users-alex-lutron-tools/memory/`)
+
+- `reference-cca-ota-wire-protocol.md` — full protocol scorecard (updated this session)
+- `project-powpak-pairing-rules.md` — RMJ→ESN, RMJS→Vive, LMJ→RA2/3/HW family rules
+- `feedback-powpak-is-pure-cca.md` — PowPaks are 433 MHz CCA only, not QS-Link
+- `project-designer-doesnt-ota-cca.md` — Designer only updates CCX; CCA OTA is host-system-driven
