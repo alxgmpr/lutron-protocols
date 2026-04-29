@@ -397,113 +397,150 @@ LED config during pairing uses format 0x0A with type 0x81 (broadcast). Different
 
 ## 9. Firmware OTA Wire Protocol
 
-Firmware updates use a **separate on-air framing** from the runtime CCA protocol described in sections 1-8. Same chip family, same 433 MHz band, same CRC polynomial — but different modem mode, no N81 byte encoding, no type-byte length rule, and a self-describing length+opcode header.
+Firmware updates run over the **same RF channel and N81 framing as runtime CCA** (sections 1-8). The bridge's coproc wraps OTA-specific packet types and sub-opcodes into runtime-CCA-shaped packets — there is no separate OTA radio mode, no separate channel, no separate framing.
 
-Statically RE'd from the Phoenix EFR32 coproc binary (`phoenix_efr32_8003000-803FF08.bin`), corroborated against PowPak's RX-side flash anchors and the RA2 Select REP2 / Caseta Pro coproc images (`rr-sel-rep2_efr32_8003000-*.s19`) carrying the same framing constants. **First live RF capture: 2026-04-28** against a Caseta Pro REP2 + DVRF-6L (Vogelkop). See [docs/firmware-re/cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) for the empirical confirmation, [docs/firmware-re/powpak.md](../firmware-re/powpak.md) for PowPak anchors, [docs/firmware-re/coproc.md](../firmware-re/coproc.md) for the cross-bridge comparison, and [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) for the bridge-side IPC orchestration.
+The earlier static-RE understanding (separate `[55 55 55][FF][FA DE][LEN][OP][BODY][CRC]` raw-bit framing) describes the **host↔coproc IPC layer**, not what flies over RF. Both layers exist concurrently:
 
-### 9.1. Framing
+| Layer | Substrate | What it carries | RE'd from |
+|-------|-----------|-----------------|-----------|
+| **On-air RF** | 433.602844 MHz, N81, runtime CCA framing | `0x91/0x92/0xB1/0xB2/0xB3` packets with `06 nn` sub-opcodes | [docs/firmware-re/cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) — 19-min IQ capture against Caseta Pro REP2 + DVRF-6L, 90.7% chunk match against source PFF |
+| **Coproc IPC** | host UART, HDLC | `0x2A/0x32/0x36/0x41/0x58` opcodes with raw-bit framing | Phoenix EFR32 coproc binary, [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) |
 
-```
-[55 55 55][FF][FA DE][LEN:1][OP:1][PAYLOAD:N][CRC16:2]
-```
+These two layers are **NOT** the same byte sequence. The bridge's coproc translates IPC commands from lutron-core into on-air sub-opcodes before TX. See §9.4 for the IPC↔on-air mapping.
 
-| Field | Bytes | Notes |
-|-------|-------|-------|
-| Preamble | `55 55 55` | 3 bytes (vs runtime's 32-bit `0xAA…` alternating) |
-| Sync delimiter | `FF` | 1 byte before sync word |
-| Sync word | `FA DE` | Same as runtime CCA (section 2). Software-detected — chip-side sync is disabled |
-| Length | 1 byte | Length of `[OP:1][PAYLOAD:N]`, excludes sync/preamble/CRC |
-| Opcode | 1 byte | One of the values in [§9.3](#93-opcodes) |
-| Payload | 0–~10 bytes | Opcode-specific |
-| CRC-16 | 2 bytes | Polynomial `0xCA0F` (same as runtime) over `[LEN][OP][PAYLOAD]` |
+### 9.1. On-air framing (the RF layer)
 
-Total packet 6–14 bytes — well under the runtime CCA short-packet ceiling (24).
+OTA traffic uses runtime CCA framing (§2): preamble + sync delimiter + `FA DE` sync word, N81-encoded body, CRC-16 / `0xCA0F`. The packet **type byte** at offset 0 determines length per the standard CCA size rule (§3) — no length-prefixed self-describing header.
 
-### 9.2. Modem config (CC1101)
+Two on-air packet shapes carry the OTA conversation:
 
-OTA uses a different CC1101 mode than the runtime CCA protocol. Key registers:
-
-| Reg | Runtime CCA | OTA |
-|-----|-------------|-----|
-| PKTCTRL0 | `0x00` (fixed-length packet engine) | `0x32` (**async serial mode** — MCU bit-bangs framing) |
-| MDMCFG2 | `0x30` (2-FSK, no sync) | `0x10` (**GFSK**, no sync) |
-| MDMCFG3 | `0x3B` (62.5 kBaud) | `0x3B` (**~62.5 kbps observed** — empirical, not 30.49 kbps as static-RE register decode claimed) |
-| MDMCFG4 | `0x0B` | `0x9C` |
-| DEVIATN | `0x45` (41.2 kHz) | `0x44` (**~38 kHz**) |
-| Channel | 433.602844 MHz (channel 26) | **~433.566 MHz** (offset −36 kHz, single channel) |
-
-Both ends (Phoenix EFR32 coproc TX and PowPak RX) configure these registers byte-for-byte identically.
-
-**Data rate is ~62.5 kbps, NOT 30.49 kbps** (revised 2026-04-28). The earlier static-RE register decode in [powpak.md](../firmware-re/powpak.md) claimed 30.49 kbps, but a 1010-preamble peak-to-peak measurement on the live capture gives 31 µs per cycle = 2 bits per 31 µs → ~64 kHz (close to runtime CCA's documented 62.5 kbps). Possible explanations: register decode formula was misapplied, or the OTA mode reuses runtime CCA's bit clock by design. Either way, demod and synth in [`lib/cca-ota-demod.ts`](../../lib/cca-ota-demod.ts) use the empirical rate.
-
-**Single-channel — empirically confirmed 2026-04-28.** The 35-row table at PowPak BN `0x9B30` and Phoenix BN `0x08018e30` was earlier suspected to be a frequency-hop table (channel codes `0x44..0x66`, 2 bytes each), but a 90 s spectrogram of an active OTA shows energy concentrated in a **single ~80 kHz band centered at 433.566 MHz** with no hop pattern. The 35-row table is something else — calibration LUT, retry-channel list, or unrelated feature. See [cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) for the spectrogram evidence.
-
-### 9.3. Opcodes
-
-| Opcode | HDLC cmd ID | Name | Body | Purpose |
-|--------|-------------|------|------|---------|
-| `0x2A` | `0x113` | **BeginTransfer** | 7 | Wake-up — places target's bootloader into receive mode |
-| `0x32` | `0x119` / `0x11B` / `0x11D` | **Control** (multi-purpose) | 6 | ChangeAddressOffset / EndTransfer / ResetDevice — sub-opcode in body byte 0 (TBD, needs live capture) |
-| `0x33` | `0x125` | GetDeviceFirmwareRevisions | 4 | |
-| `0x34` | `0x127` | CancelDeviceFirmwareUpload | 6 | |
-| `0x35` | `0x129` | (broadcast — likely RemoteAddrDeviceDiscovery) | 0 | |
-| `0x36` | `0x11F` | CodeRevision | 4 | Query running version |
-| `0x3A` | `0x121` | ClearError | 8 | Recovery |
-| `0x3C` | `0x12B` | (ack/notify) | 4 | |
-| `0x41` | `0x115` | **TransferData** | 4 | Carries firmware bytes — small chunks, ~250 packets/sec |
-| `0x58` | `0x111` | QueryDevice | 5 | Initial probe |
-
-### 9.4. Phase → opcode mapping
-
-The bridge's lutron-core dispatches firmware updates via 8 IPC commands ([caseta-cca-ota.md §"OTA Wire Vocabulary"](../firmware-re/caseta-cca-ota.md#ota-wire-vocabulary)). Each IPC command translates inside the coproc to one of the on-air opcodes above:
-
-| Phase | IPC command | Opcode |
-|-------|-------------|--------|
-| 0 | `RequestFirmwareUpdateResetDevice` | `0x32` (Control) |
-| 1 | `RequestFirmwareUpdateQueryDevice` | `0x58` |
-| 2 | `RequestFirmwareUpdateBeginTransfer` | `0x2A` |
-| 3 | `RequestFirmwareUpdateChangeAddressOffset` | `0x32` (Control) |
-| 4 | `RequestFirmwareUpdateTransferData` | `0x41` |
-| 5 | `RequestFirmwareUpdateEndTransfer` | `0x32` (Control) |
-| 6 | `RequestFirmwareUpdateCodeRevision` | `0x36` |
-| — | `RequestFirmwareUpdateClearError` | `0x3A` |
-
-The three `0x32` phases share the same on-air opcode but differ via a sub-opcode byte inside the body. The HDLC cmd IDs (`0x119` / `0x11B` / `0x11D`) discriminate them on the host↔coproc UART side. The body-side sub-opcode mapping is **still TBD** — a 6.1 GB live capture exists ([cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md)) but resolving the discriminator requires a working GFSK demod against the IQ stream.
-
-### 9.5. Wake-up sequence
+**Long chunk packets (53 bytes, type `0xB1`/`0xB2`/`0xB3`)** — TransferData carriers, body bytes 14-15 = `06 02`:
 
 ```
-QueryDevice (0x58) → CodeRevision (0x36) → BeginTransfer (0x2A)
-  → ChangeAddressOffset (0x32) → TransferData (0x41) × N
-  → EndTransfer (0x32) → ResetDevice (0x32)
+byte    field             value/notes
+0       type              0xB1, 0xB2, or 0xB3 (TDMA cycle; 0xB1 rare or absent in observed OTA)
+1       0x01              constant
+2-4     a1 ef fd          static prefix (hub-ID-ish)
+5       0x00              constant
+6-7     21 2b             constant (53-byte length signature)
+8       0x00              constant
+9-12    device serial     4 bytes BE (e.g. 06 fe 80 20)
+13      0xfe              constant
+14-15   06 02             on-air sub-opcode = TransferData
+16      sub-counter       0..0x3F, cycles
+17-18   chunk addr LO     16-bit BE; advances 0x1F = 31 / packet
+19      0x1F              chunk size = 31 bytes
+20-50   31 bytes          verbatim from PFF[file_offset], encrypted (per-model AES key)
+51-52   CRC-16 (poly 0xCA0F, BE)
 ```
 
-Phase 4 (TransferData) carries the bulk of the session — repeated until the entire `.pff` (or `.ldf` on PowPak) payload is shipped, with `ChangeAddressOffset` interleaved as the cursor advances. Manifest declares `EstimatedFastUploadTimeInSeconds: 1200` for app-class images — ~20 minutes of RF per device.
+`file_offset = page * 0x10000 + chunkAddrLo` where `page ∈ {0, 1, 2, ...}`. The page indicator is **not** in this packet — it's set by the ChangeAddressOffset short packet at each 64 KB boundary (see below).
 
-### 9.6. DeviceClass enforcement
+**Short control packets (24 bytes, type `0x91`/`0x92`/`0x81`/`0x82`/`0x83`)** — same byte 0..15 layout as the long packet, then a 6-byte body, then CRC. Carrier type encodes addressing scope:
 
-The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate (whether a PowPak refuses an LMJ image when its in-flash DeviceClass says RMJ, etc.) is whatever the bootloader itself does. See [docs/firmware-re/powpak.md §"Bootloader unknowns"](../firmware-re/powpak.md#bootloader-unknowns-gates-paths-2-and-3).
+| Type | Addressing scope | Bytes 9-12 |
+|------|-------------------|------------|
+| `0x81`/`0x83` | Broadcast to a DeviceClass | 4-byte DeviceClass (e.g. `04 63 02 01` = Vogelkop) |
+| `0x82` | Broadcast (beacon-tail variant) | DeviceClass |
+| `0x91`/`0x92` | Unicast to a single device | 4-byte device serial BE |
 
-### 9.7. Reproducibility
+### 9.2. On-air sub-opcodes (`06 nn`)
 
-Source binary anchors (Phoenix EFR32 coproc, `phoenix_efr32_8003000-803FF08.bin`, load `0x08003000`):
+Body bytes 14-15 follow the pattern `06 nn`. Confirmed values:
 
-| Anchor | BN address |
-|--------|------------|
-| CC1101 register init table (regs / values) | `0x08018c18` / `0x08018c98` |
-| OTA framing template `55 55 55 FF FA DE 08 02` | `0x08018a8c` |
-| HDLC cmd dispatch chain | `0x08004706` |
-| FirmwareUpdate handler cluster | `0x0800ee80`–`0x0800f2d8` |
-| 35-row table (was suspected hop table — empirically NOT) | `0x08018e30` |
+| `06 nn` | Operation | Carrier type | Notes |
+|---------|-----------|--------------|-------|
+| `06 00` | **BeginTransfer** | `0x92` (unicast) | Once at session start. Payload `02 20 00 00 00 1F` (last byte = chunk size 31; leading 5 bytes' meaning open — see §9.6). |
+| `06 01` | **ChangeAddressOffset** | `0x91` (unicast) | Once per 64 KB page boundary. Payload bytes 16-19 = `(prev_page, new_page)` as 16-bit BE pair (e.g. `00 01 00 02` = page 1 → page 2). |
+| `06 02` | **TransferData** | `0xB1`/`0xB2`/`0xB3` (long) | Per-chunk payload carrier (see §9.1). |
+| `06 03` | **Device-poll** (multi-purpose pre-flight probe, no payload — body is 6 bytes of `cc` filler) | `0x81/0x82/0x83` (broadcast) or `0x91/0x92` (unicast) | Fires throughout OTA at OTA start, page wraps, OTA end. |
 
-PowPak RX-side anchors (`PowPakRelay434L1-53.bin`):
+**`06 nn` ≥ `04` does not exist on-air.** EndTransfer / ResetDevice / CodeRevision / QueryDevice — all with named static-RE IPC opcodes — were not observed on RF in the 19-minute capture. The bridge stops sending TransferData when it has streamed the full firmware; the device's bootloader autonomously commits when its expected chunk count is reached and reboots. This is "open-loop" from the bridge's point of view.
 
-| Anchor | BN address |
-|--------|------------|
-| Sync word check (`CPHX #$FADE; BNE`) | `0x92C0` |
-| OTA framing template + CRC poly | `0x9714` |
-| Opcode `0x41` dispatch (TransferData) | `0x8680` |
-| Opcode `0x32` dispatch (Control) | `0x1423A` |
+### 9.3. Modem config (CC1101)
+
+Identical to runtime CCA — same channel, same modulation, same data rate. The static RE earlier suggested OTA used a separate mode at 30.49 kbps with 35-channel hopping. Both claims are wrong:
+
+- **Single channel** at 433.602844 MHz (runtime CCA channel). 90 s spectrogram shows energy in one ~80 kHz band, no hopping.
+- **~62.5 kbps** (runtime CCA's bit clock). Live-capture peak-to-peak on a `1010` preamble = 31 µs / 2 bits = ~64 kHz.
+
+The 35-row table at PowPak BN `0x9B30` and Phoenix BN `0x08018e30` is some other structure (calibration LUT, retry-channel list, or unrelated). It is NOT a hop table.
+
+### 9.4. Coproc IPC ↔ on-air mapping
+
+The bridge's lutron-core dispatches firmware updates via 8 HDLC IPC commands ([caseta-cca-ota.md §"OTA Wire Vocabulary"](../firmware-re/caseta-cca-ota.md#ota-wire-vocabulary)). Each IPC opcode maps to either an on-air sub-opcode or to no-op-on-air (the coproc handles it locally without RF traffic):
+
+| IPC opcode | HDLC cmd | IPC name | On-air sub-opcode | Notes |
+|------------|----------|----------|-------------------|-------|
+| `0x2A` | `0x113` | BeginTransfer | `06 00` | Direct mapping. |
+| `0x41` | `0x115` | TransferData | `06 02` | Direct mapping. |
+| `0x32` | `0x119` | Control / ChangeAddressOffset | `06 01` | One of three IPC variants for opcode `0x32`. |
+| `0x32` | `0x11B` | Control / EndTransfer | — | **No on-air representation.** Bridge stops TransferData; device commits autonomously. |
+| `0x32` | `0x11D` | Control / ResetDevice | — | **No on-air representation.** Device reboots autonomously after commit. |
+| `0x36` | `0x11F` | CodeRevision | — | Coproc replies from cache; not seen on RF. |
+| `0x3A` | `0x121` | ClearError | — | Recovery, only on error path. |
+| `0x33` | `0x125` | GetDeviceFirmwareRevisions | — | Cached query. |
+| `0x34` | `0x127` | CancelDeviceFirmwareUpload | — | Local abort. |
+| `0x35` | `0x129` | Broadcast | (likely `06 03` with broadcast carrier) | Pre-flight, scope = DeviceClass. |
+| `0x58` | `0x111` | QueryDevice | (likely `06 03` with unicast carrier) | Pre-flight, scope = serial. |
+| `0x3C` | `0x12B` | AckNotify | — | Coproc-internal. |
+
+So the on-air conversation reduces to **three directional sub-opcodes from bridge to device** (`06 00` BeginTransfer, `06 01` ChangeAddressOffset, `06 02` TransferData) plus the periodic `06 03` pre-flight pollers. Everything else in the IPC vocabulary either maps to nothing on-air or is a coproc-local cache/control op.
+
+### 9.5. Device-side ACK channel (`0x0B` XOR-encoded)
+
+Throughout an OTA the device emits a 5-byte XOR-encoded `0x0B` packet every 25 ms (40 Hz). This is the *only* device→bridge channel observed on-air. It is **status-only** — there is no per-chunk NACK or retransmit-request mechanism.
+
+Wire layout (NOT N81 — XOR-encoded, validated by the firmware decoder at `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`):
+
+```
+[0]  0x0B
+[1]  sequence (cycles 0x02 → 0x04 → 0x06 → 0x08 → 0x0A → 0x0C between chunks)
+[2]  format ^ 0xFE         ← actual status code
+[3]  byte[1] ^ 0x26        ← integrity check
+[4]  format ^ 0x55 ^ 0xFE  ← redundant XOR-shadow of byte[2]
+```
+
+The corrected `format` byte is the device's state code:
+
+| `format` | Frequency | Phase | Inferred state |
+|----------|-----------|-------|----------------|
+| `0x2E` | ~89.7% of OTA | Steady-state TransferData | "in-progress, idle" |
+| `0xC1` | ~32 ACKs at OTA start | Pre-first-chunk | "ready / handshake" |
+| `0xC2` | ~32 ACKs near page wrap | Around `06 01` ChangeAddressOffset | "advancing page" |
+| `0xEC` | ~35 ACKs at OTA end | Post-last-chunk | "committing / done; reboot pending" |
+
+Watching for `format=0xEC` after the last chunk is the bridge's only on-air signal that the device has accepted the firmware and is committing.
+
+### 9.6. Open: BeginTransfer payload semantics
+
+`06 00` payload bytes 16-21 = `02 20 00 00 00 1F`. The trailing `0x1F` is the chunk size (31 bytes). The leading 5 bytes don't decode obviously as firmware size, chunk count, or session ID. Likely encodes total-transfer-size or an identifier the bootloader uses to size its receive buffer. **Resolving this requires Phoenix EFR32 coproc RE at the IPC `0x2A` handler** — entry points at BN `0x08018c18` / `0x08018c98`.
+
+This matters for synth-TX from Nucleo+CC1101: without correct BeginTransfer payload, the device may refuse to enter receive mode or commit a wrong-sized image.
+
+### 9.7. DeviceClass enforcement
+
+The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate (whether a PowPak refuses an LMJ image when its in-flash DeviceClass says RMJ, etc.) is whatever the bootloader itself does. See [docs/firmware-re/powpak.md §"Bootloader unknowns"](../firmware-re/powpak.md#bootloader-unknowns-gates-paths-2-and-3) — the OTA-receive handler at PowPak BN `0x4290` / `sub_8bb4` is the gating RE target.
+
+### 9.8. Reproducibility — source binary anchors
+
+Phoenix EFR32 coproc (`phoenix_efr32_8003000-803FF08.bin`, load `0x08003000`):
+
+| Anchor | BN address | Notes |
+|--------|------------|-------|
+| CC1101 register init | `0x08018c18` / `0x08018c98` | Same regs as runtime CCA |
+| HDLC cmd dispatch chain | `0x08004706` | Routes IPC → handler |
+| FirmwareUpdate handler cluster | `0x0800ee80`–`0x0800f2d8` | IPC opcode handlers |
+| Coproc OTA framing template (host↔IPC layer) | `0x08018a8c` | The `55 55 55 FF FA DE 08 02` pattern lives here, NOT on-air |
+| 35-row table (NOT a hop table) | `0x08018e30` | Purpose unknown |
+
+PowPak HCS08 RX-side (`PowPakRelay434L1-53.bin`):
+
+| Anchor | BN address | Notes |
+|--------|------------|-------|
+| Sync word check (`CPHX #$FADE`) | `0x92C0` | Recognizes runtime CCA sync |
+| Flash-write primitive | `0x4290` | Writes one byte to flash |
+| OTA-receive flash writer (orphaned, IRQ-only) | `sub_8bb4` | Likely the body of the `06 02` TransferData handler |
 
 ## 10. Hardware Notes
 
@@ -525,17 +562,21 @@ bun run tools/cca/rtlsdr-cca-decode.ts --rate 2000000 capture.bin
 
 ### 0x0B ACK Packets
 
-Dimmers send **5-byte ACK packets** (type 0x0B) in response to bridge commands — NOT standard 24-byte CCA.
+Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 24-byte N81 CCA. Decoder rule lives in `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`.
 
 ```
-Format: 0B [seq] [response_class] [seq^0x26] [response_subtype]
+[0] 0x0B
+[1] sequence
+[2] format ^ 0xFE         ← actual status code
+[3] byte[1] ^ 0x26        ← integrity check (no CRC)
+[4] format ^ 0x55 ^ 0xFE  ← redundant XOR-shadow of byte[2]
 ```
 
-- Byte 2: 0x00 for set-level ACK, 0xD0 for config ACK
-- Byte 3: byte 1 XOR 0x26 (integrity check, no CRC)
-- Byte 4: 0x55 for set-level ACK, 0x85 for config ACK
-- CC1101 decodes bytes 2,4 with systematic 0xFE XOR error — RTL-SDR confirms correct values
-- 3 ACKs at ~25ms intervals per command
+Validation: `byte[3] == byte[1] ^ 0x26`. Correction: `format = byte[2] ^ 0xFE`, `level = byte[4] ^ 0xFE`. The "level" field is just `format ^ 0x55` in every observed case — it is a redundant XOR-shadow, not an independent value.
+
+Cadence: 1 ACK every 25 ms (40 Hz) when the dimmer is in any active state (set-level, config, or OTA). 3 ACKs at ~25 ms intervals per runtime command.
+
+During an OTA the `format` byte is the **device's state code** — see §9.5 for the OTA-specific state table (`0x2E` in-progress, `0xC1` ready, `0xC2` advancing-page, `0xEC` committing). For non-OTA traffic, `format` carries the response class for the runtime command being acknowledged.
 
 ## 11. Known Unknowns
 

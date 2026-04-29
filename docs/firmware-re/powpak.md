@@ -394,12 +394,92 @@ This would tell us:
 
 ### Bootloader unknowns (gates Paths 2 and 3)
 
-The PowPak's bootloader has its own validation that we haven't characterized:
-- Does it check the firmware's declared target DeviceClass against the in-flash DeviceClass at 0x8AD before accepting the image?
-- Does it allow flash writes to the address range containing 0x8AD (Section A's factory-config block)?
-- Is there a CRC/signature check on the incoming firmware?
+Partial RE pass against `PowPakRelay434L1-53.bin` (LMJ-XX-DV-B, body offset
+`0x8AD` = `16 08 02 01` confirmed) on 2026-04-29 with Binary Ninja MCP.
 
-If the bootloader is permissive everywhere, Paths 2/3 work. If it refuses to write to certain ranges, only Path 1 (BDM) reliably works.
+#### Confirmed
+
+1. **DeviceClass values are HARDCODED IMMEDIATES in code**, not loaded from
+   the factory-config block at body offset `0x8AD`. The match function around
+   BN `0x6db1` performs `CMP #$16`/`CMP #$08`/`CMP #$02`/`CMP #$01` with the
+   immediates baked in (with a TST+BEQ wildcard on each byte: a zero byte in
+   the candidate matches anything). **Implication:** simply patching bytes
+   at `0x48AD` (= LDF body offset `0x8AD`) doesn't change the device's
+   behavioral identity — the immediates in code drive the matching. To
+   convert RMJ → LMJ, the OTA must replace BOTH Section A (which contains
+   these immediates) AND the factory-config block.
+
+2. **No AES tables** — searched for the standard AES SBox / InvSBox / Rcon
+   constants, none present. Confirms the LDF body is plaintext on PowPak
+   (per `tools/ldf-extract.py`'s claim) and no per-model AES key is needed
+   for synth-TX.
+
+3. **Section A/B boundary at BN `0x1292c`** — two `Copyright 2008 Lutron
+   Electronics` banners frame the binary at BN `0x438a` (start of Section A
+   proper) and BN `0x1292c` (Section A → Section B transition). Section A
+   spans ~34 KB, Section B spans ~42 KB.
+
+4. **Two distinct flash-control routines** — Section A contains FSTAT/FCMD
+   writes at two unrelated locations:
+   - `sub_4259` family (`STA $1825` at BN `0x4226`, `0x42cf`, `0x42c7`)
+     — runtime config saves, called by `sub_c16b`/`sub_c1db` from many
+     places (pairing entries, level memory). Small per-call writes.
+   - `sub_9e12` family (`STA $1825` at BN `0x9e78`, `0x9f23`, `0x9f1b`)
+     — distinct flash-control path. Large stack frame, complex command-byte
+     dispatch (writes `0xF3`/`0xF4`/`1` to a stack slot, suggestive of a
+     per-state flash command codifier). Likely the OTA-receive flash path,
+     but not yet traced from a packet RX entry point.
+
+5. **Flash protection is NVRAM-only** — no `STA $1824` (FPROT writes) in
+   code. NVPROT byte at `0xFFBD` = `0xCC` (loaded at reset, sets
+   `FPOPEN=1, FPS=0b10011, FPDIS=0`). On S08 chips this typically means
+   the "protected" region starts at FPS-derived offset and the unprotected
+   region is open for programming. Detailed FPS interpretation is chip-family
+   dependent (S08QE128 vs S08AC vs S08DZ have different formulas) — needs
+   chip-mark confirmation before claiming an exact protected range.
+
+#### Still open
+
+1. **Where is the OTA RX dispatcher?** Have not yet traced from a packet-RX
+   entry point through the `06 02` sub-opcode dispatcher to the chunk-write
+   path. The runtime-CCA `FA DE` sync check is at BN `0x92be` (not `0x92c0`
+   as the doc claimed earlier — off-by-2). The function containing it isn't
+   recognized by BN as a function entry; reachable via indirect dispatch.
+
+2. **Is there a DeviceClass cross-check during OTA RX?** The match function
+   at BN `0x6db1` is one place DeviceClass is checked, but its callers
+   weren't traced — it could be runtime device-poll handling rather than
+   OTA gating. Need to find any `CMP #$16` (or similar) gated on a flag set
+   only during OTA RX.
+
+3. **CRC/signature validation step** — LDF metadata has 2 hashes (`hash1`,
+   `hash2`, presumably CRC32 over Sections A and B). These travel in the
+   LDF FILE header (stripped by `tools/ldf-extract.py` before flash) and
+   wouldn't be part of the on-air OTA stream. Open whether the bootloader
+   recomputes the CRC32 of received bytes against an expected value carried
+   in the BeginTransfer payload — that would be where the `02 20 00 00`
+   bytes go, but they don't match any obvious section CRC32 for the
+   reference firmware.
+
+4. **Effective writable address range** — needs S08 chip-mark identification
+   to translate NVPROT=`0xCC` into a concrete range. Without that, can't say
+   whether the OTA can write to body offset `0x8AD` (= BN `0x48AD`).
+
+#### Net effect for the conversion attack
+
+Finding #1 (DeviceClass hardcoded into code) means the conversion attack
+ALWAYS requires writing all of Section A — there's no shortcut "just flip
+the DeviceClass bytes at `0x8AD`". The LDF flow already does this (Section A
++ Section B + factory-config all replaced atomically), so the architectural
+question collapses to "does the bootloader accept the LMJ Section A bytes
+when running on RMJ". That depends on:
+
+- The bootloader's pre-flash validation (CRC32 over received body? declared
+  DeviceClass cross-check?) — open question #2 and #3 above
+- NVPROT-imposed write-range coverage of the entire LDF body — open #4
+
+If both are permissive, Path 2 works. Items #2 and #3 are the highest-leverage
+RE targets remaining.
 
 ## CCA OTA wire protocol (RE'd from Phoenix EFR32 coproc)
 

@@ -32,6 +32,7 @@
  *   ota-extract.ts --capture <file.bin> --firmware <file.pff>
  *                  [--start-sec N] [--duration-sec N]
  *                  [--rate Hz] [--out <file.bin>]
+ *                  [--dump-all <file.jsonl>]
  *
  *   # Example: validate the 2026-04-28 OTA capture against the v3.021 PFF.
  *   tools/cca/ota-extract.ts \
@@ -39,12 +40,21 @@
  *     --firmware data/firmware/dvrf6l-v3.021.pff \
  *     --start-sec 37 --duration-sec 1093
  *
+ *   # Dump every decoded packet (all types, not just B1+) for downstream
+ *   # control-opcode analysis:
+ *   tools/cca/ota-extract.ts \
+ *     --capture data/captures/cca-ota-20260428-190439.rf.bin \
+ *     --firmware data/firmware/dvrf6l-v3.021.pff \
+ *     --start-sec 37 --duration-sec 1093 \
+ *     --dump-all data/captures/cca-ota-20260428-190439.packets.jsonl
+ *
  * The decoder leans on `tools/cca/rtlsdr-cca-decode.ts` for FM-discriminate +
  * N81-decode + CRC verify; this tool only handles the OTA-layer extraction.
  */
 
 import { execSync } from "node:child_process";
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   openSync,
@@ -65,6 +75,7 @@ interface Args {
   durationSec: number | null;
   rate: number;
   outFile: string | null;
+  dumpAllFile: string | null;
 }
 
 function parseArgs(): Args {
@@ -77,7 +88,7 @@ function parseArgs(): Args {
   const firmware = get("--firmware");
   if (!capture || !firmware || argv.includes("--help")) {
     console.error(
-      "Usage: ota-extract.ts --capture <file.bin> --firmware <file.pff> [--start-sec N] [--duration-sec N] [--rate Hz] [--out <file>]",
+      "Usage: ota-extract.ts --capture <file.bin> --firmware <file.pff> [--start-sec N] [--duration-sec N] [--rate Hz] [--out <file>] [--dump-all <file.jsonl>]",
     );
     process.exit(1);
   }
@@ -88,6 +99,7 @@ function parseArgs(): Args {
     durationSec: get("--duration-sec") ? Number(get("--duration-sec")) : null,
     rate: Number(get("--rate") ?? DEFAULT_RATE),
     outFile: get("--out") ?? null,
+    dumpAllFile: get("--dump-all") ?? null,
   };
 }
 
@@ -99,15 +111,30 @@ interface Chunk {
   crcOk: boolean;
 }
 
+/** Decoded packet of any type, used for the JSONL dump and downstream analysis. */
+interface DecodedPacket {
+  tMs: number;
+  type: number;
+  /** All bytes from offset 0 (the type byte) through the end of body, no CRC. */
+  bytes: number[];
+  crcOk: boolean;
+}
+
 const PACKET_RE =
   /^#\d+ @ ([\d.]+)ms: (0x[0-9a-f]+) \| (CRC OK at \d+|NO CRC \(\d+ bytes\)) \| (([0-9a-f]{2} )+[0-9a-f]{2})/;
+
+interface DecodeResult {
+  chunks: Chunk[];
+  /** Every packet decoded in the window (sorted-as-decoded; caller may sort). */
+  allPackets: DecodedPacket[];
+}
 
 function decodeWindow(
   capture: string,
   startSec: number,
   durSec: number,
   rate: number,
-): Chunk[] {
+): DecodeResult {
   const fd = openSync(capture, "r");
   const startByte = Math.floor(startSec * rate) * 2;
   const numBytes = Math.floor(durSec * rate) * 2;
@@ -126,25 +153,31 @@ function decodeWindow(
     /* decoder errors per-burst are common; the output file still has good packets */
   }
   const text = readFileSync(decodedFile, "utf-8");
-  const out: Chunk[] = [];
+  const chunks: Chunk[] = [];
+  const allPackets: DecodedPacket[] = [];
   for (const line of text.split("\n")) {
     const m = line.match(PACKET_RE);
     if (!m) continue;
     const type = parseInt(m[2], 16);
-    if (type !== 0xb1 && type !== 0xb2 && type !== 0xb3) continue;
     const hex = m[4].split(" ").map((s) => parseInt(s, 16));
-    if (hex.length < 51 || hex[19] !== 0x1f) continue;
-    out.push({
-      tMs: parseFloat(m[1]) + startSec * 1000,
-      type,
-      addrLo: (hex[17] << 8) | hex[18],
-      payload: new Uint8Array(hex.slice(20, 20 + CHUNK_SIZE)),
-      crcOk: m[3].startsWith("CRC OK"),
-    });
+    const tMs = parseFloat(m[1]) + startSec * 1000;
+    const crcOk = m[3].startsWith("CRC OK");
+    allPackets.push({ tMs, type, bytes: hex, crcOk });
+    if (type === 0xb1 || type === 0xb2 || type === 0xb3) {
+      if (hex.length >= 51 && hex[19] === 0x1f) {
+        chunks.push({
+          tMs,
+          type,
+          addrLo: (hex[17] << 8) | hex[18],
+          payload: new Uint8Array(hex.slice(20, 20 + CHUNK_SIZE)),
+          crcOk,
+        });
+      }
+    }
   }
   unlinkSync(sliceFile);
   unlinkSync(decodedFile);
-  return out;
+  return { chunks, allPackets };
 }
 
 function matchChunkPage(c: Chunk, fw: Buffer): number | null {
@@ -174,17 +207,43 @@ function main() {
     `Capture: ${args.capture}\nFirmware: ${args.firmware} (${fw.length} bytes, 0x${fw.length.toString(16)})\n`,
   );
 
+  // Reset/clear the dump file up-front (we'll append per-window results).
+  if (args.dumpAllFile) {
+    writeFileSync(args.dumpAllFile, "");
+  }
+
   const all: Chunk[] = [];
+  let totalAllPackets = 0;
   let s = args.startSec;
   const end =
     args.durationSec === null ? Infinity : args.startSec + args.durationSec;
   while (s < end) {
     const dur = Math.min(SLICE_SEC, end - s);
     const t0 = Date.now();
-    const chunks = decodeWindow(args.capture, s, dur, args.rate);
+    const { chunks, allPackets } = decodeWindow(
+      args.capture,
+      s,
+      dur,
+      args.rate,
+    );
     all.push(...chunks);
+    totalAllPackets += allPackets.length;
+    if (args.dumpAllFile) {
+      // Append one JSON object per line. Bytes go out as a hex string for compactness.
+      const lines = allPackets
+        .map((p) =>
+          JSON.stringify({
+            tMs: p.tMs,
+            type: p.type,
+            crcOk: p.crcOk,
+            hex: p.bytes.map((b) => b.toString(16).padStart(2, "0")).join(" "),
+          }),
+        )
+        .join("\n");
+      appendFileSync(args.dumpAllFile, lines + "\n");
+    }
     console.log(
-      `  t=${s.toFixed(0)}s..${(s + dur).toFixed(0)}s: +${chunks.length} long packets (running ${all.length}, ${((Date.now() - t0) / 1000).toFixed(1)}s)`,
+      `  t=${s.toFixed(0)}s..${(s + dur).toFixed(0)}s: +${chunks.length} long packets, +${allPackets.length} total (running ${all.length} chunks / ${totalAllPackets} total, ${((Date.now() - t0) / 1000).toFixed(1)}s)`,
     );
     s += dur;
   }

@@ -1751,44 +1751,111 @@ export const LENGTHS = {
 /**
  * CCA Firmware OTA wire protocol.
  *
- * Separate framing from runtime CCA — uses CC1101 async serial mode (PKTCTRL0=0x32),
- * GFSK at 30.49 kbps, no N81 byte encoding, length-prefixed self-describing packets,
- * 35-channel frequency hopping. Same chip family, same band, same CRC polynomial as
- * runtime CCA. See docs/protocols/cca.md §9 and docs/firmware-re/powpak.md.
+ * **On-air format (live-capture confirmed 2026-04-29):** OTA traffic rides on
+ * the runtime CCA channel (433.602844 MHz) with N81 framing — same modem mode
+ * as runtime CCA, same CRC poly. The static-RE'd raw-bit `[55 55 55][FF][FA DE]
+ * [LEN][OP][BODY][CRC]` framing in `lib/cca-ota-codec.ts` describes the
+ * **host↔coproc IPC layer**, NOT what goes over the air. The bridge's coproc
+ * wraps each IPC command in runtime-CCA-shaped packets before TX.
  *
- * RE'd statically from Phoenix EFR32 coproc binary; verified byte-for-byte against
- * PowPak's RX-side flash anchors.
+ * Two concurrent layers:
+ *   - Runtime-CCA-shaped packets (this is what the SDR sees on RF)
+ *   - HDLC-framed IPC messages (host CPU ↔ coproc UART, never on RF)
+ *
+ * See docs/protocols/cca.md §9 for the full breakdown and
+ * docs/firmware-re/cca-ota-live-capture.md for the smoking-gun match.
  */
 export const OTA = {
-  /** On-air framing (preamble + sync delimiter + sync word, raw bytes) */
-  PREAMBLE: [0x55, 0x55, 0x55],
-  SYNC_DELIMITER: 0xff,
-  SYNC_WORD: [0xfa, 0xde],
-  /** Min/max packet size including CRC, excluding preamble/sync */
-  MIN_PACKET_BYTES: 6,
-  MAX_PACKET_BYTES: 14,
-  /** CC1101 modem config differences from runtime CCA */
+  /** CC1101 modem config (live-capture confirmed). Identical to runtime CCA
+   * for the RF-side OTA traffic — it IS runtime CCA, just carrying OTA-specific
+   * packet types (0x91/0x92 short, 0xB1/B2/B3 long) and sub-opcodes (06 nn). */
   MODEM: {
-    PKTCTRL0: 0x32, // async serial mode
+    PKTCTRL0: 0x32, // async serial mode (also runtime CCA)
     MDMCFG2: 0x10, // GFSK, no chip-side sync
-    MDMCFG3: 0x3b, // 30.49 kbps
+    MDMCFG3: 0x3b, // ~62.5 kbps (NOT 30.49 as static-RE register decode claimed)
     MDMCFG4: 0x9c,
-    DEVIATN: 0x44, // 32 kHz
+    DEVIATN: 0x44, // ~38 kHz
   },
-  /** Frequency hopping */
-  HOP_CHANNELS: 35,
-  HOP_CHANNEL_RANGE: [0x44, 0x66] as const, // channel codes
+  /** Single channel — confirmed via spectrogram. The 35-row table at
+   * Phoenix BN 0x08018e30 is something else (calibration LUT, retry list,
+   * or unrelated). */
+  CHANNEL_MHZ: 433.602844,
+  /** TransferData chunk size (bytes carried per long packet, byte 19). */
+  CHUNK_SIZE: 31,
+  /** Page size for chunk address space — addrLo wraps every 64 KB. */
+  PAGE_SIZE: 0x10000,
 } as const;
 
 /**
- * CCA OTA opcode values (on-air, after [LEN] byte).
+ * On-air sub-opcodes (bytes 14-15 of the body, format `06 nn`).
  *
- * Three IPC commands map to opcode CONTROL (0x32) — distinguished by a body
- * sub-opcode that needs a live capture to confirm.
+ * These appear inside both short control packets (`0x91`/`0x92`) and long
+ * chunk packets (`0xB1`/`0xB2`/`0xB3`). Live-capture confirmed.
  */
-export const OTAOpcode = {
+export const OTAOnAirSubOpcode = {
+  /** BeginTransfer — open OTA session, declare chunk size. Carrier `0x92`.
+   *  Payload: `02 20 00 00 00 1F` (last byte = chunk size 31; leading 5
+   *  bytes' meaning still open — needs Phoenix coproc RE at IPC `0x2A`). */
+  BEGIN_TRANSFER: 0x00,
+  /** ChangeAddressOffset — advance to next 64 KB page. Carrier `0x91`.
+   *  Payload bytes 16-19 = `(prev_page, new_page)` as two 16-bit BE. */
+  CHANGE_ADDRESS_OFFSET: 0x01,
+  /** TransferData — carries one 31-byte PFF/LDF chunk verbatim. Carrier
+   *  `0xB1`/`0xB2`/`0xB3` (TDMA cycle; `0xB1` rare or absent in observed OTA). */
+  TRANSFER_DATA: 0x02,
+  /** Device-poll / pre-flight broadcast (multi-purpose probe with no
+   *  payload — body is 6 bytes of `cc` filler). Carrier varies:
+   *    - `0x81`/`0x83` broadcast (DeviceClass at body bytes 9-12)
+   *    - `0x82` beacon-tail variant
+   *    - `0x91`/`0x92` unicast (device serial at body bytes 9-12) */
+  POLL: 0x03,
+} as const;
+
+export type OTAOnAirSubOpcode =
+  (typeof OTAOnAirSubOpcode)[keyof typeof OTAOnAirSubOpcode];
+
+/** Lookup by value. */
+export const OTAOnAirSubOpcodeNames: Record<number, string> =
+  Object.fromEntries(Object.entries(OTAOnAirSubOpcode).map(([k, v]) => [v, k]));
+
+/**
+ * Device-side ACK status codes (from the `format` byte of XOR-encoded `0x0B`
+ * dimmer-ACK packets — see runtime-CCA section, decoder rule in
+ * `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`).
+ *
+ * The device emits one ACK every 25 ms throughout an OTA. The `format` byte
+ * is the device's state code:
+ */
+export const OTADeviceAckState = {
+  /** Steady-state TransferData — "in-progress, idle" (89.7% of OTA). */
+  IN_PROGRESS: 0x2e,
+  /** Pre-first-chunk — "ready / handshake". */
+  READY: 0xc1,
+  /** Around page-wrap announcer — "advancing page". */
+  ADVANCING_PAGE: 0xc2,
+  /** Post-last-chunk — "committing / done; about to reboot". */
+  COMMITTING: 0xec,
+} as const;
+
+export type OTADeviceAckState =
+  (typeof OTADeviceAckState)[keyof typeof OTADeviceAckState];
+
+/**
+ * Coproc-IPC opcodes (host CPU ↔ CCA coproc UART, NOT on-air).
+ *
+ * These are the values the bridge's lutron-core sends to its coproc's HDLC
+ * dispatcher, and the values the coproc handler tables key on internally.
+ * The coproc translates these into the runtime-CCA-shaped on-air packets
+ * with `OTAOnAirSubOpcode` body bytes — see docs/protocols/cca.md §9.4 for
+ * the IPC↔on-air mapping.
+ */
+export const OTACoprocIPCOpcode = {
   BEGIN_TRANSFER: 0x2a,
-  /** Multi-purpose: ChangeAddressOffset / EndTransfer / ResetDevice */
+  /** Multi-purpose: ChangeAddressOffset / EndTransfer / ResetDevice (HDLC
+   *  cmd ID discriminates). NOTE: live capture shows EndTransfer and
+   *  ResetDevice are NOT emitted on-air — the bridge stops sending and the
+   *  device commits autonomously. So only ChangeAddressOffset has an
+   *  on-air representation (`06 01`). */
   CONTROL: 0x32,
   GET_DEVICE_FW_REVISIONS: 0x33,
   CANCEL_DEVICE_FW_UPLOAD: 0x34,
@@ -1800,16 +1867,25 @@ export const OTAOpcode = {
   QUERY_DEVICE: 0x58,
 } as const;
 
-export type OTAOpcode = (typeof OTAOpcode)[keyof typeof OTAOpcode];
+export type OTACoprocIPCOpcode =
+  (typeof OTACoprocIPCOpcode)[keyof typeof OTACoprocIPCOpcode];
 
-/** OTA opcode name lookup by value */
-export const OTAOpcodeNames: Record<number, string> = Object.fromEntries(
-  Object.entries(OTAOpcode).map(([k, v]) => [v, k]),
-);
+/** Lookup by value. */
+export const OTACoprocIPCOpcodeNames: Record<number, string> =
+  Object.fromEntries(
+    Object.entries(OTACoprocIPCOpcode).map(([k, v]) => [v, k]),
+  );
+
+// Backwards-compat aliases (old names used in lib/cca-ota-codec.ts comments
+// and any external tooling). These are coproc-IPC opcodes, not on-air.
+export const OTAOpcode = OTACoprocIPCOpcode;
+export type OTAOpcode = OTACoprocIPCOpcode;
+export const OTAOpcodeNames = OTACoprocIPCOpcodeNames;
 
 /**
  * HDLC command IDs that lutron-core sends to the CCA coproc, mapped to the
- * on-air opcode the coproc emits. Three HDLC IDs collapse onto opcode 0x32.
+ * IPC opcode the coproc dispatches on. Three HDLC IDs collapse onto IPC
+ * opcode `CONTROL` (0x32).
  */
 export const OTAHdlcCmd = {
   QUERY_DEVICE: 0x111,

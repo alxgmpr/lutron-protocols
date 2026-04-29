@@ -291,29 +291,81 @@ images — boot updates would require physical access.
 
 ## Open questions after this pass
 
-1. ~~**CCA RF packet type byte for OTA phases**~~ — **Resolved**. The static
-   RE from the Phoenix EFR32 coproc gave us the opcode table (see
-   [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol)),
-   and the **2026-04-28 live capture** ([cca-ota-live-capture.md](cca-ota-live-capture.md))
-   confirmed the channel parameters: single-channel at ~433.566 MHz, 30 kbps
-   GFSK, NOT the 35-channel hop the suspected hop table implied. Per-phase
-   body byte decoding still requires building the GFSK demod against the
-   captured IQ — that's the next milestone, not a new static-RE question.
-
-   The body sub-opcode that distinguishes the three `0x32` (Control) phases
-   (ChangeAddressOffset / EndTransfer / ResetDevice) will fall out of that
-   demod work.
-2. ~~**Caseta Pro coproc wire format equivalence**~~ — **Resolved** by
-   extracting the RA2 Select REP2 (= Caseta Pro) coproc images from
-   `data/rr-sel-rep2/usr/sbin/lutron-coproc-firmware-update-app` (cipher
-   variant: continuous, multiple `key0` values per blob — see
-   [coproc.md](coproc.md#obfuscation)) and confirming the Cortex-M images
-   contain the same CCA OTA framing constants (sync `55 55 55 FF FA DE`,
-   CRC poly `0F CA`, 256-entry CRC lookup table) as Phoenix's EFR32 images
-   in identical relative positions. The wire protocol generalizes.
+1. ~~**CCA RF packet type byte for OTA phases**~~ — **Resolved 2026-04-29**.
+   Live-capture decode produced the full on-air opcode table (see
+   [cca-ota-live-capture.md §"Control-packet decode"](cca-ota-live-capture.md))
+   and the static-RE'd raw-bit framing was reclassified as host↔coproc IPC,
+   not on-air. On-air uses runtime CCA framing with `06 nn` body sub-opcodes:
+   `06 00` BeginTransfer, `06 01` ChangeAddressOffset, `06 02` TransferData,
+   `06 03` device-poll. EndTransfer / ResetDevice / CodeRevision / QueryDevice
+   have no on-air representation — bridge stops sending and device commits
+   autonomously.
+2. ~~**Caseta Pro coproc wire format equivalence**~~ — **Resolved**. See
+   above + Ghidra confirmation 2026-04-29: hit counts for OTA constants
+   (`21 2b`, `21 0e`, `21 0c`, `21 08`, `06 00`, `06 01`, `06 02`) are
+   IDENTICAL across `phoenix_efr32_*.bin`, `caseta-ra2sel_efr32_*.bin`, and
+   `lite-heron_efr32_*.bin` — confirming a unified codebase across
+   RA3 / Caseta Pro / lite-heron bridge variants.
 3. **PFF symmetric key** — encrypted payload, key burned in device bootloader at
    manufacture. Recovering it likely needs SWD/JTAG on a CCA device. Without it
-   we can replay/relay but can't author firmware.
+   we can replay/relay but can't author firmware. (Note: PowPak HCS08 LDFs are
+   plaintext — only EFR32 PFFs are encrypted. See [powpak.md](powpak.md).)
 4. **`MinimumRevisions` semantics** — empty for all entries in current Caseta
    manifest; on Phoenix it gates app upgrades on boot version. May trigger boot
    image transfer in future bundles.
+
+## Phoenix EFR32 coproc dispatcher RE (2026-04-29 partial pass, Ghidra)
+
+Loaded `phoenix_efr32_8003000-803FF08.bin` (RA3 coprocessor, 249 KB) and
+searched for the HDLC IPC opcode literals (16-bit LE, see
+[OTAHdlcCmd](../../protocol/cca.protocol.ts) for the full table).
+
+### Five OTA-related dispatcher functions
+
+The OTA opcodes (`0x111` QueryDevice, `0x113` BeginTransfer, `0x115` TransferData,
+`0x119` ChangeAddressOffset, `0x11b` EndTransfer, `0x11f` CodeRevision,
+`0x121` ClearError) appear clustered as 16-bit immediates within five distinct
+function regions:
+
+| Region start | First-cmd literal | Notes |
+|---|---|---|
+| `0x080190a8` | BeginTransfer @ `0x080190b1` | Smallest cluster |
+| `0x080192d4` | BeginTransfer @ `0x08019301` | Decompiled: builds an IPC-layer outgoing buffer with literals `0x20`, `0x09`, `0x02`, `0xFFFE` — likely the per-phase dispatcher that takes a high-level call and queues an IPC packet |
+| `0x08019490` | BeginTransfer @ `0x08019551` | |
+| `0x08019724` | BeginTransfer @ `0x080197a1` | Most opcodes referenced (also `0x11f` CodeRevision, `0x121` ClearError) |
+| `0x080199d8` | BeginTransfer @ `0x080199f1` | Tiny wrapper, calls common `FUN_080075a4` |
+
+These functions feed a common IPC TX path via `FUN_0801c7fc(channel, cmd, ...)`
+or `FUN_0801c8b4(channel, cmd, ..., length)`. Each handler uses different
+`(channel, cmd)` first-arg pairs (e.g. `(2, 2)`, `(6, 0x40)`, `(6, 0x43)`)
+to route through the IPC framing.
+
+### Constants NOT found in any coproc binary
+
+Searched all three EFR32 coproc binaries (Phoenix, Caseta-RA2-Select, lite-heron):
+
+- **`a1 ef fd`** (the on-air bridge addressing prefix): **0 occurrences** in any
+  binary. **Conclusion**: this prefix is **runtime-computed from bridge
+  commissioning state** (likely the bridge's House Code / CCA Network ID,
+  written to non-volatile flash during manufacturing or initial setup). It is
+  NOT a hardcoded literal.
+- **`02 20 00 00 00 1F`** (the BeginTransfer payload observed on-air):
+  **0 occurrences**. The payload bytes are constructed dynamically — the
+  trailing `1F` is the chunk size constant, but the leading 5 bytes
+  `02 20 00 00 00` come from arguments passed into the IPC opcode `0x2A`
+  handler.
+
+### Implication for synth-TX from Nucleo+CC1101
+
+To replicate a valid OTA TX, the bridge addressing prefix must either be
+captured from the target's existing bridge (a few seconds of sniffing reveals
+it) or derived from a value the device pre-trusts. Since no PowPak-receive
+code in the current RE pass shows a bridge-prefix validation step, this is
+likely permissive — the device accepts any prefix, and the prefix is mainly
+used for bridge-side ACK demultiplexing.
+
+The BeginTransfer payload's leading 5 bytes (`02 20 00 00 00`) are the
+remaining pinpoint question. Resolution requires tracing IPC opcode `0x2A`
+argument flow from the host CPU through the coproc — start at the IPC RX
+deframer (HDLC layer) and follow `cmd_id == 0x113` dispatch through to one
+of the five dispatcher functions above.
