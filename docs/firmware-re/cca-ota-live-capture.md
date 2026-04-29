@@ -269,24 +269,92 @@ the `0xB1+` long packets that distinguishes ChangeAddressOffset / EndTransfer
 / ResetDevice?"** Body bytes 13-17 (after the 12-byte addressing header) are
 the prime candidates — they show structure but also vary across packet types.
 
-## Outstanding work for full transcript
+## Smoking-gun confirmation: B1/B2/B3 payload bytes are the PFF firmware file, byte-for-byte
 
-1. **Decode the type `0x0B` short packet body structure** — body has 3-5
-   bytes after the type+length header; a sequence number is plausibly in
-   there (the runtime CCA decoder finds these pass CRC after the polarity
-   flip and N81 alignment).
-2. **Decode the type `0xB1`/`0xB2`/`0xB3` long packet body** — bytes 9-12
-   are the device serial; bytes 13-17 are the OTA sub-header; bytes 18-19
-   appear to be a chunk address (incrementing 31 bytes/packet); bytes 20+
-   are the firmware payload.
-3. **Reconcile the static-RE'd opcodes with on-air bytes** — `0x2A`/`0x32`/
-   `0x36`/`0x41`/`0x58` may live as command IDs on the host-side IPC
-   (`leap-server` ↔ `lutron-core` ↔ coproc) rather than on-air. Cross-
-   reference against [caseta-cca-ota.md](caseta-cca-ota.md)'s HDLC cmd ID
-   table (`0x119`/`0x11B`/`0x11D` etc.).
-4. **Resolve the body sub-opcode discriminator** for the three `0x32`
-   Control phases (Open Question #1) — likely now needs to be answered at
-   the IPC layer, not the on-air layer.
+Pulled `firmware/07911506_v3.021_VogelkopDimmerAppCaseta.pff` from the bridge
+(`/opt/lutron/device_firmware/firmware/`, hash `dc5325d2…be16` matches the
+manifest). Then decoded the entire OTA window (37 s … 1130 s, 19 chunks ×
+60 s) with `tools/rtlsdr-cca-decode.ts`, extracted the long
+`0xB1`/`0xB2`/`0xB3` packets, and matched each one's payload against the
+firmware file at every plausible offset.
+
+```
+Total long packets (B1/B2/B3) decoded:  3,767 (CRC-OK 3,338, NO-CRC 429)
+Chunks matched somewhere in the PFF:    3,418 / 3,767 = 90.7%
+Page distribution (page 0/1/2):         1,060 / 1,209 / 1,149
+PFF coverage (matched bytes):          105,462 / 187,060 = 56.4%
+```
+
+Direct hit: in the t=200 s..280 s window (a steady-state TransferData
+phase), **267/267 CRC-OK chunks match the PFF file at offset = parsed
+chunk address, delta = 0**. Across the full OTA window, every successfully
+decoded chunk lands at exactly one of three pages (page N starts at file
+offset `N · 0x10000`). The 9.3% non-match are bit-error survivors that
+passed the runtime CCA decoder's CRC but have a few wrong bytes in the
+payload region.
+
+This conclusively settles the protocol layout:
+
+```
+  byte  field             value/notes
+  ────────────────────────────────────────────────────────────
+  0     type              0xB1, 0xB2, or 0xB3 (3-way TDMA cycle)
+  1     0x01              constant
+  2-4   a1 ef fd          static prefix (likely src-addr or hub ID)
+  5     0x00              constant
+  6-7   21 2b             constant (length-ish, 53 bytes total)
+  8     0x00              constant
+  9-12  device serial     0x06FE8020 (the paired DVRF-6L)
+  13    0xfe              constant
+  14-15 06 02             OTA sub-opcode = TransferData
+  16    sub-counter       0..0x3F (cycles)
+  17-18 chunk addr LO     16-bit BE; advances 0x1F = 31 / packet
+  19    0x1F              chunk size = 31 bytes
+  20-50 firmware payload  31 bytes verbatim from PFF[file_offset]
+  51-52 CRC-16 (poly 0xCA0F, BE)
+```
+
+The PFF body is **transmitted encrypted, byte-identical to the file** —
+the bridge does not decrypt locally. The device must hold the per-model AES
+key (Vogelkop Caseta variant). This is consistent with [coproc.md](coproc.md)'s
+PFF format §"likely AES, per-device-model key".
+
+`file_offset = page * 0x10000 + chunkAddrLo` where `page ∈ {0, 1, 2}`. The
+PFF file is 187,060 bytes and spans pages 0..2 (page 2 partial). The page
+indicator is **not in the B1/B2/B3 header** — it's set by a control packet
+(probably the static-RE'd `ChangeAddressOffset`, `0x32` body in IPC terms)
+that I haven't yet pinned down on-air. Future work: identify the control
+packet that announces the next 64 KB page boundary.
+
+`tools/ota-extract.ts` (script, future PR) can now reassemble a partial
+firmware image from any OTA capture — useful for verifying that an OTA push
+landed the correct version, or for capturing payload to attempt offline
+decryption.
+
+## Outstanding work
+
+1. **Identify the page-change control packet** — at the t-boundary where
+   chunks transition from page 0 → page 1 → page 2, look for a non-B1/B2/B3
+   packet that announces the new page. Most likely a `0x91`/`0x92` short
+   packet with body `06 nn` where `nn ≠ 02` (TransferData) — `0x91/92`'s
+   body `01 a1 ef fd 00 21 0e 00 06 fe 80 20 fe 06 ?? ??` mirrors B1+ but
+   short, so probably the control class.
+2. **Decode the type `0x0B` short packet body** — present every 25 ms
+   throughout the OTA, body shape `0b 02 d0 24 85 cf f7` and similar.
+   Likely an ACK from the device or a per-chunk inter-pacing pulse.
+3. **Decode the type `0x83` device-class-broadcast** — packets carry
+   the Vogelkop class `04 63 02 01` and `fd 06 03 cc cc cc cc cc cc`,
+   appearing during early-OTA (t=0.3 s..1.2 s and t=16-18 s in the
+   capture). Likely a "all Vogelkop devices, prepare for OTA" broadcast.
+4. **Reconcile the static-RE'd opcodes with on-air bytes** — `0x2A`/
+   `0x32`/`0x36`/`0x41`/`0x58` from the static RE almost certainly map to
+   `06 nn` sub-opcodes in the on-air `0xB1+` body bytes 14-15:
+   - `06 02` confirmed = TransferData (`0x41` in static RE)
+   - `06 03` likely = device-class-broadcast (CodeRevision? `0x36`?)
+   - `06 00` seen once at OTA start — likely BeginTransfer (`0x2A`)
+5. **Resolve the body sub-opcode discriminator** for the three `0x32`
+   Control phases (Open Question #1) — at the on-air layer this is
+   likely byte 15 (`02`/`03`/`00`/...) of the short `0x91`/`0x92` packets.
 
 ## Methodology validation
 
