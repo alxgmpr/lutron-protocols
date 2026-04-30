@@ -310,11 +310,28 @@ The successful capture we have (Caseta REP2 → DVRF-6L) was always against a *p
 
 ## Open questions (in rough priority order)
 
-1. **Will the device subnet-filter our packets?** Empirical: try a few subnet values, watch for any ACK at all. Highest-priority unknown.
-2. **What does the leading 5 bytes of BeginTransfer payload mean?** May affect commit success. RE Phoenix EFR32 coproc IPC handler.
-3. **Sub-ops `0x04`/`0x05` — when does the bridge send them?** May be required for commit. If our OTA stalls at `0x2E → no 0xEC`, this is the suspect.
-4. **NVPROT flash-protection range** — does it cover Section A? If yes, can't update bootloader. Empirically test by attempting to write to Section A region first; observe via SDR whether device acknowledges.
-5. **Does the RMJ→LMJ DeviceClass change persist across power cycle?** Required for the device to pair as LMJ after commit. Tested implicitly by pair-test step 3.
+1. ~~**Will the device subnet-filter our packets?**~~ — **Resolved 2026-04-29** (further bootloader RE pass). The bootloader's sync-detect at body `0x52BF` (`CPHX #$FADE; BNE +0x6C`) sets a state flag at `$0F3E` on match without any subnet/serial/DeviceClass filter. The bootloader silently accepts any packet matching its serial. Subnet sweeping was unnecessary. The reachability matrix's silent rejection of runtime-CCA addressing modes is explained by the APPLICATION (Section B) requiring paired-state filters, NOT by the bootloader filtering. See [powpak.md §"Sync-detect / unpaired-state RX"](powpak.md#sync-detect--unpaired-state-rx-q3).
+
+2. **What do the leading 5 bytes of BeginTransfer payload mean?** — **Partially resolved 2026-04-29**. The HDLC IPC payload built by the Phoenix coproc is `40 00 00 00 00 00`, NOT the on-air `02 20 00 00 00 1F` we captured. The on-air bytes are constructed by a layer downstream of the HDLC IPC handler — `0x80160e8` is the next-level function called with the 6-byte HDLC buf. The `0x02` and `0x20` likely come from per-device PFF metadata (image type, page count) read from the OTA state struct at `0x200028A4`. See [caseta-cca-ota.md §"Phoenix EFR32 IPC 0x113 BeginTransfer handler chain"](caseta-cca-ota.md#phoenix-efr32-ipc-0x113-begintransfer-handler-chain-2026-04-29).
+
+3. **Did sub-op `0x00` BeginTransfer cause the brick?** — **Mechanism identified 2026-04-29**. The bootloader's OTA dispatcher at body `0x1A23` has NO explicit handler for sub-op `0x00`. It falls to the default block (body `0x1A5C`):
+   ```
+   TSX; CLR $02,X; CALL $0292, #$67
+   ```
+   `$0292` is the **flash-write primitive** (decoded from body `0x0292`: standard HCS08 FSTAT/FCMD pattern). The default block page-aligns the flash address (CLR $02,X clears low byte) and invokes the primitive with **whatever FCMD the dispatcher's caller pre-set**. There is NO guard.
+
+   **Open**: confirm the FCMD value the OTA-RX path sets in its caller frame before invoking the dispatcher. Strong hypothesis: PAGE_ERASE (`0x40`) for "prepare next page". If confirmed, sub-op `0x00` (and any other unrecognized sub-op) erases a flash page. 32 dispatcher fallback sites all use `CALL $0292,#$67`, so this is uniform across the bootloader. See [powpak.md §"$0292 is the flash-write primitive"](powpak.md#0292-is-the-flash-write-primitive--sub-op-0x00-routes-there-directly).
+
+4. **Sub-ops `0x04`/`0x05` semantics** — **Partially resolved 2026-04-29**. Hand-decoded the dispatcher:
+   - sub-op `0x04` → `CALL $009B, #$CD` (also reached on sub-op `0x06` via `CBEQA #$06`)
+   - sub-op `0x05` → `CALL $009B, #$B5`
+   The trampolines `$009A`/`$009B` are flash-resident handler entry points (PA family linear flash addressing — NOT RAM-copied). Body offset `0x9A`/`0x9B` contain function prologues. The CALL convention sets PPAGE/LAP register to the page byte (e.g., `0xCD` or `0xB5`) at entry, which the handler uses to index a function table. Specific operation semantics still require tracing the handler's own table lookup — one or both could plausibly trigger flash erase or commit. **DO NOT spam these against a non-sacrificial target.**
+
+5. **NVPROT flash-protection range** — does it cover Section A? If yes, can't update bootloader. Empirically test by attempting to write to Section A region first; observe via SDR whether device acknowledges.
+
+6. **Does the RMJ→LMJ DeviceClass change persist across power cycle?** Required for the device to pair as LMJ after commit. Tested implicitly by pair-test step 3.
+
+7. **Does the OTA-RX caller pre-set FCMD = PAGE_ERASE before invoking the dispatcher?** — Highest-leverage remaining RE question. Trace the 25 dispatcher prelude sites (body `0x1A14`, `0x1D9A`, etc.) backward to find the OTA-RX state machine that calls them. Look for `LDA #$40; STA $X+09,X` (or equivalent) in the OTA-RX path. **Without this confirmation, the brick mechanism is hypothetical.** With confirmation, every probe of an unrecognized sub-op against an unpaired RMJ becomes a potential page-erase, and the conversion attack feasibility hinges on never sending an unrecognized sub-op (or on initiating sub-op `0x02` chunks before any `0x00`/unknown).
 
 ## Files reference (this branch)
 

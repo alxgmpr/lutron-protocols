@@ -465,6 +465,187 @@ Partial RE pass against `PowPakRelay434L1-53.bin` (LMJ-XX-DV-B, body offset
    to translate NVPROT=`0xCC` into a concrete range. Without that, can't say
    whether the OTA can write to body offset `0x8AD` (= BN `0x48AD`).
 
+#### Bootloader OTA dispatcher decode (2026-04-29 follow-up)
+
+Hand-decoded the OTA sub-op dispatcher and surrounding code at body
+`0x1A23` (BN `0x5A23`) using direct byte-pattern analysis on
+`PowPakRelay434L1-53.bin`. (Ghidra had been opened for the binary but the
+project lacked auto-analysis, so this was a hand-walk via Python.)
+
+**Dispatcher structure at body `0x1A23`** — confirms the table from the
+prior pass and adds the missing context:
+
+```
+1a23: e6 06            LDA  $06,X        ; load sub-op byte from message buffer
+1a25: a1 02 / 26 09    if 0x02 →
+1a29: ac 00 9b 2f      CALL $009b, #$2f  ; sub-op 02 TransferData
+1a2d: 95 e7 01 / 20 6e ; TSX; STA $01,X; BRA exit
+1a32: a1 01 / 26 09    if 0x01 →
+1a36: ac 00 9a f6      CALL $009a, #$f6  ; sub-op 01 ChangeAddrOff
+1a3f: a1 03 / 26 09    if 0x03 →
+1a43: ac 00 9a b0      CALL $009a, #$b0  ; sub-op 03 Poll
+1a4c: 41 06 04         CBEQA #$06, +4    ; if 0x06, fall through to handler 04
+1a4f: a1 04 / 26 09    if 0x04 →
+1a53: ac 00 9b cd      CALL $009b, #$cd  ; sub-op 04 (and sub-op 06)
+1a5c: 95 6f 02         (default) TSX; CLR $02,X
+1a5f: ac 02 92 67      CALL $0292, #$67  ; default → flash-write primitive
+1a63: 20 3b            BRA  exit
+1a65: a1 03 / 26 06    (second entry) if 0x03 → CALL $009a,#$b0  [duplicate of above]
+1a6f: a1 05 / 26 09    if 0x05 →
+1a73: ac 00 9b b5      CALL $009b, #$b5  ; sub-op 05
+```
+
+**Notable**: a CBEQA #$06 routes sub-op `0x06` to the **same handler as sub-op `0x04`**
+(`CALL $009B, #$CD`). The dispatcher also has a SECOND entry point at body
+`0x1A65` covering only sub-ops `03` (duplicate) and `05` — its callers
+weren't traced, possibly a different state of the same RX path.
+
+**Crucially:** there is **NO explicit handler for sub-op `0x00`**. It falls
+through to the default block at body `0x1A5C`.
+
+#### `$0292` is the flash-write primitive — sub-op 0x00 routes there directly
+
+The "trampoline" addresses `$0080`, `$009A`, `$009B`, `$0292` are NOT
+RAM-resident copies — they are **flash-resident handler entry points** in
+the chip's linear flash address space (PA family). Confirmed by:
+- No direct STA $0080/$009A/$009B writes anywhere in Section A
+  (search for `c7 00 80`, `c7 00 9a`, `c7 00 9b` returns zero)
+- The bytes at body offset 0x80, 0x9A, 0x9B contain valid HCS08 code
+  (function prologues `87 89 8b ...` — PSHA/PSHX/PSHH/LDX $08,SP)
+- The bytes at body offset 0x292 contain the FSTAT/FCMD flash-control
+  pattern (decoded below)
+
+**Flash-write primitive at body `0x0292`** (entry of CALL $0292 → flash $0292):
+
+```c
+// body 0x0292..0x02xx
+PSHX; PSHH; PSHA; PSHH;     // prologue (push 4 regs)
+LDA #$F6; TSX; STA ,X;      // init return code = $F6 in stack[0]
+do {
+  LDA $1825 (FSTAT); AND #$80 (FCBEF);
+} while (Z);                 // wait until flash buffer empty
+
+TSX;
+addrHi   = LDA $07,X;  STA $79;
+addrMid  = LDA $08,X;  STA $7A;
+addrLo   = LDA $09,X;  STA $7B;
+fcmd     = LDA $0A,X;
+if (fcmd == 0xF0) fcmd = 0x25 (BURST_PROGRAM);
+LDX [$03,SP];                   // load data pointer
+data = *X++;                    // read data byte
+STX [$03,SP];                   // save advanced pointer
+STA $7D;                        // FDATA shadow
+LDA $0A,X (FCMD);
+STA $1826 (FCMD register);
+LDA $1825 (FSTAT); AND #$80 (FCBEF);
+STA $1825;                      // pulse FCBEF — initiates flash op
+LDA $0A,X; AND #$25;            // is it a PROGRAM op?
+if (!Z) → check error path;
+do { LDA $1825; AND #$40 (FCCF); STA $1800; } while (Z);
+// poll for command-complete
+LDA $1825; AND #$20 (FACCERR);
+if (!Z) → return $F3 (access error);
+...
+```
+
+**This IS a standard HCS08 flash-write primitive.** It reads:
+- 3-byte flash address from caller stack at `$07,$08,$09` (offset from
+  primitive's `TSX` after prologue)
+- FCMD value from caller stack at `$0A`
+- Data pointer from caller stack at `$03,SP`
+
+The dispatcher's default block (body `0x1A5C..0x1A63`) does:
+```
+TSX; CLR $02,X; CALL $0292, #$67
+```
+
+Stack frame analysis: after the dispatcher's CALL $0292 + the primitive's
+4-byte prologue push, the dispatcher's `$02,X` (= dispatcher's
+SP+2 at the CLR) corresponds to the primitive's `$09,X` —
+**which is the LOW byte of the flash address.**
+
+So the dispatcher's `CLR $02,X` page-aligns the flash address to
+`$XX:XX:00` before invoking the flash-write primitive. The FCMD
+value comes from the dispatcher's CALLER (offset 9 from the dispatcher's
+caller frame), not set by the dispatcher itself.
+
+#### Implications for the brick incident
+
+The flash-write primitive **executes whatever FCMD the dispatcher's caller
+pre-set**. There is **no guard** in the dispatcher checking sub-op `0x00`
+specifically — it routes straight to the primitive with the pre-set FCMD
+and a page-aligned address.
+
+**Plausible brick mechanism**: the OTA-RX preprocessing (whatever calls
+the dispatcher) pre-sets FCMD = `0x40` (PAGE_ERASE) when "preparing to
+receive next chunk". When sub-op `0x00` (BeginTransfer) arrives, the
+default fallback fires PAGE_ERASE on the page-aligned 24-bit address.
+After 13+ packets across multiple subnets, that's many pages erased.
+
+Did **not** trace the OTA-RX caller of the dispatcher to confirm the
+pre-set FCMD value. The 25 dispatcher-prelude sites (body `0x1A14`,
+`0x1D9A`, `0x68FA`, `0x7AB0`, `0x830B`, `0x849D`, `0x857A`, `0x85A4`,
+`0x85F7`, `0x86A0`, plus 15 more in 0xF0EF..0x11D40) all share the prelude
+`a6 00 87 ac 00 80 0f a7 07` — they are 25 separate dispatcher functions
+of the same shape, each presumably for a different message class. **No
+direct callers were found** via JSR/CALL search; reachable via function
+pointer table or interrupt vector.
+
+**Open**: confirm what FCMD value the OTA-RX path pre-sets. If it's
+PAGE_ERASE, the brick mechanism is fully explained. If it's `0x00` or
+`0xF0`, the primitive returns `$F3` (access error) without flash side
+effects, and the brick was caused by something else (most likely sub-op
+`0x04` or `0x05` recovery probes hitting EndTransfer/Reset handlers).
+
+**32 dispatcher fallback sites** all use the same `CALL $0292, #$67`,
+meaning every one of the 25 dispatchers (and 7 other call sites) will
+behave the same way for unknown sub-ops. So whatever the FCMD pre-set is,
+it's a uniform behavior across the bootloader.
+
+#### Sub-op 0x00 routing summary table
+
+| Sub-op | Dispatcher path | Resolved handler | Notes |
+|---|---|---|---|
+| `0x00` | default block at `0x1A5C` | `CALL $0292, #$67` | **flash-write primitive** at body `0x0292`; FCMD from caller |
+| `0x01` | direct match | `CALL $009A, #$F6` | ChangeAddrOff |
+| `0x02` | direct match | `CALL $009B, #$2F` | TransferData (chunk write) |
+| `0x03` | direct match | `CALL $009A, #$B0` | Poll/Beacon |
+| `0x04` | direct match | `CALL $009B, #$CD` | Unknown (also reached on `0x06` via CBEQA) |
+| `0x05` | match in second-entry block | `CALL $009B, #$B5` | Unknown |
+| `0x06` | CBEQA at `0x1A4C` → handler `0x04` path | `CALL $009B, #$CD` | Sub-op 6 reuses sub-op 4 handler |
+| anything else | default | `CALL $0292, #$67` | flash-write primitive |
+
+#### Sync-detect / unpaired-state RX (Q3)
+
+Confirmed sync-check at body `0x52BF`:
+```
+52bf: 65 fa de        CPHX  #$FADE
+52c2: 26 6c           BNE   $5330  ; sync mismatch → branch out
+52c4: 1d 45           BCLR  6,$45
+52c6: a6 01           LDA   #$01
+52c8: c7 0f 3e        STA   $0F3E   ; set "sync detected" state flag at $0F3E
+52cb: 20 63           BRA   $5330
+```
+
+After sync match: clears bit 6 of `$45`, sets `$0F3E = 1`, then jumps to
+`$5330`. **No subnet/serial/DeviceClass filter** at the sync-detect level.
+The bootloader simply enters byte-receive mode after sync; subsequent
+filtering (if any) happens later in the RX path.
+
+This explains the reachability matrix from the brick incident: an
+unpaired RMJ does NOT respond to ANY runtime-CCA addressing
+(`cca level`, `cca broadcast`, `cca raw`), but the bootloader's OTA RX
+path accepts `06 nn` packets matching its serial — because the
+APPLICATION (Section B) does paired-state filtering that blocks runtime
+CCA, while the BOOTLOADER (Section A) only filters at the OTA-dispatcher
+level (sub-op + serial). There is no subnet check in the bootloader for
+OTA packets.
+
+**Implication for synth-TX**: an unpaired RMJ silently accepts our OTA
+packets at any subnet. Subnet sweeping was unnecessary. Whatever destructive
+op fires (PAGE_ERASE, EndTransfer commit, etc.) fires on any subnet
+matching the device serial.
+
 #### Net effect for the conversion attack
 
 Finding #1 (DeviceClass hardcoded into code) means the conversion attack
