@@ -880,6 +880,167 @@ export function bodyGetRuntimeProperty(
   return b;
 }
 
+/**
+ * SendSystemFile (opId 271) — 28-byte body. Allocates a file buffer in the
+ * proc's `data_1990c68` IPL data-transfer singleton and stores the filename.
+ * Must fire BEFORE opId 290/272 for HW-CCA OTA — the proc reads the firmware
+ * from this singleton, NOT the filesystem (SFTP'd LDF is not enough).
+ *
+ * Reversed from `lutron-core` v26.02.15f000 dispatch sub_10b6ae0 which
+ * enforces payloadLength == 0x1c. Layout:
+ *   bytes 0..23 (0x00..0x17): filename (24 bytes, ASCII, null-padded)
+ *   bytes 24..27 (0x18..0x1B): file size in bytes, big-endian u32
+ *
+ * Filename limit on the wire is 24 chars (the ctor copies up to 0x7f
+ * internally but the IPL payload is fixed at 28 bytes). File size has a
+ * proc-side max of 0x500000 bytes (5MB) per `ipl-data-transfer.cpp`.
+ */
+export function bodySendSystemFile(filename: string, fileSize: number): Buffer {
+  const buf = Buffer.alloc(28);
+  const fnBytes = Buffer.from(filename, "ascii");
+  if (fnBytes.length > 24)
+    throw new Error(`SendSystemFile filename > 24 chars: "${filename}"`);
+  fnBytes.copy(buf, 0);
+  buf.writeUInt32BE(fileSize >>> 0, 0x18);
+  return buf;
+}
+
+/**
+ * DataFileTransferBlock (opId 1) — variable-length body. Streams 512-byte
+ * chunks of the firmware into the buffer allocated by SendSystemFile.
+ *
+ * Layout:
+ *   bytes 0..3: block number, big-endian u32
+ *   bytes 4..N: data bytes (proc memcpy's at offset = blockNumber * 512)
+ *
+ * Per `sub_10b8588`: blocks are addressed at `state[0x88] + (blockNum << 9)`,
+ * so each block is exactly 512 bytes. The last block can be shorter — the
+ * proc tracks total received bytes against the size from SendSystemFile.
+ */
+export function bodyDataFileTransferBlock(
+  blockNumber: number,
+  data: Buffer | Uint8Array,
+): Buffer {
+  if (data.length > 512)
+    throw new Error(`DataFileTransferBlock data > 512 bytes: ${data.length}`);
+  const buf = Buffer.alloc(4 + data.length);
+  buf.writeUInt32BE(blockNumber >>> 0, 0);
+  Buffer.from(data).copy(buf, 4);
+  return buf;
+}
+
+/**
+ * DataFileTransferComplete (opId 2) — 4-byte body. Signals end of transfer.
+ * The proc compares the size in this packet against (a) the size from
+ * SendSystemFile and (b) the actual byte count received. All three must
+ * match or the transfer is rejected with "IPL data transfer received wrong
+ * number of blocks".
+ *
+ * Layout:
+ *   bytes 0..3: total file size, big-endian u32
+ */
+export function bodyDataFileTransferComplete(totalSize: number): Buffer {
+  const buf = Buffer.alloc(4);
+  buf.writeUInt32BE(totalSize >>> 0, 0);
+  return buf;
+}
+
+/** Number of 512-byte blocks needed to send `fileSize` bytes. */
+export function ipldtBlockCount(fileSize: number): number {
+  return Math.ceil(fileSize / 512);
+}
+
+/**
+ * DeviceFirmwareUpgradeMode (opId 290) — 3-byte body. Tells the proc to
+ * enter or leave HW-CCA firmware-upgrade mode for one link. Reversed from
+ * `Lutron.Gulliver.DomainObjects.QSFirmwareUpdaterBySerialNumber.
+ * StartFirmwareUpdate` / `EndFirmwareUpdate` (Designer 26.0.2.100).
+ *
+ *   byte state              1 = Enter, 0 = Exit
+ *   byte procAddrZeroBased  processor index on the system (single-proc → 0)
+ *   byte linkNumber         the proc-local link bus number from
+ *                           `/link/<id>` LinkNumber (NOT the LEAP object id)
+ */
+export const FwUpgradeMode = { Enter: 1, Exit: 0 } as const;
+export function bodyDeviceFirmwareUpgradeMode(
+  state: number,
+  procAddrZeroBased: number,
+  linkNumber: number,
+): Buffer {
+  return Buffer.from([
+    state & 0xff,
+    procAddrZeroBased & 0xff,
+    linkNumber & 0xff,
+  ]);
+}
+
+/**
+ * UpdateDeviceFirmware (opId 272) — 97-byte body. Triggers an actual on-air
+ * OTA. The LDF must already be staged on the proc at /var/firmware/u_dfp/.
+ * Reversed from `QSFirmwareUpdaterBySerialNumber.UpdateDeviceFirmware`.
+ *
+ * Layout (97 bytes total):
+ *   [0]    procAddrZeroBased
+ *   [1]    linkNumber
+ *   [2]    deviceFamily       (DeviceFamily byte enum from FirmwareHeaderFile.xml)
+ *   [3..]  deviceBitMap       (byte array, length depends on family — usually 16
+ *                               bytes representing the link's 128-device addressing
+ *                               bitmap for broadcast; 0 for unicast-by-serial)
+ *   [..]   0x00 padding
+ *   if SingleDeviceBySerialNumber:
+ *     [-(N+1+5)..-(N+5)]  serial bytes [3,2,1,0] BE
+ *     [-(N+5)]            0xFE (unicast-by-serial marker)
+ *   else (ByDeviceClass):
+ *     [-(N+5)] deviceFamily, [-(N+4)] deviceProduct, [-(N+3)] hwRev,
+ *     [-(N+2)] custom, [-(N+1)] 0xFD (broadcast-by-class marker)
+ *   [end-N..end]          FirmwareFileName ASCII (no path, file must already
+ *                          live at /var/firmware/u_dfp/<name>)
+ *
+ * For the 2026-04-30 spoof use-case (HQR-3PD-1 family on link 2, serial
+ * 0x009A36E3), pass `serial` to send a unicast OTA. The encoder lays out
+ * the 97 bytes starting from the back so the filename is right-aligned.
+ */
+export function bodyUpdateDeviceFirmware(args: {
+  procAddrZeroBased: number;
+  linkNumber: number;
+  deviceFamily: number;
+  fileName: string;
+  /** If set: unicast-by-serial (0xFE marker). If undefined: broadcast-by-class (0xFD). */
+  serial?: number;
+  /** Only used in the broadcast-by-class branch. */
+  deviceProduct?: number;
+  hwRev?: number;
+  custom?: number;
+}): Buffer {
+  const SIZE = 97;
+  const buf = Buffer.alloc(SIZE);
+  buf[0] = args.procAddrZeroBased & 0xff;
+  buf[1] = args.linkNumber & 0xff;
+  buf[2] = args.deviceFamily & 0xff;
+  // bytes 3..(SIZE - filename.length - 5) are the deviceBitMap+padding,
+  // left as zeroes for now (unicast doesn't need a bitmap)
+  const fileBytes = Buffer.from(args.fileName, "ascii");
+  if (fileBytes.length > 60)
+    throw new Error("filename too long for 97B payload");
+  // Right-align filename. The 5-byte selector block is the 5 bytes immediately
+  // before filename start: [4 bytes of serial-or-class][1 byte marker].
+  const fnStart = SIZE - fileBytes.length;
+  fileBytes.copy(buf, fnStart);
+  const blockStart = fnStart - 5;
+  if (args.serial !== undefined) {
+    // serial bytes [3,2,1,0] BE — u32 big-endian (MSB first), then 0xFE marker
+    buf.writeUInt32BE(args.serial >>> 0, blockStart);
+    buf[blockStart + 4] = 0xfe;
+  } else {
+    buf[blockStart] = args.deviceFamily & 0xff;
+    buf[blockStart + 1] = (args.deviceProduct ?? 0) & 0xff;
+    buf[blockStart + 2] = (args.hwRev ?? 0) & 0xff;
+    buf[blockStart + 3] = (args.custom ?? 0) & 0xff;
+    buf[blockStart + 4] = 0xfd;
+  }
+  return buf;
+}
+
 /** ProcessorSetDateTime (opId 25) — sync the processor clock to wallclock. */
 export function bodyProcessorSetDateTime(d = new Date()): Buffer {
   const b = Buffer.alloc(10);
