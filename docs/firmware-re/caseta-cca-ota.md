@@ -369,3 +369,171 @@ remaining pinpoint question. Resolution requires tracing IPC opcode `0x2A`
 argument flow from the host CPU through the coproc — start at the IPC RX
 deframer (HDLC layer) and follow `cmd_id == 0x113` dispatch through to one
 of the five dispatcher functions above.
+
+## Phoenix EFR32 IPC `0x113` BeginTransfer handler chain (2026-04-29)
+
+Hand-decoded the dispatch path for HDLC IPC opcode `0x113` (BeginTransfer)
+on `phoenix_efr32_8003000-803FF08.bin` (249 KB) using ARM Cortex-M Thumb-2
+disassembly via Capstone. The previous "5 dispatcher functions" the doc
+called out (`0x080190a8`, `0x080192d4`, `0x08019490`, `0x08019724`,
+`0x080199d8`) are NOT functions — they are **dispatch tables of 4-byte
+function pointers**, each entry of the form `XX YY 01 08` =
+`0x0801XXYY` (Thumb pointer with LSB=1 bit set).
+
+### Dispatch table layout
+
+The table at `0x080192d4` has zeros for table indices 0..0x10 and
+real handler pointers starting at `0x08019300`:
+
+| Table offset | Pointer | → Function | Role |
+|---|---|---|---|
+| `0x08019300` | `0x080113f5` | `0x080113F4` | **BeginTransfer (IPC 0x113)** |
+| `0x08019304` | `0x08011421` | `0x08011420` | (next IPC, presumably TransferData 0x115) |
+| `0x08019308` | `0x08011429` | `0x08011428` | (different prologue — separate handler) |
+| `0x0801930c` | `0x08014b25` | `0x08014B24` | |
+| `0x08019310` | `0x08014b41` | `0x08014B40` | |
+
+(The table at `0x080190a8` has the same layout starting at offset 8 —
+likely a parallel table for a different transport / state.)
+
+### BeginTransfer handler chain
+
+```
+0x080113F4: BeginTransfer wrapper
+  movs r1, #1            ; r1 = 1 = "this is BeginTransfer" flag
+  b.w  0x08011254        ; tail-call common dispatcher
+
+0x08011254: common IPC dispatcher (for BeginTransfer + TransferData)
+  push   {r4-r8, lr}
+  sub    sp, #0x28
+  ; check device-serial in input matches global expected serial:
+  ldr    r3, [pc, #0xe8]      ; r3 = 0x20000018 (global serial RAM addr)
+  ldr    r2, [r3]              ; r2 = expected serial
+  ldr    r3, [r0]              ; r3 = bytes 0..3 from input (BE serial)
+  ldrb   r5, [r0, #4]          ; r5 = byte 4 (= 0xFE unicast / 0xFF broadcast)
+  rev    r3, r3                ; byteswap to LE for compare
+  cmp    r3, r2
+  beq    same_serial
+  cmp    r5, #0xFE
+  beq    unicast_mismatch_path  ; unicast-but-different-serial path
+  ; else: serial match — fall through to error response
+
+  ; …assemble error response, send via 0x8005b78
+  pop {…, pc}
+
+unicast_mismatch_path:        ; serial doesn't match expected, but unicast
+  ldr    r7, [pc, #0xbc]       ; r7 = 0x200028A4 (RAM struct holding active OTA state)
+  mov    r4, r0; mov r6, r1   ; save input ptr and BT flag
+  ; (lookup or fetch device record by serial …)
+  bl     0x8007c88
+
+  ; check byte 5 (sub-op or seq?) of input:
+  ldrb   r1, [r4, #5]
+  subs   r1, #2
+  ldrb   r4, [r4, #4]
+  cmp    r1, #1               ; (byte5 - 2) <= 1  → sub-op ∈ {2,3} = TransferData/Poll
+  bls    transfer_data_path
+  ; else (sub-op ∈ {0, 1, 4, 5, 6+}) — pick callback by BT flag:
+  ldr    r1, [pc, #0x8c]       ; r1 = 0x08011231  (BeginTransfer-specific callback)
+  ldr    r2, [pc, #0x8c]       ; r2 = 0x0801138d  (other-IPC callback)
+  cmp    r6, #0
+  it     ne
+  movne  r2, r1                ; if BT flag set, use BT callback
+  movs   r1, #8
+  movs   r2, #2
+  str    r2, [sp, #4]          ; sp+4 = chosen callback ptr (used by 0x8015e2c)
+  str    r1, [sp, #8]          ; sp+8 = 8
+  str    r4, [sp]              ; sp+0 = byte 4 (0xFE)
+  mov    r0, sp + 0x1c         ; r0 = response buffer
+  mov    r1, #2
+  bl     0x8015e2c             ; IPC sender (constructs HDLC frame, calls payload-build callback)
+  ; …
+```
+
+### BeginTransfer-specific callback at `0x08011230`
+
+```
+0x08011230: ldrb   r3, [r0, #0xc]       ; check flag at input+0xC
+            cbnz   r3, skip_state_set
+            movs   r2, #1
+            ldr    r3, =0x200028A4       ; OTA state struct
+            strb   r2, [r3]              ; *0x200028A4 = 1 (mark "OTA active")
+skip_state_set:
+            bl     0x8015fa4              ; (subroutine)
+            pop    {r4, lr}
+            movs   r3, #0
+            movs   r1, #0x40              ; ← r1 = 0x40
+            mov    r2, r3                 ; r2 = 0
+            b.w    0x0801619c             ; tail-call payload builder
+```
+
+### Payload builder at `0x0801619c`
+
+```
+0x0801619c: mov    ip, r1                 ; ip = r1
+            push   {lr}
+            sub    sp, #0xc                ; allocate 12-byte buffer
+            mov    r1, sp                  ; r1 = output buffer
+            strb.w ip, [sp]                 ; buf[0] = ip = r1 (= 0x40 from BT callback)
+            strb.w r2, [sp, #1]             ; buf[1] = r2
+            str.w  r3, [sp, #2]             ; buf[2..5] = r3 (32-bit, LE)
+            bl     0x80160e8                ; send 6-byte buf
+            add    sp, #0xc
+            ldr    pc, [sp], #4
+```
+
+So the **HDLC IPC payload (6 bytes)** for BeginTransfer is:
+- `buf[0] = 0x40` (set in the BT callback)
+- `buf[1] = 0x00` (set in the BT callback)
+- `buf[2..5] = 0x00 00 00 00` (set in the BT callback)
+
+= `40 00 00 00 00 00`.
+
+### Critical finding: HDLC IPC payload != on-air payload
+
+**The HDLC IPC payload is `40 00 00 00 00 00`, NOT the on-air `02 20 00 00
+00 1F`.** That settles a long-running ambiguity:
+
+- The captured on-air BeginTransfer payload (`02 20 00 00 00 1F`) is built
+  at a **different layer** — the on-air framer/codec downstream of the
+  HDLC IPC layer.
+- The trailing `0x1F` (chunk size 31) is consistent with the codec/PHY
+  layer adding a fixed chunk-size constant.
+- The leading `02 20 00 00 00` likely come from the on-air framer reading
+  an entirely different parameter set than the HDLC IPC's `40 00 00 00
+  00 00`. The on-air bytes may be derived from device-record fields
+  (image type, total chunk count, page count, etc.) at a layer below
+  what we've decoded.
+
+**Practical implication for synth-TX**: the `02 20 00 00 00 1F` we
+captured for DVRF-6L is a function of **DVRF-6L's image metadata** —
+specifically image format (byte 0 = 0x02 = `App` per the PFF format
+table), some page-count-like value (byte 1 = 0x20 = 32), and the fixed
+chunk size 0x1F. Using these bytes verbatim against an LMJ-target may
+or may not be valid depending on whether the bootloader cross-checks
+the bytes against its expected image type / page count.
+
+For the brick incident: the BeginTransfer payload bytes we sent
+(captured from DVRF-6L) **may or may not have been semantically valid for
+an RMJ target**. The PowPak bootloader doesn't appear to filter on these
+bytes pre-erase (per the PowPak HCS08 RE — sub-op 0x00 falls to default,
+which routes to flash-write primitive), so the payload semantics likely
+don't gate the destructive flash op.
+
+### Open: where on-air `02 20 00 00 00` comes from
+
+The next RE step is to find the on-air framer that consumes the HDLC
+IPC payload `40 00 00 00 00 00` and emits the on-air `02 20 00 00 00 1F`.
+Likely paths:
+1. The HDLC IPC `0x40` value transitions to on-air `0x02` via a
+   command-table mapping at a lower layer
+2. The on-air bytes 1..4 (`20 00 00 00`) come from a per-device-record
+   metadata structure — possibly at `0x200028A4` (the RAM struct that
+   the BT handler loads device serial/state into, with byte 8 used for
+   other fields)
+3. The trailing `0x1F` is hardcoded in the on-air framer
+
+To pin this down, decompile `0x80160e8` (the function called from the
+payload builder with the 6-byte HDLC buf) — that's where HDLC frames
+get encapsulated for transport to the on-air codec. Or load the binary
+into Ghidra (with auto-analysis run) to follow the chain.
