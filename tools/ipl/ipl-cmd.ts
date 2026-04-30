@@ -59,6 +59,7 @@ import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { defaultHost } from "../../lib/config";
 import {
+  bodyDeviceFirmwareUpgradeMode,
   bodyDevicePress,
   bodyDeviceSetIdentifyState,
   bodyDeviceSetOutputLevel,
@@ -80,9 +81,11 @@ import {
   bodyRuntimeIdentify,
   bodySetRuntimeProperty,
   bodyShadeIdentifyOnInterfaceAddress,
+  bodyUpdateDeviceFirmware,
   buildCommandFrame,
   CommandOp,
   decodeRuntimeTelemetry,
+  FwUpgradeMode,
   level16ToPct,
   MsgType,
   MsgTypeName,
@@ -502,6 +505,55 @@ async function main() {
       const [opStr, hex = ""] = rest;
       opId = parseNum(opStr);
       body = Buffer.from(hex, "hex");
+      break;
+    }
+
+    case "fwupgrade-enter": {
+      // `fwupgrade-enter <linkNum> [procAddr=0]` — opId 290, payload [1, proc, link]
+      const [linkStr, procStr = "0"] = rest;
+      const linkNum = parseNum(linkStr);
+      const procAddr = parseNum(procStr);
+      opId = CommandOp.DeviceFirmwareUpgradeMode;
+      body = bodyDeviceFirmwareUpgradeMode(
+        FwUpgradeMode.Enter,
+        procAddr,
+        linkNum,
+      );
+      txDescription = `DeviceFirmwareUpgradeMode Enter proc=${procAddr} link=${linkNum}`;
+      break;
+    }
+
+    case "fwupgrade-exit": {
+      // `fwupgrade-exit <linkNum> [procAddr=0]` — opId 290, payload [0, proc, link]
+      const [linkStr, procStr = "0"] = rest;
+      const linkNum = parseNum(linkStr);
+      const procAddr = parseNum(procStr);
+      opId = CommandOp.DeviceFirmwareUpgradeMode;
+      body = bodyDeviceFirmwareUpgradeMode(
+        FwUpgradeMode.Exit,
+        procAddr,
+        linkNum,
+      );
+      txDescription = `DeviceFirmwareUpgradeMode Exit proc=${procAddr} link=${linkNum}`;
+      break;
+    }
+
+    case "fwupgrade-update": {
+      // `fwupgrade-update <linkNum> <familyHex> <serialHex> <fileName> [procAddr=0]`
+      // opId 272, 97-byte payload, unicast-by-serial form.
+      const [linkStr, famStr, serialStr, fileName, procStr = "0"] = rest;
+      requireConfirm(
+        `UpdateDeviceFirmware unicast serial=0x${serialStr} link=${linkStr} fam=0x${famStr} file=${fileName}`,
+      );
+      opId = CommandOp.UpdateDeviceFirmware;
+      body = bodyUpdateDeviceFirmware({
+        procAddrZeroBased: parseNum(procStr),
+        linkNumber: parseNum(linkStr),
+        deviceFamily: Number.parseInt(famStr, 16),
+        serial: Number.parseInt(serialStr, 16),
+        fileName,
+      });
+      txDescription = `UpdateDeviceFirmware unicast serial=0x${serialStr} file=${fileName}`;
       break;
     }
 
