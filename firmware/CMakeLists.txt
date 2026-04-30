@@ -176,6 +176,7 @@ set(APP_SOURCES
     src/cca/cca_commands.cpp
     src/cca/cca_pairing.cpp
     src/cca/cca_auto_pair.cpp
+    src/cca/cca_ota_session.cpp
     src/ccx/ccx_task.cpp
     src/ccx/ccx_cbor.c
     src/ccx/ccx_msg.c

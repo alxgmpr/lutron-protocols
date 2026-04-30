@@ -1,6 +1,6 @@
 # PowPak RMJ/RMJS → LMJ conversion attack — plan & state
 
-**Status (2026-04-29):** Protocol RE complete, bootloader RE shows no active DeviceClass cross-check, **synth-OTA-TX builders + Phase 2a `cca ota-begin` shell command landed** (TDD against captured-on-air ground truth, all 154 firmware tests pass, ARM build clean). Awaiting hardware test for Phase 2a (subnet recon).
+**Status (2026-04-29):** Protocol RE complete, bootloader RE shows no active DeviceClass cross-check, **synth-OTA-TX builders + Phase 2a `cca ota-begin` + Phase 2b `cca ota-tx` (firmware) and `tools/cca/ota-tx.ts` (host) all landed** (TDD against captured-on-air ground truth, all 167 firmware tests + 312 TS tests pass, ARM build clean). Awaiting hardware test for Phase 2a (subnet recon) before driving Phase 2b end-to-end.
 
 **Goal:** flash a non-smart PowPak (RMJ standalone for ESN, or RMJS for Vive) with smart firmware (LMJ for RA2/RA3/HWQS), entirely RF-side from a Nucleo+CC1101, bypassing every Lutron host system. End state: a device that physically exists as an RMJ/RMJS now boots as an LMJ and pairs to an RA3 processor.
 
@@ -215,15 +215,26 @@ Hardware test procedure:
 6. If no `0xC1` seen with `0xFFFF`: sweep candidates `0x0000`, `0xFFFE`, `0x82D7`, `0xEFFD`. Record which, if any, triggers `0xC1`.
 7. If still no `0xC1`: the bootloader RX path may not accept on-runtime-channel packets in factory state at all. Next step: capture an actual ESN→RMJ transaction (if user has access to ESN) to see what address path the host uses for unpaired devices, OR drill into the bootloader's RX dispatcher (BN `0x92be` containing the FA DE sync check) to identify factory-state acceptance criteria.
 
-**Phase 2b — full OTA TX (NOT YET BUILT — needs subnet recon result first)**
+**Phase 2b — full OTA TX (BUILT — awaiting hardware-test once Phase 2a confirms a working subnet)**
 
-Adds `CCA_CMD_OTA_FULL_TX` that:
-1. Receives an LMJ LDF body via the TCP stream protocol (one or more ~32 KB chunks)
-2. Buffers it in Nucleo SRAM (~102 KB; well within RAM_D1 320 KB)
-3. Runs the full BeginTransfer → 3,300× TransferData → ChangeAddrOff sequence at the captured cadence
-4. Emits progress to UART log
+Two parallel paths landed, both consuming the existing builders in `cca_ota_tx.h`:
 
-Once Phase 2a confirms a working subnet, building Phase 2b is mechanical (the builders + chunk iterator are already done in `cca_ota_tx.h` — only the orchestration is missing).
+- **Firmware-side `CCA_CMD_OTA_FULL_TX = 0x1E`**: end-game performance.
+  - `firmware/src/cca/cca_ota_session.{h,cpp}` — 110 KB static body buffer in RAM_D1 (room for the ~102 KB LMJ LDF body), filled via three new stream-protocol commands (`STREAM_CMD_OTA_UPLOAD_START 0x18`, `STREAM_CMD_OTA_UPLOAD_CHUNK 0x19`, `STREAM_CMD_OTA_UPLOAD_END 0x1A`).
+  - `cca_ota_full_tx_walk()` in `cca_ota_tx.h` — pure orchestration (callback-based, testable). Walks the body via `OtaChunkIter`, emits 1× BeginTransfer + N× TransferData (carrier rotation B1/B2/B3) + ChangeAddrOff at every 64 KB page wrap.
+  - `exec_ota_full_tx()` in `cca_pairing.cpp` — production driver. Wraps `cca_ota_full_tx_walk` with `cc1101_transmit_raw` at the captured 75 ms cadence. Progress broadcast over the stream every 100 packets.
+  - Shell command: `cca ota-tx <subnet> <serial>` (assumes the body has been uploaded).
+  - Host helper: `tools/cca/ota-upload.ts` uploads the LDF body via the stream upload commands.
+  - 5 TDD tests in `firmware/tests/test_ota_full_tx.cpp` cover the orchestration shape (no live TX involved).
+- **Host-side `tools/cca/ota-tx.ts`**: fast iteration on packet format.
+  - `lib/cca-ota-tx-builder.ts` — TS mirror of `cca_ota_tx.h` (BeginTransfer, ChangeAddressOffset, TransferData, OtaChunkIter). Tests assert byte-equality against captured DVRF-6L ground truth.
+  - `lib/ldf.ts` — pure-TS LDF header strip helper (mirrors `tools/firmware/ldf-extract.py`).
+  - Driver builds packets in TS and streams them as `STREAM_CMD_TX_RAW_CCA = 0x01` UDP datagrams. Doesn't need any new firmware support — the firmware just sees raw CCA TX requests.
+  - `--dry-run` mode logs every packet without opening a UDP socket; verified end-to-end against `PowPakRelay434_1-49.bin` (99,800-byte body → 3,220 chunks + 1 ChangeAddrOff).
+
+When iterating on packet format during debugging, prefer the host-side path — change a TS line, re-run, see the new byte sequence in dry-run mode. When pushing the final production sequence at full speed, prefer the firmware-side path — the 75 ms cadence stays tight regardless of host networking jitter.
+
+**NEITHER PATH HAS BEEN HARDWARE-TESTED YET** — both are gated on Phase 2a returning a known-working subnet. See "Hardware test plan" above.
 
 **Phase 2c — monitor ACK transitions**
 
@@ -356,12 +367,30 @@ tools/
 firmware/src/cca/
 ├── cca_decoder.h:309                 ← try_parse_dimmer_ack — XOR-ACK decoder rule
 ├── cca_tx_builder.h                  ← existing CCA TX builder
-├── cca_ota_tx.h                      ← NEW: synth-OTA-TX builders (BeginTransfer, TransferData, ChangeAddrOff, chunk iter)
-├── cca_pairing.cpp                   ← exec_ota_begin (Phase 2a subnet recon TX loop)
-└── cca_commands.h                    ← CCA_CMD_OTA_BEGIN_TX = 0x1C
+├── cca_ota_tx.h                      ← synth-OTA-TX builders + cca_ota_full_tx_walk orchestrator
+├── cca_ota_session.{h,cpp}           ← static 110 KB LDF body buffer (filled via stream protocol)
+├── cca_pairing.cpp                   ← exec_ota_begin (Phase 2a) + exec_ota_full_tx (Phase 2b)
+└── cca_commands.h                    ← CCA_CMD_OTA_BEGIN_TX = 0x1C, CCA_CMD_OTA_FULL_TX = 0x1E
+
+firmware/src/net/
+└── stream.h                          ← STREAM_CMD_OTA_UPLOAD_{START,CHUNK,END} = 0x18..0x1A
 
 firmware/tests/
-└── test_ota_tx.cpp                   ← 15 TDD tests against captured-on-air ground truth
+├── test_ota_tx.cpp                   ← 15 TDD tests for the byte-level builders
+├── test_ota_session.cpp              ← 8 TDD tests for the session buffer
+└── test_ota_full_tx.cpp              ← 5 TDD tests for the orchestrator
+
+lib/
+├── cca-ota-tx-builder.ts             ← TS mirror of cca_ota_tx.h (Track 2)
+└── ldf.ts                            ← TS LDF header strip
+
+tools/cca/
+├── ota-tx.ts                         ← Track 2 host-side OTA driver (--dry-run supported)
+└── ota-upload.ts                     ← Uploads LDF body to Nucleo for Track 1's `cca ota-tx`
+
+test/
+├── cca-ota-tx-builder.test.ts        ← 19 TDD tests vs captured ground truth
+└── ldf.test.ts                       ← 4 TDD tests
 
 data/
 ├── captures/cca-ota-20260428-190439.rf.bin             ← 19-min IQ capture (gitignored)

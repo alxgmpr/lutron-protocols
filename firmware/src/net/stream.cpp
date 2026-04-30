@@ -21,6 +21,7 @@
 #include "shell.h"
 #include "cca_task.h"
 #include "cca_commands.h"
+#include "cca_ota_session.h"
 #include "cc1101.h"
 #include "ccx_task.h"
 #include "eth.h"
@@ -648,6 +649,32 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
                    (unsigned)item.device_id, (unsigned)item.target_id, (unsigned)((buf[10] << 8) | buf[11]),
                    item.zone_byte, item.duration_sec);
         }
+        break;
+    }
+
+    case STREAM_CMD_OTA_UPLOAD_START: {
+        if (data_len >= 4) {
+            uint32_t expected =
+                (uint32_t)buf[2] | ((uint32_t)buf[3] << 8) | ((uint32_t)buf[4] << 16) | ((uint32_t)buf[5] << 24);
+            bool ok = cca_ota_session_start(expected);
+            printf("[stream] OTA upload start: %lu bytes (%s)\r\n", (unsigned long)expected, ok ? "ok" : "REJECTED");
+        }
+        break;
+    }
+    case STREAM_CMD_OTA_UPLOAD_CHUNK: {
+        if (data_len >= 2) {
+            uint16_t chunk_idx = ((uint16_t)buf[2] << 8) | buf[3];
+            uint32_t offset = (uint32_t)chunk_idx * 240u;
+            bool ok = cca_ota_session_write(offset, buf + 4, (uint32_t)(data_len - 2));
+            if (!ok) {
+                printf("[stream] OTA upload chunk %u REJECTED (off=%lu)\r\n", chunk_idx, (unsigned long)offset);
+            }
+        }
+        break;
+    }
+    case STREAM_CMD_OTA_UPLOAD_END: {
+        printf("[stream] OTA upload end: %lu/%lu bytes (%s)\r\n", (unsigned long)cca_ota_session_body_len(),
+               (unsigned long)cca_ota_session_expected_len(), cca_ota_session_complete() ? "complete" : "INCOMPLETE");
         break;
     }
 

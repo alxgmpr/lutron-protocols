@@ -1754,6 +1754,36 @@ static void cmd_cca(const char* arg)
         return;
     }
 
+    /* cca ota-tx <subnet_hex> <serial_hex>
+     * Full-OTA TX — Phase 2b PowPak conversion attack. Walks the LDF body
+     * uploaded via STREAM_CMD_OTA_UPLOAD_*, sending BeginTransfer +
+     * TransferData× + ChangeAddrOff at the captured 75ms cadence. Watch
+     * for the device's 0x0B XOR-ACK with format=0xEC to confirm commit.
+     * See docs/firmware-re/powpak-conversion-attack.md. */
+    if (strncmp(arg, "ota-tx ", 7) == 0) {
+        char* p;
+        uint16_t subnet = (uint16_t)strtoul(arg + 7, &p, 16);
+        if (*p != ' ') {
+            printf("Usage: cca ota-tx <subnet_hex> <target_serial_hex>\r\n");
+            return;
+        }
+        uint32_t serial = (uint32_t)strtoul(p + 1, NULL, 16);
+
+        CcaCmdItem item = {};
+        item.cmd = CCA_CMD_OTA_FULL_TX;
+        item.device_id = serial;
+        item.raw_payload[0] = (subnet >> 8) & 0xFF;
+        item.raw_payload[1] = subnet & 0xFF;
+        if (cca_cmd_enqueue(&item)) {
+            printf("OTA full-tx queued (subnet=%04X serial=%08X) — upload LDF body first via stream cmd 0x18..0x1A\r\n",
+                   subnet, (unsigned)serial);
+        }
+        else {
+            printf("Command queue full!\r\n");
+        }
+        return;
+    }
+
     /* cca hybrid-pair <bridge_id_hex> <class_hex_4byte> <subnet_hex> <zone_hex> [duration]
      * Vive B9 beacon to wake PowPaks, then pair with RA3 bridge ID + B0 announce. */
     if (strncmp(arg, "hybrid-pair ", 12) == 0) {
@@ -2045,6 +2075,7 @@ static void cmd_cca(const char* arg)
     printf("  cca subnet-pair <bridge> <zone> [dur]  — BB beacon + RA3 subnet config\r\n");
     printf("  cca ota-poll <subnet> <target> [dur] [bcast] — synth-OTA Device-poll (SAFE pre-flight)\r\n");
     printf("  cca ota-begin <subnet> <serial> [dur] — synth-OTA BeginTransfer (subnet recon)\r\n");
+    printf("  cca ota-tx <subnet> <serial>          — synth-OTA full TX from uploaded LDF body\r\n");
     printf("  cca auto-pair <hub> <class> <subnet> <zone> [dur]   — Vive→RA3 pair (TDMA, interleaved)\r\n");
     printf("  cca auto-pair-stop                                   — stop auto-pair\r\n");
     printf("  cca identify <target>                 — flash device LED (QS identify)\r\n");
