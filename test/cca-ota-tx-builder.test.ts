@@ -17,6 +17,10 @@ import {
   buildBeginTransfer,
   buildChangeAddressOffset,
   buildTransferData,
+  defaultBeginTransferPayload,
+  EFR32_BEGIN_TRANSFER_PAYLOAD,
+  HCS08_BEGIN_TRANSFER_PAYLOAD,
+  OTA_BEGIN_PAYLOAD_LEN,
   OtaChunkIter,
   packetsEqualIgnoringSeq,
   walkOtaPackets,
@@ -276,4 +280,68 @@ test("packetsEqualIgnoringSeq returns false on different lengths", () => {
     packetsEqualIgnoringSeq(new Uint8Array(22), new Uint8Array(51)),
     false,
   );
+});
+
+// MCU profile / parameterized BeginTransfer payload (HCS08 support)
+
+test("EFR32 and HCS08 default BeginTransfer payloads are 6 bytes", () => {
+  assert.equal(EFR32_BEGIN_TRANSFER_PAYLOAD.length, OTA_BEGIN_PAYLOAD_LEN);
+  assert.equal(HCS08_BEGIN_TRANSFER_PAYLOAD.length, OTA_BEGIN_PAYLOAD_LEN);
+});
+
+test("EFR32 default BeginTransfer payload matches captured ground truth", () => {
+  assert.deepEqual(
+    EFR32_BEGIN_TRANSFER_PAYLOAD,
+    Uint8Array.from([0x02, 0x20, 0x00, 0x00, 0x00, 0x1f]),
+  );
+});
+
+test("defaultBeginTransferPayload returns the expected payload per MCU", () => {
+  assert.deepEqual(
+    defaultBeginTransferPayload("efr32"),
+    EFR32_BEGIN_TRANSFER_PAYLOAD,
+  );
+  assert.deepEqual(
+    defaultBeginTransferPayload("hcs08"),
+    HCS08_BEGIN_TRANSFER_PAYLOAD,
+  );
+});
+
+test("buildBeginTransfer accepts a custom payload override", () => {
+  const custom = Uint8Array.from([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0x10]);
+  const pkt = buildBeginTransfer(0x82d7, 0x009a36e3, { payload: custom });
+  assert.deepEqual(pkt.slice(16, 22), custom);
+});
+
+test("buildBeginTransfer rejects payload with wrong length", () => {
+  assert.throws(() =>
+    buildBeginTransfer(0xffff, 0x12345678, {
+      payload: Uint8Array.from([0x02, 0x20]),
+    }),
+  );
+  assert.throws(() =>
+    buildBeginTransfer(0xffff, 0x12345678, {
+      payload: new Uint8Array(8),
+    }),
+  );
+});
+
+test("walkOtaPackets uses overridden BeginTransfer payload at byte 16..21", () => {
+  const body = new Uint8Array(31);
+  const custom = Uint8Array.from([0x99, 0x88, 0x77, 0x66, 0x55, 0x1f]);
+  const packets = [
+    ...walkOtaPackets(body, 0x82d7, 0x009a36e3, {
+      beginTransferPayload: custom,
+    }),
+  ];
+  assert.equal(packets[0].label, "BeginTransfer");
+  assert.deepEqual(packets[0].pkt.slice(16, 22), custom);
+});
+
+test("walkOtaPackets default BeginTransfer payload matches the EFR32 capture", () => {
+  // No opts -> behaves identically to pre-HCS08-flag code, preserving the
+  // captured DVRF-6L ground truth byte-for-byte.
+  const body = new Uint8Array(31);
+  const packets = [...walkOtaPackets(body, 0xeffd, 0x06fe8020)];
+  assert.deepEqual(packets[0].pkt.slice(16, 22), EFR32_BEGIN_TRANSFER_PAYLOAD);
 });
