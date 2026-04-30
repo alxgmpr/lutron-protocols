@@ -38,6 +38,43 @@ const OTA_BODY_LEN_SIG_LONG = 0x2b;
 
 export const OTA_CHUNK_SIZE = 31;
 export const OTA_PAGE_SIZE = 0x10000;
+export const OTA_BEGIN_PAYLOAD_LEN = 6;
+
+/**
+ * Supported MCU families for OTA target devices.
+ * - `efr32`: Silicon Labs EFR32 (Caseta DVRF-6L / BASENJI / eagle-owl 0x03/0x04 CCX-on-Pegasus). Calibrated against captured Caseta REP2 → DVRF-6L OTA (2026-04-29).
+ * - `hcs08`: Freescale HCS08 (HW-CCA HQR/HWQS/MRF2 dimmers, family 0x04xxxxxx, and PowPak family 0x16). On-air protocol structure is identical (`06 nn` sub-opcodes inside runtime CCA framing); only the BeginTransfer payload's leading 5 bytes are nominally MCU-specific. Default payload mirrors EFR32 (no HCS08 ground-truth capture exists yet).
+ */
+export type McuFamily = "efr32" | "hcs08";
+
+/**
+ * BeginTransfer 6-byte payload captured from the live Caseta REP2 → DVRF-6L
+ * (EFR32) OTA on 2026-04-29. Trailing byte (`0x1F`) is the chunk size.
+ * Leading 5 bytes' meaning is open — likely image type / size hints from
+ * per-device PFF metadata, copied verbatim by the captured OTA stream.
+ */
+export const EFR32_BEGIN_TRANSFER_PAYLOAD: Uint8Array = Uint8Array.from([
+  0x02, 0x20, 0x00, 0x00, 0x00, 0x1f,
+]);
+
+/**
+ * Default HCS08 BeginTransfer payload. Currently identical to the EFR32
+ * captured value because no HCS08 ground-truth capture exists. The HCS08
+ * bootloader's `06 nn` dispatcher (RE'd against PowPak `PowPakRelay434L1-53.bin`)
+ * has no explicit handler for sub-op `0x00` — it falls through to the
+ * default flash-write primitive. Whether the payload bytes are interpreted
+ * the same way as the EFR32 case is currently unverified. Override per-run
+ * with `--begin-payload` while iterating against a live device.
+ */
+export const HCS08_BEGIN_TRANSFER_PAYLOAD: Uint8Array = Uint8Array.from([
+  0x02, 0x20, 0x00, 0x00, 0x00, 0x1f,
+]);
+
+export function defaultBeginTransferPayload(mcu: McuFamily): Uint8Array {
+  return mcu === "hcs08"
+    ? HCS08_BEGIN_TRANSFER_PAYLOAD
+    : EFR32_BEGIN_TRANSFER_PAYLOAD;
+}
 
 function writeHeader(
   pkt: Uint8Array,
@@ -63,18 +100,29 @@ function writeHeader(
 }
 
 /**
- * BeginTransfer (type 0x92, sub-op 06 00, payload `02 20 00 00 00 1F`).
+ * BeginTransfer (type 0x92, sub-op 06 00, default payload `02 20 00 00 00 1F`).
  *
- * Emitted once at OTA session start. Trailing `1F` of the payload is the
- * chunk size (31 bytes). The leading 5 bytes are copied verbatim from the
- * captured Caseta REP2 → DVRF-6L OTA — meaning is open.
+ * Emitted once at OTA session start. Trailing byte of the payload is the
+ * chunk size (typically 0x1F = 31 bytes). The leading 5 bytes are copied
+ * verbatim from the captured Caseta REP2 → DVRF-6L OTA — meaning is open.
+ *
+ * Pass `opts.payload` (6 bytes) to override the payload — used both to select
+ * an MCU-specific default via `defaultBeginTransferPayload(mcu)` and to
+ * support per-run experimentation while iterating against a live device.
  *
  * Returns the 22-byte pre-CRC packet.
  */
 export function buildBeginTransfer(
   subnet: number,
   targetSerial: number,
+  opts?: { payload?: Uint8Array },
 ): Uint8Array {
+  const payload = opts?.payload ?? EFR32_BEGIN_TRANSFER_PAYLOAD;
+  if (payload.length !== OTA_BEGIN_PAYLOAD_LEN) {
+    throw new RangeError(
+      `BeginTransfer payload length ${payload.length} != ${OTA_BEGIN_PAYLOAD_LEN}`,
+    );
+  }
   const pkt = new Uint8Array(22);
   writeHeader(
     pkt,
@@ -85,12 +133,7 @@ export function buildBeginTransfer(
   );
   pkt[14] = 0x06;
   pkt[15] = OTA_SUB_BEGIN_TRANSFER;
-  pkt[16] = 0x02;
-  pkt[17] = 0x20;
-  pkt[18] = 0x00;
-  pkt[19] = 0x00;
-  pkt[20] = 0x00;
-  pkt[21] = 0x1f;
+  pkt.set(payload, 16);
   return pkt;
 }
 
@@ -220,6 +263,10 @@ export interface OtaPacket {
  * 1× BeginTransfer, then TransferData per chunk (carriers cycle B1/B2/B3),
  * with ChangeAddressOffset injected at every 64 KB page wrap.
  *
+ * Pass `opts.beginTransferPayload` to override the BeginTransfer 6-byte
+ * payload (e.g. when targeting an MCU family other than the EFR32 that
+ * the default was captured against — see `defaultBeginTransferPayload`).
+ *
  * Mirrors the firmware-side `cca_ota_full_tx_walk` in
  * firmware/src/cca/cca_ota_tx.h. Used by both the host-side OTA driver
  * and the loopback validator to know what packets to expect on the wire.
@@ -228,10 +275,13 @@ export function* walkOtaPackets(
   body: Uint8Array,
   subnet: number,
   targetSerial: number,
+  opts?: { beginTransferPayload?: Uint8Array },
 ): Generator<OtaPacket> {
   yield {
     label: "BeginTransfer",
-    pkt: buildBeginTransfer(subnet, targetSerial),
+    pkt: buildBeginTransfer(subnet, targetSerial, {
+      payload: opts?.beginTransferPayload,
+    }),
   };
 
   const carriers = [0xb1, 0xb2, 0xb3];
