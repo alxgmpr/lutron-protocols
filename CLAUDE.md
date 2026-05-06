@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-Lutron reverse-engineering toolkit: RF transceiver, protocol analyzer, and control interface for Lutron lighting systems (RadioRA3, Homeworks QSX, Caseta, Vive). Covers three transport layers:
+Lutron protocol research and interoperability toolkit: RF transceiver, protocol analyzer, and control interface for Lutron lighting systems (RadioRA3, Homeworks QSX, Caseta, Vive). Covers three transport layers:
 - **CCA** (Clear Connect Type A): 433 MHz FSK via STM32H723+CC1101
 - **CCX** (Clear Connect Type X): Thread/802.15.4 via nRF52840 (NCP on STM32)
 - **LEAP**: JSON/TLS processor API (port 8081)
@@ -199,7 +199,7 @@ All IPs configured in `config.json` (processors, openBridge, designer). Processo
 
 ## Documentation
 
-Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `security/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents.
+Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents. Security research (exploits, vulnerability writeups, extracted keys) lives in the private `~/lutron-security` repo.
 
 ## Designer VM
 
