@@ -1,6 +1,6 @@
-# Lutron Tools
+# Lutron Protocols
 
-Tools and firmware for reverse engineering Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), LEAP (processor API), and IPL (Designer integration protocol). Built on an STM32H723 + CC1101 + nRF52840 platform with TypeScript host tooling.
+Protocol research and firmware tools for Lutron lighting control systems, covering CCA (433 MHz RF), CCX (Thread/802.15.4), LEAP (processor API), and IPL (Designer integration protocol). Built on an STM32H723 + CC1101 + nRF52840 platform with TypeScript host tooling.
 
 Supports Phoenix, Caseta, and Vive product families.
 
@@ -16,10 +16,8 @@ This project started with Caseta CCA radios and expanded into reverse engineerin
 - Mixing device families (RA3 <-> HomeWorks QSX), "teaching" devices to pair with other families
 - Spoofing devices during pairing to allow more x-family pairing
 - On-the-fly configuration of devices and expanded parameters like fade rates, delays, trim config, and status LED config
-- Decoding Vive, Caseta, RA2 Select, and Phoenix (RA3/QSX/Athena/XC) firmware.
-  - This includes locating test pad pinouts from FCC internal photo filings. Soldering onto them and loading a custom SPL written in raw assembly to extract data from the eMMC. From there the SPL was updated to surgically change a `#` to `\n` to allow for root access over UART serial console.
-- Root exploits in Phoenix and Caseta/RA2 Select bridge firmwares. 
-  - Unlocked device limits, change device types
+- Decoding Vive, Caseta, RA2 Select, and Phoenix (RA3/QSX/Athena/XC) firmware from publicly accessible sources and hardware purchased on eBay
+- Unlocking device limits and cross-family interoperability on owned hardware
 
 ## Key Concepts
 
