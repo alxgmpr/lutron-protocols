@@ -121,7 +121,6 @@ status                                  # Radio/network status
 | `tools/codegen.ts`           | Generate C headers from TS protocol definitions           |
 | `tools/ccx/thread-decrypt.ts`    | Decrypt 802.15.4 frames                                   |
 | `tools/cca/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
-| `exploits/designer-jailbreak/dll-patcher/`         | .NET DLL patcher — universal unlock for Designer          |
 | `tools/designer/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
 | `bridge/`                    | CCX→WiZ bridge (HA add-on) — Thread sniffer to WiZ UDP    |
 
