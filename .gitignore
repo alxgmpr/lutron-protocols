@@ -20,7 +20,7 @@ ENV/
 data/*
 # Tracked data exceptions (research artifacts, not system-specific)
 !data/device-fingerprints.json
-!data/phoenix-ssl/
+# phoenix-ssl moved to ~/redacted-security-repo (was !data/phoenix-ssl/)
 !data/wiz-device-serials.json
 !data/firmware-re/
 data/firmware-re/*
@@ -136,3 +136,8 @@ tools/dll-patcher/**/obj/
 
 # Session memory
 .remember/
+
+# Security content (moved to ~/redacted-security-repo)
+exploits/
+docs/security/
+data/phoenix-ssl/
