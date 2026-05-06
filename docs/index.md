@@ -25,14 +25,6 @@ Documentation for the Lutron reverse engineering toolkit, organized by topic.
 | [hardware/rr-sel-rep2.md](hardware/rr-sel-rep2.md) | RadioRA Select Repeater — hardware analysis, firmware extraction |
 | [hardware/nucleo.md](hardware/nucleo.md) | STM32H723 Nucleo transceiver — toolchain, flashing, wiring, nRF sniffer protocol |
 
-## Security
-
-| Doc | Description |
-|-----|-------------|
-| [security/phoenix-root.md](security/phoenix-root.md) | Phoenix rootfs analysis — binary inventory, UART boot, eMMC attack, persistent root SSH |
-| [security/firmware-cdn.md](security/firmware-cdn.md) | Firmware CDN infrastructure — S3 buckets, shared credentials, version analysis |
-| [security/pki.md](security/pki.md) | Lutron PKI — certificate chains, key extraction, mutual TLS |
-
 ## Firmware Reverse Engineering
 
 | Doc | Description |

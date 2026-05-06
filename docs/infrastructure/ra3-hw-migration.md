@@ -168,7 +168,7 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 
 | File | Purpose |
 |------|---------|
-| `exploits/designer-jailbreak/dll-patcher/` | DLL patcher — universal cross-platform unlock |
+| `~/redacted-security-repo/exploits/designer-jailbreak/dll-patcher/` | DLL patcher — universal cross-platform unlock |
 | `tools/designer/sql-http-api.ps1` | HTTP SQL API for Designer VM |
 | `tools/designer/mcp-designer-db.ts` | MCP server for Designer DB queries |
 | `tools/designer/project-convert.ts` | Project file converter (RA3↔HW) |

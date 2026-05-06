@@ -64,7 +64,7 @@ Notable strings:
 ## Cipher details
 
 Same algorithm as Phoenix (see `docs/firmware-re/coproc.md` and
-`exploits/firmware-unlock/coproc-extract.py`):
+`~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py`):
 
 ```python
 decoded = ((encoded - key + 0x3F) % 95) + 0x20
@@ -90,7 +90,7 @@ start within ~8KB of search range.
 
 ## Extraction
 
-`exploits/firmware-unlock/coproc-extract.py` now handles both variants:
+`~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py` now handles both variants:
 
 1. First tries the Phoenix path: scan for `=z}/}~` signature, decode each
    blob with `key0 = 0x49` and per-blob key reset.
@@ -102,7 +102,7 @@ start within ~8KB of search range.
 Run:
 
 ```sh
-python3 exploits/firmware-unlock/coproc-extract.py
+python3 ~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py
 ```
 
 The SmartBridge extracts go to `data/firmware/caseta-device/coproc-old/`.
@@ -171,7 +171,7 @@ Speculative paths under `caseta.s3.amazonaws.com` and
 but the request lacks credentials or the key needs the exact name. None of
 these speculative paths are useful without a known filename. The Caseta
 SmartBridge does not appear to fetch device-level firmware from a separate
-URL — see `docs/security/firmware-cdn.md` for the bridge-firmware paths
+URL — see `~/redacted-security-repo/docs-security/firmware-cdn.md` for the bridge-firmware paths
 that **are** known.
 
 ## Next steps / unknowns
@@ -200,7 +200,7 @@ that **are** known.
 | Bracket the blob start with prefix-validation scan               | start at offsets 0x9298–0x995C across variants |
 | Bracket the blob end with first non-S-record line                | end at `S705...FE` (start address record) |
 | Extract all 3 SmartBridge variants                               | 3 distinct S19s saved |
-| Extend `exploits/firmware-unlock/coproc-extract.py` to cover both variants          | done — adds `extract_continuous_blob()` + dispatch |
+| Extend `~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py` to cover both variants          | done — adds `extract_continuous_blob()` + dispatch |
 | Inspect rootfs init scripts to see invocation context            | confirmed: no `-f`, embedded-only, runs at boot |
 | Probe Lutron CDN for device firmware paths                       | only 403/404 — no useful endpoints |
 | Verify extracted firmware contains expected strings              | "Copyright 2014 Lutron Electronics" found |
