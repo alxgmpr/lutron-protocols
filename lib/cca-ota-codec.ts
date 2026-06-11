@@ -8,7 +8,7 @@
  * LEN covers `[OP][PAYLOAD]` (LEN = 1 + N). CRC-16 (polynomial 0xCA0F, big-endian)
  * is computed over `[LEN][OP][PAYLOAD]`.
  *
- * See docs/protocols/cca.md §9 and docs/firmware-re/powpak.md.
+ * See docs/protocols/cca/index.md §9 and docs/devices/powpak.md.
  *
  * This module is RF-agnostic — input/output is bytes, not IQ samples. The
  * RTL-SDR demodulator and any TX builder use this for wire-level encoding.

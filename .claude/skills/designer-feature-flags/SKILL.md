@@ -18,7 +18,7 @@ For actual patch implementation see `~/redacted-security-repo/exploits/designer-
 - ILSpy MCP connected (`mcp__ilspy-mcp__decompile_type`, `decompile_method`, `search_members_by_name`, `list_assembly_types`)
 - DLLs on disk. Either:
   - Extract from the MSIX: `unzip -o <Designer>.msix -d /tmp/lutron-designer` (see `designer-re` skill), **or**
-  - Pull from the VM into `/tmp/designer-rox/` (see `docs/infrastructure/designer-universal-unlock.md` for VM path)
+  - Pull from the VM into `/tmp/designer-rox/` (see `~/redacted-security-repo/docs-security/designer-universal-unlock.md` for VM path)
 
 No Python/dnfile environment is required for investigation — ILSpy covers it. Byte-level IL analysis is only needed when implementing a brand-new patch, and even then the patcher (`tools/DllPatcher`) uses dnlib, not raw bytes.
 

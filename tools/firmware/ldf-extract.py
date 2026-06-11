@@ -3,7 +3,7 @@
 Strip the 0x80-byte LDF container header from a Lutron `.ldf` file and emit
 the raw HCS08 firmware body.
 
-LDF format (per docs/firmware-re/powpak.md):
+LDF format (per docs/devices/powpak.md):
 
   0x00-0x3F : ASCII filename, NUL-padded (64 bytes)
   0x40-0x7F : metadata, 16 BE32 fields including file_size, version (0x02),

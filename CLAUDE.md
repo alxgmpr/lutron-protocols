@@ -69,7 +69,7 @@ CCX devices expose CoAP endpoints on Thread mesh (port 5683). Address via RLOC:
 - `ccx coap observe <rloc> <path>` — subscribe to notifications
 - Device RLOCs from RA3: `ssh root@10.0.0.1 "zcat /var/log/ccx-diagnostics-log.0.gz | head -20"`
 - Trim encoding uses level formula: `raw = percent * 0xFEFF / 100` (NOT `percent * 256 - 256`)
-- Full protocol docs: `docs/protocols/ccx-coap.md`
+- Full protocol docs: `docs/protocols/ccx/coap.md`
 
 ### Stream Protocol (UDP :9433)
 
@@ -211,7 +211,7 @@ VM at 192.168.64.4 — `sshpass -p alex ssh -o StrictHostKeyChecking=no -o Prefe
 - Original DLLs cached at `/tmp/designer-rox/`, patched output to `/tmp/designer-patched/`
 - Deploy: `scp /tmp/designer-patched/*.dll alex@192.168.64.4:c:/temp-patch/` then `ssh` and run `powershell -ExecutionPolicy Bypass -File C:\temp-patch\deploy.ps1` (kill ConnectSyncService first)
 - dnfile Python venv at `/tmp/dnfile-env/` for .NET metadata inspection
-- Universal cross-platform unlock (RA3 in HW, etc.) is baked into the DLL patcher — no SQL setup needed per launch. See `docs/infrastructure/designer-universal-unlock.md`
+- Universal cross-platform unlock (RA3 in HW, etc.) is baked into the DLL patcher — no SQL setup needed per launch. See `~/redacted-security-repo/docs-security/designer-universal-unlock.md`
 
 ## Environment Notes
 

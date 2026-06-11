@@ -2,7 +2,7 @@
  * Shared CCX CoAP client — typed interface around the Nucleo firmware's
  * `ccx coap …` shell commands exposed over the UDP stream protocol (:9433).
  *
- * See docs/protocols/ccx-coap.md for the underlying endpoint reference.
+ * See docs/protocols/ccx/coap.md for the underlying endpoint reference.
  *
  * Callers in `tools/` should use `createCcxCoapClient()` instead of rolling
  * their own stream client and output parsing.
@@ -26,7 +26,7 @@ export const TRIM_MAX = 0xfeff;
 
 /**
  * Convert a percentage (0..100) to the 16-bit raw value per the documented
- * formula `raw = percent * 0xFEFF / 100` (see docs/protocols/ccx-coap.md).
+ * formula `raw = percent * 0xFEFF / 100` (see docs/protocols/ccx/coap.md).
  */
 export function percentToLevel16(percent: number): number {
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
