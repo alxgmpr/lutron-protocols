@@ -8,11 +8,15 @@ const ROOT = resolve(process.cwd(), "docs");
 const linkRe = /\]\(([^)]+)\)/g;
 let errors = 0;
 
+// superpowers/ holds plans & specs full of illustrative/future paths — not wiki pages.
+const SKIP_DIRS = new Set(["superpowers"]);
+
 function walk(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p);
-    else if (name.endsWith(".md")) check(p);
+    if (statSync(p).isDirectory()) {
+      if (!SKIP_DIRS.has(name)) walk(p);
+    } else if (name.endsWith(".md")) check(p);
   }
 }
 
@@ -21,7 +25,8 @@ function check(file) {
   let m;
   while ((m = linkRe.exec(text))) {
     let target = m[1].trim();
-    if (/^(https?:|mailto:|#|tel:)/.test(target)) continue; // external/anchor
+    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue; // any URI scheme (http, file, bn, mailto, ...)
+    if (target.startsWith("#")) continue; // pure anchor
     target = target.split("#")[0]; // strip anchor
     if (!target) continue;
     if (target.startsWith("/")) continue; // absolute filesystem refs (rare); skip
