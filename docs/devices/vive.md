@@ -1,6 +1,14 @@
-# Vive Hub Reverse Engineering Notes
+# Vive Hub
 
-## Hardware
+Reverse-engineering notes for the Lutron Vive commercial lighting hub: the hardware
+teardown (AM335x Linux host + STM32L100 CCA coprocessor + dual CC110L radios), the
+evolution of the companion application from the legacy `Vive.app` (generic HTTP, not
+LEAP) to the unified `Lutron` app (Athena + LEAP), and the device-firmware delivery
+model shared with the RA2 Select bridge.
+
+## Hardware Teardown
+
+### Components
 
 | Component | Part | Role |
 |-----------|------|------|
@@ -12,7 +20,7 @@
 | WiFi | Marvell 88W8801-NMD2 | 802.11n, SDIO, AP + client |
 | EEPROM | 93C46WP | 128-byte config (Microwire) |
 
-## Debug Interfaces
+### Debug Interfaces
 
 - **AM335x UART**: TX/RX/DGND pads → `/dev/ttyO0` (ttyS0) @ 115200 → root shell, no auth
 - **STM32 SWD**: 2 pads (SWDIO/SWCLK)
@@ -20,7 +28,7 @@
 - **WiFi**: TX/RX/GPIO3/CLK/DAT0-3/CMD (SDIO)
 - **PID1/PID2/PID3**: board variant straps next to AM335x
 
-## Software
+### Software
 
 - **OS**: Linux 4.4.32, BusyBox v1.26.2 (2019-04-17)
 - **U-Boot**: 2017.01.001, Jenkins build `VIVE_MERGE_PIPELINE-support%2F01.09-7`
@@ -88,7 +96,7 @@
 - `_lap._tcp` port 8083
 - `_lutron._tcp` port 22 (MACADDR, CODEVER=01.09.08f000)
 
-## EEPROM Contents (93C46, 128 bytes)
+### EEPROM Contents (93C46, 128 bytes)
 
 | Addr | Field | Value | Decoded |
 |------|-------|-------|---------|
@@ -107,7 +115,7 @@
 | 19 | ClearConnectThresholdStatus | 0x55 | Pass |
 | 20+ | (unused) | 0xFF | |
 
-## Architecture: CLAP Protocol (AM335x ↔ STM32)
+### Architecture: CLAP Protocol (AM335x ↔ STM32)
 
 Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 
@@ -116,9 +124,9 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 3. **Application**: CLAP (Clear Connect Link Application Protocol) — command/response with 16-bit big-endian command type IDs
 4. **Payload**: CO_PROC_CMD_PAYLOAD structure
 
-### CLAP Command Types (from C++ RTTI)
+#### CLAP Command Types (from C++ RTTI)
 
-#### Addressing / Pairing (Host → Coproc)
+##### Addressing / Pairing (Host → Coproc)
 - REQ_ENTER_ADDRESSING_COMMAND
 - REQ_EXIT_ADDRESSING_COMMAND
 - ADDRESSING_REQ_ADDRESS_DEVICE_COMMAND
@@ -126,7 +134,7 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - REQUEST_START_UNADDRESSED_DEVICE_IDENTIFICATION_COMMAND
 - REQUEST_STOP_UNADDRESSED_DEVICE_IDENTIFICATION_COMMAND
 
-#### Addressing / Pairing (Coproc → Host)
+##### Addressing / Pairing (Coproc → Host)
 - ENTER_ADDRESSING_MODE_RESPONSE_COMMAND
 - ADDRESSING_REPORT_CHANNEL_SUBNET_ADDRESS_COMMAND
 - ADDRESSING_REPORT_DEVICE_INFORMATION_COMMAND
@@ -137,7 +145,7 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - ASSIGN_TEMPORARY_LINK_ADDRESS_RESPONSE_COMMAND
 - REVOKE_TEMPORARY_LINK_ADDRESS_RESPONSE_COMMAND
 
-#### Device Discovery
+##### Device Discovery
 - REQUEST_FULL_OOB_COMMAND (Host → Coproc)
 - REQUEST_BEGIN_REMOTE_ADDR_DEVICE_DISCOVERY_COMMAND (Host → Coproc)
 - REQUEST_END_REMOTE_ADDR_DEVICE_DISCOVERY_COMMAND (Host → Coproc)
@@ -146,13 +154,13 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - REPORT_REMOTE_ADDR_DISCOVERED_DEVICE_COMMAND (Coproc → Host)
 - NOMINATE_DISCOVERY_BEACON_RESPONSE_COMMAND (type=300)
 
-#### Level Control
+##### Level Control
 - REQUEST_LIMIT_SET_GOTO_LEVEL_COMMAND (Host → Coproc)
 - LIMIT_SET_GOTO_LEVEL_RESPONSE_COMMAND (Coproc → Host)
 - LIMIT_SET_GOTO_PRIMARY_AND_SECONDARY_LEVELS_RESPONSE_COMMAND (type=1555)
 - RequestLimitSetGotoLevel / RequestLimitSetGotoPrimaryAndSecondaryLevels
 
-#### Occupancy
+##### Occupancy
 - OCCUPANCY_OCCUPIED_TRANSITION_RESPONSE_COMMAND (type=2053)
 - OCCUPANCY_UNOCCUPIED_TRANSITION_RESPONSE_COMMAND (type=2055)
 - REPORT_OCCUPANCY_SENSOR_GROUP_OCCUPIED_TEST_RESPONSE (type=2059)
@@ -161,12 +169,12 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - SEND_OCCUPANCY_HEARTBEAT_RESPONSE_COMMAND (type=2065)
 - OCCUPANCY_SENSOR_GROUP_MISSING_RESPONSE_COMMAND (type=2067)
 
-#### Emergency Lighting
+##### Emergency Lighting
 - REQUEST_PROCESS_EMERGENCY_HEARTBEAT_COMMAND (type=3072)
 - START_EMERGENCY_MODE_RESPONSE_COMMAND (type=3074)
 - STOP_EMERGENCY_MODE_RESPONSE_COMMAND (type=3076)
 
-#### Programming Extraction
+##### Programming Extraction
 - REQUEST_BEGIN_DEVICE_PREEXISTING_PROGRAMMING_EXTRACTION_COMMAND
 - REQUEST_END_DEVICE_PREEXISTING_PROGRAMMING_EXTRACTION_COMMAND
 - REQUEST_DEVICE_PREEXISTING_PROGRAMMING_EXTRACTION_STATUS_COMMAND
@@ -174,7 +182,7 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - REPORT_DEVICE_PREEXISTING_ASSOCIATION_INFO_COMMAND
 - REPORT_DEVICE_PREEXISTING_PROGRAMMING_EXTRACTION_COMPLETE_COMMAND
 
-#### Runtime / Admin
+##### Runtime / Admin
 - REPORT_RUNTIME_PROPERTY_UPDATE_COMMAND
 - EXECUTE_SYSTEM_STATUS_QUERY_COMMAND
 - REQUEST_REBOOT_COMMAND
@@ -183,11 +191,11 @@ Communication between the AM335x (lutron-core) and STM32L100 coprocessor uses:
 - DATA_TRANSFER_QUEUE_OBJECT_COMMAND
 - DATA_TRANSFER_CANCEL_OBJECT_COMMAND
 
-## Database
+### Database
 
 SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identical to RA3/HWQS** with ~180 tables.
 
-### Key Tables
+#### Key Tables
 - `Device` — addressed devices (serial number, device class, firmware rev)
 - `DeviceClassInfo` — supported device types with model numbers and masks
 - `Link` — RF link instances (LinkTypeID=30 = Vive Clear Connect Link)
@@ -198,7 +206,7 @@ SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identi
 - `BusinessRules` — system limits (max devices, etc.)
 - `Zone` / `ZoneController` — zone configuration
 
-### Link Types (from Vive DB)
+#### Link Types (from Vive DB)
 | ID | Name | Wireless | Notes |
 |----|------|----------|-------|
 | 7 | QS Link | No | Wired |
@@ -206,16 +214,16 @@ SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identi
 | 11 | Homeworks QS Clear Connect Link | Yes | HWQS |
 | 30 | Vive Clear Connect Link | No* | Vive CCA (*flags=0,0) |
 
-### Hub Device
+#### Hub Device
 - Device class: 0x08070101 (134676737)
 - Model: HJS-2-XX
 - Serial: 0xYYYYYYYY (100000009)
 
-## Coprocessor Firmware
+### Coprocessor Firmware
 
 **Extracted!** Firmware decoded from `lutron-coproc-firmware-update-app` using rotating Caesar cipher.
 
-### Extraction Details
+#### Extraction Details
 - Embedded S19 obfuscated with rotating printable-ASCII cipher: `decoded = ((byte - 0x20) + (95 - key)) % 95 + 0x20`, key starts at `0x5859 % 95 = 7`, advances only for printable bytes
 - Build path: `/home/jenkins-agent/workspace/rockhopper` (codename **Rockhopper**)
 - Bootloader: v2.2.1 (Boot 079: 0x00796715)
@@ -223,7 +231,7 @@ SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identi
 - Flash: 0x08003000–0x0803FF08 (85.2 KB), bootloader at 0x08000000–0x08002FFF (12 KB, not in S19)
 - Entry point: 0x0800C8FD, SP: 0x20004000 (16 KB SRAM)
 
-### STM32L100 Pin Map (from firmware GPIO init)
+#### STM32L100 Pin Map (from firmware GPIO init)
 
 | Pin | Function | Purpose |
 |-----|----------|---------|
@@ -252,7 +260,7 @@ SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identi
 
 **SWD/JTAG debug pins are AF0 (debug function) in firmware → RDP likely level 0 (open).**
 
-### Interrupt Handlers (Active IRQs)
+#### Interrupt Handlers (Active IRQs)
 
 | IRQ | Address | Purpose |
 |-----|---------|---------|
@@ -266,7 +274,7 @@ SQLite database at `/var/db/lutron-db.sqlite` — schema is **essentially identi
 | USART2 | 0x0800D701 | Secondary UART |
 | USART3 | 0x0800D739 | Third UART |
 
-### CCA Packet Type Catalog (119 types from firmware dispatch)
+#### CCA Packet Type Catalog (119 types from firmware dispatch)
 
 Extracted from radio handler switch table at sub_8004700. Format ID is 16-bit, payload size in bytes.
 
@@ -289,7 +297,7 @@ Extracted from radio handler switch table at sub_8004700. Format ID is 16-bit, p
 | 0xE1xx | 2 | System control |
 | 0xE2xx | 9 | Diagnostics/debug |
 
-### Credentials & Secrets Found
+#### Credentials & Secrets Found
 
 | Item | Value | Notes |
 |------|-------|-------|
@@ -303,11 +311,11 @@ Extracted from radio handler switch table at sub_8004700. Format ID is 16-bit, p
 | lutron.079 | `08030201C32E` | Device class + HW revision fingerprint |
 | DB source revision | `02.46.00f000` | Schema version |
 
-## TDMA Timing (from firmware data tables)
+### TDMA Timing (from firmware data tables)
 
 Base tick: **250 μs** (SysTick reload 0x1F3F = 7999 @ 32 MHz)
 
-### Slot Timing Tables (6 levels, indexed by zone type)
+#### Slot Timing Tables (6 levels, indexed by zone type)
 
 | Level | Frame Size | Slot Duration | Expanded | Secondary | Short Pkt | Med Pkt |
 |-------|-----------|---------------|----------|-----------|-----------|---------|
@@ -320,16 +328,16 @@ Base tick: **250 μs** (SysTick reload 0x1F3F = 7999 @ 32 MHz)
 
 Key constants: 0x2BC (700) = max device count, 0x1E06 (7686 ticks) = ~1.9s frame period, 0x449E (17566 ticks) = ~4.4s frame period.
 
-### Packet Type Prefixes (state byte at 0x20001AB8)
+#### Packet Type Prefixes (state byte at 0x20001AB8)
 - **0x40** = Short packet (24 bytes total: type 0x80–0x9F)
 - **0x80** = Long packet (53 bytes total: type 0xA0+)
 - **0xC0** = Config/pairing packet
 
-## CLAP↔CCA Cross-Reference
+### CLAP↔CCA Cross-Reference
 
 The 119 CLAP command IDs (16-bit, host↔coproc) map to CCA over-the-air format bytes by payload size. Consecutive even/odd IDs suggest TX/RX direction pairs.
 
-### Confirmed Mappings (CLAP ID → CCA format by payload size)
+#### Confirmed Mappings (CLAP ID → CCA format by payload size)
 
 | CLAP IDs | Payload | CCA Format | Function |
 |----------|---------|------------|----------|
@@ -357,7 +365,7 @@ The 119 CLAP command IDs (16-bit, host↔coproc) map to CCA over-the-air format 
 | 0xE1xx | — | — | System control |
 | 0xE2xx | 2–10 | — | Diagnostics |
 
-### Packet Type Groups
+#### Packet Type Groups
 
 | Group | Count | Purpose |
 |-------|-------|---------|
@@ -376,18 +384,18 @@ The 119 CLAP command IDs (16-bit, host↔coproc) map to CCA over-the-air format 
 | 0xCxx | 2 | Emergency/priority |
 | 0xE0xx–E2xx | 15 | System/diagnostics |
 
-## Cross-System Compatibility Analysis
+### Cross-System Compatibility Analysis
 
-### Shared Devices (7 — Picos + sensor)
+#### Shared Devices (7 — Picos + sensor)
 Both Caseta/RA3 and Vive support PJ2 Picos (0x01070002–0x01070006, 0x01070101) and the LRF2 occupancy sensor (0x06080101). **These devices already work with both systems.**
 
-### Caseta/RA3 Only (24 devices)
+#### Caseta/RA3 Only (24 devices)
 Residential: seeTouch keypads, all shades (Serena, Triathlon, Sivoia QS), Caseta dimmers/switches (PD-6WCL, PD-5WS), plug-in devices, GE bulbs, aux repeater, Super Pico.
 
-### Vive Only (39 devices)
+#### Vive Only (39 devices)
 Commercial: PowPak modules (switching, dimming, receptacle, CCO, DALI, emergency), Vive Maestro (MRF2S-series CL/ELV/neutral dimmers + switches with built-in occupancy), fixture controllers/dongles, Hubbell 3rd-party sensor, plus 11 additional Pico variants (4-button, specialty scenes).
 
-### Path to Cross-Compatibility
+#### Path to Cross-Compatibility
 The CCA radio protocol is **identical** — same 8N1 encoding, same TDMA timing, same format bytes, same CRC-16. The barriers are purely in software:
 
 1. **SupportedDevices table** — whitelist of allowed device class IDs (DB trigger blocks unsupported)
@@ -408,34 +416,34 @@ UPDATE Link SET LinkTypeID = 9 WHERE LinkTypeID = 30;
 
 The STM32 coprocessor firmware handles **all 119 packet types** regardless of link type — the filtering is entirely in `lutron-core` on the AM335x.
 
-## Caseta Bridge RE Attempt (2026-03-28)
+### Caseta Bridge RE Attempt (2026-03-28)
 
 Hardware: AM335X-GP rev 2.1 "Lutron Ethernet Bridge", 256 MiB DRAM, 256 MiB NAND, Linux 5.10.208, BusyBox 1.34.1, build `caseta-08.25.xx` (Dec 2025).
 
-### UART Console
+#### UART Console
 - TX/RX pads present, 115200 baud
 - Boot log visible but **no shell spawned** — init doesn't attach tty to serial
 - U-Boot autoboot=0, no key sequence interrupts it
 - Kernel: `Linux-5.10.208-001-ts-armv7l`
 
-### JTAG (FAILED)
+#### JTAG (FAILED)
 - 6-pin JTAG header labeled: DGND, 3V3, TDI, TDO, TCK, TMS, TRSTN
 - Built custom debugprobe firmware with JTAG enabled (`DAP_JTAG=1`, GPIO: GP2=TCK, GP3=TMS, GP4=TDI, GP5=TDO)
 - Result: **"all ones" — JTAG fused off** (AM335x `DEVMEM_JTAG_DISABLE` eFuse likely blown)
 - Tried: different speeds (10/50/100/500 kHz), TRSTN tied high, generic TAP config — all failed
 
-### STM32 SWD
+#### STM32 SWD
 - Unlabeled 2-pin pads present (likely SWDIO + SWCLK for coprocessor)
 - Not yet attempted
 
-### Remaining Attack Vectors
+#### Remaining Attack Vectors
 1. STM32 SWD dump (untested)
 2. NAND chip-off (desolder and read directly)
 3. OTA firmware intercept
 4. Voltage glitch on U-Boot bootdelay check
-5. **RadioRA Select (RR-SEL-REP2)** — identical hardware, UART shell accessible
+5. **RadioRA Select (RR-SEL-REP2)** — identical hardware, UART shell accessible (see [radiora2-select-rep.md](radiora2-select-rep.md))
 
-## Key Observations
+### Key Observations
 
 1. **Vive uses the same CLAP/HDLC protocol as Caseta/RA3** for host↔coprocessor communication
 2. **Database schema is identical to RA3** — same tables, triggers, device class masking
@@ -449,3 +457,276 @@ Hardware: AM335X-GP rev 2.1 "Lutron Ethernet Bridge", 256 MiB DRAM, 256 MiB NAND
 10. **Support SSH backdoor** — Lutron employee RSA key in `/home/support/.ssh/authorized_keys`
 11. **TDMA timing has 6 levels** — frame sizes from 2 ms to 36 ms, slot durations 1–18 ms, base tick 250 μs
 12. **0x2BC (700) = max devices** — matches DB BusinessRules MaxNumberOfDevices
+
+## Application Evolution
+
+The Vive companion app went through a clear transition: the original standalone
+`Vive.app` bundle integrated with the hub over **generic HTTP(S) — not LEAP** — while
+the current unified `Lutron` app (v26 lineage) adds explicit **Athena + LEAP** support
+with full LEAP route families. Note that the hub's `leap-server` (port 8081) has been
+present in firmware all along (see [Network Services](#network-services)); the
+distinction below is about what the *companion app* speaks, not the hub's capability.
+
+### Legacy `Vive.app` — Generic HTTP, Not LEAP
+
+Static RE (Binary Ninja, 2026-02-16) of the standalone `<project-root>/Lutron Vive.app/Wrapper/Vive.app`
+bundle covered `Vive`, `UtilityFramework`, `ConstantFramework`, `NetworkLayerFramework`,
+`ProvidersFramework`, and `DataLayerFramework`.
+
+Conclusion: legacy Vive app integration with the processor is **not LEAP-style** like
+Caseta/RA3/HomeWorks. It uses:
+
+- Generic HTTP(S) request plumbing (`HttpNetworkService.get/post/put/delete/download/upload`)
+- URL construction from `UtilityFramework.UrlBuilder`
+- Local-hub route constants from `ConstantFramework.ViveConstants`
+- Cookie/header-based auth semantics (`cookie`, `Set-Cookie`, `If-None-Match`, `X-Requested-With`)
+- mDNS discovery (`_lutron._tcp.` + `local`)
+
+It does **not** expose canonical LEAP artifacts in these binaries: no `CommuniqueType`;
+no `ReadRequest/CreateRequest/UpdateRequest/SubscribeRequest` payload model; no
+`/zone/...`, `/device/...`, `/area/...`, `/server/...` LEAP route families; no
+`commandprocessor` endpoints.
+
+#### Local processor routes recovered
+
+URL builders (UtilityFramework):
+
+- `getAddHubUrl(ipAddress:)` → `"/hubRegistration"`
+- `getHubInfoUrl(ipAddress:)` → `"/hubdetails"` (assembled immediate in code)
+- `getFlashHubUrl(ipAddress:)` → `"/flashhub"` (assembled immediate in code)
+- `getViveLoginUrl(ipAddress:)` → `ViveConstants.loginURL`
+- `getMDNSInfoUrl(ipAddress:)` → `ViveConstants.mdnsInfoURL`
+- `getVersionNumberUrl(ipAddress:)` → `ViveConstants.versionNumberURL`
+- `getBackupDownloadUrl(ipAddress:backupUrl:)` → `ViveConstants.backupDownloadURL` (unless override provided)
+- `getSoftwareUpdateUrl(ipAddress:)` → `ViveConstants.softwareUpgradeStatusURL`
+- `getMacAddressUrl(ipAddress:)` → `ViveConstants.macAddressURL`
+
+Endpoint constant values (ConstantFramework):
+
+- `loginURL` → `"/login"`
+- `mdnsInfoURL` → `"/mdnsInfo"`
+- `versionNumberURL` → `"/versionNumber"`
+- `backupDownloadURL` → `"/backup"`
+- `commissionedURL` → `"setup/status"`
+- `softwareUpgradeStatusURL` → `"/firmwareUpgradeCurrentStatus"`
+- `macAddressURL` → `"/network?networkInterfaceHref=/networkinterface/1"`
+- `supportFileURL` → `"/supportFile"`
+- `bacnetReportFileURL` → `"/bacnet/report"`
+- `picsReportFileURL` → `"/bacnet/picsreport"`
+- `viveSupportURL` → `"/vive/support"`
+- `forumURL` → `"/vive/forums"`
+- `youtubeURL` → `"/watch"`
+
+Also present:
+
+- `httpScheme` → `"http://"`
+- `httpsScheme` → `"https://"`
+- `XRequestedWithKey` → `"X-Requested-With"`
+- `XRequestedWithValue` → `"XMLHttpRequest"`
+- `cookieKey` → `"cookie"`
+- `noneMatchKey` → `"If-None-Match"`
+
+#### Discovery, transport, and certs
+
+- mDNS service constants: `oldHubsServiceType` → `"_lutron._tcp."`; `domainType` → `"local"`
+- Trust/auth challenge path: `NetworkLayerFramework.HubChallengeHandler.handle(...)`
+- Cert files shipped in `NetworkLayerFramework.framework`: `lutron.cer`, `vive_hub_br_line_1.cer`,
+  `vive_hub_br_line_2.cer`, `vive_hub_br_line_1_29Nov2016.cer`, `vive_hub_cb_dev.cer`,
+  `azurewebsites.cer`, `developer_self-signed.cer`
+
+#### Classification
+
+Legacy Vive processor integration is closer to a hub-local REST surface with
+project/href semantics — not Caseta-style LEAP route compatible, not RA3-style LEAP
+route compatible. It is a distinct commercial API stack (with some cloud and
+support/reporting endpoints). Compared against the LEAP
+[Route Reference](../protocols/leap/index.md), Caseta/RA3/HomeWorks LEAP uses
+`CommuniqueType` envelopes and route families like `/zone/...`, `/device/...`,
+`/area/...`, `/system/...`, and `/.../commandprocessor` — none of which appear in the
+legacy Vive binaries.
+
+### Unified `Lutron` App — Athena + LEAP
+
+Follow-up analysis (2026-02-16) of the currently running unified `Lutron` app binary
+(v26 lineage) shows explicit Athena + LEAP support and the full LEAP route families
+that the standalone `Vive.app` (`com.lutron.vive`) lacked. The standalone app showed
+only setup/status + cloud project APIs and did **not** reveal LEAP zone/area command
+routes.
+
+#### Athena + LEAP markers (unified app binary)
+
+Observed in binary strings:
+
+- `VAL_SYSTEM_TYPE_ATHENA`
+- `Athena`
+- `athenaLightingSystemName`
+- `lblAthenaProcessor`
+- `connectViaLEAP`
+- `CommuniqueType`
+- `/commandprocessor`
+- `sendGoToDimmedLeveLCommandForZone(trait:)`
+- `goToWarmDimZoneHref:curveDimmingHref:level:`
+- `showFadeSettingsPassedFadeSettingsLAG:`
+- `showLedSettingsStatusLedSettings:`
+- `LoadControllersViewController`
+- `/system/loadshedding/status`
+- `/system/naturallightoptimization`
+
+#### LEAP route families extracted from unified app
+
+Route strings recovered from the Mach-O scan (~26 paths):
+
+- `/zone`, `/zone/status`, `/zone/status/expanded`
+- `/area`, `/area/summary`, `/area/summary?where=`
+- `/controlstation`
+- `/button`, `/buttongroup`, `/buttongroup/expanded`
+- `/areascene`, `/areasceneassignment`, `/presetassignment`
+- `/device`, `/device/status`, `/device/status/deviceheard`, `/device/commandprocessor`, `/device?where=SerialNumber:`
+- `/occupancygroup`, `/occupancygroup/status`
+- `/timeclock`, `/timeclock/status`, `/timeclockevent`, `/timeclockevent?where=`
+- `/system`, `/system/action`, `/system/away`, `/system/commandprocessor`, `/system/loadshedding/status`, `/system/naturallightoptimization`
+- `/server`
+- `/project`, `/project/contactinfo`, `/project/masterdevicelist/devices`
+- `/virtualbutton`
+- `/associatedcontrolstation/commandprocessor`
+
+#### Where the "simple controls" are
+
+For LEAP-capable systems (including Athena/Vive in the unified app):
+
+- Room/area-level control: area command processors + area scene resources.
+- Zone on/off: zone command processor with switched-level commands.
+- Zone dimming: zone command processor with dimmed-level commands.
+- Live state: `/zone/status` subscriptions/reads and related area/device status routes.
+
+This matches the same LEAP control model used in Caseta/RA3/HomeWorks app families
+(see [LEAP](../protocols/leap/index.md)), with Athena/commercial features layered on
+top (load shedding, NLO, load-controller UX).
+
+#### Runtime capture status
+
+- Helper script: `tools/capture-lutron-leap.sh`
+- Capture pipeline validated; live session traffic to the processor on `tcp/8081` is
+  TLS-only, so URIs are not visible from packets alone.
+- Frida attach was blocked by macOS process-debug restrictions in this environment, so
+  direct pre-TLS request interception could not be performed.
+
+## Device Firmware
+
+End-device (`.pff`) firmware bundled in (or fetched by) the RA2 Select bridge and Vive
+Hub processor rootfs trees. The reference baseline is the Caseta Pro / lite-heron drop
+at [`data/firmware/caseta-device/`](../../data/firmware/caseta-device/).
+
+### Summary
+
+| Bridge | Bundles `.pff`? | Manifest? | Runtime fetch? | Notes |
+|---|---|---|---|---|
+| Caseta Pro / lite-heron | yes | yes | yes (replaces in-place) | reference baseline |
+| **RA2 Select** (`v08.25.17f000`) | **yes** | **yes** | yes | byte-identical to Caseta Pro reference |
+| **Vive Hub** (`v01.30.04`) | **no** | **no** | **no** | bridge does not OTA end devices |
+
+### RA2 Select
+
+Path: `caseta-ra2select/v08.25.17f000/rootfs/opt/lutron/device_firmware/`
+
+- `device-firmware-manifest.json` (9 721 bytes) — `FirmwarePackageVersion: 001.003.004r000`
+- `firmware/` — 9 `.pff` files, 15 manifest entries (some PFFs serve multiple device classes)
+- Installed via opkg as `device-firmware` package (`/var/lib/opkg_device-firmware/`)
+- Repo config: `/etc/opkg_device-firmware.conf` → `option_signature_ca_file /etc/ssl/firmwaresigning/public.pem`
+- Production refresh URL is provided dynamically by the `sources` endpoint
+  (see "CDN" below); package is downloaded as `lutron_device_firmware` to
+  `/tmp/device_firmware/` and installed via `opkg`. Driven by
+  `usr/sbin/device_firmware_download.sh` and `usr/sbin/firmwareUpgrade.sh`.
+
+PFFs are **byte-identical** to the Caseta Pro reference set (same SHA-256 hashes, same
+sizes, same `FirmwarePackageVersion`). RA2 Select therefore ships **no unique device
+firmware** — it shares the Caseta Pro device firmware package wholesale. The Caseta Pro
+reference also contains one extra file we did not see in the RA2 Select rootfs:
+`07911258_BASENJI_APP_RELEASE_v2.025.pff` is present in RA2 Select; the file `07911258`
+shipped earlier in our Caseta Pro tree is the same blob — there is no Vive/RA2-only
+firmware.
+
+#### Manifest mapping (RA2 Select == Caseta Pro)
+
+| File | SHA-256 (first 12) | Size | Display Rev | Codename | Device Classes |
+|---|---|---|---|---|---|
+| `07910242_v2.05_CasetaDimmerApp.pff` | 6f6db786fa54 | 160 724 | 002.005.000r000 | CasetaDimmerApp | 0x04320501 |
+| `07910820_BASENJI_APP_RELEASE_v2.015.pff` | 4d55b29fb501 | 209 444 | 002.015.000r000 | BASENJI | 0x03150101, 0x03160101 |
+| `07911094_VogelkopFetDimmer_App_Release_v3.012.pff` | f0a084d876a3 | 195 044 | 003.012.000r000 | VogelkopFetDimmer | 0x04660201 |
+| `07911256_EO_APP_RELEASE_v2.025.pff` | f85630e0cb1b | 172 660 | 002.025.000r000 | EO | 0x03120101, 0x03120102, 0x03120103 |
+| `07911258_BASENJI_APP_RELEASE_v2.025.pff` | c15fd086d179 | 217 860 | 002.025.000r000 | BASENJI | 0x03150201, 0x03160201 |
+| `07911260_BANANAQUIT_APP_RELEASE_v2.025.pff` | 73bca282fb85 | 220 116 | 002.025.000r000 | BANANAQUIT | 0x03090601, 0x030A0601, 0x03130601, 0x03140601 |
+| `07911326_Antillean_App_Release_v1.001.pff` | 2f176aed13b8 | 167 300 | 001.001.000r000 | Antillean | (1, in extracted) |
+| `07911506_v3.021_VogelkopDimmerAppCaseta.pff` | dc5325d2d84d | 187 060 | 003.021.000r000 | Vogelkop Dimmer Caseta | 0x04630201 |
+| `07911507_v3.021_VogelkopSwitchAppCaseta.pff` | 84e07acc9fdb | 168 452 | 003.021.000r000 | Vogelkop Switch Caseta | 0x04640101 |
+
+Copied to `data/firmware/ra2select-device/firmware/` for symmetry with `caseta-device/`.
+
+### Vive Hub Does Not OTA End Devices
+
+The Vive bridge **does not deploy end-device firmware**.
+
+Evidence:
+
+1. `find rootfs-full -name '*.pff'` → no hits.
+2. `/etc/lutron.d/lutron-platform.conf` is missing every device-firmware key the
+   RA2 Select / Caseta Pro images carry: no `FirmwareDownloadScript`, no
+   `DeviceFirmwareDestinationPath`, no `DeviceFirmwareFile`,
+   no `DeviceFirmwarePackageRepositoryUrlFile`,
+   no `Sftp.DeviceFirmwarePackageDownload`, no `OpkgLibBaseDir`/`OpkgConfigBaseDir`
+   keys. `device_firmware_download.sh` and the `opkg_device-firmware.conf` repo
+   are not present.
+3. The CDN bootstrap (`usr/sbin/curlscript.sh`) **is** present and identical to RA2
+   Select, but the `firmwareUpgrade.sh` consumer is wired only for the rootfs
+   processor package — not a device package. The `coproc_firmware_updater.pyc`
+   only updates Vive's own coprocessor (CC-radio chip) using S-record (`.s19`)
+   files passed via `lutron-coproc-firmware-update-app -f <file.s19>`, not `.pff`s.
+
+In other words: Vive Hub manages association/level/scenes for end devices, but new
+end-device firmware is delivered by a separate Lutron host system (the wired QSM
+or RA-class host), not by the Vive Hub itself. This matches the
+`project-designer-doesnt-ota-cca` memory note for Designer.
+
+If the Vive Hub *did* support `.pff` deployment, it would need at minimum:
+`/opt/lutron/device_firmware/`, `/etc/opkg_device-firmware.conf`, the
+`device_firmware_download.sh` script, and the platform.conf keys. None of those
+exist.
+
+### CDN Bootstrap (RA2 Select & Vive)
+
+Both bridges share the same firmware bootstrap path:
+
+- Production: `https://firmwareupdates.lutron.com/`
+- Staging:    `https://firmwareupdates-staging.lutron.com/`
+- Development:`https://firmwareupdates-dev.lutron.com/`
+
+Endpoint pattern (POST):
+
+- `<URL>/sources` — returns `{"Status":"ok","Url":"<processor-pkg-url>","DevicePackageUrl":"<device-pkg-url>"}`
+- `<URL>/checkin` — health/state report
+
+POST body fields (form-encoded): `username`, `password`, `macid` (eth0 MAC),
+`deviceclass` (4-byte hex from on-board EEPROM), `coderev` (running rootfs
+version), `datestamp` (EEPROM date code), `claimedstatus` (Claimed / Unclaimed,
+from `/usr/lutron/mdnsHooks/01_claim_status.sh`), and on `checkin` also
+`devicepackagerev` and `status`.
+
+The username/password are baked into `usr/sbin/curlscript.sh` (basic auth between
+unit and CDN). I declined to fetch with these credentials — a real probe would
+need a valid `(macid, deviceclass, datestamp)` triple from a live unit. Trying
+made-up values returns `404 Unknown device class`, so simply guessing classes
+doesn't help. Vive Hub class is `0x08070101` (from `etc/lutron.d/eol.conf`).
+
+To actually pull the live package: run the unit and capture the `sources` response
+to discover the per-unit device-firmware repo URL, then `curl
+<DevicePackageUrl>/lutron_device_firmware`. The result is an opkg `.ipk` whose
+data archive contains the same `firmware/*.pff` + `device-firmware-manifest.json`
+layout we already extracted from RA2 Select.
+
+### Files Staged
+
+- `data/firmware/ra2select-device/firmware/*.pff` (9 files) — copied from
+  `caseta-ra2select/v08.25.17f000/rootfs/opt/lutron/device_firmware/firmware/`
+- `data/firmware/ra2select-device/device-firmware-manifest.json`
+
+No new files were created for Vive — there is nothing to copy.
