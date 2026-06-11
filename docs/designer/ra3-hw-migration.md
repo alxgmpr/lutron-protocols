@@ -102,7 +102,7 @@ the save cycle and persist to the `.hw` file.
 
 Toolbox visibility, ProductMasterList membership, LinkType compat, and the
 family/model TOOLBOXPLATFORMTYPES bits are all handled universally by the DLL
-patcher — see `~/redacted-security-repo/docs-security/designer-universal-unlock.md`.
+patcher (documented outside this repo).
 
 The only remaining gate is DeviceClass comparison at pairing time, which is
 code-level and has no DB fix.
@@ -191,7 +191,7 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 
 | File | Purpose |
 |------|---------|
-| `~/redacted-security-repo/exploits/designer-jailbreak/dll-patcher/` | DLL patcher — universal cross-platform unlock |
+| DLL patcher (maintained outside this repo) | DLL patcher — universal cross-platform unlock |
 | `../../tools/designer/sql-http-api.ps1` | HTTP SQL API for Designer VM |
 | `../../tools/designer/mcp-designer-db.ts` | MCP server for Designer DB queries |
 | `../../tools/designer/project-convert.ts` | Project file converter (RA3↔HW) |

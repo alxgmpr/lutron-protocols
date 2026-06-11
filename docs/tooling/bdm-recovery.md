@@ -266,4 +266,4 @@ If the device's identity matters (e.g., if it was already paired in a project fi
 - MC9S08QE128 datasheet: NXP doc number `MC9S08QE128RM` (reference manual).
 - USBDM project: https://github.com/podonoghue/usbdm-eclipse-makefiles-build
 - This project's PowPak HCS08 RE: [powpak.md](../devices/powpak.md)
-- Conversion-attack plan that triggered the brick: `~/redacted-security-repo/docs-security/powpak-conversion-attack.md` §"2026-04-29: Brick incident on RMJ 0x00BC2107" (private security repo)
+- Conversion-attack plan that triggered the brick (the 2026-04-29 brick incident on RMJ 0x00BC2107) — documented outside this repo

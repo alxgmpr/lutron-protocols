@@ -356,8 +356,8 @@ but were never observed on-air). The HCS08 bootloader's default fallback
 already-in-OTA device. The conversion-attack feasibility (RMJ → LMJ) hinges on
 the HCS08 bootloader's validation rules — whether it cross-checks the LDF's
 declared DeviceClass (body offset `0x8AD`) and whether a signature/HMAC seals
-the LDF body or CRC32 is the only seal; see
-`~/redacted-security-repo/docs-security/powpak-conversion-attack.md`.
+the LDF body or CRC32 is the only seal; see the conversion-attack notes
+(maintained outside this repo).
 
 ## 6. Cross-references
 

@@ -23,7 +23,7 @@ key = (key + 1) % 95    // starts at 0x49 (73), resets per blob
 - Class: `COPROC_FIRMWARE_UNOBFUSCATOR` at vtable 0x8b018, method at 0x22530
 - Registry: `SINGLETON_REGISTRY<DEVICE_CLASS, map<LINK_TYPE, map<COPROC_IMAGE_TYPE, FIRMWARE_FILE_PROPERTIES*>>>`
 
-**Extraction tool**: `~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py`
+**Extraction tool**: an S19 extraction/deobfuscation tool (maintained outside this repo)
 
 Three variants of this cipher have been seen:
 
@@ -37,7 +37,7 @@ Three variants of this cipher have been seen:
   multiple blobs concatenated with **key0 changes between blobs** (no embedded
   signature). Observed `key0` values: `0x25` (HCS08 + first EFR32) and `0x7E`
   (second EFR32). Blobs start at offsets the SmartBridge's narrow search misses;
-  `~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py`'s `extract_multi_continuous_blobs()` walker scans the
+  the S19 extraction/deobfuscation tool's `extract_multi_continuous_blobs()` walker scans the
   full binary trying multiple `key0` candidates.
 
 The 6 MB caseta-ra2select-bundled binary (if any) and vive (production) binaries
@@ -309,7 +309,7 @@ sanity check on any `.pff`.
 
 ## Files Created This Session
 
-- `~/redacted-security-repo/exploits/firmware-unlock/coproc-extract.py` — S19 extraction/deobfuscation tool
+- An S19 extraction/deobfuscation tool (maintained outside this repo)
 - `data/firmware/phoenix-device/coprocessor/phoenix_*.s19` — 10 deobfuscated S19 files
 - `data/firmware/phoenix-device/coprocessor/phoenix_*.bin` — flat binary conversions
 - `data/firmware/phoenix-device/coproc-firmware.gpr` — Ghidra project with 5 ARM images

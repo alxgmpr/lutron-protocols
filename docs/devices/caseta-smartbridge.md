@@ -709,8 +709,8 @@ To watch a session: `tail -F /var/log/messages | grep -E "firmware-update|cca|co
 - For RMJ→LMJ "conversion attacks", the host system that owns the device must run
   the orchestrator; captured Caseta wire packets could let us craft equivalent RF
   directly from a controllable transmitter (openBridge), given a recovered/forged
-  per-device-model PFF key. Conversion-attack specifics live in the private
-  security repo: `~/redacted-security-repo/docs-security/powpak-conversion-attack.md`.
+  per-device-model PFF key. See the conversion-attack notes (maintained outside
+  this repo).
 
 ## 5. Method / reproducibility
 

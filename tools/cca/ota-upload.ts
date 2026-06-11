@@ -5,8 +5,7 @@
  * protocol. After upload completes, run `cca ota-tx <subnet> <serial>` on
  * the Nucleo to start the firmware-side full-OTA transmit.
  *
- * Track 1 of the Phase 2b PowPak conversion plan — see
- * ~/redacted-security-repo/docs-security/powpak-conversion-attack.md.
+ * Track 1 of the Phase 2b PowPak conversion plan — documented outside this repo.
  *
  * Usage:
  *   npx tsx tools/cca/ota-upload.ts \
