@@ -1,6 +1,6 @@
 # RA3 System Reference
 
-RadioRA 3 processor internals, LEAP API, certificates, and database editing.
+*RadioRA 3 processor internals, LEAP API, certificates, and database editing.*
 
 ## 1. System Architecture
 

@@ -1,5 +1,7 @@
 # Coprocessor Firmware Reverse Engineering
 
+*Deobfuscating the S19 coprocessor firmware images embedded in `lutron-coproc-firmware-update-app`.*
+
 ## Overview
 
 The `lutron-coproc-firmware-update-app` binary (ARM32 ELF, C++) embeds obfuscated S19 firmware

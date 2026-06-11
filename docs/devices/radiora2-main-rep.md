@@ -1,5 +1,7 @@
 # RadioRA 2 Main Repeater (RR-MAIN-REP-WH) Reverse Engineering
 
+*Hardware teardown and firmware reverse-engineering notes for the RadioRA 2 main repeater.*
+
 **Date**: 2026-04-10
 **FCC ID**: JPZ0103 (filed 2014-01-21, approved)
 **PCB**: 470-3588 REV A

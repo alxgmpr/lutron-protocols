@@ -1,5 +1,7 @@
 # ESN (Energi Savr Node) Firmware Analysis
 
+*Reverse-engineering notes on the Energi Savr Node firmware (ColdFire/M68K) and its CCA/QS Link behavior.*
+
 ## Source
 - **App**: "Energi Savr.app" (macOS, in `/Energi Savr.app/Wrapper/Energi Savr.app/`)
 - **File**: `FirmWare file for Demo.s19` (Motorola S-record format)

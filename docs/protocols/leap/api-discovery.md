@@ -1,5 +1,7 @@
 # LEAP API Discovery — Android APK Reverse Engineering
 
+*LEAP endpoints and message shapes recovered by decompiling the Lutron Android app.*
+
 ## Source
 
 `com.lutron.lsb` v26.1.0.4, decompiled with jadx. Cross-referenced with live

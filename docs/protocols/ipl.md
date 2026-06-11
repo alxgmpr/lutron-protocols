@@ -1,5 +1,7 @@
 # IPL Protocol: RA3 Designer Integration Port (TLS:8902 or WSS)
 
+*The binary integration protocol Designer uses to talk to an RA3 processor (TLS:8902 / WSS).*
+
 The RA3 processor exposes a binary protocol used by Lutron Designer for project
 transfer, device configuration, and real-time state sync. Historically carried on
 raw TLS:8902; newer processors may advertise a WSS endpoint alongside (same payload,

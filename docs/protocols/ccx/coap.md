@@ -1,5 +1,7 @@
 # Lutron CCX Device CoAP Protocol
 
+*The CoAP endpoints CCX devices expose over the Thread mesh (port 5683) and how to address them.*
+
 Reverse-engineered from live probing of Sunnata devices over Thread mesh (2026-04-01).
 
 All endpoints are CoAP over UDP port 5683. Devices are addressed by Thread RLOC

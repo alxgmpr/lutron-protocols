@@ -1,4 +1,6 @@
-# QSM Firmware Reverse Engineering Findings
+# QSM Firmware Reverse Engineering
+
+*Reverse-engineering notes on the QSM (QS Sensor Module) HCS08 firmware and its CC1101 radio.*
 
 Reverse-engineered from `QSM_8.015_434MHz.s19` extracted from Lutron Designer 26.0.2.100 MSIX.
 MCU: Freescale HCS08 (MC9S08 family), banked flash with CALL/RTC instructions.

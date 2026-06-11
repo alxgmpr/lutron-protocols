@@ -1,5 +1,7 @@
 # Lutron Firmware Update Infrastructure
 
+*Lutron's three firmware delivery paths — Designer SSH push, iOS cloud OTA, and the cloud APIs behind them.*
+
 Reverse-engineered from Lutron Designer 26.0.1.100 (.NET CIL disassembly), iOS app binary
 (KMM/Obj-C), and HAR captures. Covers all three firmware delivery paths: Designer (SSH push),
 iOS app (cloud-orchestrated OTA), and the underlying cloud APIs.

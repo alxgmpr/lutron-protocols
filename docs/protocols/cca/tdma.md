@@ -1,5 +1,7 @@
 # CCA TDMA Timing and Beacon Scheduling
 
+*CCA's slotted-TDMA MAC layer: slot/frame timing, the BEACON lifecycle, and ACK/retry behavior.*
+
 CCA's MAC layer is a slotted TDMA built on top of the 433 MHz async-serial PHY. Devices share one channel by claiming an N-of-8 slot window, and retransmissions of the same payload are placed exactly one frame period apart so the slot stays consistent across the burst. This page documents the slot/frame parameters, the BEACON_91/92/93 lifecycle, ACK/retry timing, and what we know vs. what remains unconfirmed.
 
 The canonical reference for everything below is our STM32H723 firmware:

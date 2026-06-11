@@ -1,4 +1,6 @@
-# Designer LocalDB Enumeration (Top-Down)
+# Designer LocalDB Reference
+
+*Structure and inventory of the Lutron Designer LocalDB (the live SQL Server LocalDB instance backing a Designer project).*
 
 ## Scope
 

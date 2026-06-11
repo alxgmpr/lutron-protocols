@@ -1,5 +1,7 @@
 # CCA End-Device Firmware
 
+*What the "phoenix_hcs08_3000-*" end-device firmware binaries actually are (spoiler: not HCS08).*
+
 Reverse-engineering notes for the three "phoenix_hcs08_3000-*" binaries extracted from the Phoenix coproc-firmware-update-app blob. The orchestration prompt described these as HCS08 (Freescale 8-bit) end-device firmware images for eagle-owl/basenji/bananaquit dimmers, picos, and switches. **That premise is wrong.** This document records what they actually are.
 
 ## TL;DR — These are NOT HCS08

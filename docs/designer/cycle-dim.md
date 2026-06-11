@@ -1,5 +1,7 @@
 # RA3 Cycle Dimming Enablement Spec (ATPM)
 
+*How to enable HomeWorks-style cycle dimming on a RadioRA3 ATPM keypad button via the project DB.*
+
 ## Goal
 Enable HomeWorks-style cycle dimming behavior on a RadioRA3 ATPM keypad button by reproducing the same programming model scaffold in the project DB.
 

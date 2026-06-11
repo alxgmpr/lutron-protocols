@@ -1,6 +1,6 @@
 # STM32 ARM Toolchain & Flashing Guide
 
-Reference for agents and developers: how the STM32H723ZG firmware is built, flashed, and debugged.
+*How the STM32H723ZG Nucleo firmware is built, flashed, and debugged.*
 
 ## Prerequisites
 

@@ -1,6 +1,6 @@
 # CCX-WiZ Bridge State Machine Spec
 
-State machine specification for the CCX-WiZ bridge. Covers message sources, zone state model, deduplication, and dispatch logic.
+*State machine spec for the CCX-WiZ bridge: message sources, zone state, deduplication, and dispatch.*
 
 ## 1. CCX Message Sources
 

@@ -1,5 +1,7 @@
 # PowPak RF Module Firmware
 
+*Reverse-engineering notes for Lutron PowPak (RMJ/LMJ/RMJS) RF modules — relay, CCO, and 0-10V dimmer — and whether an RMJ can be OTA-converted to an LMJ.*
+
 Reverse-engineering notes for Lutron PowPak (RMJ/LMJ/RMJS-prefixed) RF modules — relay, contact closure output (CCO), and 0-10V dimmer. Driven by the question "can we OTA-convert an RMJ unit (paired to ESN) into an LMJ unit (paired to RA3/HomeWorks QS)?"
 
 ## TL;DR

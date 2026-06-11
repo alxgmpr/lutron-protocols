@@ -1,5 +1,7 @@
 # RadioRA 2 Select Repeater (RR-SEL-REP2) Reverse Engineering
 
+*Hardware teardown and firmware reverse-engineering notes for the RadioRA 2 Select repeater.*
+
 ## Hardware
 
 Identical to Caseta Ethernet Bridge (Lutron "Sandwich Tern" platform):

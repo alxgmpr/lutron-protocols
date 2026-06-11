@@ -1,5 +1,7 @@
 # Caseta SmartBridge
 
+*Hardware and firmware reverse-engineering of the Caseta SmartBridge (AM335x host + STM32 CCA coprocessor).*
+
 Reverse engineering of the older Caseta **SmartBridge** (L-BDG2 / SBP2,
 device class `080E0101`; the CCA-OTA-orchestrating variant is the L-BDG2-WH,
 device class `080F0101`). The SmartBridge pairs a TI AM335x application

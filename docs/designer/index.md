@@ -1,5 +1,7 @@
 # Designer
 
+*Reverse-engineering of Lutron Designer: its database, project format, and RA3 ↔ HomeWorks integration.*
+
 Designer is Lutron's commissioning and programming application, run in a VM at the
 configured IP (see `config.json` / project conventions). This section documents its
 database structure, project-format internals, and the RA3 ↔ HomeWorks integration
