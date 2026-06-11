@@ -1,6 +1,6 @@
 # CCA Pairing & Handshake Protocol
 
-End-to-end reverse-engineering writeup of the CCA pairing/handshake protocol — what the device does, what the bridge does, what's authenticated, what's replayable, and where SKU enforcement lives. Companion to [docs/protocols/cca.md](cca.md), which covers the runtime/control packet types but only sketches the pairing flow.
+End-to-end reverse-engineering writeup of the CCA pairing/handshake protocol — what the device does, what the bridge does, what's authenticated, what's replayable, and where SKU enforcement lives. Companion to [docs/protocols/cca/index.md](index.md), which covers the runtime/control packet types but only sketches the pairing flow.
 
 > Scope: 433 MHz CCA radio (Phoenix EFR32MG12 bridge ↔ HCS08 device). Picos, dimmers, switches, sensors, PowPak. Vive (433 MHz, Lutron's own DCD pairing) and CCX (Thread/802.15.4) are separate protocols.
 
@@ -125,7 +125,7 @@ The **DeviceClass at byte 20–23** is the single field that makes a PowPak RMJ 
 
 ### PAIR_B8 / B9 / BA / BB — Pico / Vive / sensor variants
 
-53 bytes. Same overall structure as B0 but with Pico-specific fields. See [protocol/cca.protocol.ts:804](../../protocol/cca.protocol.ts) (`pairB8Fields`) for the canonical layout.
+53 bytes. Same overall structure as B0 but with Pico-specific fields. See [protocol/cca.protocol.ts:804](../../../protocol/cca.protocol.ts) (`pairB8Fields`) for the canonical layout.
 
 | Type | Direction | Use |
 |------|-----------|-----|
@@ -299,10 +299,10 @@ These can be characterized fully only with on-air capture during a live RA3 pair
   - `FUN_080119a4` / `FUN_08011798` (`phoenix_efr32_8003000-801FB08.bin` @ `0x080119a4` / `0x08011798`) — generic config-packet builder used as a substrate for handshake responses.
 
 - Source code:
-  - [`firmware/src/cca/cca_pairing.cpp`](../../firmware/src/cca/cca_pairing.cpp) — bridge-side state machine implementation.
-  - [`protocol/cca.protocol.ts:782–906`](../../protocol/cca.protocol.ts) — packet type definitions for PAIR_* and HS_*.
-  - [`docs/firmware-re/powpak.md`](../firmware-re/powpak.md) — PowPak HCS08 RE; DeviceClass at body offset 0x008AD; flash-write primitive at BN 0x4290.
-  - [`docs/protocols/cca.md`](cca.md) — overall CCA protocol reference (this doc is the pairing chapter).
+  - [`firmware/src/cca/cca_pairing.cpp`](../../../firmware/src/cca/cca_pairing.cpp) — bridge-side state machine implementation.
+  - [`protocol/cca.protocol.ts:782–906`](../../../protocol/cca.protocol.ts) — packet type definitions for PAIR_* and HS_*.
+  - [`powpak.md`](../../devices/powpak.md) — PowPak HCS08 RE; DeviceClass at body offset 0x008AD; flash-write primitive at BN 0x4290.
+  - [`docs/protocols/cca/index.md`](index.md) — overall CCA protocol reference (this doc is the pairing chapter).
 
 - Firmware analyzed:
   - `data/firmware/phoenix-device/coprocessor/phoenix_efr32_8003000-801FB08.bin` (117 KB Phoenix CCA bridge, EFR32MG12)

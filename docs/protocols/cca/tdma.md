@@ -4,16 +4,16 @@ CCA's MAC layer is a slotted TDMA built on top of the 433 MHz async-serial PHY. 
 
 The canonical reference for everything below is our STM32H723 firmware:
 
-- [firmware/src/cca/cca_tdma.h](../../firmware/src/cca/cca_tdma.h) — public API + named constants
-- [firmware/src/cca/cca_tdma.cpp](../../firmware/src/cca/cca_tdma.cpp) — engine implementation
-- [firmware/src/cca/cca_timer.c](../../firmware/src/cca/cca_timer.c) — TIM2 hardware tick source
-- [firmware/src/cca/cca_task.cpp](../../firmware/src/cca/cca_task.cpp) — RX/TX scheduling glue
-- [firmware/src/cca/cca_auto_pair.cpp](../../firmware/src/cca/cca_auto_pair.cpp) — Vive beacon transmitter
-- [firmware/src/cca/cca_commands.cpp](../../firmware/src/cca/cca_commands.cpp) — `cca_jobs_beacon()` for 0x91/0x92/0x93
-- [firmware/src/cca/cca_tx_builder.h](../../firmware/src/cca/cca_tx_builder.h) — `cca_build_beacon()` payload format
-- [firmware/tests/test_tdma.cpp](../../firmware/tests/test_tdma.cpp) — slot/seq invariants
+- [firmware/src/cca/cca_tdma.h](../../../firmware/src/cca/cca_tdma.h) — public API + named constants
+- [firmware/src/cca/cca_tdma.cpp](../../../firmware/src/cca/cca_tdma.cpp) — engine implementation
+- [firmware/src/cca/cca_timer.c](../../../firmware/src/cca/cca_timer.c) — TIM2 hardware tick source
+- [firmware/src/cca/cca_task.cpp](../../../firmware/src/cca/cca_task.cpp) — RX/TX scheduling glue
+- [firmware/src/cca/cca_auto_pair.cpp](../../../firmware/src/cca/cca_auto_pair.cpp) — Vive beacon transmitter
+- [firmware/src/cca/cca_commands.cpp](../../../firmware/src/cca/cca_commands.cpp) — `cca_jobs_beacon()` for 0x91/0x92/0x93
+- [firmware/src/cca/cca_tx_builder.h](../../../firmware/src/cca/cca_tx_builder.h) — `cca_build_beacon()` payload format
+- [firmware/tests/test_tdma.cpp](../../../firmware/tests/test_tdma.cpp) — slot/seq invariants
 
-For protocol-side context (packet types, RF parameters), see [cca.md](cca.md). For 35-channel hop hypothesis, see [firmware-re/powpak.md §"Frequency hopping table (suspected)"](../firmware-re/powpak.md#frequency-hopping-table-suspected).
+For protocol-side context (packet types, RF parameters), see [index.md](index.md). For 35-channel hop hypothesis, see [powpak.md §"Frequency hopping table (suspected)"](../../devices/powpak.md#frequency-hopping-table-suspected).
 
 ## 1. Headline numbers
 
@@ -80,7 +80,7 @@ High-priority jobs (e.g. pairing handshake responses, `req->priority > 0`) bypas
 
 ## 5. Beacon types and lifecycle
 
-The CCA bridge sends three beacon packet types, all 24 bytes (22 + CRC), `format = 0x0C` ([cca_tx_builder.h `cca_build_beacon`](../../firmware/src/cca/cca_tx_builder.h)):
+The CCA bridge sends three beacon packet types, all 24 bytes (22 + CRC), `format = 0x0C` ([cca_tx_builder.h `cca_build_beacon`](../../../firmware/src/cca/cca_tx_builder.h)):
 
 | Type | Name | Role | Source |
 |------|------|------|--------|
@@ -101,7 +101,7 @@ offset  7: format     (QS_FMT_BEACON = 0x0C)
 offset 22: CRC-16     (poly 0xCA0F, BE)
 ```
 
-Submitted as a TDMA job group with `tx_count = CCA_TX_COUNT_BEACON = 6` and no `post_delay_ms`, so the bridge emits **6 packets at one-frame spacing = ~450 ms total per `pairing_beacon` invocation**. The protocol-TS `pairing_beacon` sequence ([protocol/cca.protocol.ts](../../protocol/cca.protocol.ts)) describes the steady-state with `count: null, intervalMs: 65` — meaning the bridge re-arms the burst continuously while pairing is active, with empirically ~65 ms between groups. (60–75 ms intervals across `intervalMs` entries reflect observed jitter against the 75 ms canonical period.)
+Submitted as a TDMA job group with `tx_count = CCA_TX_COUNT_BEACON = 6` and no `post_delay_ms`, so the bridge emits **6 packets at one-frame spacing = ~450 ms total per `pairing_beacon` invocation**. The protocol-TS `pairing_beacon` sequence ([protocol/cca.protocol.ts](../../../protocol/cca.protocol.ts)) describes the steady-state with `count: null, intervalMs: 65` — meaning the bridge re-arms the burst continuously while pairing is active, with empirically ~65 ms between groups. (60–75 ms intervals across `intervalMs` entries reflect observed jitter against the 75 ms canonical period.)
 
 ### 5.2 0xBB (Vive hub beacon)
 
@@ -139,7 +139,7 @@ Multi-phase commands (e.g. unpair: prepare→beacon) use `post_delay_ms` between
 
 **Our STM32H723 firmware does not hop channels.** It camps on `CHANNR = 26` (433.602844 MHz) and never reprograms `FREQ2/1/0` mid-operation. There is no per-frame, per-beacon, or per-slot hop logic in `cca_tdma.cpp`, `cc1101.c`, or `cca_task.cpp`.
 
-The 35-channel hop table at PowPak BN `0x9B30-0x9B7F` ([powpak.md](../firmware-re/powpak.md)) and the hop sequence used by the **firmware-update transport** are a separate code path from the runtime CCA MAC documented here — see [cca.md §10 (CCA OTA)](cca.md). Runtime CCA stays single-channel.
+The 35-channel hop table at PowPak BN `0x9B30-0x9B7F` ([powpak.md](../../devices/powpak.md)) and the hop sequence used by the **firmware-update transport** are a separate code path from the runtime CCA MAC documented here — see [CCA OTA](ota.md). Runtime CCA stays single-channel.
 
 The "two-way devices auto-switch channels; one-way devices must be re-channeled manually" behavior in the field refers to **channel reassignment at provisioning time** (programmed into the device's NV memory by the bridge during transfer), not in-band TDMA-aligned hopping. A two-way dimmer learns its assigned channel from a configuration packet during the activation sequence; one-way Picos and sensors have no return path to receive that configuration, so they ship locked to the channel their HCS08/STM8 ROM was provisioned with.
 
@@ -157,7 +157,7 @@ When two bridges share a channel (rare; typically only during testing), the engi
 
 ## 10. Phoenix EFR32 cross-check (unconfirmed)
 
-The Phoenix CCA coprocessor binaries at [data/firmware/phoenix-device/coprocessor/phoenix_efr32_*.bin](../../data/firmware/phoenix-device/coprocessor/) are **fully stripped** (no debug strings, no symbol table; verified via `strings -n 6 | grep` returning empty for any of `tdma`, `slot`, `beacon`, `frame`, `hop`, `chann`). A pure static read of timing constants from these images is inconclusive: 75 ms, 70 ms, 65 ms, etc. all appear hundreds of times as Thumb-2 immediates, indistinguishable from unrelated 8-bit operands.
+The Phoenix CCA coprocessor binaries at [data/firmware/phoenix-device/coprocessor/phoenix_efr32_*.bin](../../../data/firmware/phoenix-device/coprocessor/) are **fully stripped** (no debug strings, no symbol table; verified via `strings -n 6 | grep` returning empty for any of `tdma`, `slot`, `beacon`, `frame`, `hop`, `chann`). A pure static read of timing constants from these images is inconclusive: 75 ms, 70 ms, 65 ms, etc. all appear hundreds of times as Thumb-2 immediates, indistinguishable from unrelated 8-bit operands.
 
 We did import `phoenix_efr32_8003000-801FB08.bin` into a scratch Ghidra project (`/tmp/tdma-scratch`, base 0x08003000, ARM:LE:32:Cortex) for completeness; auto-analysis identified ~hundreds of functions but none with a name suggestive of the TDMA path. Confirming the EFR32 frame period would require either tracing the TIMER0–3 / RTC peripheral writes back to a beacon-emitting code path, or sniffing the EFR32 in-system with a logic analyzer — neither is in scope here.
 

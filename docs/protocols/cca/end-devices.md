@@ -43,7 +43,7 @@ Across all three binaries, byte-pattern searches for the CCA wire-protocol const
 | `LEC` magic (CC1101 register table tag) | 0 | 0 | 0 |
 | CC1101 IOCFG2/1/0 init triple `0E 2E 0D` | 0 | 0 | 0 |
 
-For comparison, the explicitly-EFR32-named coproc images (`phoenix_efr32_8003000-{801FB08,803FF08,807F808}.bin`) contain `FA DE`, `0F CA`, and the full CRC-16/0xCA0F lookup table — that's where bridge-side CCA OTA packet construction lives, and it's documented in [coproc.md](./coproc.md) and [protocols/cca.md](../protocols/cca.md).
+For comparison, the explicitly-EFR32-named coproc images (`phoenix_efr32_8003000-{801FB08,803FF08,807F808}.bin`) contain `FA DE`, `0F CA`, and the full CRC-16/0xCA0F lookup table — that's where bridge-side CCA OTA packet construction lives, and it's documented in [coproc.md](../../firmware-re/coproc.md) and [protocols/cca/index.md](index.md).
 
 The few isolated `FA DE` / `DE FA` bigrams in our three binaries (1-2 per file) are statistically consistent with random byte coincidence in dense Thumb-2 code (they don't sit inside instruction immediates, they don't occur in literal pools that get loaded by `LDR rN, [pc, #...]`, and they don't appear with neighboring preamble bytes). They are not the CCA sync-word constant.
 
@@ -63,7 +63,7 @@ The few isolated `FA DE` / `DE FA` bigrams in our three binaries (1-2 per file) 
   Four init calls — typical bare-metal Cortex-M C runtime startup.
 - S0 record of the S19 says `bin/CoProcApplication/CoProcApplication.` (truncated). This file was likely renamed from a build-tree path that wraps a Cortex-M binary into the same delivery mechanism HCS08 would have used — the build-tree path does not, by itself, prove an HCS08 chip.
 - Copyright string: `Copyright 2016 Lutron Electronics` at `0x1D704`.
-- Ghidra processor: `ARM:LE:32:Cortex` with `BinaryLoader -loader-baseAddr 0x3000`. (PR #34 originally found this; the tool now does it automatically — see [tools/ghidra/ghidra-load-arm-coproc.sh](../../tools/ghidra/ghidra-load-arm-coproc.sh).)
+- Ghidra processor: `ARM:LE:32:Cortex` with `BinaryLoader -loader-baseAddr 0x3000`. (PR #34 originally found this; the tool now does it automatically — see [tools/ghidra/ghidra-load-arm-coproc.sh](../../../tools/ghidra/ghidra-load-arm-coproc.sh).)
 
 ### phoenix_hcs08_3000-3E808 (medium variant, supposed "eagle-owl CCA app")
 
@@ -101,21 +101,21 @@ Several plausible mistakes that could have led to the misidentification:
 
 - **Build-tree path naming.** Lutron's Jenkins workspace contains a directory called `bin/CoProcApplication` that produces images for multiple chip families. Whoever first wrote the doc may have generalized "HCS08" from a single image type without verifying.
 - **S2-record format.** Motorola S-record S2 lines use 24-bit linear addresses, which can host Cortex-M images perfectly well (most ARM toolchains emit S19/S2 by default). S2 ≠ HCS08.
-- **PowPak precedent.** PowPak's HCS08 firmware ([powpak.md](./powpak.md)) is genuine and well-characterized, with anchors at `0x92C0` (`CPHX #$FADE; BNE`) and `0x8680` (opcode 0x41 dispatch). Someone may have transferred the "HCS08 device firmware" pattern from PowPak to these binaries by analogy without verifying.
+- **PowPak precedent.** PowPak's HCS08 firmware ([powpak.md](../../devices/powpak.md)) is genuine and well-characterized, with anchors at `0x92C0` (`CPHX #$FADE; BNE`) and `0x8680` (opcode 0x41 dispatch). Someone may have transferred the "HCS08 device firmware" pattern from PowPak to these binaries by analogy without verifying.
 
 ## Next steps
 
 If the orchestrator's premise was right that **separate** end-device firmware images for eagle-owl/basenji/bananaquit exist somewhere in the Phoenix build, those images are not these three binaries. Possible locations to check:
 
-1. **The encrypted Phoenix `firmware.tar.enc` PFF entries.** `cca/cca-eagle-owl-*.pff`, `cca/cca-bananaquit-avis-*.pff`, `cca/cca-basenji-*.pff` were enumerated in `device-firmware-manifest.json` (see [coproc.md](./coproc.md) §Device Firmware Manifest). These are the **actual end-device images** that get OTA'd to the device — but they're encrypted with the per-model AES-128 key in ATECC608 slot 6 (`6cba80b2bf3cf2a63be017340f1801d8` for the chip line in question) and need decrypting before RE.
+1. **The encrypted Phoenix `firmware.tar.enc` PFF entries.** `cca/cca-eagle-owl-*.pff`, `cca/cca-bananaquit-avis-*.pff`, `cca/cca-basenji-*.pff` were enumerated in `device-firmware-manifest.json` (see [coproc.md](../../firmware-re/coproc.md) §Device Firmware Manifest). These are the **actual end-device images** that get OTA'd to the device — but they're encrypted with the per-model AES-128 key in ATECC608 slot 6 (`6cba80b2bf3cf2a63be017340f1801d8` for the chip line in question) and need decrypting before RE.
 2. **HomeWorks QSX firmware bundle.** May carry distinct CCA end-device images that don't appear in the RA3 Phoenix bundle.
 3. **MSIX-bundled `.ldf` files in Designer.** PowPak's actual HCS08 firmware ships in `QuantumResi/BinDirectory/Firmware/QuantumResi/qs_firmware_and_tools/powpak modules/`; eagle-owl / basenji / bananaquit `.ldf` files (if they exist) would ship in a similar tree.
 
-Until the orchestration prompt's premise is reconfirmed against actual end-device firmware, the wire-protocol RE for what dimmers/picos/switches send and receive remains an open question. The bridge side is well-characterized in [coproc.md](./coproc.md) and [protocols/cca.md](../protocols/cca.md); the device side requires acquiring the matching `.pff` decryption result or the `.ldf` body for these specific device classes.
+Until the orchestration prompt's premise is reconfirmed against actual end-device firmware, the wire-protocol RE for what dimmers/picos/switches send and receive remains an open question. The bridge side is well-characterized in [coproc.md](../../firmware-re/coproc.md) and [protocols/cca/index.md](index.md); the device side requires acquiring the matching `.pff` decryption result or the `.ldf` body for these specific device classes.
 
 ## Tooling notes
 
-- Use [tools/ghidra/ghidra-load-arm-coproc.sh](../../tools/ghidra/ghidra-load-arm-coproc.sh) (renamed from `ghidra-load-cca-hcs08.sh`) to import these binaries — uses `-processor ARM:LE:32:Cortex` with the base address auto-detected from the filename pattern `*_<starthex>-<endhex>.bin`. The whole file is loaded as one block (no carving — these are flat Cortex-M images, not banked HCS08).
+- Use [tools/ghidra/ghidra-load-arm-coproc.sh](../../../tools/ghidra/ghidra-load-arm-coproc.sh) (renamed from `ghidra-load-cca-hcs08.sh`) to import these binaries — uses `-processor ARM:LE:32:Cortex` with the base address auto-detected from the filename pattern `*_<starthex>-<endhex>.bin`. The whole file is loaded as one block (no carving — these are flat Cortex-M images, not banked HCS08).
 - Capstone (`/tmp/cca-arm-venv` Python venv) provides a workable disassembly path without needing Ghidra: `capstone.Cs(CS_ARCH_ARM, CS_MODE_THUMB)`. Reset-handler dumps and instruction-byte stats above all came from this path.
 
 ## Cross-reference vs bridge-side knowledge

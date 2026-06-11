@@ -1,6 +1,6 @@
 # CCA Protocol Reference
 
-Clear Connect Type A (CCA) is Lutron's proprietary 433 MHz radio protocol used by Picos, dimmers, switches, sensors, and hubs. Organized by topic. See [hardware/overview.md](../hardware/overview.md) for the system-level context.
+Clear Connect Type A (CCA) is Lutron's proprietary 433 MHz radio protocol used by Picos, dimmers, switches, sensors, and hubs. Organized by topic. See [the device system overview](../../devices/index.md) for the system-level context.
 
 ## 1. RF Parameters
 
@@ -179,7 +179,7 @@ Byte 19-20: Level (BE, 0x0000-0xFEFF)
 Byte 21:   Must be non-zero (0x00 causes rejection)
 ```
 
-Pico set-level works but fade is always slow (~1-2 min) because the 5-byte pico payload has no room for a fade field. The dimmer applies its default ramp rate. See [lutron-rf-overview.md](lutron-rf-overview.md) for the OUTPUT vs DEVICE explanation.
+Pico set-level works but fade is always slow (~1-2 min) because the 5-byte pico payload has no room for a fade field. The dimmer applies its default ramp rate. See [the device system overview](../../devices/index.md) for the OUTPUT vs DEVICE explanation.
 
 **Fade encoding:** `byte19 = seconds × 4` (quarter-seconds). Shared between Vive and bridge.
 
@@ -403,8 +403,8 @@ The earlier static-RE understanding (separate `[55 55 55][FF][FA DE][LEN][OP][BO
 
 | Layer | Substrate | What it carries | RE'd from |
 |-------|-----------|-----------------|-----------|
-| **On-air RF** | 433.602844 MHz, N81, runtime CCA framing | `0x91/0x92/0xB1/0xB2/0xB3` packets with `06 nn` sub-opcodes | [docs/firmware-re/cca-ota-live-capture.md](../firmware-re/cca-ota-live-capture.md) — 19-min IQ capture against Caseta Pro REP2 + DVRF-6L, 90.7% chunk match against source PFF |
-| **Coproc IPC** | host UART, HDLC | `0x2A/0x32/0x36/0x41/0x58` opcodes with raw-bit framing | Phoenix EFR32 coproc binary, [docs/firmware-re/caseta-cca-ota.md](../firmware-re/caseta-cca-ota.md) |
+| **On-air RF** | 433.602844 MHz, N81, runtime CCA framing | `0x91/0x92/0xB1/0xB2/0xB3` packets with `06 nn` sub-opcodes | [CCA OTA](ota.md) — 19-min IQ capture against Caseta Pro REP2 + DVRF-6L, 90.7% chunk match against source PFF |
+| **Coproc IPC** | host UART, HDLC | `0x2A/0x32/0x36/0x41/0x58` opcodes with raw-bit framing | Phoenix EFR32 coproc binary, [CCA OTA](ota.md) |
 
 These two layers are **NOT** the same byte sequence. The bridge's coproc translates IPC commands from lutron-core into on-air sub-opcodes before TX. See §9.4 for the IPC↔on-air mapping.
 
@@ -468,7 +468,7 @@ The 35-row table at PowPak BN `0x9B30` and Phoenix BN `0x08018e30` is some other
 
 ### 9.4. Coproc IPC ↔ on-air mapping
 
-The bridge's lutron-core dispatches firmware updates via 8 HDLC IPC commands ([caseta-cca-ota.md §"OTA Wire Vocabulary"](../firmware-re/caseta-cca-ota.md#ota-wire-vocabulary)). Each IPC opcode maps to either an on-air sub-opcode or to no-op-on-air (the coproc handles it locally without RF traffic):
+The bridge's lutron-core dispatches firmware updates via 8 HDLC IPC commands ([CCA OTA §"OTA Wire Vocabulary"](ota.md#ota-wire-vocabulary)). Each IPC opcode maps to either an on-air sub-opcode or to no-op-on-air (the coproc handles it locally without RF traffic):
 
 | IPC opcode | HDLC cmd | IPC name | On-air sub-opcode | Notes |
 |------------|----------|----------|-------------------|-------|
@@ -520,7 +520,7 @@ This matters for synth-TX from Nucleo+CC1101: without correct BeginTransfer payl
 
 ### 9.7. DeviceClass enforcement
 
-The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate (whether a PowPak refuses an LMJ image when its in-flash DeviceClass says RMJ, etc.) is whatever the bootloader itself does. See [docs/firmware-re/powpak.md §"Bootloader unknowns"](../firmware-re/powpak.md#bootloader-unknowns-gates-paths-2-and-3) — the OTA-receive handler at PowPak BN `0x4290` / `sub_8bb4` is the gating RE target.
+The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate (whether a PowPak refuses an LMJ image when its in-flash DeviceClass says RMJ, etc.) is whatever the bootloader itself does. See [powpak.md §"Bootloader unknowns"](../../devices/powpak.md#bootloader-unknowns-gates-paths-2-and-3) — the OTA-receive handler at PowPak BN `0x4290` / `sub_8bb4` is the gating RE target.
 
 ### 9.8. Reproducibility — source binary anchors
 
@@ -699,7 +699,7 @@ are; it is split across:
    and format byte (offset 0x0E) for the wire packet.
 3. An **OTA pairing/transfer state machine** (`FUN_0800bfe0` in 803A008,
    `FUN_08009e08` in 801FB08). 12 states, drives the OTA wake-up sequence
-   documented in [docs/firmware-re/powpak.md](../firmware-re/powpak.md).
+   documented in [powpak.md](../../devices/powpak.md).
 
 Because of this split, "the master CCA RX dispatch" doesn't appear as a single
 TBB/TBH lookup — instead, an RX packet flows through CRC verification (using
@@ -747,7 +747,7 @@ The constants `02 04`, `02 03`, `02 05` written into byte+5..6 of the broadcast
 packets correspond to STATE_RPT cmd_class + op pairs — these are the bridge-side
 "broadcast pair / pair-confirm / pair-end" sequence that appears during
 multi-device pairing. These overlap with the OTA opcode 0x32 multi-purpose-control
-path documented in [docs/firmware-re/powpak.md](../firmware-re/powpak.md).
+path documented in [powpak.md](../../devices/powpak.md).
 
 ### Verifying which binary is which (CCA classification)
 
@@ -763,7 +763,7 @@ contain:
   `0x08030101`).
 
 The other two EFR32 binaries (`8003000-803FF08.bin`, `8003000-807F808.bin`)
-have neither and are CCX-side. See [docs/firmware-re/coproc.md](../firmware-re/coproc.md)
+have neither and are CCX-side. See [coproc.md](../../firmware-re/coproc.md)
 for the full classification table.
 
 ### TODO / open questions
