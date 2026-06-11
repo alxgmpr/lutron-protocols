@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
+import type { LeapDumpData } from "../lib/leap-client";
 import type { CCXPacket } from "../ccx/types";
 
 // ── Helper: construct a LEVEL_CONTROL packet ─────────────────────
@@ -247,10 +248,29 @@ pairings:
 
   test("HA loader falls back to 'Zone N' when name is omitted", async () => {
     const { loadBridgeConfigFromOptions } = await import("../lib/bridge-core");
-    const { pairings } = loadBridgeConfigFromOptions({
-      pairings: [{ zone_id: 42, wiz_ips: ["10.0.0.1"] }],
-    });
-    assert.equal(pairings[0].name, "Zone 42");
+    const { setLeapData, resetLeapData } = await import("../ccx/config");
+    // Isolate from any on-disk LEAP dump so the zone-name lookup misses and the
+    // fallback path is exercised deterministically (CI has no dumps; a dev
+    // machine may have one that happens to define this zone).
+    setLeapData({
+      timestamp: "",
+      host: "",
+      leapVersion: "",
+      productType: "",
+      link: {},
+      zones: {},
+      devices: {},
+      serials: {},
+      presets: {},
+    } as unknown as LeapDumpData);
+    try {
+      const { pairings } = loadBridgeConfigFromOptions({
+        pairings: [{ zone_id: 42, wiz_ips: ["10.0.0.1"] }],
+      });
+      assert.equal(pairings[0].name, "Zone 42");
+    } finally {
+      resetLeapData();
+    }
   });
 
   test("loadBridgeConfig throws when path does not exist", async () => {
