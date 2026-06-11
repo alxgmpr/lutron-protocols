@@ -18,8 +18,8 @@ user_invocable: false
 | `protocol/cca.protocol.ts` | **The** source of truth. All enums, packet types, field layouts, QS Link constants, timing, sequences, pairing presets, device fingerprints |
 | `protocol/protocol-ui.ts` | Runtime parsing: `identifyPacket()`, `parseFieldValue()`, format discrimination rules |
 | `protocol/shared.ts` | Cross-protocol encoding: level ↔ percent, fade ↔ quarter-seconds |
-| `docs/protocols/cca.md` | Human-readable protocol reference (packet types, addressing, commands, pairing flows) |
-| `docs/firmware-re/qsm.md` | RE findings from QSM firmware: trampoline table, TDMA, 8N1 codec, CRC, CC1101 config, dispatch tables |
+| `docs/protocols/cca/index.md` | Human-readable protocol reference (packet types, addressing, commands, pairing flows) |
+| `docs/devices/qsm.md` | RE findings from QSM firmware: trampoline table, TDMA, 8N1 codec, CRC, CC1101 config, dispatch tables |
 | `docs/protocols/qslink.md` | QS Link protocol + CCA field naming mapping appendix |
 
 ## How to Search

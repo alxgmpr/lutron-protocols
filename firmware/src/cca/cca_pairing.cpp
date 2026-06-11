@@ -1394,10 +1394,10 @@ static void exec_subnet_pair(uint32_t bridge_id, uint8_t zone_byte, uint8_t dura
  * Transmits `cca_ota_build_begin_transfer` packets at the captured-OTA
  * cadence (~75 ms) for `duration_sec` seconds. Watch for the device's
  * `0x0B` XOR-ACK with `format=0xC1` (READY) to confirm the chosen subnet
- * was accepted. See docs/firmware-re/powpak-conversion-attack.md Phase 2.
+ * was accepted. See ~/redacted-security-repo/docs-security/powpak-conversion-attack.md Phase 2.
  *
  * For unpaired RMJ/RMJS targets, start with subnet=0xFFFF (factory
- * default per docs/firmware-re/cca-ota-live-capture.md). Sweep candidates
+ * default per docs/protocols/cca/ota.md). Sweep candidates
  * if no ACK seen.
  * ----------------------------------------------------------------------- */
 static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t duration_sec)
@@ -1438,7 +1438,7 @@ static void exec_ota_begin(uint32_t target_serial, uint16_t subnet, uint8_t dura
  * BeginTransfer to confirm the device is alive on the chosen subnet
  * without risking a brick.
  *
- * Refs docs/firmware-re/powpak-conversion-attack.md §"Brick incident".
+ * Refs ~/redacted-security-repo/docs-security/powpak-conversion-attack.md §"Brick incident".
  * ----------------------------------------------------------------------- */
 static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_type, bool is_broadcast,
                           uint8_t duration_sec)
@@ -1487,7 +1487,7 @@ static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_t
  * packets via stream_broadcast_text so the host TUI sees it.
  *
  * The host must upload the LDF body via STREAM_CMD_OTA_UPLOAD_* first.
- * See docs/firmware-re/powpak-conversion-attack.md.
+ * See ~/redacted-security-repo/docs-security/powpak-conversion-attack.md.
  * ----------------------------------------------------------------------- */
 struct OtaFullTxCtx {
     uint32_t count;

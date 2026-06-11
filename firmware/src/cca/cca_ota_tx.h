@@ -6,14 +6,14 @@
  *
  * Used by the PowPak RMJ/RMJS → LMJ conversion attack to push an LMJ LDF
  * body to a target PowPak from a Nucleo+CC1101, bypassing every Lutron
- * host system. See docs/firmware-re/powpak-conversion-attack.md.
+ * host system. See ~/redacted-security-repo/docs-security/powpak-conversion-attack.md.
  *
  * Each builder fills a raw packet buffer pre-CRC (CRC-16/0xCA0F is added by
  * the N81 framer downstream). Sequence byte at offset 1 is left as 0x00 —
  * the TDMA engine writes it before TX.
  *
  * Packet layout (live-capture confirmed 2026-04-29; see
- * docs/firmware-re/cca-ota-live-capture.md and protocol/cca.protocol.ts
+ * docs/protocols/cca/ota.md and protocol/cca.protocol.ts
  * `OTAOnAirSubOpcode`):
  *
  *   [0]      type            0x91/92 short unicast, 0xB1/B2/B3 long unicast
@@ -147,7 +147,7 @@ inline size_t cca_ota_build_change_addr_offset(uint8_t* pkt, uint16_t subnet, ui
  * SHOULD be sent BEFORE BeginTransfer (sub-op 06 00) in any OTA workflow:
  * BeginTransfer erases the application section, while Device-poll has
  * no payload and confirms reachability without touching flash. See
- * docs/firmware-re/powpak-conversion-attack.md §"Brick incident".
+ * ~/redacted-security-repo/docs-security/powpak-conversion-attack.md §"Brick incident".
  *
  * Returns 22 (pre-CRC packet length); 0 on validation error.
  * ----------------------------------------------------------------------- */

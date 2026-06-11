@@ -1,5 +1,7 @@
 # CCX Device Map
 
+*ML-EID addresses for the CCX keypads on the Thread network, for CoAP programming.*
+
 Primary ML-EID addresses for all CCX keypads on the Thread network.
 These are the addresses that accept CoAP programming on port 5683 (path `/cg/db/ct/c/AHA`).
 

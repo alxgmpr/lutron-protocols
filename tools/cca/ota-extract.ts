@@ -7,7 +7,7 @@
  *   1. Slice the IQ capture into 60-second windows.
  *   2. For each window, run `tools/cca/rtlsdr-cca-decode.ts` to N81-decode every
  *      CCA packet (uses runtime CCA framing; the OTA traffic shares the
- *      runtime CCA channel and framing — see docs/firmware-re/cca-ota-live-capture.md).
+ *      runtime CCA channel and framing — see docs/protocols/cca/ota.md).
  *   3. Filter to long packets (`0xB1`/`0xB2`/`0xB3`) carrying TransferData.
  *      Per-packet layout (53 bytes total):
  *        [0]    type       0xB1/B2/B3
