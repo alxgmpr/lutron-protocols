@@ -1,7 +1,7 @@
 # CCA RX Dispatch — Phoenix EFR32 Coproc
 
 Reverse-engineered from the bridge-side EFR32MG12 radio coprocessor binaries shipped in
-Phoenix (Caseta SmartBridge family) firmware. Companion to [cca.md](cca.md) §10 (TX
+Phoenix (Caseta SmartBridge family) firmware. Companion to [index.md](index.md) §10 (TX
 dispatch from PR #32). **All findings are static-analysis only — no live RF capture
 was used to validate field-layout hypotheses.** Confidence calls are noted per
 section.
