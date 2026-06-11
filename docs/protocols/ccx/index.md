@@ -160,7 +160,7 @@ The RA3 processor originates commands at `fd00::ff:fe00:2c0c`.
 
 ## Extracting Keys
 
-Keys can be extracted from the LEAP API (`/link/{id}`) or from the project database. See [ra3-system.md](ra3-system.md) for database extraction instructions.
+Keys can be extracted from the LEAP API (`/link/{id}`) or from the project database. See [ra3-system.md](../../devices/ra3-processor.md) for database extraction instructions.
 
 ## Application Layer Protocol (Runtime CBOR over UDP)
 
@@ -430,7 +430,7 @@ udp.port == 9190
 
 ## LEAP API
 
-The LEAP API on port 8081 provides device enumeration, preset mappings, and RF credentials. See [ra3-system.md](ra3-system.md) for connection details, endpoints, and certificate setup.
+The LEAP API on port 8081 provides device enumeration, preset mappings, and RF credentials. See [ra3-system.md](../../devices/ra3-processor.md) for connection details, endpoints, and certificate setup.
 
 Key for CCX: `npm run leap:dump -- --config` generates preset mappings for `ccx/config.ts`.
 
@@ -953,7 +953,7 @@ This highlights only changed request signatures (`dst + method + path + payload`
 > - 13 keypads identified and mapped — see `docs/reference/ccx-device-map.md`
 > - Skills: `/nrf-ot` (flash RCP, join Thread), `/nrf-sniffer` (flash sniffer, capture)
 > - nRF dongle DFU: press reset → LED pulses red → `nrfutil nrf5sdk-tools dfu usb-serial`
-> - RCP firmware: `~/lutron-tools/src/ot-nrf528xx/build/nrf52840-usb/bin/ot-rcp`
+> - RCP firmware: `~/lutron-protocols/src/ot-nrf528xx/build/nrf52840-usb/bin/ot-rcp`
 > - Sniffer firmware: `~/Downloads/nRF-Sniffer-for-802.15.4/nrf802154_sniffer_nrf52840dongle_dfu.zip`
 
 > **Discovery (2026-03-06): NCP TX (RESOLVED)**
@@ -1005,7 +1005,7 @@ export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
 
 #### Build RCP Firmware
 ```bash
-cd lutron-tools/src
+cd lutron-protocols/src
 git clone --recursive https://github.com/openthread/ot-nrf528xx.git
 cd ot-nrf528xx
 # bootstrap will fail on brew tap conflict — that's OK, deps already installed
@@ -1030,7 +1030,7 @@ nrfutil nrf5sdk-tools dfu usb-serial \
 #### Build ot-daemon + ot-ctl
 Uses the OpenThread submodule already cloned inside ot-nrf528xx:
 ```bash
-cd lutron-tools/src/ot-nrf528xx/openthread
+cd lutron-protocols/src/ot-nrf528xx/openthread
 ./script/cmake-build posix -DOT_DAEMON=ON
 ```
 
