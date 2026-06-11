@@ -1,5 +1,7 @@
 # QS Link Protocol
 
+*Lutron's RS-485 QS Link wired protocol — the packet structure CCA reuses over 433 MHz RF.*
+
 QS Link is an RS-485 wired protocol used between real devices in Lutron's commercial systems (Homeworks QS, Grafik Eye QS, Quantum, etc.). CCA (Clear Connect Type A) reuses the same packet structure over 433 MHz RF instead of RS-485. The ESN-QS (Energi Savr Node) bridges both — it speaks QS Link on its wired RS-485 port and CCA over the air — which is why the packet encoding is identical. This document is based on reverse engineering the ESN-QS firmware, a ColdFire M68K binary from 2009.
 
 ## Architecture

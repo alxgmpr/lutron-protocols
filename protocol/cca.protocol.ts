@@ -1762,8 +1762,8 @@ export const LENGTHS = {
  *   - Runtime-CCA-shaped packets (this is what the SDR sees on RF)
  *   - HDLC-framed IPC messages (host CPU ↔ coproc UART, never on RF)
  *
- * See docs/protocols/cca.md §9 for the full breakdown and
- * docs/firmware-re/cca-ota-live-capture.md for the smoking-gun match.
+ * See docs/protocols/cca/index.md §9 for the full breakdown and
+ * docs/protocols/cca/ota.md for the smoking-gun match.
  */
 export const OTA = {
   /** CC1101 modem config (live-capture confirmed). Identical to runtime CCA
@@ -1846,7 +1846,7 @@ export type OTADeviceAckState =
  * These are the values the bridge's lutron-core sends to its coproc's HDLC
  * dispatcher, and the values the coproc handler tables key on internally.
  * The coproc translates these into the runtime-CCA-shaped on-air packets
- * with `OTAOnAirSubOpcode` body bytes — see docs/protocols/cca.md §9.4 for
+ * with `OTAOnAirSubOpcode` body bytes — see docs/protocols/cca/index.md §9.4 for
  * the IPC↔on-air mapping.
  */
 export const OTACoprocIPCOpcode = {

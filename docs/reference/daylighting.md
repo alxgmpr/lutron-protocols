@@ -1,5 +1,7 @@
 # Daylighting System
 
+*How Lutron daylighting works in the Designer DB and what it takes to enable light-level control.*
+
 ## Daylighting System -- Designer DB Reverse Engineering (2026-03-22)
 
 Successfully added an LRF2-DCRB daylight sensor to the Homeworks project (Office area, serial 13100184). The sensor is paired and sends CCA SENSOR_LEVEL packets (format 0x0B, 0-1600 lux). However, light-level daylighting control is NOT active -- the scaffolding exists but the control loop isn't enabled.

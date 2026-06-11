@@ -2,7 +2,7 @@
  * CCA Firmware-OTA RF demodulator — IQ samples → bits.
  *
  * Pairs with `lib/cca-ota-codec.ts` (which handles bytes/bits → packets).
- * RF parameters per `docs/protocols/cca.md` §9.2 + the 2026-04-28 live capture:
+ * RF parameters per `docs/protocols/cca/index.md` §9.2 + the 2026-04-28 live capture:
  *
  *   Modulation : GFSK
  *   Data rate  : ~62.5 kbps (empirically: peak-to-peak in 1010 preamble = 31µs
@@ -25,7 +25,7 @@
  * Real-capture decode produces recognizable preamble + 0xFF sync delimiter
  * but accumulates bit errors that prevent full FA-DE-aligned packet recovery
  * — needs symbol synchronization (clock recovery from preamble) which isn't
- * implemented yet. See `docs/firmware-re/cca-ota-live-capture.md`.
+ * implemented yet. See `docs/protocols/cca/ota.md`.
  */
 
 /**

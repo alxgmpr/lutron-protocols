@@ -7,7 +7,7 @@
  * stream protocol's STREAM_CMD_TX_RAW_CCA path.
  *
  * Layout (live-capture confirmed 2026-04-29; see
- * docs/firmware-re/cca-ota-live-capture.md):
+ * docs/protocols/cca/ota.md):
  *
  *   [0]      type            0x91/92 short unicast, 0xB1/B2/B3 long unicast
  *   [1]      sequence        TDMA-engine-set; builder writes 0x00

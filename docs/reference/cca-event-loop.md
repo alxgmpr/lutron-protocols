@@ -1,5 +1,7 @@
 # CCA Event Loop Design
 
+*Event-loop architecture for CCA firmware, derived from Lutron's designs and our STM32H723 implementation.*
+
 Reference architecture derived from Lutron firmware reverse engineering (QSM HCS08, VCRX HCS08, Alisse STM32G071) and validated against our current STM32H723 implementation.
 
 ## Lutron's Event Architecture

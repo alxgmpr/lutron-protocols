@@ -2,7 +2,7 @@
 /**
  * pff-parse — Inspect Lutron Pegasus Firmware Format (.pff) files.
  *
- * Verified layout (see docs/firmware-re/coproc.md §"PFF File Format"):
+ * Verified layout (see docs/devices/coprocessor-firmware.md §"PFF File Format"):
  *   0x000   4   Version Major (BE u32)        — 0 = boot, 1 = app
  *   0x004   4   Version Minor (BE u32)        — 1
  *   0x008  64   Per-file unique field         — likely ECDSA-P256 sig or HMAC-SHA512
