@@ -21,7 +21,7 @@ Managed switch supports port mirroring for LAN capture.
 - **Key URL**: `/link/{id}/associatedlinknode/expanded` — ALL devices + firmware in one call
 - Caseta config: tuningsettings, phasesettings, countdowntimer, presetassignment (DELAY CONFIRMED)
 - RA3 links: CCX=`/link/234`, CCA=`/link/236`
-- Full details: `docs/infrastructure/cloud-proxy.md`, `docs/protocols/leap.md`
+- Full details: `cloud-proxy.md`, `../protocols/leap/index.md`
 - **LEAP API explorer**: `tools/leap/leap-explore.ts` — probes 200+ endpoints, `data/leap-explore-*.json`
 
 ## IPL Protocol (Designer)
@@ -65,7 +65,7 @@ Managed switch supports port mirroring for LAN capture.
 - Creds: `lutron-bridge` / `Lutr0n@1`, params: macid, deviceclass, coderev, datestamp
 - CDN: `phoenix/final/` (RA3), `lite-heron/final/` (Caseta) on `firmware-downloads.iot.lutron.io`
 - Package: ZIP with `firmware.tar.enc` (AES-128-CBC) + RSA-wrapped key + manifest
-- See `docs/infrastructure/firmware-updates.md` for details
+- See `firmware-updates.md` for details
 
 ## RA3 System Internals
 
