@@ -1,5 +1,7 @@
 # Lutron BLE Commissioning — Protocol Reference
 
+*The BLE commissioning/activation protocol Lutron's app uses to onboard CCX devices, from iOS app RE.*
+
 ## Source: Lutron iOS App v26.0.0
 
 Binary analysis of `BLEActivationFramework.framework`, `KMMUnifiedBackend.framework`,

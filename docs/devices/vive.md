@@ -1,5 +1,7 @@
 # Vive Hub
 
+*Hardware and firmware reverse-engineering of the Lutron Vive commercial lighting hub.*
+
 Reverse-engineering notes for the Lutron Vive commercial lighting hub: the hardware
 teardown (AM335x Linux host + STM32L100 CCA coprocessor + dual CC110L radios), the
 evolution of the companion application from the legacy `Vive.app` (generic HTTP, not

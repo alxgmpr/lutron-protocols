@@ -1,5 +1,7 @@
 # LEAP Server RE — `multi-server-phoenix.gobin`
 
+*Reverse-engineered internals of the RA3 processor's LEAP HTTP server binary.*
+
 Reverse-engineered inventory of the RA3 processor's LEAP HTTP server. Source:
 `data/firmware/phoenix/v26.01.13f000/usr/sbin/multi-server-phoenix.gobin`
 (30 MB stripped Go ELF, ARM, Go 1.23.8).

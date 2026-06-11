@@ -1,5 +1,7 @@
 # Lutron FSE Training Notes — Index
 
+*Index into a corpus of Lutron Field Service Engineer training notes and the insider knowledge they contain.*
+
 Index of the [xmocxd/lutron-training-notes](https://github.com/xmocxd/lutron-training-notes) corpus — ~10K lines of raw training notes from what appears to be a Lutron Field Service Engineer's onboarding (Phase 1 remote, Phase 2 in-person, OJT). Insider knowledge of commissioning workflows, system limits, and internal tooling — much of it not in public documentation.
 
 ## Source layout

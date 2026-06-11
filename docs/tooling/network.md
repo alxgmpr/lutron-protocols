@@ -1,5 +1,7 @@
 # Infrastructure & Environment Notes
 
+*Network topology, device IPs, and environment details for the lab setup.*
+
 ## Network Topology
 
 | Device | IP | Notes |

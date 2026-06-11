@@ -1,4 +1,6 @@
-# Wink Hub 1 Firmware RE Findings
+# Wink Hub 1 Firmware
+
+*Reverse-engineering notes on the Wink Hub 1 `lutron-core` binary and its CCA state-discovery mechanism.*
 
 Reverse engineered from Wink Hub 1 (i.MX28, firmware 4.3.60), accessed via NAND voltage glitch.
 Target binary: `lutron-core` (1.5MB, ARM, stripped but with C++ RTTI symbols).

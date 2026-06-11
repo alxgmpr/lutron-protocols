@@ -1,5 +1,7 @@
 # Lutron Clear Connect Type X (CCX) Protocol
 
+*Overview of CCX — Lutron's Thread/802.15.4-based transport for Sunnata/Darter devices.*
+
 ## CCX is Thread
 
 Analysis of Lutron RadioRA3/Homeworks databases shows that Clear Connect X (CCX) is based on Thread, not a proprietary RF protocol like CCA.

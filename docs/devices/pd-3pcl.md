@@ -1,6 +1,6 @@
 # PD-3PCL Firmware Extraction Plan
 
-Reverse engineering the Lutron PD-3PCL lamp dimmer by extracting firmware from its STM8L151Cx MCU via voltage fault injection.
+*Plan to extract PD-3PCL lamp dimmer firmware from its STM8L151Cx MCU via voltage fault injection.*
 
 ## Target Hardware
 

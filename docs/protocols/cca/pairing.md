@@ -1,5 +1,7 @@
 # CCA Pairing & Handshake Protocol
 
+*The CCA pairing/handshake flow — what's exchanged, what's authenticated, and where SKU enforcement lives.*
+
 End-to-end reverse-engineering writeup of the CCA pairing/handshake protocol — what the device does, what the bridge does, what's authenticated, what's replayable, and where SKU enforcement lives. Companion to [docs/protocols/cca/index.md](index.md), which covers the runtime/control packet types but only sketches the pairing flow.
 
 > Scope: 433 MHz CCA radio (Phoenix EFR32MG12 bridge ↔ HCS08 device). Picos, dimmers, switches, sensors, PowPak. Vive (433 MHz, Lutron's own DCD pairing) and CCX (Thread/802.15.4) are separate protocols.

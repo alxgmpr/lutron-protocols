@@ -1,5 +1,7 @@
 # CCA OTA — firmware over-the-air transfer
 
+*The CCA firmware over-the-air wire protocol, for both EFR32/Caseta and HCS08 (PowPak) targets.*
+
 Canonical reference for the Clear Connect Type A (CCA) firmware over-the-air
 (OTA) wire protocol, covering both the empirical EFR32/Caseta live capture
 (2026-04-28) and the HCS08 (PowPak / HW-CCA) adaptation. The static

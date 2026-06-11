@@ -1,5 +1,7 @@
 # RA3 to HomeWorks QSX Migration
 
+*Running a HomeWorks QSX project on RadioRA 3 hardware to unlock HW-exclusive programming features.*
+
 RadioRA 3 and HomeWorks QSX use identical hardware (same processors, same CCA/CCX
 radios) and identical database schemas. A RA3 processor can run a HomeWorks project,
 unlocking HW-exclusive features like DoubleTap, HoldPreset, richer LED logic, and

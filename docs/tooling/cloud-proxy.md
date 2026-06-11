@@ -1,5 +1,7 @@
 # Cloud LEAP Proxy & Firmware Update Flow
 
+*How Lutron's cloud LEAP proxy brokers app-to-processor traffic and orchestrates firmware updates.*
+
 **Discovered 2026-02-16** from HAR capture of Caseta iOS app firmware update check.
 
 ## Cloud LEAP Proxy

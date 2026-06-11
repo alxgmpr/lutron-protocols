@@ -1,4 +1,6 @@
-# LEAP API Exploration Results: RA3 Processor (<ra3-ip>)
+# LEAP API Reference — RA3 Processor
+
+*Map of the LEAP API surface exposed by a RadioRA3/HWQS processor on TLS port 8081.*
 
 Documentation of the LEAP API surface on the HWQS (Homeworks QSX) processor,
 firmware v03.247, explored 2026-03-06 via `ReadRequest` on TLS port 8081.

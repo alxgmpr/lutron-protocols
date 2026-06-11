@@ -1,6 +1,6 @@
 # Grafik Eye QS Firmware
 
-Reverse-engineering notes for Grafik Eye QS firmware (models QSGR-* 512kB hardware).
+*Reverse-engineering notes for Grafik Eye QS firmware (models QSGR-* 512kB hardware).*
 
 ## Acquisition
 

@@ -1,5 +1,7 @@
 # PowPak BDM Recovery — re-flashing a bricked HCS08
 
+*Re-flashing a bricked PowPak HCS08 over BDM after a failed OTA wiped its application firmware.*
+
 For when an OTA attempt erased the application section and the device is no longer responsive over RF. Documented here in concrete-enough form to actually execute. Tested target: RMJ 0x00BC2107 (line-voltage RMJ-16R-DV-B 434 MHz), bricked 2026-04-29.
 
 ## What's bricked
