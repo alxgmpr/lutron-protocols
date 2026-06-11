@@ -43,14 +43,14 @@ centered on the runtime CCA carrier `433.602844 MHz`, which corresponds to
 5-second window during the active TransferData phase (~100 s into the
 recording):
 
-![5s zoom spectrogram](../../firmware-re/figures/cca-ota/zoom-5s.png)
+![5s zoom spectrogram](figures/cca-ota/zoom-5s.png)
 
 Vertical bursts appear in a single ~80 kHz-wide band centered slightly below
 the runtime CCA channel — **no frequency hopping is visible**.
 
 Average PSD over the same window:
 
-![Average PSD](../../firmware-re/figures/cca-ota/avgfft.png)
+![Average PSD](figures/cca-ota/avgfft.png)
 
 A single dominant peak at **433.5663 MHz**. If this were a 35-channel hop at
 ~92 kHz spacing we would see ~3.2 MHz of total span and 35 distinct peaks; we
