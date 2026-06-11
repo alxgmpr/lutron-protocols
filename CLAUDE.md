@@ -199,7 +199,7 @@ All IPs configured in `config.json` (processors, openBridge, designer). Processo
 
 ## Documentation
 
-Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents. Security research (exploits, vulnerability writeups, extracted keys) lives in the private `~/redacted-security-repo` repo.
+Docs are organized by topic under `docs/`: `protocols/`, `hardware/`, `firmware-re/`, `infrastructure/`, `reference/`. See `docs/index.md` for the full table of contents. Security research (exploits, vulnerability writeups, extracted keys) is maintained outside this repository.
 
 ## Designer VM
 
@@ -207,11 +207,11 @@ VM at 192.168.64.4 — `sshpass -p alex ssh -o StrictHostKeyChecking=no -o Prefe
 
 - **NEVER launch Designer automatically** — only the user launches it manually
 - **ConnectSyncService.exe** locks DLLs in the MSIX directory — kill it before deploying patched DLLs
-- DLL patcher and jailbreak tools are in `~/redacted-security-repo/exploits/designer-jailbreak/`
+- DLL patcher and jailbreak tools are maintained outside this repository.
 - Original DLLs cached at `/tmp/designer-rox/`, patched output to `/tmp/designer-patched/`
 - Deploy: `scp /tmp/designer-patched/*.dll alex@192.168.64.4:c:/temp-patch/` then `ssh` and run `powershell -ExecutionPolicy Bypass -File C:\temp-patch\deploy.ps1` (kill ConnectSyncService first)
 - dnfile Python venv at `/tmp/dnfile-env/` for .NET metadata inspection
-- Universal cross-platform unlock (RA3 in HW, etc.) is baked into the DLL patcher — no SQL setup needed per launch. See `~/redacted-security-repo/docs-security/designer-universal-unlock.md`
+- Universal cross-platform unlock (RA3 in HW, etc.) is baked into the DLL patcher — no SQL setup needed per launch (documented outside this repo).
 
 ## Environment Notes
 

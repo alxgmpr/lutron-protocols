@@ -19,8 +19,8 @@ truth and fix stale facts as part of the merge.
   filenames removed.
 - **Updating:** full verify + update against `protocol/*.protocol.ts`,
   firmware, tools, config, and recent git history.
-- **Security boundary:** move attack-framed docs out to the private
-  `~/redacted-security-repo/docs-security/` repo.
+- **Security boundary:** move attack-framed docs out to a separate private
+  repo.
 - **Structure:** protocol + device axes (collapse `hardware/` vs
   `firmware-re/` split into one `devices/` axis).
 
@@ -83,7 +83,7 @@ docs/
 
 Net: 52 -> ~37 pages. No hardware/firmware-re split; each device family on one page.
 
-## Moves out of repo (to `~/redacted-security-repo/docs-security/`)
+## Moves out of repo (to a separate private repo)
 
 - `firmware-re/powpak-conversion-attack.md` — RMJ→LMJ conversion attack
 - `hardware/grx-keypad/glitch-rig-wiring.md` — voltage-glitch extraction rig
@@ -113,7 +113,7 @@ Update doc-path references in:
   designer-re, s19-firmware-re)
 - ~20 code/comment references in `firmware/src/`, `tools/`, `lib/`, `protocol/`
 
-Pages moved to `redacted-security-repo`: update pointers or remove
+Pages moved to a separate private repo: update pointers or remove
 (CLAUDE.md references `designer-universal-unlock.md`).
 
 ## Out of scope

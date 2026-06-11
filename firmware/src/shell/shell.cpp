@@ -1683,7 +1683,7 @@ static void cmd_cca(const char* arg)
      * device reachability without risking a brick. Default unicast (carrier
      * 0x92, byte[13]=0xFE); pass literal "bcast" as 4th arg for broadcast
      * (carrier 0x83, byte[13]=0xFD) where target is a DeviceClass.
-     * Refs ~/redacted-security-repo/docs-security/powpak-conversion-attack.md §"Brick incident". */
+     * Refs the brick-incident notes (maintained outside this repo). */
     if (strncmp(arg, "ota-poll ", 9) == 0) {
         char* p;
         uint16_t subnet = (uint16_t)strtoul(arg + 9, &p, 16);
@@ -1725,8 +1725,8 @@ static void cmd_cca(const char* arg)
      * Synth-OTA BeginTransfer burst — Phase 2a subnet recon for the
      * PowPak RMJ/RMJS → LMJ conversion attack. Watch the device's `0x0B`
      * XOR-ACK with format=0xC1 to confirm subnet acceptance. For unpaired
-     * devices start with subnet=ffff (factory default). See
-     * ~/redacted-security-repo/docs-security/powpak-conversion-attack.md. */
+     * devices start with subnet=ffff (factory default). See the
+     * conversion-attack notes (maintained outside this repo). */
     if (strncmp(arg, "ota-begin ", 10) == 0) {
         char* p;
         uint16_t subnet = (uint16_t)strtoul(arg + 10, &p, 16);
@@ -1759,7 +1759,7 @@ static void cmd_cca(const char* arg)
      * uploaded via STREAM_CMD_OTA_UPLOAD_*, sending BeginTransfer +
      * TransferData× + ChangeAddrOff at the captured 75ms cadence. Watch
      * for the device's 0x0B XOR-ACK with format=0xEC to confirm commit.
-     * See ~/redacted-security-repo/docs-security/powpak-conversion-attack.md. */
+     * See the conversion-attack notes (maintained outside this repo). */
     if (strncmp(arg, "ota-tx ", 7) == 0) {
         char* p;
         uint16_t subnet = (uint16_t)strtoul(arg + 7, &p, 16);

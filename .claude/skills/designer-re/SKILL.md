@@ -111,6 +111,4 @@ WHERE m.LUTRONMODELNUMBERBASE LIKE 'RR%';
 ## Existing Analysis
 
 Documented findings (channels, auth flow, toolbox platform bitfields, RA3-in-HW unlock):
-- `~/redacted-security-repo/docs-security/designer-auth-bypass.md` — RefreshToken/AuthenticateCode → SetUserChannels flow
-- `~/redacted-security-repo/docs-security/designer-jailbreak.md` — channel/platform enum details
-- `~/redacted-security-repo/docs-security/designer-universal-unlock.md` — cross-platform unlock (e.g., RA3 in HW toolbox) baked into the DLL patcher
+- Related auth-bypass / jailbreak / unlock analysis is maintained outside this repo.

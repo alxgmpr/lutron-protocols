@@ -6,11 +6,6 @@ Reverse-engineering and interoperability reference for Lutron lighting systems
 combining teardown and firmware RE), plus Designer tooling, our own toolkit, and
 reference tables.
 
-> Exploit, jailbreak, and key-extraction material (conversion attack, glitch
-> rigs, Designer IL patches, extracted keys) lives in the private
-> `~/redacted-security-repo/docs-security/` repo, not here. This wiki documents
-> protocols, hardware, and interoperability tooling.
-
 ## Protocols
 
 ### CCA — Clear Connect Type A (433 MHz FSK)

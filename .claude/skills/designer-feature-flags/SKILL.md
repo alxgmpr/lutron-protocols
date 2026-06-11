@@ -11,14 +11,14 @@ user_invocable: false
 
 Methodology for tracing what a named flag controls, through the .NET UI stack, and deciding whether a DLL patch will actually change observable behavior.
 
-For actual patch implementation see `~/redacted-security-repo/exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs` (dnlib-based — do not hand-edit IL bytes). For deploy, use `anthropic-skills:designer-deploy`.
+Patches go through a dnlib-based DLL patcher maintained outside this repo (do not hand-edit IL bytes). For deploy, use `anthropic-skills:designer-deploy`.
 
 ## Prerequisites
 
 - ILSpy MCP connected (`mcp__ilspy-mcp__decompile_type`, `decompile_method`, `search_members_by_name`, `list_assembly_types`)
 - DLLs on disk. Either:
   - Extract from the MSIX: `unzip -o <Designer>.msix -d /tmp/lutron-designer` (see `designer-re` skill), **or**
-  - Pull from the VM into `/tmp/designer-rox/` (see `~/redacted-security-repo/docs-security/designer-universal-unlock.md` for VM path)
+  - Pull from the VM into `/tmp/designer-rox/` (VM path documented outside this repo)
 
 No Python/dnfile environment is required for investigation — ILSpy covers it. Byte-level IL analysis is only needed when implementing a brand-new patch, and even then the patcher (`tools/DllPatcher`) uses dnlib, not raw bytes.
 
@@ -79,7 +79,7 @@ The flag is one gate; the predicate chain is typically the rest. A flag toggle w
 
 ## Step 4 — Patching
 
-Don't hand-edit IL bytes. All patches go through `~/redacted-security-repo/exploits/designer-jailbreak/dll-patcher/DllPatcher/Program.cs` (dnlib-based). To add a new patch:
+Don't hand-edit IL bytes. All patches go through a dnlib-based DLL patcher maintained outside this repo. To add a new patch:
 
 1. Add a new section in `Program.cs` that loads the target DLL, finds the method/type via dnlib, and rewrites it.
 2. Clearing strong-name signing and stripping `InternalsVisibleTo` attributes is handled by the patcher — don't reimplement it.

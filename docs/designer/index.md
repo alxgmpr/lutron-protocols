@@ -12,5 +12,5 @@ work that lets a RadioRA 3 processor run HomeWorks-style programming.
 - [Cycle dimming](cycle-dim.md) — cycle-dim button programming and validation
 
 DLL-patch / jailbreak material (universal platform unlock, channel-compat patches)
-lives in the private `~/redacted-security-repo/docs-security/` repo, not here.
+is maintained outside this repository.
 </content>

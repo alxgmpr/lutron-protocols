@@ -5,8 +5,8 @@
  * the Nucleo's CC1101, using STREAM_CMD_TX_RAW_CCA UDP datagrams.
  *
  * Mirrors the firmware-side `cca ota-tx` orchestration but in TypeScript,
- * so the packet format is fast to iterate during Phase 2 debugging. See
- * ~/redacted-security-repo/docs-security/powpak-conversion-attack.md and docs/protocols/cca/ota.md.
+ * so the packet format is fast to iterate during Phase 2 debugging. See the
+ * conversion-attack notes (maintained outside this repo) and docs/protocols/cca/ota.md.
  *
  * Usage:
  *   npx tsx tools/cca/ota-tx.ts \
@@ -27,8 +27,7 @@
  *        the MCU-default payload doesn't elicit an ACK.
  * --begin-only: emit just BeginTransfer and stop. Useful for non-destructive
  *        reachability probing (note: BeginTransfer itself may be destructive
- *        on HCS08 — see ~/redacted-security-repo/docs-security/powpak-conversion-attack.md
- *        §"Brick incident").
+ *        on HCS08 — documented outside this repo).
  */
 
 import { createSocket, type Socket } from "node:dgram";

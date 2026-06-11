@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restructure `docs/` from 52 fragmented files into a ~37-page protocol+device wiki, merging overlapping topics, moving attack-framed docs to the private `~/redacted-security-repo` repo, fixing stale content, and updating all inbound references.
+**Goal:** Restructure `docs/` from 52 fragmented files into a ~37-page protocol+device wiki, merging overlapping topics, moving attack-framed docs to a separate private repo, fixing stale content, and updating all inbound references.
 
 **Architecture:** Reorganize along two axes — `protocols/` (wire protocols, with per-protocol subdirs) and `devices/` (one page per device family, hardware + firmware RE together) — plus `designer/`, `tooling/`, `reference/`. Use `git mv` to preserve history on straight renames; for merges, `git mv` the primary source then fold sibling docs in and `git rm` them. Update every inbound reference (README, CLAUDE.md, `.claude/skills/`, source comments) after files move. Verify with a link checker that no intra-doc or inbound link dangles.
 
@@ -61,14 +61,14 @@ Unchanged paths (no move): `docs/protocols/ipl.md`, `docs/protocols/qslink.md`,
 | `docs/designer/ra3-hw-migration.md` | `docs/infrastructure/ra3-hw-migration.md` | `docs/infrastructure/ra3-hw-workflow.md` |
 | `docs/tooling/bdm-recovery.md` | `docs/firmware-re/powpak-bdm-recovery.md` | new `tools/firmware/bdm-prog.py` documentation |
 
-### Table C — Move out of repo (to `~/redacted-security-repo/docs-security/`)
+### Table C — Move out of repo (to a separate private repo)
 
 | Source | Destination |
 |--------|-------------|
-| `docs/firmware-re/powpak-conversion-attack.md` | `~/redacted-security-repo/docs-security/powpak-conversion-attack.md` |
-| `docs/hardware/grx-keypad/glitch-rig-wiring.md` | `~/redacted-security-repo/docs-security/grx-glitch-rig-wiring.md` |
-| `docs/infrastructure/designer-universal-unlock.md` | `~/redacted-security-repo/docs-security/designer-universal-unlock.md` |
-| `docs/infrastructure/designer-26.2-channel-fix.md` | `~/redacted-security-repo/docs-security/designer-26.2-channel-fix.md` |
+| `docs/firmware-re/powpak-conversion-attack.md` | powpak-conversion-attack.md (separate private repo) |
+| `docs/hardware/grx-keypad/glitch-rig-wiring.md` | grx-glitch-rig-wiring.md (separate private repo) |
+| `docs/infrastructure/designer-universal-unlock.md` | designer-universal-unlock.md (separate private repo) |
+| `docs/infrastructure/designer-26.2-channel-fix.md` | designer-26.2-channel-fix.md (separate private repo) |
 
 ### Table D — Delete
 
@@ -123,7 +123,7 @@ Unchanged paths (no move): `docs/protocols/ipl.md`, `docs/protocols/qslink.md`,
 | `docs/infrastructure/ra3-hw-workflow.md` | `docs/designer/ra3-hw-migration.md` |
 
 References to moved-out docs (Table C) and the deleted doc (Table D) must be
-rewritten to point at `~/redacted-security-repo/docs-security/...` or removed — handled
+rewritten to point at a separate private location or removed — handled
 explicitly in Task 16.
 
 ---
@@ -204,7 +204,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Files:**
 - Remove: the four docs in Table C
-- Create (other repo): four docs under `~/redacted-security-repo/docs-security/`
+- Create (other repo): four docs in a separate private repo
 
 - [ ] **Step 1: Copy each file into the private repo, then git rm here**
 
@@ -213,10 +213,10 @@ possible. Use plain copy + `git rm`:
 
 ```bash
 cd ~/lutron-protocols
-cp docs/firmware-re/powpak-conversion-attack.md      ~/redacted-security-repo/docs-security/powpak-conversion-attack.md
-cp docs/hardware/grx-keypad/glitch-rig-wiring.md     ~/redacted-security-repo/docs-security/grx-glitch-rig-wiring.md
-cp docs/infrastructure/designer-universal-unlock.md  ~/redacted-security-repo/docs-security/designer-universal-unlock.md
-cp docs/infrastructure/designer-26.2-channel-fix.md  ~/redacted-security-repo/docs-security/designer-26.2-channel-fix.md
+cp docs/firmware-re/powpak-conversion-attack.md      <private-repo>/powpak-conversion-attack.md
+cp docs/hardware/grx-keypad/glitch-rig-wiring.md     <private-repo>/grx-glitch-rig-wiring.md
+cp docs/infrastructure/designer-universal-unlock.md  <private-repo>/designer-universal-unlock.md
+cp docs/infrastructure/designer-26.2-channel-fix.md  <private-repo>/designer-26.2-channel-fix.md
 
 git rm docs/firmware-re/powpak-conversion-attack.md
 git rm docs/hardware/grx-keypad/glitch-rig-wiring.md
@@ -228,8 +228,8 @@ git rm docs/infrastructure/designer-26.2-channel-fix.md
 - [ ] **Step 2: Commit the private repo**
 
 ```bash
-cd ~/redacted-security-repo
-git add docs-security/
+cd <private-repo>
+git add .
 git commit -m "docs: import attack-framed docs from lutron-protocols wiki split
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -239,10 +239,10 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ```bash
 cd ~/lutron-protocols
-git commit -m "docs: move attack-framed docs to private redacted-security-repo repo
+git commit -m "docs: move attack-framed docs to a separate private repo
 
 Conversion attack, GRX glitch rig, and Designer IL-patch docs relocated to
-~/redacted-security-repo/docs-security/. This repo keeps only protocol/hardware
+a separate private repo. This repo keeps only protocol/hardware
 interoperability research.
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -692,7 +692,7 @@ git rm docs/infrastructure/ra3-hw-workflow.md
 Write `docs/designer/index.md`: one short paragraph on what Designer is (the
 Lutron commissioning app, VM at the configured IP) and a bullet list linking
 `database.md`, `ra3-hw-migration.md`, `cycle-dim.md`. Note that DLL-patch /
-jailbreak material lives in the private `~/redacted-security-repo` repo.
+jailbreak material is maintained in a separate private repo.
 
 - [ ] **Step 4: Fix relative links in the moved/merged files (depth + Table E)**
 
@@ -863,18 +863,18 @@ grep -rl "docs/firmware-re/leap-server.md" --include="*.ts" --include="*.h" --in
 
 Mappings to apply (from Table E) hit these known files (from survey):
 - `README.md` → `docs/index.md` (path unchanged; verify only).
-- `CLAUDE.md` → `docs/protocols/ccx-coap.md` becomes `docs/protocols/ccx/coap.md`; `docs/infrastructure/designer-universal-unlock.md` is MOVED OUT → rewrite to `~/redacted-security-repo/docs-security/designer-universal-unlock.md`; `docs/index.md` unchanged.
+- `CLAUDE.md` → `docs/protocols/ccx-coap.md` becomes `docs/protocols/ccx/coap.md`; `docs/infrastructure/designer-universal-unlock.md` is MOVED OUT → rewrite to a separate private location; `docs/index.md` unchanged.
 - `.claude/skills/cca-protocol/SKILL.md` → `docs/protocols/cca.md`→`docs/protocols/cca/index.md`, `docs/firmware-re/qsm.md`→`docs/devices/qsm.md`, `docs/protocols/qslink.md` unchanged.
-- `.claude/skills/designer-feature-flags/SKILL.md` and `.claude/skills/designer-re/SKILL.md` → `docs/infrastructure/designer-universal-unlock.md` is MOVED OUT → rewrite to `~/redacted-security-repo/docs-security/designer-universal-unlock.md`.
+- `.claude/skills/designer-feature-flags/SKILL.md` and `.claude/skills/designer-re/SKILL.md` → `docs/infrastructure/designer-universal-unlock.md` is MOVED OUT → rewrite to a separate private location.
 - `.claude/skills/s19-firmware-re/SKILL.md` → `docs/firmware-re/qsm.md`→`docs/devices/qsm.md`, `docs/firmware-re/esn.md`→`docs/devices/esn.md`, `docs/protocols/cca.md`→`docs/protocols/cca/index.md`, `docs/infrastructure/firmware-updates.md`→`docs/tooling/firmware-updates.md`.
-- `firmware/src/cca/cca_ota_tx.h` → `docs/firmware-re/cca-ota-live-capture.md`→`docs/protocols/cca/ota.md`; `docs/firmware-re/powpak-conversion-attack.md` is MOVED OUT → rewrite to `~/redacted-security-repo/docs-security/powpak-conversion-attack.md`.
+- `firmware/src/cca/cca_ota_tx.h` → `docs/firmware-re/cca-ota-live-capture.md`→`docs/protocols/cca/ota.md`; `docs/firmware-re/powpak-conversion-attack.md` is MOVED OUT → rewrite to a separate private location.
 - `tools/firmware/bdm-recovery.sh` → `docs/firmware-re/powpak-bdm-recovery.md`→`docs/tooling/bdm-recovery.md`.
 - `tools/firmware/ldf-extract.py`, `lib/ldf.ts`, `lib/cca-ota-codec.ts` → `docs/firmware-re/powpak.md`→`docs/devices/powpak.md`.
 - `tools/firmware/pff-parse.ts` → `docs/firmware-re/coproc.md`→`docs/devices/coprocessor-firmware.md`.
 - `tools/ccx/ccx-device-map.ts` → `docs/reference/ccx-device-map.md` unchanged (verify).
 - `tools/cca/ota-extract.ts`, `tools/cca/rtlsdr-ota-decode.ts`, `lib/cca-ota-tx-builder.ts`, `lib/cca-ota-demod.ts`, `protocol/cca.protocol.ts` → `docs/firmware-re/cca-ota-live-capture.md`→`docs/protocols/cca/ota.md`; `lib/cca-ota-demod.ts` and `lib/cca-ota-codec.ts` also `docs/protocols/cca.md`→`docs/protocols/cca/index.md`.
-- `tools/cca/ota-tx.ts` → `docs/firmware-re/cca-ota-hcs08.md`→`docs/protocols/cca/ota.md`; `docs/firmware-re/powpak-conversion-attack.md` MOVED OUT → `~/redacted-security-repo/docs-security/powpak-conversion-attack.md`.
-- `tools/cca/ota-upload.ts` → `docs/firmware-re/powpak-conversion-attack.md` MOVED OUT → `~/redacted-security-repo/docs-security/powpak-conversion-attack.md`.
+- `tools/cca/ota-tx.ts` → `docs/firmware-re/cca-ota-hcs08.md`→`docs/protocols/cca/ota.md`; `docs/firmware-re/powpak-conversion-attack.md` MOVED OUT → a separate private location.
+- `tools/cca/ota-upload.ts` → `docs/firmware-re/powpak-conversion-attack.md` MOVED OUT → a separate private location.
 - `tools/ipl/ipl-cmd.ts`, `lib/ipl.ts` → `docs/protocols/ipl.md` unchanged (verify).
 - `lib/leap-client.ts` → `docs/firmware-re/leap-server.md`→`docs/protocols/leap/server-internals.md`.
 - `lib/bridge-core.ts` → `docs/infrastructure/bridge.md`→`docs/tooling/ccx-wiz-bridge.md`.
@@ -893,8 +893,8 @@ Expected: no output (every old path rewritten). Investigate and fix any hit.
 
 - [ ] **Step 3: Update CLAUDE.md prose if needed**
 
-CLAUDE.md's "Documentation" section says security research lives in
-`~/redacted-security-repo`. Confirm that statement is still accurate and that the
+CLAUDE.md's "Documentation" section says security research is maintained
+outside this repo. Confirm that statement is still accurate and that the
 inline `docs/...` references it makes now resolve. Adjust wording if a
 referenced doc moved out of repo.
 
@@ -937,8 +937,8 @@ with a one-line description per page:
   training-notes-index.
 
 Use relative links from `docs/index.md` (e.g. `protocols/cca/index.md`). Add a
-short top paragraph noting that exploit/jailbreak material lives in the private
-`~/redacted-security-repo` repo.
+short top paragraph noting that exploit/jailbreak material is maintained in a
+separate private repo.
 
 - [ ] **Step 3: Run link check**
 
