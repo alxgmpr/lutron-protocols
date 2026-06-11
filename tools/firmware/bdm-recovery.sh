@@ -2,7 +2,7 @@
 # BDM-recovery wrapper for HCS08 PowPak modules — drives USBDM_Programmer to
 # mass-erase + program + verify a bricked PowPak from the original Lutron LDF
 # image. Designed for the post-OTA-brick recovery flow documented in
-# docs/firmware-re/powpak-bdm-recovery.md.
+# docs/tooling/bdm-recovery.md.
 #
 # Usage:
 #   tools/firmware/bdm-recovery.sh --target <part> --image <file.bin> [--erase-only]

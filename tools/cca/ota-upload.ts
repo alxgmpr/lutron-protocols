@@ -6,7 +6,7 @@
  * the Nucleo to start the firmware-side full-OTA transmit.
  *
  * Track 1 of the Phase 2b PowPak conversion plan — see
- * docs/firmware-re/powpak-conversion-attack.md.
+ * ~/redacted-security-repo/docs-security/powpak-conversion-attack.md.
  *
  * Usage:
  *   npx tsx tools/cca/ota-upload.ts \

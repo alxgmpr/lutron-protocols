@@ -7,7 +7,7 @@
  * `lib/cca-ota-codec.ts` (byte-level framing) and `lib/cca-ota-demod.ts`
  * (DSP, bit-clock recovery).
  *
- * RF parameters per docs/firmware-re/cca-ota-live-capture.md:
+ * RF parameters per docs/protocols/cca/ota.md:
  *   Carrier   : ~433.566 MHz (single channel; 36 kHz below runtime CCA)
  *   Modulation: GFSK (handled as 2-FSK in demod — close enough for decode)
  *   Data rate : ~62.5 kbps (empirical)

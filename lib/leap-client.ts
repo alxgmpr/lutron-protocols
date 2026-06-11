@@ -798,7 +798,7 @@ export const LEAP_REGISTRY: EndpointDef[] = [
   { path: "/daynightmode", key: "dayNightMode", itemsField: null },
 
   // Status collections — discovered from multi-server-phoenix.gobin RE.
-  // See docs/firmware-re/leap-server.md.
+  // See docs/protocols/leap/server-internals.md.
   {
     path: "/area/status",
     key: "areaStatuses",
