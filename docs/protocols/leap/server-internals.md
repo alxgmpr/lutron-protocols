@@ -6,7 +6,7 @@ Reverse-engineered inventory of the RA3 processor's LEAP HTTP server. Source:
 
 ## Why this matters
 
-Our hand-built `LEAP_REGISTRY` (in [`lib/leap-client.ts`](../../lib/leap-client.ts))
+Our hand-built `LEAP_REGISTRY` (in [`lib/leap-client.ts`](../../../lib/leap-client.ts))
 was assembled by probing endpoints we guessed or saw in LEAP captures. It covers
 ~43 paths. The real server surface is **~410 paths** across GET, SUBSCRIBE,
 UPDATE, CREATE, and DELETE.
