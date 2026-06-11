@@ -103,11 +103,58 @@ If the bricked unit has a *different* DeviceClass (check the SKU on the label: `
 | `RFCCO434_1-51.bin` | RMJ-CCO1-24-B (contact closure) | 16 07 04 01 |
 | `RFZeroTen434_1-34.bin` | RMJ-2DSC-1-B (0-10V) | 16 06 02 01 |
 
+### Software: bdm-prog.py (USBDM, no GUI)
+
+For headless recovery without installing the USBDM_Programmer GUI, this repo ships a
+minimal Python programmer that speaks the **USBDM USB protocol directly via pyusb**.
+It drives the HCS08 single-wire BDM through the USBDM pod's bulk/control endpoints,
+issues flash-controller commands (mass erase, byte program), and reads/writes target
+memory — everything needed to recover a bricked HCS08 PowPak.
+
+- **Script**: [../../tools/firmware/bdm-prog.py](../../tools/firmware/bdm-prog.py)
+- **Hardware**: USBDM programmer (USB **VID 0x16D0 / PID 0x0567**), target **MC9S08QE128** (`T_HCS08`).
+- **Dependency**: `pyusb` (and a USB backend, e.g. libusb).
+
+Invocation (this repo uses `uv` for Python — never raw `python`/`pip`):
+
+```sh
+# Connect, read SDID, report power/reset/security status
+uv run tools/firmware/bdm-prog.py probe
+
+# Mass erase (clears all flash + the SEC bit → unsecures the part)
+uv run tools/firmware/bdm-prog.py erase
+
+# Mass erase + program + verify a raw HCS08 image (S19/.bin, byte stream at 0x2080)
+uv run tools/firmware/bdm-prog.py program firmware.s19
+
+# Read target memory as a hex/ASCII dump: read <addr> <len>
+uv run tools/firmware/bdm-prog.py read 0x8000 256
+
+# Dump full flash to a file: dump <output.bin> [length] (default 131072 bytes)
+uv run tools/firmware/bdm-prog.py dump flash.bin
+```
+
+The `program` argument is a path to a raw HCS08 flash image (the `.bin` produced by
+stripping the LDF header, e.g. `PowPakRelay434_1-49.bin`); it is programmed byte-by-byte
+starting at flash base `0x2080`, then verified against the same file.
+
+**Known issue — `SYNC_TIMEOUT` on connect.** `probe`/`erase`/`program` may abort during
+`connect()` with USBDM error `SYNC_TIMEOUT (rc=21)`. The script attempts a manual
+speed-sync fallback (trying several BDM tick rates) but can still fail. The usual causes:
+
+- **Insufficient target power.** USB-only power to the pod is not enough — the HCS08 must
+  have a real 3.3V supply on VDD (mains applied to the PowPak's SMPS, or a bench 3.3V
+  injected directly). See [Power](#power) and [Step 4 — Power up the target](#step-4--power-up-the-target).
+- **BKGD test-point misidentification.** If the wire labelled BKGD is actually RESET (or
+  another pad), sync never completes. Re-verify the pad mapping per
+  [Step 2 — Locate BDM access points](#step-2--locate-bdm-access-points) and the
+  TP1–TP4 probing procedure above.
+
 ## Confirmed PCB layout (visual recon, 2026-04-29)
 
 Photos of the bricked unit's PCB confirmed before disassembly for BDM:
 
-- **MCU**: 44-LQFP, ~10×10 mm, Freescale "M" curved-swirl logo on the package. Pin count + footprint are consistent with `MC9S08QE128CLH` — matches the static-RE'd part-family guess in [powpak.md](powpak.md). The 102 KB combined section A+B image fits the QE128's 128 KB flash; the 32-LQFP variants (≤64 KB) wouldn't. Center of the board.
+- **MCU**: 44-LQFP, ~10×10 mm, Freescale "M" curved-swirl logo on the package. Pin count + footprint are consistent with `MC9S08QE128CLH` — matches the static-RE'd part-family guess in [powpak.md](../devices/powpak.md). The 102 KB combined section A+B image fits the QE128's 128 KB flash; the 32-LQFP variants (≤64 KB) wouldn't. Center of the board.
 - **Radio**: under a soldered-on metal RF shield can to the left of the MCU. Photo with shield removed shows a small QFN (CC1101 candidate, QFN20 4×4 mm) plus an adjacent crystal — both inside the shield footprint.
 - **BDM access candidate — TP1, TP2, TP3, TP4**: cluster of four tinned through-holes immediately to the right of the MCU. Four pads is exactly the BDM minimum (BKGD / RESET / VDD / GND). These are the most-likely BDM access points on this PCB. No populated header.
 - **ET-prefixed test points** (ET5, ET6, ET22, ET26, ET28, ET31, ET32, ET39): scattered across the board. These are production/factory engineering test pads — likely test coverage for SMPS, relay drive, sense lines. Not BDM. Don't probe these for recovery unless TP1-4 doesn't pan out.
@@ -216,5 +263,5 @@ If the device's identity matters (e.g., if it was already paired in a project fi
 - HCS08 BDM protocol: Freescale AN3335 (Application Note: Hardware design considerations for HCS08-based products).
 - MC9S08QE128 datasheet: NXP doc number `MC9S08QE128RM` (reference manual).
 - USBDM project: https://github.com/podonoghue/usbdm-eclipse-makefiles-build
-- This project's PowPak HCS08 RE: [powpak.md](powpak.md)
-- Conversion-attack plan that triggered the brick: [powpak-conversion-attack.md](powpak-conversion-attack.md) §"2026-04-29: Brick incident on RMJ 0x00BC2107"
+- This project's PowPak HCS08 RE: [powpak.md](../devices/powpak.md)
+- Conversion-attack plan that triggered the brick: `~/redacted-security-repo/docs-security/powpak-conversion-attack.md` §"2026-04-29: Brick incident on RMJ 0x00BC2107" (private security repo)
