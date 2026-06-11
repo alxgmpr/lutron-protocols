@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { describe } from "node:test";
-import type { LeapDumpData } from "../lib/leap-client";
 import type { CCXPacket } from "../ccx/types";
+import type { LeapDumpData } from "../lib/leap-client";
 
 // ── Helper: construct a LEVEL_CONTROL packet ─────────────────────
 
