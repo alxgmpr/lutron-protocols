@@ -763,7 +763,7 @@ contain:
   `0x08030101`).
 
 The other two EFR32 binaries (`8003000-803FF08.bin`, `8003000-807F808.bin`)
-have neither and are CCX-side. See [coproc.md](../../firmware-re/coproc.md)
+have neither and are CCX-side. See [coproc.md](../../devices/coprocessor-firmware.md)
 for the full classification table.
 
 ### TODO / open questions

@@ -43,7 +43,7 @@ Across all three binaries, byte-pattern searches for the CCA wire-protocol const
 | `LEC` magic (CC1101 register table tag) | 0 | 0 | 0 |
 | CC1101 IOCFG2/1/0 init triple `0E 2E 0D` | 0 | 0 | 0 |
 
-For comparison, the explicitly-EFR32-named coproc images (`phoenix_efr32_8003000-{801FB08,803FF08,807F808}.bin`) contain `FA DE`, `0F CA`, and the full CRC-16/0xCA0F lookup table — that's where bridge-side CCA OTA packet construction lives, and it's documented in [coproc.md](../../firmware-re/coproc.md) and [protocols/cca/index.md](index.md).
+For comparison, the explicitly-EFR32-named coproc images (`phoenix_efr32_8003000-{801FB08,803FF08,807F808}.bin`) contain `FA DE`, `0F CA`, and the full CRC-16/0xCA0F lookup table — that's where bridge-side CCA OTA packet construction lives, and it's documented in [coproc.md](../../devices/coprocessor-firmware.md) and [protocols/cca/index.md](index.md).
 
 The few isolated `FA DE` / `DE FA` bigrams in our three binaries (1-2 per file) are statistically consistent with random byte coincidence in dense Thumb-2 code (they don't sit inside instruction immediates, they don't occur in literal pools that get loaded by `LDR rN, [pc, #...]`, and they don't appear with neighboring preamble bytes). They are not the CCA sync-word constant.
 
@@ -107,11 +107,11 @@ Several plausible mistakes that could have led to the misidentification:
 
 If the orchestrator's premise was right that **separate** end-device firmware images for eagle-owl/basenji/bananaquit exist somewhere in the Phoenix build, those images are not these three binaries. Possible locations to check:
 
-1. **The encrypted Phoenix `firmware.tar.enc` PFF entries.** `cca/cca-eagle-owl-*.pff`, `cca/cca-bananaquit-avis-*.pff`, `cca/cca-basenji-*.pff` were enumerated in `device-firmware-manifest.json` (see [coproc.md](../../firmware-re/coproc.md) §Device Firmware Manifest). These are the **actual end-device images** that get OTA'd to the device — but they're encrypted with the per-model AES-128 key in ATECC608 slot 6 (`6cba80b2bf3cf2a63be017340f1801d8` for the chip line in question) and need decrypting before RE.
+1. **The encrypted Phoenix `firmware.tar.enc` PFF entries.** `cca/cca-eagle-owl-*.pff`, `cca/cca-bananaquit-avis-*.pff`, `cca/cca-basenji-*.pff` were enumerated in `device-firmware-manifest.json` (see [coproc.md](../../devices/coprocessor-firmware.md) §Device Firmware Manifest). These are the **actual end-device images** that get OTA'd to the device — but they're encrypted with the per-model AES-128 key in ATECC608 slot 6 (`6cba80b2bf3cf2a63be017340f1801d8` for the chip line in question) and need decrypting before RE.
 2. **HomeWorks QSX firmware bundle.** May carry distinct CCA end-device images that don't appear in the RA3 Phoenix bundle.
 3. **MSIX-bundled `.ldf` files in Designer.** PowPak's actual HCS08 firmware ships in `QuantumResi/BinDirectory/Firmware/QuantumResi/qs_firmware_and_tools/powpak modules/`; eagle-owl / basenji / bananaquit `.ldf` files (if they exist) would ship in a similar tree.
 
-Until the orchestration prompt's premise is reconfirmed against actual end-device firmware, the wire-protocol RE for what dimmers/picos/switches send and receive remains an open question. The bridge side is well-characterized in [coproc.md](../../firmware-re/coproc.md) and [protocols/cca/index.md](index.md); the device side requires acquiring the matching `.pff` decryption result or the `.ldf` body for these specific device classes.
+Until the orchestration prompt's premise is reconfirmed against actual end-device firmware, the wire-protocol RE for what dimmers/picos/switches send and receive remains an open question. The bridge side is well-characterized in [coproc.md](../../devices/coprocessor-firmware.md) and [protocols/cca/index.md](index.md); the device side requires acquiring the matching `.pff` decryption result or the `.ldf` body for these specific device classes.
 
 ## Tooling notes
 
