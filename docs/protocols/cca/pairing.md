@@ -248,7 +248,7 @@ PAIR_B0 [DeviceClass=X] ───▶  decode + dedup       ──host-link──
                                   drop (silent)
 ```
 
-This means **a converted device** (PowPak with flashed LMJ DeviceClass — see `docs/firmware-re/powpak.md`) will pair to RA3 cleanly because the AM335x sees DeviceClass = LMJ in PAIR_B0 byte 20–23 and enrolls it. The radio layer cannot distinguish.
+This means **a converted device** (PowPak with flashed LMJ DeviceClass — see `docs/devices/powpak.md`) will pair to RA3 cleanly because the AM335x sees DeviceClass = LMJ in PAIR_B0 byte 20–23 and enrolls it. The radio layer cannot distinguish.
 
 The LEAP server's enforcement is in pegasus's device-allowlist module, not in this writeup's scope.
 

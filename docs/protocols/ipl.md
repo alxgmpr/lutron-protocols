@@ -512,7 +512,7 @@ Action codes (jump table at 0x118b1fc in `sub_118aef8`, indexed by
 project-local, ≠ LEAP zone object id). The mapping lives in the Designer SQL
 DB table `tblIntegrationID` (columns `DomainControlBaseObjectID`,
 `IntegrationID`, `DomainControlBaseObjectType`); see
-`docs/infrastructure/designer-db.md`. RA3's LEAP API does **not** expose the
+`docs/designer/database.md`. RA3's LEAP API does **not** expose the
 mapping, so without Designer DB access there is no in-band lookup.
 
 Per the firmware arg-count check on action 1 (`(argc-4) <= 2`), `delay` requires
