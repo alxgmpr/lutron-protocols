@@ -149,6 +149,11 @@ export function setLeapData(data: LeapDumpData): void {
   _leapOverride = data;
 }
 
+/** Clear any override set via setLeapData, restoring the on-disk data. */
+export function resetLeapData(): void {
+  _leapOverride = null;
+}
+
 /** Format a zone's display name from LEAP data (area + zone name) */
 function formatZoneName(zone: { name: string; area?: string }): string {
   return zone.area ? `${zone.area} ${zone.name}` : zone.name;
