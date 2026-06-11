@@ -290,7 +290,7 @@ Supporting evidence:
 
 **Open paths to recovery**:
 1. Physical BDM/TDI probe on a real unit (HCS08 has a BDM header just like QSM).
-2. Pull delta/OTA builds from Lutron's firmware CDN (see [security/firmware-cdn.md](../security/firmware-cdn.md)) — a job-specific or engineering release may ship the daughter-board firmware separately.
+2. Pull delta/OTA builds from Lutron's firmware CDN (see `~/redacted-security-repo/docs-security/firmware-cdn.md`) — a job-specific or engineering release may ship the daughter-board firmware separately.
 3. Seed the protocol from QSM firmware ([qsm.md](qsm.md)) — the radio daughter board runs analogous code: HCS08 + CC1101 + CCA/CA0F. The TDMA slot math, CC1101 register defaults, N81 codec, channel-hop table, and packet framing should all transfer.
 4. Capture UART1/UART2 traffic from a live Grafik Eye (serial tap between Display and Daughter Boards) to reverse-engineer the host↔radio wire protocol. That gets you the command set without needing the daughter firmware at all.
 
@@ -382,7 +382,7 @@ Designer also ships `QuantumResi/qs_firmware_and_tools/GrafikEye/Grafik Eye QS F
 2. **Physical BDM probe of the daughter-board HCS08** — standard Lutron pattern (matches QSM). Would yield the factory radio firmware directly.
 3. **Reverse the 6-050 encryption wrapper** — older format may reveal whether the inter-board protocol / SPI-flash layout has changed over time, and whether an older build included a daughter-board sub-payload that 8.027/9.029 dropped.
 4. **Reach SNIFFER mode** — identify what writes `0x61` to `*0x2000069C`. Likely a button-hold-at-boot combo or an IPL command from the USB updater. Unlocking this gives a packet-sniffer UI on the Grafik Eye LCD itself.
-5. **Enumerate the firmware CDN** for `QSGR`, `grafikeye`, `qsg*` paths to find delta/OTA builds — see [security/firmware-cdn.md](../security/firmware-cdn.md). Job-specific or engineering releases may ship the daughter-board firmware separately.
+5. **Enumerate the firmware CDN** for `QSGR`, `grafikeye`, `qsg*` paths to find delta/OTA builds — see `~/redacted-security-repo/docs-security/firmware-cdn.md`. Job-specific or engineering releases may ship the daughter-board firmware separately.
 6. **Check other Designer-bundled firmware** — every `qs_firmware_and_tools/*/v*.s19` is already plaintext. Only Grafik Eye was wrapped in a custom loader; the rest should be direct-dumpable. Candidates for radio-code reference (HCS08 + CC1101): `qs_firmware_and_tools/qs keypad/QSW_7-001_*.s19`, `Hotel_Pico_7_002.s19`, `QSE_CI_WCI_7_005.s19`, `QSE-IR-WH/QS IR Eye Rev0x11OC.s19`.
 
 ## Target MCU
