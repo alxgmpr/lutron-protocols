@@ -1,17 +1,19 @@
-# Lutron BLE Commissioning — Reverse Engineering Analysis
+# Lutron BLE Commissioning — Protocol Reference
 
 ## Source: Lutron iOS App v26.0.0
 
 Binary analysis of `BLEActivationFramework.framework`, `KMMUnifiedBackend.framework`,
 `CommunicationFramework.framework`, and `CommandsFramework.framework`.
 
-## Executive Summary
+## TL;DR
 
 Lutron CCX device commissioning uses **BLE GATT over TLS** to deliver the Thread
 Network Master Key (NMK) to new devices. The app establishes a TLS 1.2 session
 tunneled through BLE GATT characteristics using HDLC framing, then sends the NMK
-and post-NMK claiming data. There is an **"OOB without authentication"** code path
-that skips certificate validation — this is our best attack surface.
+and post-NMK claiming data. The commissioning channel carries the Thread network
+key over TLS-in-GATT, but the iOS app sets `acceptInvalidCerts`, so it does not
+validate the device certificate — the channel is authenticated only by physical
+proximity / out-of-band pairing, not by PKI.
 
 ## BLE Service Architecture
 
@@ -70,7 +72,7 @@ The app uses a **TCP loopback tunnel** to bridge Apple's TLS APIs with BLE:
 3. The client socket is wrapped in TLS using `TLSClientWrapper`
 4. `TLSClientWrapper` is initialized with:
    - `certChainPaths:` — Array of certificate chain file paths
-   - `acceptInvalidCerts:` — Boolean flag to bypass cert validation!
+   - `acceptInvalidCerts:` — Boolean flag controlling device certificate validation (set true by the app, so the device cert is not validated)
 5. TLS plaintext ↔ HDLC framing ↔ BLE GATT read/write
 
 ### Data Flow
@@ -312,40 +314,21 @@ These appear to be **key type identifiers**:
 
 So `.bleap` = AES-CBC encrypted ZIP archive containing BLE configuration/cert data.
 
-## Attack Surfaces for Virtual Device
+## Authentication Model
 
-### 1. OOB Without Authentication (BEST PATH)
+The commissioning channel's security properties follow directly from the protocol
+facts above:
 
-The app explicitly says: **"The app only supports OOB without authentication"**
-
-This means:
-- No certificate validation during OOB pairing
-- `performOOBWithoutAuthentication(device:completion:)` is the main code path
-- `acceptInvalidCerts: true` may be set during this flow
-- If we can advertise as a Sunnata on BLE and handle the GATT service properly,
-  the app will send us the NMK without verifying our identity
-
-### 2. LEAP AddressDevice with Known Serial
-
-If we have a real device's serial number:
-- `AddressDeviceCommand` takes `serialNumber:ipAddress:deviceClass:`
-- Could potentially re-address a device to our virtual device's IPv6
-- Need to test: does the processor validate the serial against actual device identity?
-
-### 3. Direct NMK Injection (Already Done)
-
-We already have the Thread network key (extracted from captures). The question is
-whether the processor tracks which devices received the NMK and rejects unauthorized ones.
-
-From our captures, the processor sends CoAP programming to devices by IPv6 address.
-If we respond correctly to the programming sequence, we may be accepted.
-
-### 4. BLE MITM During Real Pairing
-
-- Sniff BLE advertisement of real Sunnata during pairing
-- Race to connect before the Lutron app
-- Relay the TLS handshake, but intercept the NMK
-- This gives us: the NMK (already have it), the exact claiming data, and joiner credentials
+- **OOB without authentication** — the app's only supported OOB mode is
+  `performOOBWithoutAuthentication(device:completion:)`; the device certificate is
+  not validated during OOB pairing (`acceptInvalidCerts` is set). The channel is
+  therefore authenticated by physical proximity / out-of-band pairing, not by PKI.
+- **LEAP device addressing** — `AddressDeviceCommand` associates a device with a
+  processor by `serialNumber:ipAddress:deviceClass:`. Whether the processor binds
+  the serial to a hardware identity is not established by the app binary alone.
+- **NMK scope** — once delivered, the NMK is the Thread network key shared by the
+  mesh; the processor addresses devices by IPv6 and drives CoAP programming over the
+  Thread network (see the runtime transport table below).
 
 ## Connection Transport Summary
 
@@ -376,21 +359,18 @@ If we respond correctly to the programming sequence, we may be accepted.
 | 5683/UDP | CoAP+CBOR | Programming, config |
 | 19788/UDP | MLE | Mesh link establishment |
 
-## Recommended Next Steps
+## Open Questions / RE Notes
 
-1. **Sniff BLE during real Sunnata pairing** — Use nRF Connect or btlejack to capture
-   the actual GATT service UUIDs, characteristic UUIDs, and data exchanged
+The following protocol details are not fully resolved from the app binary alone and
+would need on-the-wire capture to confirm:
 
-2. **Test processor tolerance** — Our nRF is already on the Thread network with the NMK.
-   Try responding to CoAP programming and emitting PRESENCE/STATUS. Does the processor
-   accept an "unauthorized" device?
-
-3. **Build BLE GATT peripheral** — nRF52840 can run both Thread and BLE simultaneously.
-   Advertise the same service UUIDs as a Sunnata. Implement the TLS GATT service
-   to accept NMK delivery.
-
-4. **Try LEAP AddressDevice** — Use our LEAP client to send AddressDevice with a
-   fake serial number and our nRF's IPv6. See if the processor adds it.
-
-5. **Decode the key identifiers** — The "kek KEK... NMK" string suggests a key
-   hierarchy. Understanding this tells us what keys are needed beyond just the NMK.
+- **GATT UUIDs** — the concrete service/characteristic UUIDs used during pairing are
+  not exported as literals in the binary; a BLE capture (e.g. nRF Connect) of a real
+  Sunnata pairing would record the actual service and characteristic UUIDs and the
+  framed data exchanged.
+- **Processor device binding** — whether the processor validates the serial passed to
+  `AddressDeviceCommand` against a hardware identity is not determined by the iOS app.
+- **Key identifier hierarchy** — the `kek KEK … NMK` string set suggests a key
+  hierarchy (KEK, NKK, DOK, CAK, LUK, LAK, NBM in addition to the NMK). The relationship
+  between these key types and what beyond the NMK participates in commissioning is not
+  yet mapped.
