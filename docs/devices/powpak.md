@@ -16,7 +16,7 @@ The device's identity is determined by **a 4-byte DeviceClass at body offset `0x
 **The CCA OTA wire protocol is fully decoded** (from RE'ing the Phoenix EFR32 coproc):
 - Sync word `0xFADE`, preamble `55 55 55 FF`, CRC poly `0xCA0F`
 - Packet layout `[len][op][payload][CRC16]`, 6-14 bytes typical
-- 35-row table at BN `0x9B30` (codes 0x44..0x66) — earlier suspected to be a hop table; the **2026-04-28 live OTA capture shows single-channel operation** at ~433.566 MHz, not hopping. The table is something else (calibration LUT, retry channels, or unrelated). See [cca-ota-live-capture.md](cca-ota-live-capture.md).
+- 35-row table at BN `0x9B30` (codes 0x44..0x66) — earlier suspected to be a hop table; the **2026-04-28 live OTA capture shows single-channel operation** at ~433.566 MHz, not hopping. The table is something else (calibration LUT, retry channels, or unrelated). See [protocols/cca/ota.md](../protocols/cca/ota.md).
 - 10 OTA opcodes; the wake-up sequence is `QueryDevice(0x58) → CodeRevision(0x36) → BeginTransfer(0x2A) → ChangeAddressOffset(0x32) → TransferData(0x41)×N → EndTransfer(0x32) → ResetDevice(0x32)`
 - The Phoenix coproc has **no DeviceClass enforcement** — it relays whatever lutron-core asks it to send
 
@@ -117,7 +117,7 @@ A second similar table at BN `0x09A4F` adds writes to PATABLE (0x7E), TX FIFO (0
 | 0x0C | FSCTRL0 | 0x00 | freq offset = 0 |
 | 0x0D-0x0F | FREQ2/1/0 | — | **NOT in this table — set per-band elsewhere** |
 | 0x10 | **MDMCFG4** | **0x9C** | CHANBW_E=2, CHANBW_M=1, DRATE_E=12 → bandwidth ≈ 162 kHz |
-| 0x11 | **MDMCFG3** | **0x3B** | DRATE_M=0x3B; the static-RE decode here gave 30.49 kbps but the **2026-04-28 live capture measured ~62.5 kbps** empirically (preamble peak-to-peak measurement). Register decode formula likely misapplied, or OTA reuses runtime CCA's bit clock. See [cca-ota-live-capture.md](cca-ota-live-capture.md). |
+| 0x11 | **MDMCFG3** | **0x3B** | DRATE_M=0x3B; the static-RE decode here gave 30.49 kbps but the **2026-04-28 live capture measured ~62.5 kbps** empirically (preamble peak-to-peak measurement). Register decode formula likely misapplied, or OTA reuses runtime CCA's bit clock. See [protocols/cca/ota.md](../protocols/cca/ota.md). |
 | 0x12 | **MDMCFG2** | **0x10** | **GFSK**, no Manchester, **SYNC_MODE=0 (sync detection disabled)** |
 | 0x13 | MDMCFG1 | 0x00 | no preamble bytes inserted, no FEC |
 | 0x14 | MDMCFG0 | 0x00 | channel spacing M=0 |
@@ -159,7 +159,7 @@ Region at BN `0x9B30-0x9B7F` contains a stepping table:
 35 entries, 2 bytes each. First byte increments by 1; second byte decrements by ~4.
 
 **Empirically NOT a frequency hop table.** The 2026-04-28 live OTA capture
-([cca-ota-live-capture.md](cca-ota-live-capture.md)) shows the OTA runs on a
+([protocols/cca/ota.md](../protocols/cca/ota.md)) shows the OTA runs on a
 single channel at ~433.566 MHz for the entire 19-minute transfer — no hop
 pattern. Interpretation as `(FREQ1, FREQ0)` pairs with implied FREQ2 = 0x10
 yielded ~423-425 MHz (below the 433 MHz ISM band) for the same reason: it
@@ -171,7 +171,7 @@ Adjacent at BN `0x9B2D`: explicit `21 63 b1` = FREQ2/1/0 for **868.1249 MHz** �
 ## Tooling
 
 - [tools/firmware/ldf-extract.py](../../tools/firmware/ldf-extract.py) — TODO promote from `/tmp/ldf-extract.py`. Strips 0x80-byte LDF header.
-- [tools/ldf-find-cc1101.py](../../tools/ldf-find-cc1101.py) — TODO promote. Locates `LEC` magic + extracts CC1101 register tables.
+- [tools/firmware/ldf-extract.py](../../tools/firmware/ldf-extract.py) — TODO promote. Locates `LEC` magic + extracts CC1101 register tables.
 
 ## DeviceClass and SKU identity
 
@@ -272,7 +272,7 @@ Phoenix's own CCA coprocessor binaries:
 - `data/firmware/phoenix-device/coprocessor/phoenix_efr32_*.bin` — newer EFR32 (Cortex-M) CCA coproc
 - `data/firmware/phoenix-device/coprocessor/phoenix_kinetis_4000-*.s19` — Kinetis (Cortex-M) variant
 
-These contain the actual on-air CCA OTA framer that PowPak's bootloader RX path is listening for. They've already been imported into Ghidra/BN (see [coproc.md](./coproc.md) and `phoenix-device/binaries/*.bndb`) — that's where the wire protocol RE belongs.
+These contain the actual on-air CCA OTA framer that PowPak's bootloader RX path is listening for. They've already been imported into Ghidra/BN (see [coprocessor-firmware.md](./coprocessor-firmware.md) and `phoenix-device/binaries/*.bndb`) — that's where the wire protocol RE belongs.
 
 ## Implications for OTA conversion
 
@@ -662,44 +662,11 @@ when running on RMJ". That depends on:
 If both are permissive, Path 2 works. Items #2 and #3 are the highest-leverage
 RE targets remaining.
 
-## CCA OTA wire protocol (RE'd from Phoenix EFR32 coproc)
+## CCA OTA wire protocol
 
-Verified against PowPak's RX side — both ends configured byte-for-byte identically. Full reference: [reference-cca-ota-wire-protocol.md](file:///Users/alex/.claude/projects/-Users-alex-lutron-tools/memory/reference-cca-ota-wire-protocol.md).
+PowPak receives firmware over the air using the standard CCA OTA transfer (single channel ~433.566 MHz, sync `FA DE`, CRC-16 `0xCA0F`, BeginTransfer/TransferData/ChangeAddressOffset framing). The full wire format, channel parameters, the corrected single-channel finding (the 35-row table is NOT a frequency-hop table), and the force-trigger procedure are documented in [protocols/cca/ota.md](../protocols/cca/ota.md).
 
-### Modem config (CC1101)
-
-Phoenix coproc (TX) and PowPak (RX) share:
-- GFSK, **~62.5 kbps** (empirically — see [cca-ota-live-capture.md](cca-ota-live-capture.md); was earlier claimed as 30.49 kbps from static-RE register decode but live capture disproved that), ~38 kHz deviation, ~162 kHz channel bandwidth
-- PKTCTRL0 = 0x32 — async serial mode (MCU bit-bangs framing on both ends)
-- MDMCFG2 = 0x10 — sync-mode = 0 (chip does NOT do sync detection — software does)
-- ~~35-channel frequency hopping table~~ — empirically single-channel at ~433.566 MHz; the 35-row table is something else (see [cca-ota-live-capture.md](cca-ota-live-capture.md))
-
-### On-air framing
-
-```
-[3 × 0x55][0xFF][0xFA 0xDE][LEN:1][OP:1][PAYLOAD:N][CRC16:2]
-```
-
-Total 6-14 bytes per packet. Sync word **`FA DE`** is the discriminator the bootloader bit-bangs a search for. CRC-16 polynomial **0xCA0F** (the standard CCA polynomial — confirmed by the byte sequence `ca 0f` adjacent to the framing template constant in PowPak flash).
-
-### OTA opcodes
-
-| Opcode | HDLC cmd ID | Name | On-air body | Purpose |
-|--------|-------------|------|-------------|---------|
-| **0x2A** | 0x113 | **BeginTransfer** | 7 | **Wake-up — bootloader enters receive mode** |
-| 0x32 | 0x119/0x11B/0x11D | ChangeAddressOffset / EndTransfer / ResetDevice | 6 | Multi-purpose control |
-| 0x33 | 0x125 | GetDeviceFirmwareRevisions | 4 | |
-| 0x34 | 0x127 | CancelDeviceFirmwareUpload | 6 | |
-| 0x35 | 0x129 | (broadcast) | 0 | |
-| 0x36 | 0x11F | CodeRevision | 4 | |
-| 0x3A | 0x121 | ClearError | 8 | |
-| 0x3C | 0x12B | (ack/notify) | 4 | |
-| **0x41** | 0x115 | **TransferData** | 4 | **Carries firmware bytes — small chunks** |
-| 0x58 | 0x111 | QueryDevice | 5 | Initial probe |
-
-Wake-up sequence: `QueryDevice` → `CodeRevision` → `BeginTransfer` → `ChangeAddressOffset` → `TransferData` × N → `EndTransfer` → `ResetDevice`.
-
-The Phoenix coproc has **NO DeviceClass enforcement** — it relays whatever lutron-core asks. The on-device gate is whatever the PowPak bootloader does itself.
+PowPak-specific HCS08 bootloader behavior (sync-detect at body `0x52BF`, the `06 nn` sub-op dispatcher, the flash-write primitive, and the page-erase brick mechanism) is covered in the [bootloader RE](#bootloader-unknowns-gates-paths-2-and-3) sections above and in [ota.md §"HCS08 specifics"](../protocols/cca/ota.md#5-hcs08-specifics-powpak--hw-cca).
 
 ### PowPak's RX side — anchors
 
@@ -718,14 +685,7 @@ The receive-side state machine + flash-write integration appears to start in the
 
 ## Revised attack feasibility
 
-With the wire protocol fully decoded, **Path 2 (direct CCA OTA from Nucleo+CC1101) is now concrete**:
-
-1. Configure Nucleo+CC1101 with the shared register values (LEC table from `docs/firmware-re/powpak.md`)
-2. Build packets with framing `55 55 55 FF FA DE [len][op][payload][CRC16(0xCA0F)]`
-3. Bit-bang via async serial mode (PKTCTRL0=0x32)
-4. Hop channels per the 35-entry table
-5. Send the sequence: `QueryDevice` (0x58) → `CodeRevision` (0x36) → `BeginTransfer` (0x2A) → `ChangeAddressOffset` (0x32) → `TransferData` (0x41) × N → `EndTransfer` (0x32) → `ResetDevice` (0x32)
-6. Stream LMJ firmware bytes via TransferData chunks
+With the wire protocol fully decoded (see [protocols/cca/ota.md](../protocols/cca/ota.md)), **Path 2 (direct CCA OTA from Nucleo+CC1101) is now concrete**: configure the radio with the shared LEC register values (see the CC1101 table above), build single-channel `55 55 55 FF FA DE [len][op][payload][CRC16(0xCA0F)]` packets in async serial mode, and stream the LMJ firmware bytes via the BeginTransfer → TransferData × N → ChangeAddressOffset transfer sequence (full framing in ota.md).
 
 Bootloader-side validation (the only remaining gate) can now be characterized with focused RE since we know exactly which dispatch entry to follow — start at BN `0x8680` (CMP #$41 for TransferData) and trace what the handler does with the incoming bytes; specifically, whether it checks the firmware's embedded DeviceClass at `0x008AD` against the in-flash one before flashing.
 
