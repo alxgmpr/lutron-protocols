@@ -94,6 +94,8 @@ The `lutron-coproc-firmware-update-app` embeds an obfuscated S19 firmware image:
 - **Version marker**: `/etc/lutron.d/lutron.079` contains `07030408B435`
 - **Interesting**: Help text references `SB_EFR_128K_00.00.03.s19` — EFR32 firmware filename
 
+This is the same shared STM32 coprocessor platform as the Caseta Ethernet Bridge — see [caseta-smartbridge.md](caseta-smartbridge.md) for the full S19 extraction/deobfuscation pipeline.
+
 ## CCA Link Type Analysis
 
 ### System Identity

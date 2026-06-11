@@ -117,7 +117,7 @@ Consistent across all CCA sources:
 
 ## Related Docs
 
-- **[cca-protocol.md](cca-protocol.md)** — CCA byte-level protocol reference (packet formats, pairing, config)
-- **[protocols/ccx.md](../protocols/ccx.md)** — CCX/Thread protocol (CBOR messages, button encoding, sniffer setup)
-- **[ra3-system.md](ra3-system.md)** — RA3 processor internals (LEAP API, certificates, database editing)
-- **[dimming-curves.md](dimming-curves.md)** — Warm-dim curve definitions from Designer database
+- **[cca/index.md](../protocols/cca/index.md)** — CCA byte-level protocol reference (packet formats, pairing, config)
+- **[ccx/index.md](../protocols/ccx/index.md)** — CCX/Thread protocol (CBOR messages, button encoding, sniffer setup)
+- **[ra3-processor.md](ra3-processor.md)** — RA3 processor internals (LEAP API, certificates, database editing)
+- **[dimming-curves.md](../reference/dimming-curves.md)** — Warm-dim curve definitions from Designer database

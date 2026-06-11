@@ -215,7 +215,7 @@ Maps sequential indices to CCA format codes:
 
 ## Ghidra Project
 
-Location: `/Volumes/Secondary/lutron-tools/re/designer/ghidra_project3/qsm_final`
+Location: `/Volumes/Secondary/lutron-protocols/re/designer/ghidra_project3/qsm_final`
 Patched HCS08 processor with CALL (0xAC) and RTC (0x8D) support in:
 `/Users/alex/Downloads/ghidra_12.0.4_PUBLIC/Ghidra/Processors/HCS08/data/languages/HCS_HC.sinc`
 

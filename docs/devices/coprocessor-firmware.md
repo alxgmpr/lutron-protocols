@@ -30,7 +30,7 @@ Three variants of this cipher have been seen:
 - **Caseta SmartBridge** (older L-BDG2/SBP2 / 0.3 MB binary) and **Vive prototype**:
   `key0=0x29`, key advances **continuously** across the entire stream, single blob
   with no S0 header (begins directly with `S3` records). See
-  [caseta-smartbridge-coproc.md](caseta-smartbridge-coproc.md) for details.
+  [caseta-smartbridge.md](caseta-smartbridge.md) for details.
 - **RA2 Select REP2 / Caseta Pro** (1.5 MB binary): same continuous cipher, but
   multiple blobs concatenated with **key0 changes between blobs** (no embedded
   signature). Observed `key0` values: `0x25` (HCS08 + first EFR32) and `0x7E`
@@ -119,7 +119,7 @@ Phoenix (2 × HCS08 CCA + 2 × Cortex-M CCA), distinct binaries:
 The Cortex-M images contain the same CCA OTA framing constants as Phoenix's EFR32
 images (sync `55 55 55 FF FA DE`, CRC poly `0F CA`, 256-entry CRC lookup table) —
 confirming that the CCA OTA wire protocol RE'd from Phoenix applies to RA2 Select
-/ Caseta Pro as well. See [docs/protocols/cca.md §9](../protocols/cca.md#9-firmware-ota-wire-protocol).
+/ Caseta Pro as well. See [CCA firmware OTA wire protocol](../protocols/cca/ota.md).
 
 The "efr32" label follows Phoenix's naming convention; whether RA2 Select REP2
 actually uses an EFR32 (vs STM32 or another Cortex-M part) is unverified pending
