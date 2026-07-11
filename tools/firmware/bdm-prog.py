@@ -326,6 +326,28 @@ def connect_target(bdm: USBDM) -> int:
     fw_ver = f"{resp[5]}.{resp[6]}.{resp[7] if len(resp) > 7 else 0}"
     print(f"  Capabilities: 0x{caps:04X}, buffer: {buf_size}, fw: {fw_ver}")
 
+    # HCS08 support: the USB product string (read directly by the OS from the
+    # device descriptor) lists the target families the firmware was built for and
+    # is authoritative. Our GET_CAPABILITIES parse has proven unreliable on some
+    # firmware — a genuine HCS08/HCS12/CFV1 JS16 (product string
+    # "USBDM HCS08,HCS12,Coldfire-V1 BDM") reports caps=0x4001 here — so trust the
+    # descriptor string, and only fall back to the caps bit if the string is absent.
+    try:
+        product = usb.util.get_string(bdm.dev, bdm.dev.iProduct) or ""
+    except Exception:
+        product = ""
+    hcs08_ok = ("HCS08" in product.upper()) or bool(caps & (1 << 5))
+    if not hcs08_ok:
+        print("")
+        print(f"  *** WARNING: this pod does not appear to support HCS08 (product={product!r},")
+        print(f"  *** caps=0x{caps:04X}). BDM sync will likely fail (BKGD_TIMEOUT / BDM_EN_FAILED)")
+        print("  *** regardless of wiring. Reflash the pod with HCS08-capable USBDM firmware")
+        print("  *** or use a different HCS08 programmer (e.g. P&E Multilink Universal).")
+        print("")
+    elif not (caps & (1 << 5)):
+        print(f"  (note: caps word 0x{caps:04X} misreports targets; product string "
+              f"{product!r} confirms HCS08 — a BKGD_TIMEOUT here is wiring/target, not the pod)")
+
     print("Setting target type: HCS08")
     bdm.set_target(T_HCS08)
 
@@ -503,10 +525,14 @@ def verify_flash(bdm: USBDM, data: bytes, base_addr: int = 0x2080) -> int:
 
 def cmd_probe(bdm: USBDM):
     sdid = connect_target(bdm)
-    if sdid == 0x00E0:
+    if sdid in (0x3015, 0x00E0):
+        # 0x3015 confirmed empirically on a real MC9S08QE128 (RMJS-5RCCO1-DV-B,
+        # 2026-07 bench session). 0x00E0 was the original guessed value.
         print("Target: MC9S08QE128 (confirmed)")
     elif sdid == 0x00D0:
         print("Target: MC9S08QE64")
+    elif sdid in (0x0000, 0xFFFF):
+        print(f"Target: no BDM sync (SDID 0x{sdid:04X} = floating/blocked, not a real read)")
     else:
         print(f"Target: unknown SDID 0x{sdid:04X}")
 

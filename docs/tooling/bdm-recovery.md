@@ -56,8 +56,10 @@ PowPak boards almost certainly have these pads broken out somewhere (Lutron uses
 - **Test pads only**: small round pads adjacent to the MCU. Use a pogo-pin jig or carefully tack-solder enclosed wires.
 
 If the board has no obvious pads, fly-wire directly to MCU pins:
+- For MC9S08QE128 **QFN-48**: BKGD/MS is **pin 48** (PTA4/ACMP1O/BKGD/MS); RESET is **pin 47** (PTA5/IRQ/TPM1CLK/RESET); VDD is **pin 4** (or pin 30); VSS is **pin 9** (or pin 31). Confirmed against a real PowPak QE128 (48-QFN silkscreen `MCQE128C`).
 - For MC9S08QE128 LQFP-44: BKGD is **pin 5**; RESET is **pin 6**; VDD/VSS depend on package.
 - For MC9S08LL64 LQFP-32: BKGD is **pin 25**; RESET is **pin 26**.
+- Note: QFN pins are underside/no-lead — you usually can't clip them directly. Use the board's broken-out BDM pads (the TP1–TP4 cluster by the MCU) and use these pin numbers only to trace/verify which pad is which (continuity TP→pin 48 = BKGD, etc.).
 - Verify against the actual datasheet of whatever part is silk-screened.
 
 ### Power
@@ -139,6 +141,17 @@ uv run tools/firmware/bdm-prog.py dump flash.bin
 The `program` argument is a path to a raw HCS08 flash image (the `.bin` produced by
 stripping the LDF header, e.g. `PowPakRelay434_1-49.bin`); it is programmed byte-by-byte
 starting at flash base `0x2080`, then verified against the same file.
+
+**Check the pod supports HCS08 FIRST.** `probe` prints a `Capabilities: 0xXXXX` line
+from USBDM `GET_CAPABILITIES`. **Bit 5 (`0x0020`) is `CAP_HCS08`** — if it's not set,
+the pod's firmware cannot drive HCS08 BDM and every connect will fail with
+`BKGD_TIMEOUT`/`BDM_EN_FAILED` regardless of wiring. Confirmed gotcha: a pod reporting
+`caps=0x4001` (HCS12 + S12Z only, fw 4.12.1) accepted `SET_TARGET(HCS08)` via lax
+validation but could never sync to a QE128 — it was an HCS12/S12Z-only USBDM build. It
+also lacked `CAP_VDDSENSE` (bit 3) and `CAP_RST` (bit 10), so its "Target power" and
+"RESET pin" status lines were meaningless defaults. `bdm-prog.py` now warns up-front
+when `CAP_HCS08` is absent. Fix: reflash the pod with full/HCS08-capable USBDM firmware,
+or use an HCS08 programmer that supports it (P&E Multilink Universal).
 
 **Known issue — `SYNC_TIMEOUT` on connect.** `probe`/`erase`/`program` may abort during
 `connect()` with USBDM error `SYNC_TIMEOUT (rc=21)`. The script attempts a manual
@@ -252,6 +265,90 @@ USBDM_Programmer --target MC9S08QE128 --erase --program PowPakRelay434_1-49.bin 
 If the device boots but doesn't pair, the application section is correct but the factory-config block at body offset `0x8AD` may have lost its serial/ID values (we wrote a generic image without per-unit serialization). Some Lutron PowPak SKUs have unique serial numbers in the factory-config block; flashing the generic image gives the device a "factory-fresh" identity. It will still pair, but with the binary's stock serial — not the original `0x00BC2107`.
 
 If the device's identity matters (e.g., if it was already paired in a project file), you would need to splice the original device's serial into the binary at body offset `0x8AD`. We did NOT extract that information before bricking, so this option is foreclosed for unit `0x00BC2107`. Going forward, **read the device's full flash via BDM before flashing it** so you have a backup of the per-unit factory-config block.
+
+## In-system BDM entry on a secured, running PowPak (bench log, 2026-07)
+
+Getting a BDM sync on a *powered, running, in-circuit* PowPak (not a bricked one)
+is much harder than the recovery case above, because the application firmware
+fights the debugger for the BKGD pin. This section documents a full bench session
+against an **RMJS-5RCCO1-DV-B** (Vive relay+CCO combo, MC9S08QE128, **secured**)
+that finally succeeded, and the gotchas that cost the most time.
+
+### The winning entry: cold power-on with BKGD held low
+
+The QE128's **pin 48 is shared: PTA4 / ACMP1O / BKGD / MS**. Once the application
+boots it configures PTA4 as an output and **drives it low**, so any attempt to sync
+BDM on a running unit is fought by the app and times out. A pin-reset into special
+mode doesn't help — the app just re-runs and re-grabs the pin. The only reliable
+entry is to **latch background mode at power-on, before the CPU executes a single
+instruction**:
+
+1. Configure the pod: `set_target(HCS08)`.
+2. **Hold BKGD low** (`control_pins(PIN_BKGD_LOW | PIN_RESET_3STATE)`) and **leave it
+   held** — exit the host process WITHOUT `close()` so the USBDM keeps driving the
+   pin (self-paced; see below).
+3. With the target **fully powered off/cold**, apply power. BKGD is low across the
+   VDD rising edge → the chip enters **active background mode** at POR, the CPU halts,
+   and the app never claims PTA4.
+4. In a **separate** step: release BKGD (`control_pins(PIN_BKGD_3STATE)`),
+   `CMD_CONNECT`, read SDID.
+
+Result on this unit: **`SDID = 0x3015`** (MC9S08QE128), stable and repeatable.
+
+The error codes track how close you are: **`BKGD_TIMEOUT` (rc=20)** = never
+established the low-level handshake (app driving the pin, or BKGD not effective);
+**`SYNC_TIMEOUT` (rc=21)** = got into the sync pulse but the line is contested /
+mis-timed; a clean SDID = in. We saw a clear progression 20 → 21 → success as the
+POR-with-BKGD-low timing came right.
+
+### Self-paced holds (no countdowns)
+
+The USBDM firmware holds the last `control_pins` state until you change it — even
+after the host process exits. Exploit this for bench work that needs a human action:
+set the pin state, exit without `close()`, let the operator power-cycle/probe **on
+their own time**, then continue in a separate command. Do not gate a physical action
+on a countdown timer.
+
+### Verifying the 4 wires without a scope
+
+- **RESET**: drive it low (`control_pins(PIN_RESET_LOW)`) and read `get_bdm_status()`
+  — the `S_RESET_STATE` bit flips to active/low. Confirms RESET is wired and drivable.
+- **BKGD**: drive low and meter the pin (~15 mV = clean sink); drive high (should
+  reach ~VDD on a clean line). **If BKGD-high only reaches ~half-VDD, or released
+  BKGD idles near 0 V while the app is running, that's the app driving the shared
+  PTA4 pin** — not a wiring fault. That was the key diagnosis here (BKGD-high read
+  1.8 V and released BKGD read 0.03 V against a healthy 3.18 V VDD rail).
+- **Bridge check**: drive BKGD low and confirm RESET does *not* follow (rules out a
+  47↔48 solder bridge).
+
+### This pod can't switch Vdd (JS16)
+
+The USBDM **JS16** on the bench (`USBDM-JS16-0001`, product string
+`USBDM HCS08,HCS12,Coldfire-V1 BDM`) has **no software Vdd control**:
+`set_vdd(VDD_OFF)` is a no-op and the `TVDD→3V3` jumper hardwires target power on
+(the `TVDD→TVDD` position supplied nothing at all). So you **cannot automate the POR**
+with this pod — power must be cut manually. A pod with Vdd control (or an external
+switchable supply) would let the entire cold-POR-BKGD-low entry run in software.
+
+Also note the capability word **lied**: it reported `caps=0x4001` (HCS12+S12Z, **no
+HCS08 bit**), yet the pod genuinely does HCS08 (product string + `set_target(HCS08)`
+accepted, `RS08`/`CFVx`/ARM rejected, `CFV1`/`S12Z` accepted). **Trust the USB
+product string / a `set_target` probe over the caps word.** `bdm-prog.py` now warns
+on a missing HCS08 capability instead of marching into a confusing timeout.
+
+### Secured part → flash unreadable
+
+Once in, **SDID / registers / RAM read fine but all flash returns `0x00`** — the
+HCS08 FSEC security bit is set (confirmed on this unit). You cannot dump a secured
+part over BDM. Options: **mass-erase** (clears security *and* wipes flash —
+destructive, and **no backup is possible while secured**), or a **reset-time voltage
+glitch** to unlock non-destructively (see the
+[firmware-extraction-via-glitch proposal](glitch-extraction.md)). We have **no
+plaintext image for RMJS-5RCCO1-DV-B** — it's a Vive combo SKU, not among the five
+RMJ/LMJ/CCO/0-10V LDFs we hold, and the Vive hub bundle only carries **ARM
+hub-coprocessor** images (`data/firmware/vive/embedded-coproc-s19/*`, load
+`0x08003000`), not HCS08 device firmware — so mass-erasing this unit would be an
+unrecoverable loss.
 
 ## Lessons / changes for future Phase 2 work
 
