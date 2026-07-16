@@ -6,8 +6,10 @@
  *   0x000   4   Version Major (BE u32)        — 0 = boot, 1 = app
  *   0x004   4   Version Minor (BE u32)        — 1
  *   0x008  64   Per-file unique field         — likely ECDSA-P256 sig or HMAC-SHA512
- *   0x048 195   Reserved (all-zero, universal)
- *   0x10B var   Encrypted body                — AES, per-device-model key
+ *   0x048 192   Reserved (all-zero, universal)
+ *   0x114   4   DeviceClass (BE u32)          — firmware-space class (0x04630201 = DVRF-6L)
+ *   0x120   4   Target flash address (BE u32) — e.g. 0x0006F000 eagle-owl app
+ *   0x124 var   Encrypted body                — AES, per-device-model key (block-aligned)
  *
  * Usage:
  *   npx tsx tools/pff-parse.ts <file.pff> [<file.pff> ...]
@@ -20,8 +22,10 @@ import { readFileSync, statSync } from "fs";
 const HDR_SIG_OFFSET = 8;
 const HDR_SIG_SIZE = 64;
 const HDR_RESERVED_OFFSET = 72;
-const HDR_RESERVED_SIZE = 195;
-const BODY_OFFSET = HDR_RESERVED_OFFSET + HDR_RESERVED_SIZE; // 267
+const HDR_RESERVED_SIZE = 192; // 0x048..0x107
+const HDR_DEVCLASS_OFFSET = 0x114;
+const HDR_FLASHADDR_OFFSET = 0x120;
+const BODY_OFFSET = 0x124; // encrypted body; only this start keeps payload block-aligned
 
 type ParseResult = {
   path: string;
@@ -29,9 +33,12 @@ type ParseResult = {
   major: number;
   minor: number;
   sigHex: string;
+  deviceClass: string;
+  targetFlashAddr: string;
   reservedAllZero: boolean;
   bodyOffset: number;
   bodySize: number;
+  bodyBlockAligned: boolean;
   chi2?: number;
   uniformLikely?: boolean;
 };
@@ -57,9 +64,18 @@ function parse(path: string, withChi: boolean): ParseResult {
     major,
     minor,
     sigHex: sig.toString("hex"),
+    deviceClass: data
+      .readUInt32BE(HDR_DEVCLASS_OFFSET)
+      .toString(16)
+      .padStart(8, "0"),
+    targetFlashAddr: data
+      .readUInt32BE(HDR_FLASHADDR_OFFSET)
+      .toString(16)
+      .padStart(8, "0"),
     reservedAllZero: reserved.every((b) => b === 0),
     bodyOffset: BODY_OFFSET,
     bodySize: body.length,
+    bodyBlockAligned: body.length % 16 === 0,
   };
 
   if (withChi) {
@@ -88,8 +104,10 @@ function formatHuman(r: ParseResult): string {
     `  size            : ${r.size} bytes`,
     `  version         : ${r.major}.${r.minor}  (${variant})`,
     `  signature [64B] : ${sigPreview}`,
-    `  reserved 0-fill : ${r.reservedAllZero ? "OK (195 zeros)" : "FAIL — non-zero bytes in reserved field!"}`,
-    `  body            : offset 0x${r.bodyOffset.toString(16)}, ${r.bodySize} bytes`,
+    `  DeviceClass     : 0x${r.deviceClass}`,
+    `  target flash    : 0x${r.targetFlashAddr}`,
+    `  reserved 0-fill : ${r.reservedAllZero ? "OK (192 zeros)" : "FAIL — non-zero bytes in reserved field!"}`,
+    `  body            : offset 0x${r.bodyOffset.toString(16)}, ${r.bodySize} bytes${r.bodyBlockAligned ? " (16-aligned)" : " — NOT 16-aligned!"}`,
   ];
   if (r.chi2 !== undefined) {
     lines.push(

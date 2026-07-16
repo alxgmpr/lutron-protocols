@@ -2,6 +2,13 @@
 re/app/
 re/designer/
 
+# Ghidra project files (working state, not curated output)
+re/*.gpr
+re/*.rep/
+
+# Tool scratch data (system-specific LEAP dumps, etc.)
+tools/data/
+
 # Legacy RE capture dirs (curated copies in re/processors/)
 re/phoenix/
 re/caseta-uart/

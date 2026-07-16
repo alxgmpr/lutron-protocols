@@ -247,14 +247,27 @@ Offset  Size  Field                     Notes
 0x000     4   Version Major (BE u32)    0 = boot, 1 = app
 0x004     4   Version Minor (BE u32)    1
 0x008    64   Per-file unique field     likely ECDSA-P256 sig (r‖s) or HMAC-SHA512
-0x048   195   Reserved                  all-zero, universal across every PFF observed
-0x10B   var   Encrypted body            AES, chi²≈229 on a 160 KB body (uniform expectation 255)
+0x048   192   Reserved                  all-zero, universal across every PFF observed
+0x108     4   Constant marker           0x00000003
+0x10C     4   Format/version            0x00000001
+0x110     4   Marker                    0x01010000
+0x114     4   DeviceClass (BE u32)      firmware-space class, e.g. 0x04630201 = DVRF-6L
+0x118     4   Revision (BE u32)
+0x11C     4   Declared image length     BE u32; a little under the on-disk payload size
+0x120     4   Target flash address      BE u32, e.g. 0x0006F000 (eagle-owl app), 0x00032000 (vogelkop)
+0x124   var   Encrypted body            AES, per-device-model key; block-aligned (mod 16 = 0)
 ```
 
-Verified across all 48 sample PFFs (9 Caseta/RA2-Select + 39 Phoenix). The reserved
-195-zero run at offset 0x48 is identical in every file regardless of device class,
-boot-vs-app split, or build version — strong signal that bytes 0x008..0x10A are a
-fixed-layout file header and the encrypted blob does not begin until offset 0x10B.
+Verified across all 48 sample PFFs (9 Caseta/RA2-Select + 39 Phoenix). Bytes
+0x048..0x107 (192 bytes) are an all-zero run, identical in every file regardless of
+device class, boot-vs-app split, or build version. **The encrypted body starts at
+0x124, not 0x10B** — provable because only a 0x124 start makes every payload
+block-aligned (`(size - 0x124) mod 16 == 0`); a 0x10B start would misalign the AES
+blocks. Bytes 0x108..0x123 are a plaintext metadata block (DeviceClass, revision,
+length, target flash address) readable *without* the decryption key. The DeviceClass
+here is the **firmware-space** class the device reports (0x04630201 = DVRF-6L,
+confirmed against the 2026-04-28 live OTA capture), distinct from Designer's
+commissioning-space QSDEVICECLASSTYPEID (e.g. 0x04240101 for HQR-3PD).
 
 Use `tools/firmware/pff-parse.ts` to dump the layout and run the chi-square / structural
 sanity check on any `.pff`.
@@ -263,6 +276,10 @@ sanity check on any `.pff`.
 - Format 1 = app images (100K-900K)
 - Encryption key is per-device-model, burned into device bootloader at manufacturing
 - NOT stored on Phoenix processor — `PegasusLinkData.LinkDataKey` table is empty
+- The `6cba80b2bf3cf2a63be017340f1801d8` key (ATECC608 slot 6) decrypts the **outer
+  `firmware.tar.enc` bundle**, not the per-`.pff` payload — empirically it decrypts
+  none of the 5 CCA PFF payloads (eagle-owl/basenji/bananaquit/vogelkop/caseta),
+  every result stays ~38% printable (still encrypted) in both ECB and CBC
 - Package signature verified by opkg with `/etc/ssl/firmwaresigning/public.pem` (valid 2020-2120)
 
 ### Device Firmware Manifest

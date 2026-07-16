@@ -131,7 +131,7 @@ const NO_ACK = args.includes("--no-ack");
 const YES = args.includes("--yes");
 const DECODE = args.includes("--decode");
 
-const CERT_DIR = join(__dir, "..", "certs", "designer");
+const CERT_DIR = join(__dir, "..", "..", "certs", "designer");
 const clientCert = readFileSync(join(CERT_DIR, "ipl_client_cert.pem"));
 const clientKey = readFileSync(join(CERT_DIR, "ipl_client_key.pem"));
 const caCert = readFileSync(join(CERT_DIR, "radioRa3_products.crt"));

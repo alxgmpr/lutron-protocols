@@ -253,7 +253,7 @@ For eagle-owl (HQRD HomeWorks QS Reverse Dimmers), bananaquit-avis, basenji **an
 - Wire: LEAP → HDLC → CCA coproc (HCS08 `phoenix_hcs08_*.s19` on older Phoenix, EFR32 `phoenix_efr32_*.bin` on newer) → 433 MHz CCA RF → device
 - Coproc commands: `QUERY_DEVICE`, `RESET_DEVICE`, `REQUEST_BEGIN_TRANSFER`, `TRANSFER_DATA`, `CHANGE_ADDRESS_OFFSET`, `REQUEST_END_TRANSFER`, `REQUEST_CODE_REVISION`, `CLEAR_ERROR`
 - This is the path the Lutron System Monitor portal triggers for HQRD-style CCA devices on RA3
-- File format: `.pff` (256-byte preamble + AES-128 encrypted payload). AES key in ATECC608 slot 6 = `6cba80b2bf3cf2a63be017340f1801d8`
+- File format: `.pff` (0x124-byte header + AES-128 encrypted payload). The payload key is **per-device-model, burned into the device bootloader** — the ATECC608 slot-6 key `6cba80b2bf3cf2a63be017340f1801d8` decrypts the outer `firmware.tar.enc` bundle, NOT the per-`.pff` payload (see [coprocessor-firmware.md](./coprocessor-firmware.md) §"PFF File Format")
 
 **PowPak (family 0x16) belongs in this pipeline architecturally**, but is **NOT in the RA3 Phoenix manifest we extracted**. Neither Phoenix RA3 (28 device classes) nor Caseta (15) lists any `0x16xx` DeviceClass for CCA OTA. The only `0x16xx` entries on Phoenix are `0x16261301` hercules-rf and `0x16271301` hercules-sensor — both **CCX**, not CCA.
 
@@ -710,7 +710,7 @@ Lutron uses two completely different firmware container formats depending on the
 | **Routing key** | Filename `{family:X4}{product:X4}{hwrev:X4}{0|1:X4}.frm` (Designer→processor) | DeviceClass lookup in `device-firmware-manifest.json` (processor) |
 | **Header size** | 0x80 bytes (128 B) | 0x124 bytes (292 B) |
 | **Header content** | ASCII filename (64 B) + 16×BE32 metadata (size, format ver, CRCs) | format ver + image type + IV/signature (64 B) + zero pad + DeviceClass + revisions + payload size + target flash address |
-| **Encryption** | None — plaintext HCS08 binary | AES-128 (ATECC608 secure-element slot 6, key `6cba80b2bf3cf2a63be017340f1801d8`) |
+| **Encryption** | None — plaintext HCS08 binary | AES-128, **per-device-model key burned into the device bootloader** (NOT the ATECC608 slot-6 bundle key — that only unwraps `firmware.tar.enc`) |
 | **Signature** | None visible | 64-byte IV/signature region in header (likely ECDSA over header+payload) |
 | **DeviceClass byte location** | Inside the firmware bytes at body offset 0x008AD (factory-config region) | In the **header** at offset 0x110 (wrapper field, separate from payload) |
 | **Underlying payload** | Compiled HCS08 image with bootloader + factory-config + application | Encrypted blob — when decrypted, **also** Motorola S-records (the device's MCU image) |
