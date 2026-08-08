@@ -148,3 +148,6 @@ tools/dll-patcher/**/obj/
 exploits/
 docs/security/
 data/phoenix-ssl/
+
+# SDD process workspace — scratch, never committed
+.superpowers/
