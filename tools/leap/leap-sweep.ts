@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { parse } from "yaml";
 import { processorIPs } from "../../lib/config";
 import { assertVerbAllowed } from "../../lib/echo-guard";
@@ -19,10 +25,45 @@ const SPEC =
 const ID_LIMIT = 8;
 /** Delay between requests. The processor caps at 10 clients / 600s idle. */
 const PACE_MS = 120;
+/** Published fixtures used to seed the id index; absent files are skipped. */
+const FIXTURES = [
+  "/Users/alex/leap-api/fixtures/ra3.json",
+  "/Users/alex/leap-api/fixtures/caseta.json",
+];
 
 type Capture = Record<string, { status: string; body?: unknown }>;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Write the capture atomically: a kill mid-write must leave either the old
+ * complete file or the new one, never a truncated one. writeFileSync alone
+ * truncates the target in place, so a kill between truncate and write left
+ * invalid JSON that the next run's JSON.parse threw on before connecting —
+ * losing all prior progress instead of resuming from it.
+ */
+function writeCaptureAtomic(outPath: string, capture: Capture): void {
+  const tmpPath = `${outPath}.tmp`;
+  writeFileSync(tmpPath, `${JSON.stringify(capture, null, 2)}\n`);
+  renameSync(tmpPath, outPath);
+}
+
+/** Ids harvested from the published fixtures, used to prime the read phase. */
+function seedIndexFromFixtures(): IdIndex {
+  const index: IdIndex = new Map();
+  for (const file of FIXTURES) {
+    if (!existsSync(file)) continue;
+    const probe: Capture = JSON.parse(readFileSync(file, "utf8"));
+    for (const entry of Object.values(probe)) {
+      if (entry.status.startsWith("200")) harvestIds(entry.body, index);
+    }
+  }
+  const total = [...index.values()].reduce((n, s) => n + s.size, 0);
+  console.log(
+    `seeded ${index.size} resource types, ${total} ids from fixtures`,
+  );
+  return index;
+}
 
 function coveredIdents(): Set<string> {
   if (!existsSync(SPEC)) {
@@ -79,7 +120,7 @@ async function main(): Promise<void> {
 
   const conn = new LeapConnection({ host });
   await conn.connect();
-  const index: IdIndex = new Map();
+  const index: IdIndex = seedIndexFromFixtures();
 
   try {
     // Phase 1 — discovery. Every body also feeds the id index.
@@ -90,7 +131,7 @@ async function main(): Promise<void> {
       }
       const body = await probe(conn, entry.template, capture);
       harvestIds(body, index);
-      writeFileSync(outPath, `${JSON.stringify(capture, null, 2)}\n`);
+      writeCaptureAtomic(outPath, capture);
       await sleep(PACE_MS);
     }
     console.log(
@@ -98,13 +139,13 @@ async function main(): Promise<void> {
         `${[...index.values()].reduce((n, s) => n + s.size, 0)} ids`,
     );
 
-    // Phase 2 — read, using the ids discovery found.
+    // Phase 2 — read, using the ids discovery (and the fixture seed) found.
     for (const entry of read) {
       for (const url of expandTemplate(entry.template, index, ID_LIMIT)) {
         if (capture[url]) continue;
         const body = await probe(conn, url, capture);
         harvestIds(body, index);
-        writeFileSync(outPath, `${JSON.stringify(capture, null, 2)}\n`);
+        writeCaptureAtomic(outPath, capture);
         await sleep(PACE_MS);
       }
     }
