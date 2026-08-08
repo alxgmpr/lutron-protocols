@@ -157,4 +157,20 @@ describe("checkEcho — adversarial cases", () => {
     assert.equal(v.moved, true);
     assert.match((v as { reason: string }).reason, /hidden/);
   });
+
+  test("a differing named property on an array is detected, not silently missed", () => {
+    // Mirrors the object case: Object.defineProperty preserves JsonValue's
+    // array branch too, so this also compiles clean under strict with no
+    // cast. An in-bounds index is caught by the ordinary element walk
+    // regardless of enumerability; only extra named properties beyond
+    // length/indices needed a dedicated check.
+    const a: JsonValue = [1, 2, 3];
+    const b: JsonValue = [1, 2, 3];
+    Object.defineProperty(a, "hidden", { value: 1, enumerable: false });
+    Object.defineProperty(b, "hidden", { value: 2, enumerable: false });
+
+    const v = checkEcho(a, b);
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /hidden/);
+  });
 });

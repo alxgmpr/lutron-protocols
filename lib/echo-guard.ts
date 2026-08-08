@@ -89,6 +89,19 @@ function describeType(v: object): string {
   return proto?.constructor?.name || "object";
 }
 
+/**
+ * Own property names on an array beyond `length` and its numeric indices.
+ * Every array carries `length` as an own property, so it — and each index
+ * already covered by the element-by-element walk — must be excluded, or
+ * every ordinary array would be flagged as differing.
+ */
+function extraArrayPropertyNames(arr: JsonValue[]): string[] {
+  const indexNames = new Set(arr.map((_, i) => String(i)));
+  return Object.getOwnPropertyNames(arr).filter(
+    (name) => name !== "length" && !indexNames.has(name),
+  );
+}
+
 /** Bracket-quote a key containing a literal dot so it can't be confused with nesting. */
 function joinPath(path: string, key: string): string {
   const segment = key.includes(".") ? `["${key}"]` : key;
@@ -146,6 +159,31 @@ function firstDifference(
         );
         if (d) return d;
       }
+
+      // Indices and length only cover an array's numeric own properties. An
+      // array can also carry extra named own properties invisible to that
+      // walk (e.g. attached via Object.defineProperty) — the array analog
+      // of the getOwnPropertyNames fix in the object branch below. Real
+      // JSON.parse output never has these, so this is a no-op for genuine
+      // wire data.
+      const extraA = extraArrayPropertyNames(a).sort();
+      const extraB = extraArrayPropertyNames(b).sort();
+      for (const k of new Set([...extraA, ...extraB])) {
+        const inA = extraA.includes(k);
+        const inB = extraB.includes(k);
+        const childPath = joinPath(path, k);
+        if (!inA) return `${childPath}: appeared`;
+        if (!inB) return `${childPath}: disappeared`;
+        const d = firstDifference(
+          (a as unknown as Record<string, JsonValue>)[k],
+          (b as unknown as Record<string, JsonValue>)[k],
+          childPath,
+          ancestorsA,
+          ancestorsB,
+        );
+        if (d) return d;
+      }
+
       return null;
     } finally {
       ancestorsA.delete(a);
