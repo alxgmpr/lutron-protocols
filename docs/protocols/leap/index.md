@@ -73,7 +73,9 @@ Returns both LEAP and IPL server definitions.
 }
 ```
 
-**Notable**: UDP:2647 purpose is unknown. IPL on TLS:8902 and WSS:443 requires different
+**Notable**: UDP:2647 is McLEAP — multicast on 239.255.255.255, 4000-byte maximum datagram
+(confirmed by firmware RE, `docs/reference/leap-api-spec.yaml` Transport configuration comment
+block). IPL on TLS:8902 and WSS:443 requires different
 certificates (CN=Lutron Project SubSystem Certificate Authority) and is used by Lutron Designer.
 
 ### `/server/leap/pairinglist`
@@ -1239,11 +1241,19 @@ See `memory/leap-probing.md` for full probe results.
 ## Protocol Basics
 
 - **Transport**: TLS mutual auth on port 8081 (modern), SSH on port 22 (legacy Caseta)
-- **Endpoints**: TCP:8081 (LEAP), UDP:2647 (RA3 only, purpose unknown)
+- **Endpoints** (firmware RE, `docs/reference/leap-api-spec.yaml` Transport configuration
+  comment block — supersedes the "purpose unknown" note this section used to carry):
+  - TCP:8081 — LEAP TLS, 10 clients max, 600s idle timeout
+  - TCP:8080 — LEAP plaintext, localhost only
+  - TCP:8083 — LAP (mobile), mTLS, 25 integrators max
+  - TCP:4548 — HAP (HomeKit), 20 clients max
+  - UDP:2647 — McLEAP, multicast on 239.255.255.255, 4000-byte maximum datagram
 - **Format**: JSON with `CommuniqueType` + `Header` (Url, MessageBodyType, ClientTag) + `Body`
-- **CommuniqueTypes**: `ReadRequest`, `ReadResponse`, `CreateRequest`, `CreateResponse`,
+- **CommuniqueTypes** (14, per firmware RE — `docs/reference/leap-api-spec.yaml`):
+  `ReadRequest`, `ReadResponse`, `CreateRequest`, `CreateResponse`,
   `UpdateRequest`, `UpdateResponse`, `DeleteRequest`, `DeleteResponse`,
-  `SubscribeRequest`, `SubscribeResponse`, `UnsubscribeRequest`, `UnsubscribeResponse`
+  `SubscribeRequest`, `SubscribeResponse`, `UnsubscribeRequest`, `UnsubscribeResponse`,
+  `ExceptionResponse`, `CommandResponse`
 - **Bonjour**: `_lutron._tcp` — advertises SSH port, TXT has MACADDR, CODEVER, SYSTYPE, SERNUM
 - **Bridge discovery**: `dns-sd -B _lutron._tcp`
 
@@ -1690,6 +1700,17 @@ UnsubscribeRequestCreator
 
 Commands are sent as `CreateRequest` to `commandprocessor` URLs.
 
+**Not a discriminated union.** The tables in this section, in "Non-Zone Command Classes"
+below, and in "Zone Commands" above list roughly 13 zone commands plus 16 non-zone command
+classes, which reads like a small set of distinct payload shapes keyed on `CommandType`.
+Firmware RE shows the wire struct isn't shaped that way: `Command` is one flat object of 57
+fields — a required `CommandType` discriminator plus 56 optional fields, of which 54 are
+`*Parameters` shapes (one per command family), plus a generic `Parameter` array and a
+`GenerateLogPackageSession` field. A client sets `CommandType` and populates the one matching
+field; the rest stay absent. It is not a `oneOf` discriminated union. See the LEAP OpenAPI spec
+repo's `docs/mapping.md` ("The flat `Command` model") for the full field-by-field mapping and
+which `CommandType` values are confirmed against which `*Parameters` field.
+
 | Class | URL Pattern | Used By |
 |-------|-------------|---------|
 | `ZoneHrefCommandprocessor` | `/zone/{id}/commandprocessor` | ZoneCommand |
@@ -2063,8 +2084,10 @@ Returns `{ PhaseSettings: { Direction: "Forward" | "Reverse" } }`
 - **UDP port 2647** advertised in `/server/1` Endpoints
 - No reference to port 2647 in Lutron iOS app binary or KMM backend
 - Not in Lutron Designer strings either (checked)
-- **HYPOTHESIS:** Possibly for Lutron integration protocol, device discovery broadcast, HomeWorks QS integration, or third-party systems
-- Worth probing with UDP packet capture (netcat, Wireshark)
+- **RESOLVED** (firmware RE, `docs/reference/leap-api-spec.yaml` Transport configuration
+  comment block): this is McLEAP — LEAP over multicast, 239.255.255.255:2647, 4000-byte
+  maximum datagram. Absence from the iOS app and Designer strings makes sense in hindsight —
+  it isn't a client-initiated transport either of them uses.
 
 ### Cloud LEAP Proxy (DISCOVERED 2026-02-16)
 
@@ -2167,3 +2190,69 @@ Note: Last digit may encode AddressedState (1=unaddressed, 2=addressed)
 - `tools/leap-probe-tuning.ts` — zone tuning/phase/dimming curves
 - `tools/leap-probe-ra3.ts` — RA3-specific area walk exploration
 - `tools/leap-probe-detail.ts` — preset assignments, programming models, timers
+
+### Vive LEAP Dump — Field-Casing Caveat
+
+`data/leap-vive.json` uses camelCase field names (`productType`, `timeZone`,
+`zoneTypeGroups`, and so on). This is **not** the Vive wire format. Every other captured LEAP
+response in this document — RA3 and Caseta alike — uses PascalCase (`ProductType`, `TimeZone`;
+see `/project` and `/system` above), and the LEAP client this dump came from
+(`lib/leap-client.ts`) otherwise passes wire response bodies through unmodified. The camelCase
+keys are an artifact of the dump tooling (`tools/leap/leap-dump.ts`) constructing its own
+summary object for output rather than a captured wire payload. Don't read this file as evidence
+that Vive uses different key casing than RA3 or Caseta.
+
+## Firmware Binary RE Cross-Check (Go extraction)
+
+A separate route/type extraction was performed against the RA3 firmware Go binary
+(`multi-server-phoenix.gobin`) while building the LEAP OpenAPI spec (a sibling repository). It
+recovered 410 route definitions (`data/firmware-re/leap-routes.json`) and 636 struct
+definitions (`data/firmware-re/leap-types.json`). Cross-checking it against the live probe
+results documented above surfaced defects worth recording here so nobody trusts the extraction
+over probe data on these specific points.
+
+### Zero `commandprocessor` routes
+
+None of the 410 extracted routes reference a `commandprocessor` URL, and none of the five verbs
+the extraction uses (`GET`, `CREATE`, `UPDATE`, `DELETE`, `SUBSCRIBE`) covers commands either.
+The entire write surface documented above (Zone Commands, Command Processor Endpoints, Non-Zone
+Command Classes) is absent from this extraction — which is why command documentation in this
+file comes from app RE (the iOS/Android sections above), not the firmware binary.
+
+### Collection paths mangled, one reordered (18 templates affected)
+
+The route extraction's path tokenizer sometimes drops a segment boundary, concatenating
+collection paths that the wire actually serves with a slash:
+
+| Extracted (wrong) | Real wire path (probe-confirmed) |
+|---|---|
+| `/devicestatus` | `/device/status` |
+| `/systemaway` | `/system/away` |
+| `/zonestatus/with/explicit/paging` | `/zone/status/with/explicit/paging` |
+
+In one case it also reorders segments instead of just dropping a slash:
+
+| Extracted (wrong) | Real wire path (probe-confirmed) |
+|---|---|
+| `/zone/{id}/expanded/status` | `/zone/{id}/status/expanded` |
+
+18 probe-confirmed path templates are affected in total. Anyone consuming
+`data/firmware-re/leap-routes.json` directly should prefer the probe-confirmed paths in this
+document over the extraction's `path` field for these routes.
+
+### Collection GET `responseType` is singular; the wire wraps it in a plural array
+
+The extraction records `GET /zone`'s `responseType` as `Zone` (confirmed directly in
+`data/firmware-re/leap-routes.json`), but the wire actually returns `{"Zones": [...]}` — a
+plural wrapper. This is confirmed against captured traffic for 12 of the 16 probe-confirmed
+collection GETs (`/button`, `/buttongroup`, `/device`, `/facade`, `/link`,
+`/programmingmodel`, `/service`, `/virtualbutton`, `/zone`, and others). Critically,
+`data/firmware-re/leap-types.json`'s 636 struct definitions include no plural types at all —
+no `Zones`, `Devices`, `Buttons`, etc. — so this can't be fixed by pointing at a firmware type
+the extraction missed. The plural wrapper is a wire-only convention the firmware itself never
+models as a named type.
+
+Source for this section: LEAP OpenAPI spec repo's `docs/mapping.md` ("Collection GETs and the
+singular/plural defect", "Mangled collection and reordered paths"), cross-checked directly
+against `data/firmware-re/leap-routes.json` and `data/firmware-re/leap-types.json` in this
+repository.
