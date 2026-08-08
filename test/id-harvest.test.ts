@@ -65,6 +65,16 @@ describe("expandTemplate", () => {
     ]);
   });
 
+  test("caps cross product when it exceeds the limit", () => {
+    const idx2 = new Map([
+      ["device", new Set(["1", "2", "3", "4", "5"])],
+      ["linknode", new Set(["10", "11", "12", "13", "14"])],
+    ]);
+    const out = expandTemplate("/device/{id}/linknode/{id}", idx2, 10);
+    assert.equal(out.length, 10, "result length should equal the limit");
+    assert.equal(new Set(out).size, 10, "all returned paths should be unique");
+  });
+
   test("returns the template unchanged when it has no placeholder", () => {
     assert.deepEqual(expandTemplate("/zone", idx, 10), ["/zone"]);
   });
