@@ -143,4 +143,18 @@ describe("checkEcho — adversarial cases", () => {
     assert.match(nestedReason, /^a\.b:/);
     assert.notEqual(dotReason, nestedReason);
   });
+
+  test("a differing non-enumerable property is detected, not silently missed", () => {
+    // Object.defineProperty<T>(o: T, ...) returns T, so this compiles under
+    // strict with no cast — the JsonValue type alone cannot block it. Only
+    // getOwnPropertyNames (vs. keys) catches the difference at runtime.
+    const a: JsonValue = { visible: 1 };
+    const b: JsonValue = { visible: 1 };
+    Object.defineProperty(a, "hidden", { value: 1, enumerable: false });
+    Object.defineProperty(b, "hidden", { value: 2, enumerable: false });
+
+    const v = checkEcho(a, b);
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /hidden/);
+  });
 });

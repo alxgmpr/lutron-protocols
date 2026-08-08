@@ -162,8 +162,13 @@ function firstDifference(
     ancestorsA.add(a);
     ancestorsB.add(b);
     try {
-      const ka = Object.keys(a).sort();
-      const kb = Object.keys(b).sort();
+      // getOwnPropertyNames rather than keys: real JSON.parse output never
+      // has non-enumerable properties, so this is a no-op for genuine wire
+      // data, but it also catches a same-typed object with a non-enumerable
+      // property attached out-of-band (e.g. via Object.defineProperty),
+      // which `keys` would silently skip.
+      const ka = Object.getOwnPropertyNames(a).sort();
+      const kb = Object.getOwnPropertyNames(b).sort();
       for (const k of new Set([...ka, ...kb])) {
         const inA = ka.includes(k);
         const inB = kb.includes(k);
