@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
-import { assertVerbAllowed, checkEcho } from "../lib/echo-guard";
+import {
+  assertVerbAllowed,
+  checkEcho,
+  type JsonValue,
+} from "../lib/echo-guard";
 
 describe("assertVerbAllowed", () => {
   test("permits the three allowed verbs", () => {
@@ -81,5 +85,62 @@ describe("checkEcho", () => {
       { Zone: { Status: { Level: 0 } } },
     );
     assert.match((v as { reason: string }).reason, /Zone\.Status\.Level/);
+  });
+});
+
+// Adversarial cases from code review: the runner only ever feeds this
+// function JSON.parse output, but the signature previously said `unknown`,
+// which invited inputs that broke the "not moved" verdict silently. These
+// pin the fixes: a narrowed JsonValue contract, a runtime guard for
+// non-plain objects, cycle detection, and path disambiguation for dotted
+// keys.
+describe("checkEcho — adversarial cases", () => {
+  test("detects a difference nested 5 levels deep", () => {
+    const before = { a: { b: { c: { d: { e: 1 } } } } };
+    const after = { a: { b: { c: { d: { e: 2 } } } } };
+    const v = checkEcho(before, after);
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /a\.b\.c\.d\.e/);
+  });
+
+  test("detects a difference inside an array of objects", () => {
+    const v = checkEcho([{ id: 1, level: 10 }], [{ id: 1, level: 20 }]);
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /\[0\]\.level/);
+  });
+
+  test("a circular reference reports movement instead of throwing", () => {
+    const a: Record<string, unknown> = { x: 1 };
+    a.self = a;
+    const b: Record<string, unknown> = { x: 2 };
+    b.self = b;
+
+    const v = checkEcho(a as unknown as JsonValue, b as unknown as JsonValue);
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /circular/i);
+  });
+
+  test("a non-plain-object input (Date) is reported as movement, not silently accepted", () => {
+    const v = checkEcho(
+      new Date(2020, 1, 1) as unknown as JsonValue,
+      new Date(2021, 1, 1) as unknown as JsonValue,
+    );
+    assert.equal(v.moved, true);
+    assert.match((v as { reason: string }).reason, /Date/);
+  });
+
+  test("a key containing a literal dot is disambiguated from a nested path", () => {
+    const dotKey = checkEcho({ "a.b": 1 }, { "a.b": 2 });
+    const nested = checkEcho({ a: { b: 1 } }, { a: { b: 2 } });
+
+    assert.equal(dotKey.moved, true);
+    assert.equal(nested.moved, true);
+
+    const dotReason = (dotKey as { reason: string }).reason;
+    const nestedReason = (nested as { reason: string }).reason;
+
+    assert.match(dotReason, /\["a\.b"\]/);
+    assert.match(nestedReason, /^a\.b:/);
+    assert.notEqual(dotReason, nestedReason);
   });
 });
