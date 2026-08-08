@@ -2235,8 +2235,8 @@ collection paths that the wire actually serves with a slash:
 204/200 depending on system — in `data/leap-explore-10.1.1.133-2026-03-06.json` and
 `data/leap-explore-10.1.9.3-2026-03-06.json`.)
 
-A related but **unconfirmed** case: the extraction also emits identifiers like
-`ZoneStatusExpandedQueryStringWithExplicitPaging`, which render as literal paths
+A related but **unconfirmed** case: the extraction also emits a family of
+`...WithExplicitPaging` / `...WithImplicitPaging` identifiers that render as literal paths
 (`/zonestatus/with/explicit/paging` and similar). `server-internals.md:127-131` ("Known
 extraction limitations") already flags this whole family as a suspected artifact — these
 identifiers describe paging/query parameters, not real URL segments, and "aren't real routes;
