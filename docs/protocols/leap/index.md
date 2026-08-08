@@ -1701,8 +1701,10 @@ UnsubscribeRequestCreator
 Commands are sent as `CreateRequest` to `commandprocessor` URLs.
 
 **Not a discriminated union.** The tables in this section, in "Non-Zone Command Classes"
-below, and in "Zone Commands" above list roughly 13 zone commands plus 16 non-zone command
-classes, which reads like a small set of distinct payload shapes keyed on `CommandType`.
+below, and in "Zone Commands" above list roughly 13 zone commands plus 15 non-zone command
+classes (numbered 2-16 in that table; class 1, `ZoneCommand`, is documented separately in
+"Zone Commands"), which reads like a small set of distinct payload shapes keyed on
+`CommandType`.
 Firmware RE shows the wire struct isn't shaped that way: `Command` is one flat object of 57
 fields — a required `CommandType` discriminator plus 56 optional fields, of which 54 are
 `*Parameters` shapes (one per command family), plus a generic `Parameter` array and a
@@ -2228,13 +2230,32 @@ collection paths that the wire actually serves with a slash:
 |---|---|
 | `/devicestatus` | `/device/status` |
 | `/systemaway` | `/system/away` |
-| `/zonestatus/with/explicit/paging` | `/zone/status/with/explicit/paging` |
 
-In one case it also reorders segments instead of just dropping a slash:
+(`/device/status` and `/system/away` both appear verbatim with a real status code —
+204/200 depending on system — in `data/leap-explore-10.1.1.133-2026-03-06.json` and
+`data/leap-explore-10.1.9.3-2026-03-06.json`.)
+
+A related but **unconfirmed** case: the extraction also emits identifiers like
+`ZoneStatusExpandedQueryStringWithExplicitPaging`, which render as literal paths
+(`/zonestatus/with/explicit/paging` and similar). `server-internals.md:127-131` ("Known
+extraction limitations") already flags this whole family as a suspected artifact — these
+identifiers describe paging/query parameters, not real URL segments, and "aren't real routes;
+verify against a live processor before adding to the registry." No probe of any processor in
+this repository's `data/leap-explore-*.json` captures has ever hit a route matching this
+pattern (checked directly — zero matches for "paging", "explicit", or "implicit" in any capture
+file), so no wire form for it is confirmed. It is listed here only as a caution, not as a
+correction.
+
+In one case the extraction also reorders segments instead of just dropping a slash:
 
 | Extracted (wrong) | Real wire path (probe-confirmed) |
 |---|---|
 | `/zone/{id}/expanded/status` | `/zone/{id}/status/expanded` |
+
+(`/zone/{id}/status/expanded` is confirmed 200 OK for dozens of concrete zone ids across both
+`data/leap-explore-*.json` captures; `/zone/{id}/expanded/status` does not appear in either
+capture at all — see also the "Resource Routes > Zone" table above, which already documents
+this route as `200`/`200` under its correct form.)
 
 18 probe-confirmed path templates are affected in total. Anyone consuming
 `data/firmware-re/leap-routes.json` directly should prefer the probe-confirmed paths in this
