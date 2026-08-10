@@ -124,6 +124,15 @@ export class LeapConnection {
   /** Called for unsolicited messages (subscription events, etc.) */
   onEvent: LeapEventHandler | null = null;
 
+  /**
+   * Called for EVERY parsed frame, before it is routed to a pending request
+   * or to onEvent. onEvent alone cannot distinguish a pushed frame from the
+   * response to a request, because responses never reach it — so a capture
+   * that needs one ordered timeline of everything the socket delivered taps
+   * here and classifies the frames itself.
+   */
+  onFrame: LeapEventHandler | null = null;
+
   readonly host: string;
   readonly port: number;
   private certPaths: { cert: string; key: string; ca: string };
@@ -180,6 +189,13 @@ export class LeapConnection {
         const resp = JSON.parse(line);
         const tag = resp.Header?.ClientTag;
 
+        // Raw tap first: the capture wants the frame regardless of where it
+        // is about to be routed, and whether a tag was pending at the moment
+        // it arrived (which routing itself destroys).
+        if (this.onFrame) {
+          this.onFrame(resp);
+        }
+
         // Match by ClientTag if present
         if (tag && this.pendingRequests.has(tag)) {
           const status: string = resp.Header?.StatusCode ?? "";
@@ -218,10 +234,26 @@ export class LeapConnection {
     body?: any,
     timeout = 10000,
   ): Promise<any> {
+    return (await this.sendTagged(communiqueType, url, body, timeout)).response;
+  }
+
+  /**
+   * Like send(), but also reports the ClientTag the request went out with.
+   * Tags are allocated internally, so a caller that needs to reason about
+   * which later frames carry that tag — e.g. asking whether a subscription
+   * push echoes the subscribe request's tag — cannot otherwise know it
+   * except by trusting the tag echoed back on the response.
+   */
+  async sendTagged(
+    communiqueType: string,
+    url: string,
+    body?: any,
+    timeout = 10000,
+  ): Promise<{ tag: string; response: any }> {
     if (!this.socket) throw new Error("Not connected");
 
     const tag = this.nextTag();
-    return new Promise((resolve, reject) => {
+    const response = await new Promise<any>((resolve, reject) => {
       this.pendingRequests.set(tag, { resolve, reject });
 
       const req: any = {
@@ -245,6 +277,7 @@ export class LeapConnection {
         }
       }, timeout);
     });
+    return { tag, response };
   }
 
   async read(url: string): Promise<any> {

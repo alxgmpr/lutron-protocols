@@ -608,6 +608,37 @@ describe("LeapConnection message framing", () => {
     assert.equal(events.length, 0);
   });
 
+  test("onFrame sees both tagged responses and unsolicited frames", () => {
+    const conn = makeConn();
+    const frames: any[] = [];
+    const events: unknown[] = [];
+    conn.onFrame = (msg) => frames.push(msg);
+    conn.onEvent = (msg) => events.push(msg);
+
+    const i = internals(conn);
+    i.pendingRequests.set("lt-1", { resolve: () => {}, reject: () => {} });
+
+    i.handleData(
+      JSON.stringify({
+        CommuniqueType: "SubscribeResponse",
+        Header: { ClientTag: "lt-1", StatusCode: "200 OK" },
+      }) +
+        "\n" +
+        JSON.stringify({
+          CommuniqueType: "ReadResponse",
+          Header: { ClientTag: "lt-1", Url: "/zone/5/status" },
+        }) +
+        "\n",
+    );
+
+    // Both frames tapped; only the second reached onEvent, because the first
+    // consumed the pending entry.
+    assert.equal(frames.length, 2);
+    assert.equal(frames[0].CommuniqueType, "SubscribeResponse");
+    assert.equal(frames[1].CommuniqueType, "ReadResponse");
+    assert.equal(events.length, 1);
+  });
+
   test("handleData swallows malformed JSON without throwing", () => {
     const conn = makeConn();
     const i = internals(conn);

@@ -1257,6 +1257,43 @@ See `memory/leap-probing.md` for full probe results.
 - **Bonjour**: `_lutron._tcp` — advertises SSH port, TXT has MACADDR, CODEVER, SYSTYPE, SERNUM
 - **Bridge discovery**: `dns-sd -B _lutron._tcp`
 
+### Subscription Pushes
+
+Captured live against RA3 10.1.9.2 (ClientVersion 3.249) by
+`tools/leap/leap-push-probe.ts`, which subscribes and then drives a zone itself
+so there is real state movement to push. Earlier subscribe captures observed
+zero frames only because nothing in the house changed during the hold window.
+
+A pushed frame:
+
+- **`CommuniqueType`: `ReadResponse`** — not `SubscribeResponse`. Only the
+  immediate answer to the `SubscribeRequest` is a `SubscribeResponse`.
+- **`StatusCode`: `200 OK`**, `Url` echoing the subscribed URL.
+- **`MessageBodyType`** matches the subscribed collection: `MultipleZoneStatus`
+  for `/zone/status`, `OneAreaStatus` for `/area/{id}/status`.
+- **`ClientTag`: the `SubscribeRequest`'s own tag, reused verbatim.** With two
+  subscriptions open on one connection, each push carried its own
+  subscription's tag (`lt-18` for `/zone/status`, `lt-19` for
+  `/area/1340/status`), and shifting the tag counter with padding reads moved
+  the push tag with it (`lt-7`) — so the tag is bound to the subscribe request,
+  not a constant. Tags restart per connection, so this only means anything
+  within one connection.
+- **Body is a delta, not a snapshot.** The `SubscribeResponse` carries the full
+  set; pushes carry only what changed (one `ZoneStatus` entry, or just the
+  changed `AreaStatus` fields). Pushed `ZoneStatus` entries omit
+  `ZoneLockState`, which the snapshot includes.
+
+Latency from the `CreateRequest` write to the zone push was 224 ms and 139 ms
+across two runs — after, not before, that command's own `201 Created` response.
+
+Area subscriptions also emit unprompted metering pushes
+(`InstantaneousPower`/`InstantaneousMaxPower`) with no command involved.
+
+Distinguishing a push from a response matters here: an async response can also
+arrive late on its originating tag (a `102 Processing` interim ack followed by
+the real `200 OK` ~987 ms later). The difference is that a push arrives after
+the request already received its terminal response, and only when state moved.
+
 ### RA3 vs Caseta Differences
 
 RA3 uses area-walk style (`/area/{id}/associatedzone`, `/area/{id}/associatedcontrolstation`).
@@ -1275,7 +1312,7 @@ Lutron Designer only.
 |-------|-----------|-----|--------|-------|
 | `/zone` | Read | 405 | 200 | Caseta only — list all zones |
 | `/zone/{id}` | Read, Update | 200 | 200 | Single zone |
-| `/zone/{id}/status` | Read, Subscribe | 200 | 200 | Zone level/state |
+| `/zone/{id}/status` | Read | 200 | 200 | Zone level/state. RA3 answers `SubscribeRequest` here with 405 MethodNotAllowed ("This request is not supported") — subscribe to the `/zone/status` collection instead |
 | `/zone/{id}/status/expanded` | Read | 200 | 200 | Includes zone metadata + status |
 | `/zone/status` | Read, Subscribe | 200 | 200 | All zone status changes |
 | `/zone/status/expanded` | Read | 400 | 400 | Needs `?where=` filter, per-zone works |
