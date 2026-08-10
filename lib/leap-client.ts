@@ -182,6 +182,21 @@ export class LeapConnection {
 
         // Match by ClientTag if present
         if (tag && this.pendingRequests.has(tag)) {
+          const status: string = resp.Header?.StatusCode ?? "";
+          // "102 Processing" is an interim ack some processors send (with a
+          // null body) before the real response, reusing the same
+          // ClientTag roughly a second later. Captured traffic against
+          // /firmwareimage/<id> shows this: the caller previously got the
+          // 102 as if it were the final answer, and the real
+          // ReadResponse — with the actual body — was dropped because the
+          // pending entry had already been deleted. Only 102 has been
+          // observed behaving this way, so only it is treated as interim;
+          // every other status (including other 1xx codes we have not
+          // seen in practice) is treated as terminal, matching prior
+          // behavior.
+          if (status.startsWith("102")) {
+            continue;
+          }
           const pending = this.pendingRequests.get(tag)!;
           this.pendingRequests.delete(tag);
           pending.resolve(resp);
@@ -216,6 +231,13 @@ export class LeapConnection {
       if (body !== undefined) req.Body = body;
       this.socket!.write(JSON.stringify(req) + "\n");
 
+      // Not extended when a 102 Processing interim frame is seen for this
+      // tag (see handleData). Captured evidence shows the real response
+      // typically follows ~1s after the 102, well inside the default
+      // 10s timeout, so a fixed deadline from the original send() call is
+      // enough to cover the observed case. Extending on every 102 would
+      // let a processor that keeps re-emitting 102 without ever finishing
+      // stall the caller indefinitely instead of failing loudly.
       setTimeout(() => {
         if (this.pendingRequests.has(tag)) {
           this.pendingRequests.delete(tag);

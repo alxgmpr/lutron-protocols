@@ -13,6 +13,7 @@ import {
 type ConnInternals = {
   buffer: string;
   tagCounter: number;
+  socket: { write(data: string): void } | null;
   pendingRequests: Map<
     string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
@@ -644,5 +645,153 @@ describe("LeapConnection message framing", () => {
   test("send() rejects when socket is not connected", async () => {
     const conn = makeConn();
     await assert.rejects(() => conn.read("/server"), /Not connected/);
+  });
+});
+
+// ── LeapConnection: 102 Processing interim frames ────────────────
+//
+// The processor sometimes answers a request with an interim "102
+// Processing" frame (null body) and sends the real response ~1s later,
+// reusing the same ClientTag. Captured evidence: a /firmwareimage/561
+// read produced a "102 Processing" frame immediately, then a populated
+// "200 OK" ReadResponse ~987ms later on the same tag. Before the fix,
+// the first frame resolved send() and deleted the pending entry, so the
+// real response fell through to the unsolicited branch and was lost.
+
+describe("LeapConnection 102 Processing interim frames", () => {
+  const makeConn = () => new LeapConnection({ host: processorIPs[0] });
+
+  test("102 followed by 200 with the same tag resolves with the 200 and its body", async () => {
+    const conn = makeConn();
+    const i = internals(conn);
+
+    const received = new Promise((resolve, reject) => {
+      i.pendingRequests.set("lt-1", { resolve, reject });
+    });
+
+    // Interim 102 Processing — must not resolve, must not delete the entry
+    i.handleData(
+      JSON.stringify({
+        CommuniqueType: "ReadResponse",
+        Header: { StatusCode: "102 Processing", ClientTag: "lt-1" },
+      }) + "\n",
+    );
+    assert.equal(i.pendingRequests.size, 1, "request still pending after 102");
+
+    // Real response arrives later, reusing the same ClientTag
+    i.handleData(
+      JSON.stringify({
+        CommuniqueType: "ReadResponse",
+        Header: {
+          StatusCode: "200 OK",
+          Url: "/firmwareimage/561",
+          ClientTag: "lt-1",
+        },
+        Body: { OneFirmwareImageDefinition: { Firmware: "1.2.3" } },
+      }) + "\n",
+    );
+
+    const resp = (await received) as {
+      Body: { OneFirmwareImageDefinition: { Firmware: string } };
+    };
+    assert.equal(resp.Body.OneFirmwareImageDefinition.Firmware, "1.2.3");
+    assert.equal(i.pendingRequests.size, 0, "pending map drained after 200");
+  });
+
+  test("102 followed by nothing rejects on timeout rather than hanging", async () => {
+    const conn = makeConn();
+    const i = internals(conn);
+    // Fake a writable socket so send() can run without a real TLS connection.
+    i.socket = { write: () => {} };
+
+    const promise = conn.send(
+      "ReadRequest",
+      "/firmwareimage/561",
+      undefined,
+      20,
+    );
+
+    i.handleData(
+      JSON.stringify({
+        Header: { StatusCode: "102 Processing", ClientTag: "lt-1" },
+      }) + "\n",
+    );
+
+    await assert.rejects(promise, /Timeout/);
+    assert.equal(i.pendingRequests.size, 0, "timeout cleans up pending map");
+  });
+
+  test("an ordinary single terminal frame still resolves exactly as before", async () => {
+    const conn = makeConn();
+    const i = internals(conn);
+
+    const received = new Promise((resolve, reject) => {
+      i.pendingRequests.set("lt-1", { resolve, reject });
+    });
+
+    i.handleData(
+      JSON.stringify({
+        CommuniqueType: "ReadResponse",
+        Header: { StatusCode: "200 OK", ClientTag: "lt-1" },
+        Body: { value: 42 },
+      }) + "\n",
+    );
+
+    const resp = (await received) as { Body: { value: number } };
+    assert.equal(resp.Body.value, 42);
+    assert.equal(i.pendingRequests.size, 0);
+  });
+
+  test("102 for tag A followed by a terminal frame for tag B resolves B without disturbing A", async () => {
+    const conn = makeConn();
+    const i = internals(conn);
+
+    i.pendingRequests.set("lt-1", {
+      resolve: () => {
+        throw new Error("tag A should not have resolved");
+      },
+      reject: () => {
+        throw new Error("tag A should not have rejected");
+      },
+    });
+    const receivedB = new Promise((resolve, reject) => {
+      i.pendingRequests.set("lt-2", { resolve, reject });
+    });
+
+    i.handleData(
+      JSON.stringify({
+        Header: { StatusCode: "102 Processing", ClientTag: "lt-1" },
+      }) + "\n",
+    );
+    i.handleData(
+      JSON.stringify({
+        Header: { StatusCode: "200 OK", ClientTag: "lt-2" },
+        Body: { n: 2 },
+      }) + "\n",
+    );
+
+    const respB = (await receivedB) as { Body: { n: number } };
+    assert.equal(respB.Body.n, 2);
+    assert.equal(i.pendingRequests.size, 1, "tag A remains pending");
+    assert.ok(i.pendingRequests.has("lt-1"));
+  });
+
+  test("unsolicited frames with no matching pending tag still reach onEvent", () => {
+    const conn = makeConn();
+    const events: unknown[] = [];
+    conn.onEvent = (msg) => events.push(msg);
+
+    // Tag is present but nothing is pending for it — must not throw and
+    // must still be routed to onEvent rather than silently dropped.
+    internals(conn).handleData(
+      JSON.stringify({
+        Header: { StatusCode: "200 OK", ClientTag: "lt-999" },
+        Body: { foo: "bar" },
+      }) + "\n",
+    );
+
+    assert.equal(events.length, 1);
+    const evt = events[0] as { Body: { foo: string } };
+    assert.equal(evt.Body.foo, "bar");
   });
 });
