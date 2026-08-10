@@ -10,6 +10,7 @@
     "codegen:check": "npm run codegen && clang-format -i firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h && git -c core.fileMode=false diff --exit-code -- firmware/src/cca/cca_generated.h firmware/src/ccx/ccx_generated.h",
     "leap:dump": "npx tsx tools/leap/leap-dump.ts",
     "leap:sweep": "npx tsx tools/leap/leap-sweep.ts",
+    "leap:spec-probe": "npx tsx tools/leap/leap-spec-probe.ts",
     "cca:ota-tx": "npx tsx tools/cca/ota-tx.ts",
     "cca:ota-upload": "npx tsx tools/cca/ota-upload.ts",
     "cca:ota-tx-loopback": "npx tsx tools/cca/ota-tx-loopback.ts",
