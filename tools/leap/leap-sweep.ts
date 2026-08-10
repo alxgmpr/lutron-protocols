@@ -5,6 +5,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { processorIPs } from "../../lib/config";
 import { assertVerbAllowed, checkEcho } from "../../lib/echo-guard";
@@ -377,6 +378,80 @@ async function firmwareImageLateFrameProbe(
 }
 
 /**
+ * Every GET+UPDATE-capable route from the firmware table, unexpanded —
+ * deliberately ignoring spec coverage, for the same reason subscribableEntries
+ * does.
+ *
+ * planSweep's coverage filter exists so discovery/read don't re-document
+ * routes the published spec already has. Applying that same filter to
+ * echo-write excludes exactly the routes most likely to be live and
+ * write-capable — `/area/{id}`, `/zone/{id}`, `/controlstation/{id}`, and
+ * others the published fixtures already show working — leaving only the
+ * exotic, mostly-unimplemented routes to validate write safety against. The
+ * goal here is proving writes are safe on routes that actually respond, not
+ * avoiding routes the spec already covers. echoWritePhase itself still
+ * expands each template and applies the 200-only / defined-body guards, so a
+ * route with no live ids or no successful read is simply skipped, not
+ * force-probed.
+ */
+function echoWritableEntries(routes: Route[]): { template: string }[] {
+  return routes
+    .filter((r) => r.verbs.includes("GET") && r.verbs.includes("UPDATE"))
+    .filter((r) => !ECHO_WRITE_EXCLUDED_ROUTES.has(r.path))
+    .map((r) => ({ template: r.path }));
+}
+
+/**
+ * Routes excluded from the echo-write phase entirely — not because writing
+ * to them is unsafe, but because a live run against 10.1.9.2 showed the
+ * echo-back assumption itself doesn't hold for them, for two distinct
+ * reasons. Kept as one set with per-route reasoning recorded here rather
+ * than two sets, since both share the same consequence (skip the route);
+ * a future addition should say which category it belongs to.
+ *
+ * Clock-bearing — the body embeds live wall-clock state, so a read taken
+ * before the write can never compare equal to a read taken after:
+ *
+ * - `/system`: the UpdateRequest returned `500 InternalServerError` ("An
+ *   unknown error occurred"), so nothing sent was ever applied — yet the
+ *   post-write read still differed from the pre-write read by
+ *   `System.Time.Second: 16 became 22`, six seconds of wall clock elapsing
+ *   across the read-write-read cycle. The interlock correctly read that as
+ *   movement and aborted the whole phase.
+ *
+ * Action-triggering — the write is interpreted as a command to act, not an
+ * assertion of current state, so echoing it back is not inert:
+ *
+ * - `/link/{id}`: `/link/437` returned `500 Failed to begin CCX channel
+ *   update`. Writing back a byte-identical link body attempted an RF
+ *   channel update on the CCX radio rather than doing nothing. It failed
+ *   and no state moved, but the underlying assumption this whole phase
+ *   rests on — that echoing a payload back is inert — does not hold for
+ *   this route.
+ *
+ * Deliberately a route-level exclusion rather than a change to `checkEcho`.
+ * Teaching the comparison to ignore fields that merely look time-like would
+ * weaken the safety net for every route to accommodate `/system`, and a
+ * field named `Second` on another resource might be a genuine setting
+ * rather than a clock tick. Excluding by path keeps the comparison strict
+ * everywhere it can still mean something, and keeps `/link` out of the
+ * write path entirely rather than trying to make its write look inert.
+ */
+const ECHO_WRITE_EXCLUDED_ROUTES: ReadonlySet<string> = new Set([
+  "/system",
+  "/link/{id}",
+]);
+
+/**
+ * The subset of LeapConnection echoWritePhase needs. Narrowed from the full
+ * class (rather than taking `LeapConnection` directly) so a test can hand it
+ * a fake object literal implementing `send` — LeapConnection's private
+ * fields make a plain object structurally incompatible with the full class
+ * type, even one that behaves identically.
+ */
+type EchoWriteConn = Pick<LeapConnection, "send">;
+
+/**
  * Echo-back write pass.
  *
  * For each route: read, write the identical payload, read again, compare. Any
@@ -384,8 +459,8 @@ async function firmwareImageLateFrameProbe(
  * unexplained state change means the echo assumption is wrong somewhere, and
  * continuing would compound it across a live system.
  */
-async function echoWritePhase(
-  conn: LeapConnection,
+export async function echoWritePhase(
+  conn: EchoWriteConn,
   host: string,
   entries: { template: string }[],
   index: IdIndex,
@@ -394,6 +469,15 @@ async function echoWritePhase(
   const capture: Capture = existsSync(outPath)
     ? JSON.parse(readFileSync(outPath, "utf8"))
     : {};
+  // Routes actually echo-written in THIS call, as distinct from
+  // Object.keys(capture).length, which is the cumulative size of outPath
+  // across every run that has ever written to it — including runs under a
+  // filter or exclusion set that no longer applies. Logging the cumulative
+  // count as if it were this run's result previously misreported the
+  // phase's outcome twice (quoted as "54 routes" and "75 routes" for runs
+  // that actually probed far fewer). The primary number in the summary
+  // below must reflect work done in this call, not file size.
+  let probedThisRun = 0;
 
   for (const entry of entries) {
     for (const url of expandTemplate(entry.template, index, ID_LIMIT)) {
@@ -410,6 +494,7 @@ async function echoWritePhase(
         status: String(wrote?.Header?.StatusCode ?? "(none)"),
         body: wrote?.Body,
       };
+      probedThisRun++;
       await sleep(PACE_MS);
 
       assertVerbAllowed("GET");
@@ -430,7 +515,8 @@ async function echoWritePhase(
   }
 
   console.log(
-    `echo-write: ${Object.keys(capture).length} routes exercised, no state moved`,
+    `echo-write: ${probedThisRun} routes exercised this run ` +
+      `(${Object.keys(capture).length} cumulative in ${outPath}), no state moved`,
   );
 }
 
@@ -502,12 +588,12 @@ async function main(): Promise<void> {
     // subscribe and firmwareimage-recheck phases below open their own
     // per-route connections and don't need this one, so it must happen
     // here, before the `finally` below closes it.
-    await echoWritePhase(
-      conn,
-      host,
-      plan.filter((e) => e.phase === "echo-write"),
-      index,
-    );
+    // Route source is deliberately coverage-blind, like subscribableEntries.
+    // The spec-coverage filter exists to avoid re-documenting known paths; it
+    // is wrong here, because the goal is validating write safety on hardware,
+    // and the already-documented routes (/area/{id}, /zone/{id},
+    // /controlstation/{id}) are precisely the live, write-capable ones.
+    await echoWritePhase(conn, host, echoWritableEntries(routes), index);
   } finally {
     conn.close();
   }
@@ -545,7 +631,15 @@ async function main(): Promise<void> {
   console.log(`wrote ${outPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Guard against running the whole live sweep as a side effect of import.
+// Without this, test/leap-sweep.test.ts importing echoWritePhase would also
+// execute main() — including its real ReadRequest/UpdateRequest traffic to
+// whatever host argv[0] or the config default resolves to — the moment the
+// test file loaded, before a single test even ran.
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
