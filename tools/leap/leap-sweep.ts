@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { parse } from "yaml";
 import { processorIPs } from "../../lib/config";
-import { assertVerbAllowed } from "../../lib/echo-guard";
+import { assertVerbAllowed, checkEcho } from "../../lib/echo-guard";
 import { expandTemplate, harvestIds, type IdIndex } from "../../lib/id-harvest";
 import { LeapConnection } from "../../lib/leap-client";
 import {
@@ -376,6 +376,64 @@ async function firmwareImageLateFrameProbe(
   }
 }
 
+/**
+ * Echo-back write pass.
+ *
+ * For each route: read, write the identical payload, read again, compare. Any
+ * difference between the two reads aborts the ENTIRE phase — a single
+ * unexplained state change means the echo assumption is wrong somewhere, and
+ * continuing would compound it across a live system.
+ */
+async function echoWritePhase(
+  conn: LeapConnection,
+  host: string,
+  entries: { template: string }[],
+  index: IdIndex,
+): Promise<void> {
+  const outPath = `${OUT_DIR}/${host}-write.json`;
+  const capture: Capture = existsSync(outPath)
+    ? JSON.parse(readFileSync(outPath, "utf8"))
+    : {};
+
+  for (const entry of entries) {
+    for (const url of expandTemplate(entry.template, index, ID_LIMIT)) {
+      if (capture[url]) continue;
+
+      assertVerbAllowed("GET");
+      const before = await conn.send("ReadRequest", url);
+      if (!String(before?.Header?.StatusCode ?? "").startsWith("200")) continue;
+      if (before?.Body === undefined) continue;
+
+      assertVerbAllowed("UPDATE");
+      const wrote = await conn.send("UpdateRequest", url, before.Body);
+      capture[url] = {
+        status: String(wrote?.Header?.StatusCode ?? "(none)"),
+        body: wrote?.Body,
+      };
+      await sleep(PACE_MS);
+
+      assertVerbAllowed("GET");
+      const after = await conn.send("ReadRequest", url);
+      const verdict = checkEcho(before.Body, after?.Body);
+      if (verdict.moved) {
+        writeFileSync(outPath, `${JSON.stringify(capture, null, 2)}\n`);
+        throw new Error(
+          `ECHO WRITE MOVED STATE at ${url}: ${verdict.reason}\n` +
+            `Aborting the write phase. Captures up to this point are saved. ` +
+            `Investigate before re-running; the Designer backup can restore if needed.`,
+        );
+      }
+
+      writeFileSync(outPath, `${JSON.stringify(capture, null, 2)}\n`);
+      await sleep(PACE_MS);
+    }
+  }
+
+  console.log(
+    `echo-write: ${Object.keys(capture).length} routes exercised, no state moved`,
+  );
+}
+
 async function main(): Promise<void> {
   const host = process.argv[2] ?? processorIPs[0];
   if (!host) throw new Error("no host given and none configured");
@@ -438,6 +496,18 @@ async function main(): Promise<void> {
         await sleep(PACE_MS);
       }
     }
+
+    // Echo-write — read, write back the identical payload, read again,
+    // compare. Runs on this same connection while it's still open; the
+    // subscribe and firmwareimage-recheck phases below open their own
+    // per-route connections and don't need this one, so it must happen
+    // here, before the `finally` below closes it.
+    await echoWritePhase(
+      conn,
+      host,
+      plan.filter((e) => e.phase === "echo-write"),
+      index,
+    );
   } finally {
     conn.close();
   }
