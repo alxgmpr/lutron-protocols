@@ -151,3 +151,6 @@ data/phoenix-ssl/
 
 # SDD process workspace — scratch, never committed
 .superpowers/
+
+# Raw sweep captures — unredacted, never committed
+data/sweep/
