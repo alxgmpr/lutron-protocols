@@ -15,9 +15,17 @@
  * so a genuine unsolicited push can be told apart from the response to the
  * subscribe request and the response to the zone command.
  *
+ * --pad N discriminates the two readings of the tag on a pushed frame. Every
+ * capture so far subscribed at lt-18, because the prelude happens to be 17
+ * reads long, so "the push carries the subscribe request's tag" and "the push
+ * carries a tag fixed by sequence position" fit the evidence equally. N extra
+ * harmless reads immediately before the subscribe move the subscribe onto a
+ * different tag while changing nothing else, which separates them.
+ *
  * Usage:
  *   npx tsx tools/leap/leap-push-probe.ts --zone 4664
  *   npx tsx tools/leap/leap-push-probe.ts --host 10.1.9.2 --zone 4664 --target 50
+ *   npx tsx tools/leap/leap-push-probe.ts --zone 4664 --pad 7
  *
  * WRITES TO LIVE HARDWARE: it changes one zone's level and restores it.
  */
@@ -40,6 +48,12 @@ const { values } = parseArgs({
     fade: { type: "string", default: "1" },
     /** Override the subscribe URL instead of the derived defaults. */
     sub: { type: "string" },
+    /**
+     * Extra read-only requests to issue immediately before subscribing, so the
+     * subscribe lands on a tag other than the one the unpadded prelude gives
+     * it. 0 leaves the run identical to an unpadded one.
+     */
+    pad: { type: "string", default: "0" },
     out: { type: "string" },
   },
 });
@@ -47,6 +61,13 @@ const { values } = parseArgs({
 const HOST = values.host!;
 const HOLD_MS = parseFloat(values.hold!) * 1000;
 const FADE_S = parseFloat(values.fade!);
+
+/**
+ * What the padding reads ask for. Must be a plain read that changes nothing
+ * and answers 200 on every platform, so the only thing padding alters is the
+ * tag counter. /project qualifies on both RA3 and Caseta.
+ */
+const PAD_URL = "/project";
 
 /** Format seconds as the HH:MM:SS LEAP expects for fade/delay. */
 function fmtTime(seconds: number): string {
@@ -105,6 +126,12 @@ async function main() {
   const zoneId = parseInt(values.zone, 10);
   if (Number.isNaN(zoneId)) {
     console.error(`--zone must be numeric, got ${values.zone}`);
+    process.exit(1);
+  }
+
+  const pad = parseInt(values.pad!, 10);
+  if (Number.isNaN(pad) || pad < 0) {
+    console.error(`--pad must be a non-negative integer, got ${values.pad}`);
     process.exit(1);
   }
 
@@ -208,6 +235,8 @@ async function main() {
   const capture: Record<string, unknown> = {
     host: HOST,
     zone: zoneId,
+    pad,
+    padUrl: pad > 0 ? PAD_URL : null,
     startedAt: new Date().toISOString(),
     note: "single connection: subscribe, level change, hold, restore",
   };
@@ -270,6 +299,28 @@ async function main() {
     }
     capture.areaId = areaId;
     console.log(`zone ${zoneId} belongs to area ${areaId ?? "(not found)"}`);
+
+    // --- 1b. Pad the tag counter -----------------------------------------
+    // Read-only, and deliberately the last thing before the subscribe, so a
+    // padded run differs from an unpadded one in the subscribe's tag and in
+    // nothing else.
+    const padTags: string[] = [];
+    if (pad > 0) {
+      console.log(`--- padding: ${pad} x ReadRequest ${PAD_URL} ---`);
+      for (let i = 0; i < pad; i++) {
+        const p = await tracked("ReadRequest", PAD_URL);
+        padTags.push(p.tag);
+        const status = p.response?.Header?.StatusCode ?? "";
+        if (!status.startsWith("200")) {
+          throw new Error(
+            `pad read ${i + 1}/${pad} of ${PAD_URL} answered ${status}; ` +
+              `padding must be inert, so stopping rather than subscribing`,
+          );
+        }
+      }
+      console.log(`padded with tags: ${padTags.join(", ")}`);
+    }
+    capture.padTags = padTags;
 
     // --- 2. Subscribe ----------------------------------------------------
     // Per-zone status is NOT subscribable on this processor:
