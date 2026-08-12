@@ -39,6 +39,7 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { processorIPs } from "../../lib/config";
 import { assertVerbAllowed } from "../../lib/echo-guard";
@@ -52,6 +53,16 @@ import {
 } from "../../lib/spec-probe";
 
 const OUT_DIR = "data/spec-probe";
+/**
+ * Capture path override. The default is keyed by host alone, and the capture
+ * is resumable — a second run against the same IP skips every URL already in
+ * the file. That is the right behaviour for finishing an interrupted run and
+ * the wrong one when the machine behind the IP has materially changed (a
+ * factory reset, a firmware update), because the resume would silently blend
+ * two systems into one file and report almost nothing probed. Point this at a
+ * fresh path whenever the host is no longer the host the file describes.
+ */
+const OUT_PATH_OVERRIDE = process.env.LEAP_SPEC_PROBE_OUT;
 /** Published spec. Here it is the INPUT set, not a coverage filter. */
 const SPEC =
   process.env.LEAP_SPEC_PATH ?? "/Users/alex/leap-api/dist/openapi.yaml";
@@ -160,8 +171,8 @@ async function main(): Promise<void> {
     `host=${host}  spec paths=${specPaths.length}  collections=${collections.length}`,
   );
 
-  mkdirSync(OUT_DIR, { recursive: true });
-  const outPath = `${OUT_DIR}/${host}-spec-read.json`;
+  const outPath = OUT_PATH_OVERRIDE ?? `${OUT_DIR}/${host}-spec-read.json`;
+  mkdirSync(dirname(outPath), { recursive: true });
   const capture: Capture = existsSync(outPath)
     ? JSON.parse(readFileSync(outPath, "utf8"))
     : {};
