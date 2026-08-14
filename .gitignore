@@ -110,8 +110,6 @@ certs/
 *.vive
 
 .obsidian/
-.claude/projects/
-.claude/settings.local.json
 .mcp.json
 config.json
 
@@ -132,8 +130,11 @@ firmware/src/ccx/thread_config.h
 Drivers/
 ._*
 
-# Claude worktrees
-.claude/worktrees/
+# AI assistant files (instructions, skills, plans/specs)
+.claude/
+CLAUDE.md
+AGENTS.md
+docs/superpowers/
 
 # .NET build artifacts
 tools/auth-bypass/bin/
