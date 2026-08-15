@@ -1,0 +1,166 @@
+/**
+ * Bridge types — protocol-independent vocabulary shared by the model,
+ * its sources and its sinks.
+ *
+ * Nothing here imports a transport. Sources normalize their wire format into
+ * `SourceIntent`; sinks consume the events the model emits in response.
+ */
+
+// ── Zone state ────────────────────────────────────────────
+
+export type ZoneActivity =
+  | { type: "idle" }
+  | {
+      type: "fading";
+      startLevel: number;
+      targetLevel: number;
+      startCct: number | null;
+      targetCct: number | null;
+      colorXy: [number, number] | null;
+      startTime: number;
+      durationMs: number;
+    }
+  | {
+      type: "ramping";
+      direction: "raise" | "lower";
+      startLevel: number;
+      startTime: number;
+    };
+
+export interface ZoneState {
+  level: number;
+  colorMode: "cct" | "xy";
+  cct: number | null;
+  colorXy: [number, number] | null;
+  activity: ZoneActivity;
+  dirty: boolean;
+  /** 0 = no settle pending, >0 = timestamp at which the zone reports settled */
+  reportAt: number;
+}
+
+/** Scene definition: preset ID → the zone levels it drives. */
+export interface PresetZoneEntry {
+  name: string;
+  zones: Record<
+    string,
+    { level: number; fade?: number; warmDimCurve?: string }
+  >;
+}
+
+// ── Source intents ────────────────────────────────────────
+
+/**
+ * What a source says happened, in protocol-independent terms. The model owns
+ * dedup, watch filtering, scene expansion and warm dim, so a source only has
+ * to translate its wire format — it never decides whether to act.
+ */
+export type SourceIntent =
+  | {
+      kind: "zoneLevel";
+      zoneId: number;
+      /** null = colour-only command; the zone keeps its current level */
+      level: number | null;
+      cct: number | null;
+      colorXy: [number, number] | null;
+      /** quarter-seconds; 1 (or less) means instant */
+      fade?: number;
+      /** curve name forced by the wire format, overriding the zone's own */
+      warmDimHint?: string;
+      origin: string;
+      dedupKey?: string;
+    }
+  | {
+      kind: "preset";
+      presetId: number;
+      origin: string;
+      dedupKey?: string;
+    }
+  | {
+      kind: "ramp";
+      action: "start" | "stop";
+      direction?: "raise" | "lower";
+      /** explicit zone target, when the wire format carries one */
+      zoneId?: number;
+      /** fallback scene target, used when zoneId is absent or unwatched */
+      presetId?: number;
+      origin: string;
+      dedupKey?: string;
+    };
+
+/**
+ * Outcome of `DeviceModel.apply()`.
+ * `accepted` is false only when the intent was filtered or deduped — sources
+ * use it to decide whether the originating packet is worth logging.
+ */
+export interface ApplyResult {
+  accepted: boolean;
+  /** number of zones actually driven */
+  applied: number;
+}
+
+// ── Model events ──────────────────────────────────────────
+
+/** A zone's output state changed and sinks should push it. */
+export interface ZoneChangedEvent {
+  zoneId: number;
+  zoneName: string;
+  level: number;
+  colorMode: "cct" | "xy";
+  cct: number | null;
+  colorXy: [number, number] | null;
+  activity: "idle" | "fading" | "ramping";
+}
+
+/** A zone stopped moving and stayed still for the report delay. */
+export interface ZoneSettledEvent {
+  zoneId: number;
+  zoneName: string;
+  level: number;
+}
+
+/** A resolved command, for logging and diagnostics. */
+export type CommandEvent =
+  | {
+      kind: "level";
+      zoneId: number;
+      zoneName: string;
+      origin: string;
+      level: number | null;
+      fade: number;
+      colorXy: [number, number] | null;
+    }
+  | {
+      kind: "ramp-start";
+      zoneId: number;
+      zoneName: string;
+      direction: "raise" | "lower";
+      fromLevel: number;
+    }
+  | {
+      kind: "ramp-stop";
+      zoneId: number;
+      zoneName: string;
+      atLevel: number;
+      elapsedMs: number;
+    };
+
+// ── Sinks ─────────────────────────────────────────────────
+
+/** The subset of the model a sink is allowed to see. */
+export interface SinkHost {
+  on(event: "zone:changed", listener: (e: ZoneChangedEvent) => void): unknown;
+  on(event: "zone:settled", listener: (e: ZoneSettledEvent) => void): unknown;
+  on(event: "command", listener: (e: CommandEvent) => void): unknown;
+  /** True only for zones named explicitly in the watch list. */
+  isExplicitlyWatched(zoneId: number): boolean;
+}
+
+/**
+ * An output. Sinks subscribe to model events and never see a packet, so a new
+ * one (MQTT, CLI log, …) needs no change to any protocol or model code.
+ */
+export interface BridgeSink {
+  readonly name: string;
+  attach(model: SinkHost): void;
+  detach(): void;
+}
