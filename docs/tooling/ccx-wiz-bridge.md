@@ -2,6 +2,26 @@
 
 *State machine spec for the CCX-WiZ bridge: message sources, zone state, deduplication, and dispatch.*
 
+## 0. Shape: model, sources, sinks
+
+The state machine below lives in one transport-agnostic place, `DeviceModel`.
+Everything else plugs into it:
+
+```
+  CCX sniffer ─┐                         ┌─ WiZ UDP        (zone:changed)
+  CCA radio  ──┼─ sources ─► DeviceModel ─┼─ MQTT / HA      (zone:changed)
+  LEAP subs  ──┤    (intents)   │        ├─ DEVICE_REPORT  (zone:settled)
+  IPL telemetry┘                │        └─ CLI log        (command)
+                                └─ dedup, watch filter, scene resolve,
+                                   warm dim, fade/ramp, settle-to-idle
+```
+
+A **source** normalizes its wire format into a `SourceIntent` and makes no
+decisions. A **sink** subscribes to model events and never sees a packet.
+Everything worth getting right — deduplication, ramp tracking, settle-to-idle —
+is decided once in the model, so every sink inherits it rather than only
+whichever one happened to be written first.
+
 ## 1. CCX Message Sources
 
 Each CCX message type has a different source and requires different handling in the bridge.
@@ -90,7 +110,7 @@ zones: Map<number, ZoneState>
 Lazy-initialized on first packet for a zone. Default:
 ```typescript
 { level: 0, colorMode: "cct", cct: null, colorXy: null,
-  activity: { type: "idle" }, dirty: false, reportPending: false }
+  activity: { type: "idle" }, dirty: false, reportAt: 0 }
 ```
 
 ## 3. State Transitions
@@ -418,7 +438,13 @@ The CCX→WiZ bridge captures Lutron Thread traffic via nRF sniffer dongle (dire
 **Code structure:**
 - `lib/serial-sniffer.ts` — serial driver (115200 baud, text protocol: `sleep` → `shell echo off` → `channel N` → `receive`)
 - `lib/frame-pipeline.ts` — raw 802.15.4 frame → parse → decrypt (AES-128-CCM*) → CBOR decode → CCXPacket
-- `lib/bridge-core.ts` — transport-agnostic dedup, zone match, scene resolve, WiZ UDP dispatch
+- `lib/bridge/model.ts` — `DeviceModel`: dedup, watch filter, scene resolve, warm dim, fade/ramp interpolation, settle-to-idle
+- `lib/bridge/types.ts` — `SourceIntent`, `BridgeSink`, zone state and event types
+- `lib/bridge/sources/ccx.ts` — `CcxSource`: CCX packets → model intents (the only module that knows CBOR body keys)
+- `lib/bridge/sinks/wiz.ts` — `WizSink`: zone:changed → WiZ UDP `setPilot`
+- `lib/bridge/sinks/nucleo-report.ts` — `NucleoReportSink`: zone:settled → DEVICE_REPORT over the Nucleo stream
+- `lib/bridge/sinks/log.ts` — `LogSink`: command events → human-readable lines
+- `lib/bridge-core.ts` — `BridgeCore`: the default composition of the above, plus config loading
 - `bridge/main.ts` — entry point, reads HA options.json OR YAML config file
 - `bridge/ha-addon/` — Home Assistant local add-on (config.yaml, Dockerfile, run.sh)
 - `bridge/Dockerfile` + `docker-compose.yml` — standalone Docker (node:22-slim)
