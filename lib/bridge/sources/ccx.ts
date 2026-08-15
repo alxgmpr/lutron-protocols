@@ -14,7 +14,7 @@ import type { ApplyResult, SourceIntent } from "../types";
 
 /** The slice of DeviceModel a source needs. */
 export interface IntentTarget {
-  apply(intent: SourceIntent): ApplyResult;
+  apply(intent: SourceIntent, onAccepted?: () => void): ApplyResult;
 }
 
 export interface CcxSourceOptions {
@@ -37,7 +37,9 @@ export class CcxSource {
     this.packetCount++;
     const intent = this.toIntent(pkt);
     if (!intent) return;
-    if (this.model.apply(intent).accepted) this.logPacket(pkt);
+    // Logged via the accept hook rather than the return value so the packet
+    // line precedes the command line the model resolves it into.
+    this.model.apply(intent, () => this.logPacket(pkt));
   }
 
   private toIntent(pkt: CCXPacket): SourceIntent | null {

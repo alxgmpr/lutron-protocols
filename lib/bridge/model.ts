@@ -134,19 +134,25 @@ export class DeviceModel extends EventEmitter {
 
   // ── Intent application ──────────────────────────────────
 
-  apply(intent: SourceIntent): ApplyResult {
+  /**
+   * @param onAccepted invoked the moment the intent clears filtering and
+   * dedup, before any zone is driven. Sources use it to log the originating
+   * packet ahead of the command it resolved to.
+   */
+  apply(intent: SourceIntent, onAccepted?: () => void): ApplyResult {
     switch (intent.kind) {
       case "zoneLevel":
-        return this.applyZoneLevel(intent);
+        return this.applyZoneLevel(intent, onAccepted);
       case "preset":
-        return this.applyPreset(intent);
+        return this.applyPreset(intent, onAccepted);
       case "ramp":
-        return this.applyRamp(intent);
+        return this.applyRamp(intent, onAccepted);
     }
   }
 
   private applyZoneLevel(
     intent: Extract<SourceIntent, { kind: "zoneLevel" }>,
+    onAccepted?: () => void,
   ): ApplyResult {
     // Watch filter runs before dedup so unwatched traffic never occupies the
     // dedup table.
@@ -154,6 +160,7 @@ export class DeviceModel extends EventEmitter {
     if (this.isDuplicate(intent.dedupKey))
       return { accepted: false, applied: 0 };
 
+    onAccepted?.();
     this.appliedCount++;
     this.dispatchLevel(
       intent.zoneId,
@@ -169,10 +176,12 @@ export class DeviceModel extends EventEmitter {
 
   private applyPreset(
     intent: Extract<SourceIntent, { kind: "preset" }>,
+    onAccepted?: () => void,
   ): ApplyResult {
     if (this.isDuplicate(intent.dedupKey))
       return { accepted: false, applied: 0 };
 
+    onAccepted?.();
     const entry = this.presetZones.get(intent.presetId);
     // An unknown preset is still "accepted": the packet is real and worth
     // logging, there is just nothing mapped to it.
@@ -199,10 +208,12 @@ export class DeviceModel extends EventEmitter {
 
   private applyRamp(
     intent: Extract<SourceIntent, { kind: "ramp" }>,
+    onAccepted?: () => void,
   ): ApplyResult {
     if (this.isDuplicate(intent.dedupKey))
       return { accepted: false, applied: 0 };
 
+    onAccepted?.();
     const run = (zoneId: number) => {
       this.appliedCount++;
       if (intent.action === "start") {

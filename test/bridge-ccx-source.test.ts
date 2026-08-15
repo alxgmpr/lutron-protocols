@@ -161,15 +161,16 @@ function recorder(result: ApplyResult = { accepted: true, applied: 1 }) {
   const intents: SourceIntent[] = [];
   return {
     intents,
-    apply(intent: SourceIntent): ApplyResult {
+    apply(intent: SourceIntent, onAccepted?: () => void): ApplyResult {
       intents.push(intent);
+      if (result.accepted) onAccepted?.();
       return result;
     },
   };
 }
 
 async function makeSource(
-  target: { apply(i: SourceIntent): ApplyResult },
+  target: { apply(i: SourceIntent, onAccepted?: () => void): ApplyResult },
   log?: (msg: string) => void,
 ) {
   const { CcxSource } = await import("../lib/bridge/sources/ccx");
