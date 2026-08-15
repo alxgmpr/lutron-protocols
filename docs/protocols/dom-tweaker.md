@@ -8,9 +8,10 @@ Reversed 2026-08-15 against HWQS firmware 26.05.26f000 (`lutron-core`,
 intensity; see `ipl.md` §12A/§12B for why every IPL and device-config-session
 route fails.
 
-**Status: one field short of working.** The transaction format, addressing,
-concurrency token and transport are all solved and *validation passes*. The
-only unresolved value is the `dto_type` string (see §6).
+**Status: WORKING.** Live object writes commit successfully with no reboot and
+no database transfer, and they drive the processor's cache refresh + device
+record re-evaluation. See §6 for the `dto_type` encoding, which was the last
+piece, and §10 for the (negative) result on LED intensity specifically.
 
 ---
 
@@ -122,33 +123,71 @@ message LedDefinition {          // domainobject/dto/v1/led.proto
 
 Extract any of them with `tools/dom/extract-go-descriptors.py` (§7).
 
-## 6. The one unresolved field: `dto_type`
+## 6. `dto_type` is the DECIMAL OBJECT TYPE, as a string
 
-DOM rejects every name tried so far:
+Not a type name. `dto_type = "108"` for a LedController, `"5"` for a
+ControlStationDevice, and so on — the same numbering as Designer's `ObjectType`
+enum. Every name-shaped spelling is rejected:
 ```
 ApplyExternalObjectChanges: deserializing tweaked data into tx:
   dto: DTOType not registered: "LedDefinition"
 ```
-Tried and rejected: `LedDefinition`, `LedDTO`, `Led`, `LED`, `led`, `LedDto`,
-`ledDTO`, `LedObject`, `LED_DTO`, `LedDefinitionDTO`, `LedDataTransferObject`,
-`LedTemplate`, `OBJECT_TYPE_LED`, `107`, `dto.LedDTO`, `*dto.LedDTO`,
-`dto.LedDefinition`, `athena.Led`, `domainobject.Led`,
-`domainobject.dto.v1.Led`, `domainobject.dto.v1.LedDTO`,
-`domainobject.dto.v1.LedDefinition`.
-
-A structural sweep of the Go binary (tokens containing `Led` whose
-`Button`/`Zone`/`Area` analogues also exist) yields no further candidates, so
-the registry key is not a simple transform of the type name.
-
-**Deterministic way to finish this:** capture a real DOM-generated transaction.
-`lutron-core` logs the entire blob at debug level:
+A registered type instead gets past deserialization into real work, which is
+how the set below was enumerated (send a deliberately mismatched XID and read
+the type back out of the error):
 ```
-Debug: rx-json-data-callback: Processing: {"cmd":"RequestDomManagedTweak","args":{"TweakData":"<base64>",...}}
+applyChanges: reading object ID for XID <xid> with ObjectType 0x006C: sql: no rows in result set
 ```
-So trigger any DOM-managed change (e.g. `ObjectAliasAPI/Create` over `@dom-api`,
-or a LEAP write that `multi-server-phoenix.gobin` routes through
-`RequestDomManagedTweak` — it references it 5×), then base64-decode the logged
-blob and read `dto_type` straight out of the `Update`/`Create` message.
+
+**Registered DTO types observed on 26.05.26f000:**
+`2, 3, 4, 5, 9, 10, 15, 32, 34, 43, 44, 46, 57, 58, 60, 74, 77, 92, 94, 108`
+— Area, SwitchLegController, ControlStation, ControlStationDevice,
+ZoneControlUI, SwitchLeg, Zone, LinkNode, Link, Preset, PresetAssignment,
+Processor, Button, EngravingPosition, SingleActionProgrammingModel,
+AdvancedToggleProgrammingModel, MasterRaiseLowerProgrammingModel,
+KeypadController, ButtonGroup, **LedController**.
+
+> **`107` (Led) is NOT a registered DTO type.** Individual LEDs cannot be
+> tweaked; only the parent `LedController` (108) can.
+
+Enumerating this from scratch is cheap and safe — sweep `dto_type` over
+`"0".."260"` with any valid XID and classify the DOM log lines. Deserialization
+failures never touch the database.
+
+## 6a. `configuration_state_revision` rotates on every commit
+
+Each successful tweak writes a **new** `DatabaseMetadata.ConfigurationStateRevision`.
+The next transaction must carry the new value, so re-read it between tweaks:
+```sh
+sqlite3 /var/db/lutron-athena-db.sqlite 'SELECT ConfigurationStateRevision FROM DatabaseMetadata'
+```
+Reusing a stale one fails the concurrency check; a made-up one is rejected
+outright.
+
+## 6b. What a successful tweak looks like
+
+```
+Info: Validation completed with success: TweakerSessionID={...}
+Info: Tweaker command execution completed: TweakerSessionID={...}, Result={0x0(0)}
+Info: Completed database update: TweakerSessionID={...}, UpdateSuccess={true}
+Info: Tweak completed with success: TweakerSessionID={...}
+[CORE][FEATURE]: {"Tweaker":{"Result":"SUCCESS(0)"}}
+Debug: Broadcasting: {"cmd":"DomManagedTweakResponse","args":{...,"Result":0}}
+```
+and immediately afterwards the pipeline this whole exercise was chasing:
+```
+Info: Starting cache refresh: NewObjectCount={0}, UpdatedObjectCount={1}, OperationSessionId={...}
+Info: Starting record re-evaluation as part of cache refresh
+Info: phoenix-component-device-record-manager: Record re-evaluation completed successfully!
+Info: Cache refresh operation completed: Status={0}
+Info: device-transfer-tracker: New device upload session created: CommandMetadata={'Core Cache Refresh',...}, DeviceIds={...}
+```
+`DeviceIds={}` means re-evaluation found no record whose serialization actually
+changed — i.e. the field you edited is not part of any transferred device
+record.
+
+Note `Result={0x1(1)}` at the *execution* step (rather than `0x0`) is the
+failure case and is followed by `Failed to start database update`.
 
 ## 7. Tooling
 
@@ -198,3 +237,35 @@ lutron-core-client -d '{"cmd":"RequestUpdateLoggingSettings","args":{"DebugEnabl
   ```sh
   sqlite3 /var/db/lutron-athena-db.sqlite ".backup '/var/misc_unsynced/bk/athena-pre.sqlite'"
   ```
+* Every successful tweak advances `ConfigurationStateRevision`, even one that
+  writes identical values. That is normal bookkeeping, but Designer will see
+  the project as changed on its next connect and resync.
+
+---
+
+## 10. Result for keypad LED intensity: still negative
+
+The tweaker works, but it does not get LED intensity to a Sunnata keypad,
+because none of the candidate fields are part of any transferred device record:
+
+| Field | Tweakable? | In the device record? |
+|-------|-----------|----------------------|
+| `Led.StatusOnIntensity` / `NightlightIntensity` (type 107) | **No** — 107 isn't a registered DTO type | No (proven across a reboot, §12B of `ipl.md`) |
+| `LedController.DefaultStatusOnIntensity` / `DefaultNightlightIntensity` (type 108) | **Yes** — commits live | **No** |
+
+Verified directly: tweaking LedController 2171's
+`default_nightlight_intensity` 0 → 40 and `default_status_on_intensity`
+1 → 100 both committed with `SUCCESS(0)` and triggered cache refresh + record
+re-evaluation, yet the type-108 record checksum stayed
+`AB2D9351D26243B2161DC849A38058DE`, `ActionRequiredID` stayed 0, the upload
+session carried `DeviceIds={}`, and no CLAP frame referencing the keypad serial
+appeared on link 0. Restored to `0 / 1` afterwards.
+
+So on 26.x these DB columns are Designer-side bookkeeping that the processor
+never pushes to CCX keypads by this route. What remains untested is whether the
+intensity reaches the device only during **full OOB provisioning**
+(`DeviceStatusRecord.IsPartialOOBRequired`), which is the CCX `AHA` write the
+device actually consumes.
+
+**The tweaker itself is the reusable win** — a supported, live, no-reboot,
+schedulable write path to any of the 20 registered object types.
