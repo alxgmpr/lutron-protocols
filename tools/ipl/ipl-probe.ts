@@ -46,7 +46,6 @@ import { defaultHost } from "../../lib/config";
 import {
   bodyNamedRPC,
   buildCommandFrame,
-  MsgType,
   MsgTypeName,
   type ParsedFrame,
   parseAllFrames,
@@ -115,7 +114,10 @@ switch (mode) {
     break;
   case "send":
     for (let i = 1; i < pos.length; i += 2)
-      jobs.push({ op: Number(pos[i]), hex: (pos[i + 1] ?? "").replace(/\s/g, "") });
+      jobs.push({
+        op: Number(pos[i]),
+        hex: (pos[i + 1] ?? "").replace(/\s/g, ""),
+      });
     break;
   case "rpc":
     for (let i = 1; i < pos.length; i += 2)
@@ -151,7 +153,8 @@ function fmt(f: ParsedFrame): string {
   if (f.body.length) line += `\n      hex=${f.body.toString("hex")}`;
   // opId 349 bodies are `<name>\0<5 id bytes><zlib json>` — show the name.
   const ascii = f.body.toString("latin1").replace(/[^\x20-\x7e]/g, ".");
-  if (f.body.length && /[A-Za-z]{4}/.test(ascii)) line += `\n      asc=${ascii}`;
+  if (f.body.length && /[A-Za-z]{4}/.test(ascii))
+    line += `\n      asc=${ascii}`;
   return line;
 }
 
@@ -167,7 +170,9 @@ let rx: Buffer = Buffer.alloc(0);
 let msgId = 1;
 
 sock.on("secureConnect", async () => {
-  console.log(`${ts()} connected ${HOST}:${PORT} [${sock.getCipher()?.name ?? "?"}]`);
+  console.log(
+    `${ts()} connected ${HOST}:${PORT} [${sock.getCipher()?.name ?? "?"}]`,
+  );
   for (const j of jobs) {
     const body = Buffer.from(j.hex, "hex");
     const frame = buildCommandFrame(j.op, body, {
