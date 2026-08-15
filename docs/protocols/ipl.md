@@ -944,6 +944,62 @@ not by any discrete runtime command. The remaining untested lever is editing
 that row and triggering a **single-device** config push (op 35
 `SendDeviceDatabaseFiles`) rather than a full project transfer.
 
+### 12B. The device-configuration-session route — also negative (2026-08-15)
+
+Follow-up to the above, since intensity is applied only by a device configuration session.
+Tested on the same keypad, including one processor reboot.
+
+**A working per-device push trigger exists** — on the *local IPC socket*, not op 349:
+```sh
+lutron-core-client -d '{"cmd":"RequestDeviceConfigurationSession","args":{"DeviceIds":[2165]}}'
+```
+`DeviceIds` is required (empty args → `device-configuration-json-parsers: Received invalid request
+for device configuration: missing 'DeviceIds' argument`), so there is no accidental
+configure-everything path. It resolves the serial itself:
+`Started tracking device configuration session: Serial={0x06328C1D (103975965)}`.
+
+**But the session is gated on `ActionRequiredID`, held in core's memory.**
+`lutron-phoenix-processor-db.sqlite` → `GenericComponentDeviceRecord`
+`(ObjectID, ObjectType, DeviceID, LinkSerializedRecordChecksum, ActionRequiredID, LinkID)`;
+`ActionRequired`: 0=No Action, 1=Transfer Required, 8=Partial OOB Required, …
+
+> **Direct sqlite writes to either DB are invisible to a running `lutron-core`, and the binary has
+> no reload/reinit/cache-refresh command.** Only a restart re-reads them. Setting
+> `ActionRequiredID=1` by hand and firing a session still reports `TotalOperationCount: 0`.
+
+**The decisive negative.** After a reboot — where core re-serializes every component record fresh
+from the athena DB — Kitchen LEDs edited to `StatusOnIntensity` 25/128/255 and
+`NightlightIntensity` 40 produced **byte-identical checksums** (2172 stayed
+`B2C6629C331376C2570D3B0A6BC995ED`), `ActionRequiredID` cleared to 0, no transfer, no CLAP frames.
+
+**`Led.StatusOnIntensity` / `NightlightIntensity` are therefore not part of the component record
+that gets transferred to the device.** They are real Designer-written data — the column varies
+system-wide (153 ×28, 0 ×8, 51 ×7, 150 ×7, 255/nightlight-8 ×4) — but they are applied by a full
+transfer / OOB provisioning, not by a partial config session. `LedController` is objectType 108,
+matching the CCX AHA record type `[108, {4:active,5:inactive}]`, but its
+`DefaultStatusOnIntensity` is a constant `1` on all 15 controllers (a mode flag, not a level) and
+its checksum never moved either.
+
+Also mapped:
+* `RequestPrepareForForcedFullTransfer` — works, but its own log says it must "delete all device
+  records", i.e. a whole-system re-transfer. Not a per-device lever.
+* `ABLEDeviceRecord` is **empty system-wide** yet every session logs `Built ABLE record transfer
+  for device`. Unresolved; a possible carrier for the LED/AHA data.
+* No live OOB / re-provision command exists.
+
+**Next levers, in order:**
+1. **`RequestDomManagedTweak`, arg `TweakData`** — the sanctioned write-through path
+   (`tweaker-ipc-parser.cpp` → `database-update-receiver.cpp` → *"Initiating native tweak
+   session"*; fails with *"Missing DOM Client Service **External Object Changes API**"*). It fires
+   the object-change notifications that drive cache refresh + record re-serialization, so it needs
+   no reboot and is schedulable. Encoding unknown, but Designer implements the same tweak
+   serialization for **ops 306/308** and those DLLs are in `re/designer/ipl-dll/`.
+2. `DeviceStatusRecord.IsPartialOOBRequired = 1` for one device + restart — scoped to a single
+   keypad, should rewrite all its records. Costs a reboot and risks leaving that keypad
+   unprogrammed until a real transfer.
+3. Decompile `LED_COMPONENT_RECORD` vs `LED_CONTROLLER_COMPONENT_RECORD` in `lutron-core` (both
+   exist as symbols) to find which record actually carries intensity.
+
 ### Enabling the log oracle
 `/var/log/core` only shows Info+ by default. Debug plus raw CLAP link framing
 (`/var/log/clap-link-{0,1}-log`) is toggled at runtime, no restart needed:
