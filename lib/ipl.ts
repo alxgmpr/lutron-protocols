@@ -20,6 +20,8 @@
  *   +14 payload bytes
  */
 
+import { deflateSync as zlibDeflateSync } from "zlib";
+
 export enum MsgType {
   Command = 0,
   Acknowledgement = 1,
@@ -249,6 +251,8 @@ export const ObjectType = {
   ShadeGroup: 133,
   OccupancyGroup: 38,
   Led: 107,
+  LedController: 108,
+  BacklightComponent: 311,
   HVACZone: 218,
   ShadeZone: 198,
   VenetianBlindZone: 199,
@@ -747,6 +751,97 @@ export function bodyDeviceSetIdentifyState(
   b.writeUInt16BE(component, 6);
   b[8] = start ? 1 : 0;
   return b;
+}
+
+/**
+ * DeviceLinkSetConfigProperty (opId 297) — direct-to-device config write over a
+ * physical link, addressed by SERIAL + component (not by object id).
+ *
+ * Layout confirmed on the wire against RA3/HWQS 26.x (2026-08-14): the proc's
+ * length check reports `Expected = 11 + propLen`, i.e.
+ *   u8 proc, u8 link, u32 serial, u16 component, u16 propNum, u8 propLen, value[propLen]
+ *
+ * `procNum` is `Processor.ProcessorNumberOnSystem` (0 on a single-processor
+ * system — proc 1 fails with "could not retrieve processor number from
+ * configuration database"). `linkNum` is `ProcessorLinkNumber`: 0 = PegasusLink
+ * (Thread/CCX), 1 = the CCA RF link. Links >= 2 fail with "Cannot send message
+ * to invalid link".
+ *
+ * WARNING: on 26.x this reaches `link-task` and then goes nowhere — a sweep of
+ * propNum 0..1023 against a CCX keypad produced zero CLAP frames on the link
+ * and zero log output. See docs/protocols/ipl.md.
+ */
+export function bodyDeviceLinkSetConfigProperty(
+  procNum: number,
+  linkNum: number,
+  serial: number,
+  component: number,
+  propNum: number,
+  value: Buffer,
+): Buffer {
+  const head = Buffer.alloc(11);
+  head[0] = procNum;
+  head[1] = linkNum;
+  head.writeUInt32BE(serial, 2);
+  head.writeUInt16BE(component, 6);
+  head.writeUInt16BE(propNum, 8);
+  head[10] = value.length;
+  return Buffer.concat([head, value]);
+}
+
+/**
+ * SetConfigurationProperty (opId 8) — object-addressed TLV map:
+ *   u32 objectId, u16 objectType, u8 count, {u16 propNum, u8 valueSize, value}xcount
+ */
+export function bodySetConfigurationProperty(
+  objectId: number,
+  objectType: number,
+  props: Array<{ propNum: number; value: Buffer }>,
+): Buffer {
+  const head = Buffer.alloc(7);
+  head.writeUInt32BE(objectId, 0);
+  head.writeUInt16BE(objectType, 4);
+  head[6] = props.length;
+  const parts = props.map((p) => {
+    const t = Buffer.alloc(3);
+    t.writeUInt16BE(p.propNum, 0);
+    t[2] = p.value.length;
+    return Buffer.concat([t, p.value]);
+  });
+  return Buffer.concat([head, ...parts]);
+}
+
+/**
+ * NamedRPCWrapper (opId 349) — the "generic IPC over IPL" bus. Body layout
+ * reversed from live processor broadcasts (2026-08-14):
+ *
+ *   <commandName ASCII> 00 <u32 requestId> <u8 operationSessionId> <zlib(JSON args)>
+ *
+ * The processor emits all-zero id fields for its own broadcasts and accepts
+ * them from a client. `args` is exactly the same JSON object the local IPC
+ * socket takes as `{"cmd":NAME,"args":{...}}` — e.g. observed on the wire,
+ * `RequestSetLEDState` with `{"ObjectId":490,"State":0}`.
+ *
+ * Note the op-349 bus and the local `/tmp/lutron-core.sock` IPC socket have
+ * DIFFERENT command-parser registries: `RequestSetLEDState` is registered on
+ * 349 but `RequestUpdateLoggingSettings` is only on the socket.
+ *
+ * Failure logs (processor `/var/log/core`, module `generic-ipc-over-ipl`):
+ *   "Failed to find command parser: CommandName={X}"                — name unknown
+ *   "Failed to create command from parser: Arguments may be invalid" — args bad
+ */
+export function bodyNamedRPC(
+  commandName: string,
+  args: unknown,
+  requestId = 0,
+  operationSessionId = 0,
+): Buffer {
+  const name = Buffer.from(`${commandName}\0`, "ascii");
+  const ids = Buffer.alloc(5);
+  ids.writeUInt32BE(requestId >>> 0, 0);
+  ids[4] = operationSessionId & 0xff;
+  const z = zlibDeflateSync(Buffer.from(JSON.stringify(args), "utf8"));
+  return Buffer.concat([name, ids, z]);
 }
 
 /** FactoryResetDevice (opId 284) — DANGEROUS: wipes a device's programming. */

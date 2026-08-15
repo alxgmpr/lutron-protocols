@@ -855,6 +855,107 @@ All in `certs/designer/`:
 7. **Update `tools/ipl/ipl-client.ts`**: Replace the old "LEIC=keepalive" logic with
    the corrected Event/Telemetry/Control decode + operationId lookup.
 
+## 12A. Keypad LED intensity over IPL — CLOSED, NEGATIVE (2026-08-14)
+
+Tested live against an HWQS processor at 26.x firmware
+(`Linux 5.10.208-001-ts-armv7l`, `lutron-core` build 2026-08-11), targeting a
+Sunnata hybrid keypad (`/device/2165`, serial 103975965, LEDs 2172/2173/2174,
+components 81/83). **No live IPL command can set CCX keypad LED / backlight
+intensity on this firmware.** Four independent paths were closed:
+
+### 1. op 349 named-RPC `RequestUpdateLedSettings` — not registered
+The op-349 wrapper works and its layout is now known (see
+`bodyNamedRPC` in `lib/ipl.ts`). But in the shipped 26.x `lutron-core`,
+`RequestUpdateLedSettings` survives **only** inside two mangled lambda symbols;
+the standalone command-name literal is gone and its argument names
+`StatusLedIntensity` / `NightlightLedIntensity` have **0 occurrences** in the
+whole 26 MB binary (they were present in the older 26.00.12f000 image). Only
+the *response* name `UpdateLedSettingsResponse` remains. The parser and its
+arg names were stripped, so the handler is unreachable by name.
+
+Sibling commands that ARE registered in that module:
+`RequestUpdateTuningSettings`, `RequestTestTrimSettings`.
+
+**The op-349 bus and the local `/tmp/lutron-core.sock` IPC socket have separate
+parser registries** — `RequestSetLEDState` is on 349 only,
+`RequestUpdateLoggingSettings` is on the socket only. Check both.
+
+### 2. op 297 DeviceLinkSetConfigProperty — reaches the link, emits nothing
+Layout confirmed exactly; the processor's own length check reports
+`Expected = 11 + propLen`:
+```
+u8 proc, u8 link, u32 serial, u16 component, u16 propNum, u8 propLen, value[propLen]
+```
+Addressing (from the processor DB, not guesswork):
+* `proc` = `Processor.ProcessorNumberOnSystem` = **0**. proc 1 →
+  `ipl-operation-device-link-set-config-property: … could not retrieve processor
+  number from configuration database`.
+* `link` = `ProcessorLinkNumber`. **0 = PegasusLink (Thread/CCX)**, 1 = CCA RF
+  link. link ≥ 2 → `link-task: Cannot send message to invalid link`.
+
+With correct addressing a **sweep of propNum 0..1023** (component 81, 1-byte
+value) produced: zero core-log lines, and **zero CLAP frames on
+`/var/log/clap-link-0-log` referencing the keypad serial**. The command passes
+validation, enters `link-task`, and is dropped by the CCX link driver without a
+trace. It never reaches the device.
+
+### 3. op 8 / op 10 configuration properties — no converters at all
+Sweeping propNum 0..255 on the Led object (`objectType 107`):
+* op 10 Get → `object-class: Get configuration property not handled` for **all 256**.
+* op 8 Set → `ipl: … Unable to find endianness converter object for
+  ConfigurationPropertyType` for **all 256** — the IPL layer has no config-property
+  converter registered for any number in that range.
+
+### 4. op 7 / op 9 runtime properties — the live surface is one property
+Sweeping propNum 1..255 with op 9 `GetRuntimeProperty` classifies the whole
+object surface via `object-class: Get runtime property not handled`:
+
+| Object | objectType | Runtime properties actually handled |
+|--------|-----------:|-------------------------------------|
+| Led (`/led/2172`)            | 107 | **66** (only) |
+| ControlStationDevice (`/device/2165`) | 5 | 70 DeviceState, 72 DeviceResponseState, 75 DeviceComponentState, 148 |
+| LedController (`/ledcontroller/2171`) | 108 | **none** |
+
+`BacklightIntensity(46)`, `StatusIntensity(110)` and `LED_STATUS(23)` are **not
+handled** on Led, LedController *or* ControlStationDevice.
+
+On the op-7 *set* path, props 46/110 do reach an endianness converter
+(`assignment-command-dynamic-update-runtime-property-endianness`) but it rejects
+every value width 1..32 with `wrong data size` — and even a correctly-sized
+value would then hit the same "not handled" wall at the object class. The
+converter registry is not evidence the property is settable.
+
+Useful three-way oracle when sweeping op 7 (each log line names the property, so
+results classify without timing correlation):
+```
+ipl: … Unable to find endianness converter object for property type   → unknown
+ipl: … Unable to convert endianness of runtime property value         → known, wrong size
+ipl: Handled an incoming Set RTP command for a property which must be handled concretely
+```
+
+### Where intensity actually lives
+`Led.StatusOnIntensity` / `Led.NightlightIntensity` in the processor's
+`/var/db/lutron-athena-db.sqlite` (scale **0–255**, default 153 ≈ 60%; note
+Designer's UI scale is 0–100 and `LedController.DefaultStatusOnIntensity` is a
+small enum index, not a level). Values are pushed to the keypad during a
+**device configuration session** (`DEVICE_CONFIGURATION_*` /
+`CCX_DEVICE_CONFIGURATION_SESSION_FACTORY`), i.e. a database/device transfer —
+not by any discrete runtime command. The remaining untested lever is editing
+that row and triggering a **single-device** config push (op 35
+`SendDeviceDatabaseFiles`) rather than a full project transfer.
+
+### Enabling the log oracle
+`/var/log/core` only shows Info+ by default. Debug plus raw CLAP link framing
+(`/var/log/clap-link-{0,1}-log`) is toggled at runtime, no restart needed:
+```sh
+ssh root@<proc> "lutron-core-client -d '{\"cmd\":\"RequestUpdateLoggingSettings\",\"args\":{\"DebugEnabled\":true}}'"
+# … run probes …
+ssh root@<proc> "lutron-core-client -d '{\"cmd\":\"RequestUpdateLoggingSettings\",\"args\":{\"DebugEnabled\":false}}'"
+```
+Remember to turn it back off — it is very chatty.
+
+---
+
 ## 12. Telnet Integration Protocol (ESN Interface)
 
 Source: `telnet-reference.pdf` — Lutron Integration Protocol Guide, Revision AH, 172 pages.
