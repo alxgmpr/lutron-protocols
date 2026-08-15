@@ -43,7 +43,8 @@ if (existsSync(HA_OPTIONS_PATH)) {
   } catch {}
 }
 
-// Set CCX_DATA_DIR BEFORE importing ccx/config (which loads LEAP data at import time).
+// ccx/config reads LEAP data lazily, but set CCX_DATA_DIR up front anyway so
+// every later lookup resolves against the same directory.
 const configDir = process.env.CCX_DATA_DIR ?? "/config";
 if (!process.env.CCX_DATA_DIR && existsSync(configDir)) {
   process.env.CCX_DATA_DIR = configDir;

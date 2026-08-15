@@ -104,43 +104,74 @@ function loadDeviceMap(): DeviceMapData | null {
   }
 }
 
-const _deviceMap = loadDeviceMap();
+// All disk reads below are lazy and memoized: nothing touches the filesystem
+// until the first accessor is called. This keeps importing this module free of
+// side effects, so callers can set CCX_DATA_DIR (or inject data) after import.
+// `undefined` = not loaded yet, `null` = loaded and absent.
 
-// Build lookup indices — address → device is keyed by BOTH the stable
-// secondary ML-EID and the legacy primary ML-EID, so RX packets seen on
-// either address path resolve to the same device entry.
-const _addrToDevice = new Map<string, CCXDeviceEntry>();
-const _serialToDevice = new Map<number, CCXDeviceEntry>();
-if (_deviceMap) {
-  for (const dev of _deviceMap.devices) {
-    // Fill secondaryMleid if the file is an older version that only stored eui64
-    if (!dev.secondaryMleid && dev.eui64) {
-      dev.secondaryMleid = eui64ToSecondaryMleid(dev.eui64);
-    }
-    if (dev.secondaryMleid) _addrToDevice.set(dev.secondaryMleid, dev);
-    if (dev.primaryMleid) _addrToDevice.set(dev.primaryMleid, dev);
-    _serialToDevice.set(dev.serial, dev);
-  }
+interface DeviceIndices {
+  byAddr: Map<string, CCXDeviceEntry>;
+  bySerial: Map<number, CCXDeviceEntry>;
 }
 
-const _diskData = loadLeapFromDisk();
+let _deviceMap: DeviceMapData | null | undefined;
+let _indices: DeviceIndices | undefined;
+
+function getDeviceMap(): DeviceMapData | null {
+  if (_deviceMap === undefined) _deviceMap = loadDeviceMap();
+  return _deviceMap;
+}
+
+// Lookup indices — address → device is keyed by BOTH the stable secondary
+// ML-EID and the legacy primary ML-EID, so RX packets seen on either address
+// path resolve to the same device entry.
+function getIndices(): DeviceIndices {
+  if (_indices) return _indices;
+  const byAddr = new Map<string, CCXDeviceEntry>();
+  const bySerial = new Map<number, CCXDeviceEntry>();
+  const map = getDeviceMap();
+  if (map) {
+    for (const dev of map.devices) {
+      // Fill secondaryMleid if the file is an older version that only stored eui64
+      if (!dev.secondaryMleid && dev.eui64) {
+        dev.secondaryMleid = eui64ToSecondaryMleid(dev.eui64);
+      }
+      if (dev.secondaryMleid) byAddr.set(dev.secondaryMleid, dev);
+      if (dev.primaryMleid) byAddr.set(dev.primaryMleid, dev);
+      bySerial.set(dev.serial, dev);
+    }
+  }
+  _indices = { byAddr, bySerial };
+  return _indices;
+}
+
+let _diskData: LeapDumpData | null | undefined;
 let _leapOverride: LeapDumpData | null = null;
 
-function getLeapData(): LeapDumpData | null {
-  return _leapOverride ?? _diskData;
+function getDiskData(): LeapDumpData | null {
+  if (_diskData === undefined) _diskData = loadLeapFromDisk();
+  return _diskData;
 }
 
-const ccxLink = _diskData?.link?.ccx;
+function getLeapData(): LeapDumpData | null {
+  return _leapOverride ?? getDiskData();
+}
 
 export const CCX_CONFIG = {
-  channel: ccxLink?.channel ?? 0,
-  panId: ccxLink?.panId ?? 0,
-  extPanId: ccxLink?.extPanId
-    ? base64ToHex(ccxLink.extPanId, ":").toUpperCase()
-    : "",
-  masterKey: ccxLink?.masterKey
-    ? base64ToHex(ccxLink.masterKey).toUpperCase()
-    : "",
+  get channel(): number {
+    return getDiskData()?.link?.ccx?.channel ?? 0;
+  },
+  get panId(): number {
+    return getDiskData()?.link?.ccx?.panId ?? 0;
+  },
+  get extPanId(): string {
+    const v = getDiskData()?.link?.ccx?.extPanId;
+    return v ? base64ToHex(v, ":").toUpperCase() : "";
+  },
+  get masterKey(): string {
+    const v = getDiskData()?.link?.ccx?.masterKey;
+    return v ? base64ToHex(v).toUpperCase() : "";
+  },
   udpPort: LUTRON_UDP_PORT,
 };
 
@@ -161,8 +192,7 @@ function formatZoneName(zone: { name: string; area?: string }): string {
 
 /** Look up a device name by IPv6 address (primary ML-EID) */
 export function getDeviceName(ipv6: string): string | undefined {
-  const dev = _addrToDevice.get(ipv6);
-  return dev?.name;
+  return getIndices().byAddr.get(ipv6)?.name;
 }
 
 /**
@@ -171,17 +201,19 @@ export function getDeviceName(ipv6: string): string | undefined {
  * EUI-64 — NOT the rotating primary ML-EID.
  */
 export function getDeviceAddress(serial: number): string | undefined {
-  return _serialToDevice.get(serial)?.secondaryMleid;
+  return getIndices().bySerial.get(serial)?.secondaryMleid;
 }
 
 /** Get full device info by serial number */
 export function getDeviceBySerial(serial: number): CCXDeviceEntry | undefined {
-  return _serialToDevice.get(serial);
+  return getIndices().bySerial.get(serial);
 }
 
 /** Get all CCX devices from the device map */
 export function getAllDevices(): CCXDeviceEntry[] {
-  return _deviceMap?.devices ?? [];
+  // getIndices() normalizes secondaryMleid on entries that predate the field.
+  getIndices();
+  return getDeviceMap()?.devices ?? [];
 }
 
 /** Look up a zone name by zone ID */
@@ -243,10 +275,11 @@ function loadPresetZones(): Map<number, string> | null {
   }
 }
 
-const _sceneNames = loadPresetZones();
+let _sceneNames: Map<number, string> | null | undefined;
 
 /** Look up a scene/group name by its ID (from preset-zones.json) */
 export function getSceneName(sceneId: number): string | undefined {
+  if (_sceneNames === undefined) _sceneNames = loadPresetZones();
   return _sceneNames?.get(sceneId);
 }
 
