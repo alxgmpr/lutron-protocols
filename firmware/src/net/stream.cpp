@@ -118,6 +118,10 @@ void stream_send_ccx_packet(const uint8_t* data, size_t len, const uint8_t* src_
         item.flags |= STREAM_FLAG_SRC;
         memcpy(item.src_addr, src_addr, STREAM_SRC_ADDR_LEN);
     }
+    else {
+        /* CCX_SRC_LOCAL — we originated this frame, so it is a TX echo. */
+        item.flags |= STREAM_FLAG_TX;
+    }
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = HAL_GetTick();

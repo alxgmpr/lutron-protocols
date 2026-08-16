@@ -71,12 +71,17 @@ void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool i
                             uint32_t timestamp_cyc);
 
 /** Sentinel for stream_send_ccx_packet(): the frame has no meaningful sender
- *  (locally-originated TX).  Emits no source trailer — never a zero address. */
+ *  because this node originated it.  Emits no source trailer — never a zero
+ *  address — and marks the frame STREAM_FLAG_TX. */
 #define CCX_SRC_LOCAL NULL
 
 /** Send a CCX packet to all registered UDP clients.
  *  src_addr = 16-byte sender IPv6 in network byte order for received frames,
- *  or CCX_SRC_LOCAL for frames this node originated. */
+ *  or CCX_SRC_LOCAL for frames this node originated.
+ *
+ *  The two cases are distinguishable on the wire, which is what lets a host
+ *  tell "locally originated" (TX set, SRC clear) from "firmware predates the
+ *  source trailer" (TX clear, SRC clear) on a single frame. */
 void stream_send_ccx_packet(const uint8_t* data, size_t len, const uint8_t* src_addr);
 
 /** Send a raw 802.15.4 frame to all registered UDP clients (promiscuous mode) */
