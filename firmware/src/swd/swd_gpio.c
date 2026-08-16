@@ -93,7 +93,9 @@ static void gpio_set_output(void* ctx, bool host_drives)
 
 void swd_gpio_init(void)
 {
-    __HAL_RCC_GPIOF_CLK_ENABLE();
+    /* Must match NRF_SWDIO_PORT / NRF_SWCLK_PORT in bsp.h. Both are on GPIOD
+       (CN9-8 and CN9-2); move the pins and this has to move with them. */
+    __HAL_RCC_GPIOD_CLK_ENABLE();
 
     s_half_cycles = half_period_cycles();
 

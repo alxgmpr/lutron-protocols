@@ -13,7 +13,6 @@
  * ============================================================================
  *
  * What is unverified here, specifically:
- *   - that PF12/PF13 are broken out on this board (see bsp.h)
  *   - the clock rate that survives flying leads to the dongle's pads
  *   - setup and hold either side of the SWCLK edges at 550 MHz core clock
  *   - whether the target needs a pull-up on SWDIO stronger than the internal one

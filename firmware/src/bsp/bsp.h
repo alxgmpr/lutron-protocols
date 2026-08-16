@@ -11,49 +11,81 @@ extern "C" {
 
 /* -----------------------------------------------------------------------
  * Pin definitions for Nucleo-H723ZG
+ *
+ * Connector references are ST Zio (the inner female sockets), per UM2407
+ * tables 18-21. Both external modules are wired to one connector each, so a
+ * harness can be built and unplugged as a unit:
+ *
+ *   CC1101   -> CN8, entirely (I/O on the even column, power on the odd)
+ *   nRF52840 -> CN9, entirely (even column pins 2..12)
+ *
+ * CN7/CN8 are on one side of the board and CN9/CN10 on the other, which also
+ * keeps the 433 MHz module away from the 2.4 GHz dongle.
  * ----------------------------------------------------------------------- */
 
-/* CC1101 SPI3 (all on CN11) */
+/* CC1101 SPI3 — all on CN8.
+ *
+ * CN8's even column is eight consecutive free I/O (PC8, PC9, PC10, PC11,
+ * PC12, PD2, PG2, PG3) and its odd column carries 3V3 (pin 7) and GND (pins
+ * 11 and 13), so the module needs nothing from any other connector.
+ *
+ * The three SPI pins are unchanged from the previous wiring — PC10/11/12 are
+ * on CN8 as well as CN11, so moving to the Zio side costs no peripheral or
+ * alternate-function change. */
 #define CC1101_SPI SPI3
 #define CC1101_SCK_PORT GPIOC
-#define CC1101_SCK_PIN GPIO_PIN_10 /* PC10 SPI3_SCK  (AF6) CN11-1 */
+#define CC1101_SCK_PIN GPIO_PIN_10 /* PC10 SPI3_SCK  (AF6)  CN8-6 */
 #define CC1101_MISO_PORT GPIOC
-#define CC1101_MISO_PIN GPIO_PIN_11 /* PC11 SPI3_MISO (AF6) CN11-2 */
+#define CC1101_MISO_PIN GPIO_PIN_11 /* PC11 SPI3_MISO (AF6)  CN8-8 */
 #define CC1101_MOSI_PORT GPIOC
-#define CC1101_MOSI_PIN GPIO_PIN_12 /* PC12 SPI3_MOSI (AF6) CN11-3 */
-#define CC1101_CS_PORT GPIOA
-#define CC1101_CS_PIN GPIO_PIN_4 /* PA4  Software NSS     CN11-16 */
-#define CC1101_GDO0_PORT GPIOA
-#define CC1101_GDO0_PIN GPIO_PIN_0 /* PA0  EXTI0 — sync detect IRQ CN11-12 */
-#define CC1101_GDO0_EXTI_IRQn EXTI0_IRQn
+#define CC1101_MOSI_PIN GPIO_PIN_12 /* PC12 SPI3_MOSI (AF6)  CN8-10 */
+#define CC1101_CS_PORT GPIOC
+#define CC1101_CS_PIN GPIO_PIN_9 /* PC9  Software NSS     CN8-4 */
 
-/* Optional backup IRQ from CC1101 GDO2. Wire only if needed. */
+/* GDO0 is the sync-word detect line and the timing-critical one, so it gets a
+ * dedicated EXTI vector rather than one of the shared groups. */
+#define CC1101_GDO0_PORT GPIOD
+#define CC1101_GDO0_PIN GPIO_PIN_2 /* PD2  EXTI2 — sync detect IRQ  CN8-12 */
+#define CC1101_GDO0_EXTI_IRQn EXTI2_IRQn
+
+/* Optional backup IRQ from CC1101 GDO2. Wire only if needed.
+ * EXTI8 lands in the shared EXTI9_5 group; harmless, as nothing else uses it. */
 #define CC1101_GDO2_BACKUP_ENABLE 1
 #define CC1101_GDO2_PORT GPIOC
-#define CC1101_GDO2_PIN GPIO_PIN_15 /* PC15 EXTI15  CN11-4 */
-#define CC1101_GDO2_EXTI_IRQn EXTI15_10_IRQn
+#define CC1101_GDO2_PIN GPIO_PIN_8 /* PC8  EXTI8            CN8-2 */
+#define CC1101_GDO2_EXTI_IRQn EXTI9_5_IRQn
 
-/* nRF52840 NCP USART2 */
+/* nRF52840 NCP — all on CN9, even column pins 2..12.
+ *
+ * PD5/PD6 are USART2 and already sit on CN9-6/CN9-4, so the NCP link needs no
+ * peripheral change. Their neighbours PD7, PD4 and PD3 are USART2's unused
+ * SCLK/RTS/CTS pins, which makes five consecutive sockets available for the
+ * whole dongle with GND immediately below at CN9-12. */
 #define NRF_USART USART2
 #define NRF_TX_PORT GPIOD
-#define NRF_TX_PIN GPIO_PIN_5 /* PD5  USART2_TX */
+#define NRF_TX_PIN GPIO_PIN_5 /* PD5  USART2_TX -> dongle P0.24  CN9-6 */
 #define NRF_RX_PORT GPIOD
-#define NRF_RX_PIN GPIO_PIN_6 /* PD6  USART2_RX */
+#define NRF_RX_PIN GPIO_PIN_6 /* PD6  USART2_RX <- dongle P0.20  CN9-4 */
 
 /* nRF52840 NCP SWD programming lines.
  *
- * NOT WIRED YET. GPIOF is entirely unused in this design, so these are free
- * picks; confirm the header position against the Nucleo-H723ZG pinout before
- * soldering, and change these two defines if PF12/PF13 are not broken out.
+ * NOT WIRED YET — see swd_gpio.c, the only untested-on-hardware piece.
+ * These go to the two large round pads on the PCA10059 top side near the USB
+ * end. No reset wire is needed; CTRL-AP RESET does it over SWD.
  *
  * Both lines are parked as high-impedance inputs whenever SWD is idle — see
  * swd_gpio_deinit(). If the dongle's supply is ever switched, a driven SWDIO
  * or SWDCLK backfeeds it through the pin's ESD diode and it never actually
  * powers down, which is the same trap the UART pins present. */
-#define NRF_SWDIO_PORT GPIOF
-#define NRF_SWDIO_PIN GPIO_PIN_12 /* PF12 — to the SWDIO pad on the dongle */
-#define NRF_SWCLK_PORT GPIOF
-#define NRF_SWCLK_PIN GPIO_PIN_13 /* PF13 — to the SWDCLK pad on the dongle */
+#define NRF_SWDIO_PORT GPIOD
+#define NRF_SWDIO_PIN GPIO_PIN_4 /* PD4  -> SWDIO pad   CN9-8 */
+#define NRF_SWCLK_PORT GPIOD
+#define NRF_SWCLK_PIN GPIO_PIN_7 /* PD7  -> SWDCLK pad  CN9-2 */
+
+/* Reserved for the high-side switch on the dongle's 3V3 (GLAB-111 phase 1).
+ * Defined so the socket stays claimed in the harness; nothing drives it yet. */
+#define NRF_PWR_EN_PORT GPIOD
+#define NRF_PWR_EN_PIN GPIO_PIN_3 /* PD3  -> MOSFET gate  CN9-10 (not wired) */
 
 /* Shell USART3 (ST-LINK VCP) */
 #define SHELL_USART USART3

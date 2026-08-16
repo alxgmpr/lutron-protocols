@@ -4,9 +4,9 @@
  * Initialize GPIO pin multiplexing for all peripherals.
  *
  * Enables clocks for used GPIO ports and configures:
- * - SPI3 pins (PC10 SCK, PC11 MISO, PC12 MOSI, PA4 CS)
- * - CC1101 GDO0 interrupt (PA0 EXTI0)
- * - USART2 pins (PD5 TX, PD6 RX) for nRF52840 NCP
+ * - SPI3 pins (PC10 SCK, PC11 MISO, PC12 MOSI, PC9 CS) — CC1101 on CN8
+ * - CC1101 GDO0 interrupt (PD2 EXTI2) and GDO2 backup (PC8 EXTI8)
+ * - USART2 pins (PD5 TX, PD6 RX) for nRF52840 NCP — dongle on CN9
  * - USART3 pins (PD8 TX, PD9 RX) for shell VCP
  * - Ethernet RMII pins
  * - User LEDs (PB0, PE1, PB14)

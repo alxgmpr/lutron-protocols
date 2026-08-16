@@ -66,21 +66,25 @@ void SysTick_Handler(void)
 }
 
 /* -----------------------------------------------------------------------
- * EXTI0 — CC1101 GDO0 sync word detect (PA0)
+ * EXTI2 — CC1101 GDO0 sync word detect (PD2, CN8-12)
+ *
+ * The vector names below are fixed by the pin numbers in bsp.h: GDO0 on PD2
+ * is EXTI line 2, GDO2 on PC8 is line 8 and so falls in the shared EXTI9_5
+ * group. Move either pin and these handler names have to move with it.
  * ----------------------------------------------------------------------- */
 
 /* Weak callback — overridden in cca_task.cpp */
 __attribute__((weak)) void cca_gdo0_isr_callback(void)
 {}
 
-void EXTI0_IRQHandler(void)
+void EXTI2_IRQHandler(void)
 {
     s_exti_gdo0_count++;
     HAL_GPIO_EXTI_IRQHandler(CC1101_GDO0_PIN);
 }
 
 #if CC1101_GDO2_BACKUP_ENABLE
-void EXTI15_10_IRQHandler(void)
+void EXTI9_5_IRQHandler(void)
 {
     s_exti_gdo2_count++;
     HAL_GPIO_EXTI_IRQHandler(CC1101_GDO2_PIN);
