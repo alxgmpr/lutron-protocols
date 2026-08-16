@@ -86,6 +86,8 @@ public:
     int nvmc_write_violations() const { return nvmc_write_violations_; }
     /** Page erases attempted without NVMC CONFIG=EraseEnable. */
     int nvmc_erase_violations() const { return nvmc_erase_violations_; }
+    /** Commands issued to the NVMC while it was still busy. */
+    int nvmc_busy_violations() const { return nvmc_busy_violations_; }
     int eraseall_count() const { return eraseall_count_; }
     /** DP SELECT writes seen — pins that banking is cached, not rewritten. */
     int select_writes() const { return select_writes_; }
@@ -137,6 +139,7 @@ public:
         nvmc_busy_ = 0;
         nvmc_write_violations_ = 0;
         nvmc_erase_violations_ = 0;
+        nvmc_busy_violations_ = 0;
         eraseall_count_ = 0;
         select_writes_ = 0;
         tar_writes_ = 0;
@@ -464,6 +467,9 @@ private:
             case 0x08: /* ERASEALLSTATUS: 1 while erasing */
                 if (eraseall_polls_ > 0) {
                     eraseall_polls_--;
+                    if (eraseall_polls_ == 0) {
+                        complete_eraseall();
+                    }
                     return 1;
                 }
                 return 0;
@@ -533,10 +539,11 @@ private:
                 if (v & 1u) {
                     eraseall_count_++;
                     eraseall_polls_ = eraseall_poll_reload_;
-                    erase_range(FAKE_FLASH_BASE, FAKE_FLASH_SIZE);
-                    erase_range(FAKE_UICR_BASE, FAKE_UICR_SIZE);
-                    locked_ = false;
-                    ctrl_stat_ &= ~(1u << 5);
+                    /* The erase only lands once ERASEALLSTATUS has gone idle,
+                       so a host that skips the poll sees a still-locked part. */
+                    if (eraseall_polls_ == 0) {
+                        complete_eraseall();
+                    }
                 }
                 break;
             default:
@@ -626,6 +633,11 @@ private:
             return;
         }
         if (in_flash(addr) || in_uicr(addr)) {
+            if (nvmc_busy_ > 0) {
+                /* Real NVMC ignores commands while READY is low. */
+                nvmc_busy_violations_++;
+                return;
+            }
             if (nvmc_config_ != 1u) {
                 nvmc_write_violations_++;
                 return; /* NVMC not in WriteEnable — the write is dropped */
@@ -640,6 +652,11 @@ private:
 
     void nvmc_store(uint32_t off, uint32_t v)
     {
+        /* CONFIG is settable while busy; the erase/program triggers are not. */
+        if (nvmc_busy_ > 0 && off != 0x504u) {
+            nvmc_busy_violations_++;
+            return;
+        }
         switch (off) {
         case 0x504: /* CONFIG */
             nvmc_config_ = v & 3u;
@@ -672,6 +689,14 @@ private:
         default:
             break;
         }
+    }
+
+    void complete_eraseall()
+    {
+        erase_range(FAKE_FLASH_BASE, FAKE_FLASH_SIZE);
+        erase_range(FAKE_UICR_BASE, FAKE_UICR_SIZE);
+        locked_ = false;
+        ctrl_stat_ &= ~(1u << 5);
     }
 
     void erase_range(uint32_t base, uint32_t len)
@@ -735,6 +760,7 @@ private:
     int nvmc_busy_;
     int nvmc_write_violations_;
     int nvmc_erase_violations_;
+    int nvmc_busy_violations_;
     int eraseall_count_;
     int select_writes_;
     int tar_writes_;

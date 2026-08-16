@@ -36,8 +36,11 @@ typedef enum {
     SWD_ERR_WAIT = -2,    /* target answered WAIT more than swd_t::max_retries times */
     SWD_ERR_FAULT = -3,   /* target answered FAULT; sticky error was cleared via ABORT */
     SWD_ERR_NO_ACK = -4,  /* no valid ACK — target absent, unpowered, or line dead */
-    SWD_ERR_PARITY = -5,  /* read data parity did not check */
-    SWD_ERR_PROTOCOL = -6 /* target reported something the sequence cannot continue from */
+    SWD_ERR_PARITY = -5,   /* read data parity did not check */
+    SWD_ERR_PROTOCOL = -6, /* target reported something the sequence cannot continue from */
+    SWD_ERR_LOCKED = -7,   /* APPROTECT is set; only a CTRL-AP ERASEALL gets in */
+    SWD_ERR_VERIFY = -8,   /* read-back did not match what was programmed */
+    SWD_ERR_TIMEOUT = -9   /* a status register never reached the expected state */
 } swd_status_t;
 
 /* ACK values as they appear on the wire (3 bits, LSB first). */
