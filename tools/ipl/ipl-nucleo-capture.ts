@@ -38,7 +38,7 @@ import {
   parseAllFrames,
   resolveOpName,
 } from "../../lib/ipl";
-import { LeapConnection } from "../../lib/leap-client";
+import { LeapConnection, type LeapPush } from "../../lib/leap-client";
 
 const args = process.argv.slice(2);
 const getArg = (n: string) => {
@@ -261,6 +261,7 @@ async function startLeap(): Promise<void> {
     return;
   }
 
+  // Frames belonging to no subscription of ours.
   conn.onEvent = (msg: any) => {
     counts.leap++;
     emit({
@@ -272,20 +273,33 @@ async function startLeap(): Promise<void> {
     });
   };
 
+  const onPush = (push: LeapPush) => {
+    counts.leap++;
+    emit({
+      src: "leap",
+      communiqueType: push.communiqueType,
+      url: push.url,
+      statusCode: push.header.StatusCode,
+      messageBodyType: push.messageBodyType,
+      body: push.body,
+    });
+  };
+
   for (const url of LEAP_SUBS) {
     try {
-      const resp = await conn.subscribe(url);
-      const status = resp.Header?.StatusCode ?? "?";
-      process.stderr.write(`[leap] subscribed ${url} (${status})\n`);
-      // Emit initial snapshot response as a leap event too
-      if (resp.Body) {
+      const sub = await conn.subscribe(url, onPush);
+      process.stderr.write(`[leap] subscribed ${url} (${sub.status})\n`);
+      // The snapshot is the baseline every later delta is relative to, so it
+      // belongs in the capture alongside them.
+      if (sub.snapshot) {
         counts.leap++;
         emit({
           src: "leap",
-          communiqueType: resp.CommuniqueType,
+          communiqueType: "SubscribeResponse",
           url,
-          statusCode: status,
-          body: resp.Body,
+          statusCode: sub.status,
+          messageBodyType: sub.messageBodyType,
+          body: sub.snapshot,
           initial: true,
         });
       }

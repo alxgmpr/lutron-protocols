@@ -20,7 +20,12 @@
 
 import { parseArgs } from "util";
 import { defaultHost } from "../../lib/config";
-import { hrefId, LeapConnection } from "../../lib/leap-client";
+import {
+  hrefId,
+  LeapConnection,
+  type LeapPush,
+  pushItems,
+} from "../../lib/leap-client";
 
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
@@ -111,25 +116,37 @@ async function main() {
 
   // --- watch (subscribe) ---
   if (command === "watch") {
+    const stamp = () => new Date().toISOString().slice(11, 23);
+
+    // Anything the processor sends that belongs to no subscription — e.g. the
+    // unprompted OneDeviceStatus a bridge emits shortly after connect.
     conn.onEvent = (msg) => {
-      const ts = new Date().toISOString().slice(11, 23);
       const ct = msg.CommuniqueType ?? "?";
       const url = msg.Header?.Url ?? "";
-      console.log(`\n[${ts}] ${ct} ${url}`);
+      console.log(`\n[${stamp()}] unsolicited ${ct} ${url}`);
       if (msg.Body) console.log(JSON.stringify(msg.Body, null, 2));
     };
 
+    const onPush = (push: LeapPush) => {
+      console.log(`\n[${stamp()}] ${push.messageBodyType} ${push.url}`);
+      console.log(JSON.stringify(push.body, null, 2));
+    };
+
+    // A refusal here is a fact about the processor, not a reason to stop:
+    // /device/status is not subscribable everywhere.
     const subs = ["/zone/status", "/device/status"];
     for (const url of subs) {
-      const resp = await conn.subscribe(url);
-      const status = resp.Header?.StatusCode ?? "";
-      console.log(`Subscribed: ${url} (${status})`);
-      if (resp.Body?.ZoneStatuses) {
-        for (const zs of resp.Body.ZoneStatuses) {
-          const zid = zs.Zone?.href?.replace("/zone/", "") ?? "?";
-          const sw = zs.SwitchedLevel ? ` [${zs.SwitchedLevel}]` : "";
-          console.log(`  zone ${zid}: ${zs.Level}%${sw}`);
+      try {
+        const sub = await conn.subscribe(url, onPush);
+        console.log(`Subscribed: ${url} (${sub.status})`);
+        for (const item of pushItems(sub) as any[]) {
+          if (!item?.Zone?.href) continue;
+          const zid = item.Zone.href.replace("/zone/", "");
+          const sw = item.SwitchedLevel ? ` [${item.SwitchedLevel}]` : "";
+          console.log(`  zone ${zid}: ${item.Level}%${sw}`);
         }
+      } catch (err) {
+        console.log(`Subscribe ${url} failed: ${(err as Error).message}`);
       }
     }
     console.log("\nWatching for events... (Ctrl+C to stop)\n");

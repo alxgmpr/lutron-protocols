@@ -112,6 +112,109 @@ export interface LeapConnectionOptions {
 
 export type LeapEventHandler = (msg: any) => void;
 
+// --- Subscriptions ---
+
+/**
+ * One frame pushed by the processor on an open subscription.
+ *
+ * Captured shape (RA3 10.1.9.2, `tools/leap/leap-push-probe.ts`, fixture
+ * `test/fixtures/leap-subscription-push-ra3.json`): `CommuniqueType` is
+ * `ReadResponse` — *not* `SubscribeResponse`, which only ever answers the
+ * SubscribeRequest itself — with `StatusCode: "200 OK"`, `Url` echoing the
+ * subscribed URL, and the subscribe request's own `ClientTag` reused verbatim.
+ *
+ * The body is a **delta, not a snapshot**: only what changed. Pushed
+ * `ZoneStatus` entries omit `ZoneLockState`, which the subscribe-time snapshot
+ * includes, so a consumer merging pushes into the snapshot must treat an
+ * absent field as unchanged rather than as a change to null.
+ */
+export interface LeapPush {
+  /** `Header.Url`, echoing the subscribed URL. */
+  url: string;
+  /** The subscription's ClientTag, reused on every push it carries. */
+  tag: string;
+  /** `ReadResponse` on every captured push. */
+  communiqueType: string;
+  /** e.g. `MultipleZoneStatus`, `OneAreaStatus`. */
+  messageBodyType: string;
+  header: Record<string, unknown>;
+  body: any;
+}
+
+export type LeapPushHandler = (push: LeapPush) => void;
+
+export interface LeapUnsubscribeResult {
+  /** The UnsubscribeResponse's StatusCode, or `(inactive)` if already detached. */
+  status: string;
+  communiqueType: string;
+  /** Set when the request could not be sent or answered at all. */
+  error?: string;
+}
+
+/** A live subscription. Obtained from {@link LeapConnection.subscribe}. */
+export interface LeapSubscription {
+  readonly url: string;
+  /** ClientTag the SubscribeRequest went out with; every push reuses it. */
+  readonly tag: string;
+  readonly status: string;
+  /** `Header.MessageBodyType` of the SubscribeResponse. */
+  readonly messageBodyType: string;
+  /** The SubscribeResponse body — the full set, against which pushes are deltas. */
+  readonly snapshot: any;
+  /** False once unsubscribed, or once the connection was closed or reconnected. */
+  readonly active: boolean;
+  /**
+   * Stop dispatching pushes and tell the processor to stop sending them.
+   *
+   * Local dispatch stops before the request is written, so detaching cannot
+   * fail; the returned status reports only what the processor said. LEAP lists
+   * `UnsubscribeRequest` among its CommuniqueTypes (firmware RE,
+   * `docs/reference/leap-api-spec.yaml`) but we have no capture of a processor
+   * answering one, so do not read a non-200 here as "still subscribed".
+   */
+  unsubscribe(): Promise<LeapUnsubscribeResult>;
+}
+
+interface SubscriptionState {
+  url: string;
+  tag: string;
+  status: string;
+  messageBodyType: string;
+  snapshot: any;
+  active: boolean;
+  onPush: LeapPushHandler;
+}
+
+/**
+ * The status objects a push — or a subscribe-time snapshot — carries, without
+ * the collection wrapper. Accepts a {@link LeapPush} or a
+ * {@link LeapSubscription} so the delta and the full set unwrap the same way.
+ *
+ * LEAP nests them under one body key named for the MessageBodyType's subject,
+ * pluralized in English: `MultipleZoneStatus` → `ZoneStatuses`, not
+ * `ZoneStatuss`. That is not mechanically derivable from the type name, so the
+ * key is read off the body instead of reconstructed — which holds because
+ * every one of the 15 MessageBodyTypes seen across the captures has a body
+ * with exactly one key. `One*` bodies hold an object, `Multiple*` an array;
+ * both are flattened to a list.
+ */
+export function pushItems(
+  source: { body?: unknown } | { snapshot?: unknown },
+): unknown[] {
+  const body =
+    "body" in source
+      ? source.body
+      : (source as { snapshot?: unknown }).snapshot;
+  if (!body || typeof body !== "object") return [];
+  const values = Object.values(body as Record<string, unknown>);
+  const items: unknown[] = [];
+  for (const v of values) {
+    if (Array.isArray(v)) items.push(...v);
+    else if (v && typeof v === "object") items.push(v);
+  }
+  return items;
+}
+
 export class LeapConnection {
   private socket: tls.TLSSocket | null = null;
   private buffer = "";
@@ -120,6 +223,8 @@ export class LeapConnection {
     string,
     { resolve: (value: any) => void; reject: (err: Error) => void }
   > = new Map();
+  /** Open subscriptions, keyed by the ClientTag their pushes carry. */
+  private subscriptions: Map<string, SubscriptionState> = new Map();
 
   /** Called for unsolicited messages (subscription events, etc.) */
   onEvent: LeapEventHandler | null = null;
@@ -150,6 +255,12 @@ export class LeapConnection {
   }
 
   async connect(): Promise<void> {
+    // ClientTags are per-connection — the processor's tag space resets with the
+    // socket, and a subscription is bound to the connection that opened it. So
+    // a reconnect starts the counter over and drops the old state rather than
+    // letting a stale pending entry collide with a reissued tag.
+    this.resetConnectionState(new Error("connection replaced by reconnect"));
+
     return new Promise((resolve, reject) => {
       this.socket = tls.connect(
         this.port,
@@ -176,6 +287,21 @@ export class LeapConnection {
 
   private nextTag(): string {
     return `lt-${++this.tagCounter}`;
+  }
+
+  /**
+   * Drop everything scoped to one socket: the parse buffer, the tag counter,
+   * in-flight requests, and open subscriptions. Pending requests are rejected
+   * rather than abandoned so a caller awaiting one fails immediately instead
+   * of waiting out its timeout against a socket that is gone.
+   */
+  private resetConnectionState(reason: Error): void {
+    this.buffer = "";
+    this.tagCounter = 0;
+    for (const [, req] of this.pendingRequests) req.reject(reason);
+    this.pendingRequests.clear();
+    for (const [, sub] of this.subscriptions) sub.active = false;
+    this.subscriptions.clear();
   }
 
   private handleData(data: string): void {
@@ -219,6 +345,29 @@ export class LeapConnection {
           continue;
         }
 
+        // Subscription push. Reached only after the pendingRequests branch
+        // above declined the frame, which is what separates a push from the
+        // SubscribeResponse: both carry the subscription's tag, but the
+        // response consumes the pending entry and a push arrives after it.
+        // (`102 Processing` never gets here — it `continue`s as interim.)
+        const sub = tag ? this.subscriptions.get(tag) : undefined;
+        if (sub?.active) {
+          const push: LeapPush = {
+            url: resp.Header?.Url ?? sub.url,
+            tag,
+            communiqueType: resp.CommuniqueType ?? "",
+            messageBodyType: resp.Header?.MessageBodyType ?? "",
+            header: resp.Header ?? {},
+            body: resp.Body ?? null,
+          };
+          // One handler's failure must not swallow the frames behind it in
+          // this chunk, nor kill the socket's data listener.
+          try {
+            sub.onPush(push);
+          } catch {}
+          continue;
+        }
+
         // Unsolicited message — pass to event handler
         if (this.onEvent) {
           this.onEvent(resp);
@@ -251,8 +400,31 @@ export class LeapConnection {
     timeout = 10000,
   ): Promise<{ tag: string; response: any }> {
     if (!this.socket) throw new Error("Not connected");
-
     const tag = this.nextTag();
+    return {
+      tag,
+      response: await this.sendWithTag(tag, communiqueType, url, body, timeout),
+    };
+  }
+
+  /**
+   * Send on a caller-chosen tag.
+   *
+   * subscribe() needs the tag *before* the request goes out, because pushes
+   * are routed by it and the processor may deliver one in the same TCP segment
+   * as the SubscribeResponse. Allocating the tag inside the send — as
+   * sendTagged does, revealing it only on resolve — leaves a window in which
+   * such a push has nowhere to go but onEvent.
+   */
+  private async sendWithTag(
+    tag: string,
+    communiqueType: string,
+    url: string,
+    body?: any,
+    timeout = 10000,
+  ): Promise<any> {
+    if (!this.socket) throw new Error("Not connected");
+
     const response = await new Promise<any>((resolve, reject) => {
       this.pendingRequests.set(tag, { resolve, reject });
 
@@ -277,7 +449,7 @@ export class LeapConnection {
         }
       }, timeout);
     });
-    return { tag, response };
+    return response;
   }
 
   async read(url: string): Promise<any> {
@@ -306,14 +478,134 @@ export class LeapConnection {
     return this.send("UpdateRequest", url, body);
   }
 
-  /** Send a SubscribeRequest. Events arrive via onEvent callback. */
-  async subscribe(url: string): Promise<any> {
-    return this.send("SubscribeRequest", url);
+  /**
+   * Subscribe to a resource and receive its pushes on `onPush`.
+   *
+   * Resolves once the processor has answered the SubscribeRequest, with the
+   * snapshot that answer carried; every later frame on the subscription's tag
+   * is handed to `onPush` as a {@link LeapPush} and does *not* reach `onEvent`.
+   *
+   *   const sub = await conn.subscribe("/zone/status", (push) => {
+   *     for (const z of pushItems(push) as any[]) {
+   *       console.log(z.Zone.href, z.Level);
+   *     }
+   *   });
+   *   // ... later
+   *   await sub.unsubscribe();
+   *
+   * Subscribe to **collections**, not to individual resources: RA3 answers
+   * `SubscribeRequest /zone/{id}/status` with `405 MethodNotAllowed`, and
+   * `/zone/status` is the subscribable form. A refusal rejects here and leaves
+   * nothing registered — a probe that wants a refusal as data rather than as
+   * an error should drive `sendTagged("SubscribeRequest", …)` directly, which
+   * is what `tools/leap/leap-connect-observe.ts` does.
+   */
+  async subscribe(
+    url: string,
+    onPush: LeapPushHandler,
+    timeout = 10000,
+  ): Promise<LeapSubscription> {
+    if (!this.socket) throw new Error("Not connected");
+
+    const tag = this.nextTag();
+    const state: SubscriptionState = {
+      url,
+      tag,
+      status: "",
+      messageBodyType: "",
+      snapshot: null,
+      active: true,
+      onPush,
+    };
+    // Registered before the write: the processor can deliver a push in the
+    // same segment as the SubscribeResponse, and a subscription that is not
+    // yet in the map would lose it to onEvent.
+    this.subscriptions.set(tag, state);
+
+    let response: any;
+    try {
+      response = await this.sendWithTag(
+        tag,
+        "SubscribeRequest",
+        url,
+        undefined,
+        timeout,
+      );
+    } catch (err) {
+      state.active = false;
+      this.subscriptions.delete(tag);
+      throw err;
+    }
+
+    const status: string = response?.Header?.StatusCode ?? "";
+    if (!status.startsWith("2")) {
+      state.active = false;
+      this.subscriptions.delete(tag);
+      throw new Error(
+        `SubscribeRequest ${url} refused: ${status || "(no status)"}` +
+          (response?.Body?.Message ? ` — ${response.Body.Message}` : ""),
+      );
+    }
+
+    state.status = status;
+    state.messageBodyType = response?.Header?.MessageBodyType ?? "";
+    state.snapshot = response?.Body ?? null;
+
+    const detach = (): void => {
+      state.active = false;
+      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
+    };
+
+    return {
+      url,
+      tag,
+      get status() {
+        return state.status;
+      },
+      get messageBodyType() {
+        return state.messageBodyType;
+      },
+      get snapshot() {
+        return state.snapshot;
+      },
+      get active() {
+        return state.active;
+      },
+      unsubscribe: async (): Promise<LeapUnsubscribeResult> => {
+        if (!state.active) {
+          return { status: "(inactive)", communiqueType: "" };
+        }
+        // Detach first: dispatch must stop whatever the processor answers,
+        // and must not depend on a request that may never be answered.
+        detach();
+        if (!this.socket) {
+          return {
+            status: "(inactive)",
+            communiqueType: "",
+            error: "Not connected",
+          };
+        }
+        try {
+          const resp = await this.send("UnsubscribeRequest", url);
+          return {
+            status: resp?.Header?.StatusCode ?? "(none)",
+            communiqueType: resp?.CommuniqueType ?? "",
+          };
+        } catch (err) {
+          return {
+            status: "(error)",
+            communiqueType: "",
+            error: (err as Error).message,
+          };
+        }
+      },
+    };
   }
 
   close(): void {
     this.socket?.destroy();
     this.socket = null;
+    this.resetConnectionState(new Error("connection closed"));
   }
 }
 

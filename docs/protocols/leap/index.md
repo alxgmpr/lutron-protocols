@@ -1294,6 +1294,49 @@ arrive late on its originating tag (a `102 Processing` interim ack followed by
 the real `200 OK` ~987 ms later). The difference is that a push arrives after
 the request already received its terminal response, and only when state moved.
 
+#### Client API
+
+`lib/leap-client.ts` implements all of the above, so a consumer does not have to
+re-derive the tag routing:
+
+```ts
+import { LeapConnection, pushItems } from "./lib/leap-client";
+
+const conn = new LeapConnection({ host: "10.1.9.2" });
+await conn.connect();
+
+const sub = await conn.subscribe("/zone/status", (push) => {
+  for (const z of pushItems(push) as any[]) {
+    console.log(z.Zone.href, z.Level);   // the delta
+  }
+});
+for (const z of pushItems(sub) as any[]) { /* the snapshot */ }
+
+await sub.unsubscribe();
+```
+
+- Pushes route by ClientTag to that subscription's handler and do **not** reach
+  `onEvent`, which is left for frames belonging to no subscription (e.g. the
+  unprompted `OneDeviceStatus` a bridge emits after connect).
+- The tag is allocated before the SubscribeRequest is written, so a push
+  arriving in the same TCP segment as the SubscribeResponse is not lost.
+- A non-2xx answer rejects and registers nothing. A probe that wants a refusal
+  as *data* — `tools/leap/leap-connect-observe.ts` does — should drive
+  `sendTagged("SubscribeRequest", …)` directly instead.
+- `pushItems()` unwraps the single body key (`MultipleZoneStatus` →
+  `ZoneStatuses`; the plural is English, not mechanical, so the key is read off
+  the body rather than reconstructed from the type name).
+- Tags are per-connection: `close()` and a re-`connect()` both drop every
+  subscription and restart the counter.
+- `UnsubscribeRequest` is sent best-effort. It is in the CommuniqueType list
+  from firmware RE, but no capture shows a processor answering one, so local
+  dispatch stops regardless of the status returned.
+
+Regression fixture: `test/fixtures/leap-subscription-push-ra3.json` is the whole
+2026-08-14 capture verbatim; `test/leap-subscriptions.test.ts` replays it and
+asserts the client routes exactly the four frames the probe classified as
+pushes.
+
 ### RA3 vs Caseta Differences
 
 RA3 uses area-walk style (`/area/{id}/associatedzone`, `/area/{id}/associatedcontrolstation`).
