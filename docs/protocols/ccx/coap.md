@@ -26,6 +26,46 @@ though it is a legitimate RLOC — pass the full IPv6 (`fd0d:2ef:a82c:0:0:ff:fe0
 instead. Throughput is ~240 ms/device for `AHA` and ~640 ms/device for `AAM`, and
 requests pipeline, so 33 devices is ≈10 s of real work.
 
+### Multicast writes
+
+**Multicast PUT works on port 5683.** A single PUT to `ff03::1` reached all 15 keypads,
+one request token, 15 × `2.04` — devices without the bucket simply ignore it (the
+dimmers stayed silent rather than answering `4.04`):
+
+```sh
+ccx coap put ff03::1 cg/db/ct/c/AHA 82186ca1041899   # all keypads -> active=153
+```
+
+This is the fastest way to apply a value shared by many devices. It does *not* help for
+per-device records like `AAM` (key 0 / 7 / 8 / 10 all vary), so the practical pattern is
+multicast the majority value, then unicast the exceptions.
+
+Note this is specifically PUT on 5683. The TMF diagnostic **POST to port 61631 fails**
+with `NCP LAST_STATUS=14` on this firmware — for both `ff03::1` and unicast — so
+mesh-wide enumeration via `/d/dg` is unavailable until the NCP build is updated (the
+`ot-ncp-ftd-tmf-dfu.zip` "TMF extension" image is meant for exactly this).
+
+### Retry semantics — `tx=FAIL` is not authoritative
+
+The firmware's CoAP CON timeout is ~5 s. Slower devices answer after that window, so the
+shell reports failure for a write that actually landed. Observed directly: a device
+reported `tx=FAIL` and then returned `2.04` from its own address moments later.
+
+`tx=FAIL` / `LAST_STATUS` reflects the NCP's *queue* status, not over-the-air success —
+in both directions (`LAST_STATUS=0` likewise only means "accepted into queue"). **Treat a
+miss as "answered too late" and retry until `2.04`**, rather than as an error.
+
+Which devices lag is predictable from the diagnostics table:
+
+* **Thread children (role `C`) are slower than routers.** A child doesn't listen
+  continuously — its parent buffers messages and the child polls, adding latency and a
+  queue that can overflow under load. Children sharing one parent contend with each
+  other. On a 34-device mesh here, 16 were children.
+* **Low link margin correlates strongly.** Four of the six devices needing retries sat at
+  noise floor **−100**, against a −96…−98 typical.
+* 802.15.4 is 250 kbps shared and multi-hop, so writing 20+ devices back-to-back queues
+  frames across the mesh.
+
 ## Firmware Metadata
 
 ### GET fw/ic/md — Image Catalog
