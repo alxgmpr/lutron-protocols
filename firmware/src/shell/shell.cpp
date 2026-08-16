@@ -28,6 +28,10 @@
 #include "cca_tdma.h"
 #include "cca_types.h"
 #include "ccx_task.h"
+#include "swd.h"
+#include "swd_mem.h"
+#include "nrf_swd.h"
+#include "swd_gpio.h"
 #include "ccx_msg.h"
 #include "coap.h"
 #include "stream.h"
@@ -2104,6 +2108,70 @@ static void cmd_rx(const char* arg)
     }
 }
 
+/**
+ * Probe the nRF52840 over SWD. Read-only: it brings the link up, powers the
+ * debug domain and reads identification and status registers. It does not
+ * halt, reset, erase or write anything, so it is safe to run against a
+ * dongle that is actively on the Thread network.
+ *
+ * This is also the only exercise the GPIO bit-bang backend gets — everything
+ * above it is covered by host tests, this is the part that needs wires.
+ */
+static void cmd_swd(void)
+{
+    printf("--- SWD probe (PD4 SWDIO / PD7 SWCLK) ---\r\n");
+
+    swd_gpio_init();
+    swd_io_t io = swd_gpio_io();
+    swd_t swd;
+    swd_init(&swd, &io);
+
+    uint32_t idcode = 0;
+    swd_status_t st = swd_connect(&swd, &idcode);
+    printf("connect      : st=%d IDCODE=0x%08lX %s\r\n", (int)st, (unsigned long)idcode,
+           (st == SWD_OK && idcode == 0x2BA01477u) ? "(nRF52840 SW-DP)" : "");
+    if (st != SWD_OK) {
+        printf("  no answer — check SWDIO/SWCLK wiring and that the dongle has 3V3\r\n");
+        swd_gpio_deinit();
+        return;
+    }
+
+    st = swd_power_up(&swd);
+    printf("power up     : st=%d\r\n", (int)st);
+
+    nrf_swd_t nrf;
+    nrf_swd_init(&nrf, &swd);
+
+    uint32_t idr = 0;
+    st = swd_mem_read_idr(&nrf.mem, &idr);
+    printf("AHB-AP IDR   : st=%d 0x%08lX %s\r\n", (int)st, (unsigned long)idr,
+           (st == SWD_OK && idr == 0x24770011u) ? "(expected)" : "");
+
+    bool locked = true;
+    st = nrf_swd_is_locked(&nrf, &locked);
+    printf("APPROTECT    : st=%d %s\r\n", (int)st, locked ? "LOCKED" : "open");
+
+    /* RESETREAS and GPREGRET are the two registers that say why the dongle
+       last came up the way it did — the whole point of GLAB-111 phase 3. */
+    uint32_t v = 0;
+    if (swd_mem_read32(&nrf.mem, 0x40000400u, &v) == SWD_OK) {
+        printf("RESETREAS    : 0x%08lX\r\n", (unsigned long)v);
+    }
+    if (swd_mem_read32(&nrf.mem, 0x4000051Cu, &v) == SWD_OK) {
+        printf("GPREGRET     : 0x%08lX\r\n", (unsigned long)v);
+    }
+    if (swd_mem_read32(&nrf.mem, 0x10001208u, &v) == SWD_OK) {
+        printf("UICR APPROT  : 0x%08lX\r\n", (unsigned long)v);
+    }
+    /* Reset vector out of flash — proves real memory reads, not just AP regs. */
+    if (swd_mem_read32(&nrf.mem, 0x00001004u, &v) == SWD_OK) {
+        printf("flash @1004  : 0x%08lX (reset vector)\r\n", (unsigned long)v);
+    }
+
+    swd_gpio_deinit();
+    printf("lines parked as inputs\r\n");
+}
+
 static void cmd_eth(void)
 {
     extern ETH_HandleTypeDef heth;
@@ -3542,6 +3610,9 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "eth") == 0) {
         cmd_eth();
+    }
+    else if (strcmp(line, "swd") == 0) {
+        cmd_swd();
     }
     else if (strncmp(line, "rx ", 3) == 0) {
         cmd_rx(line + 3);
