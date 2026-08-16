@@ -21,7 +21,7 @@
  * Usage:
  *   npx tsx tools/ipl-nucleo-capture.ts --out capture.ndjson
  *   npx tsx tools/ipl-nucleo-capture.ts --no-sniff --no-leap
- *   npx tsx tools/ipl-nucleo-capture.ts --ipl-host 10.1.1.133 --nucleo-host 10.0.0.3
+ *   npx tsx tools/ipl-nucleo-capture.ts --ipl-host 10.1.9.2 --nucleo-host 10.0.0.3
  */
 
 import { spawn } from "child_process";
@@ -49,11 +49,11 @@ const hasFlag = (n: string) => args.includes(n);
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
-const IPL_HOST = getArg("--ipl-host") ?? defaultHost ?? "10.1.1.133";
+const IPL_HOST = getArg("--ipl-host") ?? defaultHost ?? "10.1.9.2";
 const IPL_PORT = Number.parseInt(getArg("--ipl-port") ?? "8902", 10);
 const NUCLEO_HOST = getArg("--nucleo-host") ?? config.openBridge;
 const NUCLEO_PORT = Number.parseInt(getArg("--nucleo-port") ?? "9433", 10);
-const LEAP_HOST = getArg("--leap-host") ?? defaultHost ?? "10.1.1.133";
+const LEAP_HOST = getArg("--leap-host") ?? defaultHost ?? "10.1.9.2";
 const OUT_PATH = getArg("--out");
 
 const NO_IPL = hasFlag("--no-ipl");

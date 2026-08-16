@@ -78,7 +78,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-const HOST = flag("--host") ?? defaultHost ?? "10.1.1.133";
+const HOST = flag("--host") ?? defaultHost ?? "10.1.9.2";
 const PORT = Number(flag("--port", "8902"));
 const LISTEN = Number(flag("--listen", "6"));
 const GAP = Number(flag("--gap", "400"));

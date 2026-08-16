@@ -7,7 +7,7 @@
  *
  * Usage:
  *   import { LeapConnection, fetchLeapData } from "./leap-client";
- *   const conn = new LeapConnection({ host: "10.1.1.133" }); // certs auto-resolved from config.json
+ *   const conn = new LeapConnection({ host: "10.1.9.2" }); // certs auto-resolved from config.json
  *   await conn.connect();
  *   const data = await fetchLeapData(conn);
  *   conn.close();

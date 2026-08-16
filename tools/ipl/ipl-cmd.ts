@@ -121,7 +121,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-const HOST = getArg("--host") ?? defaultHost ?? "10.1.1.133";
+const HOST = getArg("--host") ?? defaultHost ?? "10.1.9.2";
 const PORT = Number.parseInt(getArg("--port") ?? "8902", 10);
 const LISTEN_SECONDS = Number.parseFloat(getArg("--listen") ?? "4");
 const SYSTEM_ID = Number.parseInt(getArg("--system") ?? "1", 10);

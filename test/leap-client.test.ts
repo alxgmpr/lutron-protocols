@@ -500,8 +500,8 @@ describe("buildDumpData", () => {
   });
 
   test("host and productType carry through", () => {
-    const dump: LeapDumpData = buildDumpData("10.1.1.133", baseResult);
-    assert.equal(dump.host, "10.1.1.133");
+    const dump: LeapDumpData = buildDumpData("10.1.9.2", baseResult);
+    assert.equal(dump.host, "10.1.9.2");
     assert.equal(dump.productType, "RadioRA3");
     assert.equal(dump.leapVersion, "03.247");
     assert.ok(dump.timestamp.length > 0);

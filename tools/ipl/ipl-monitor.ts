@@ -15,7 +15,7 @@
  *
  * Usage:
  *   npx tsx tools/ipl-monitor.ts
- *   npx tsx tools/ipl-monitor.ts --host 10.1.1.133 --only Tlm,Evt
+ *   npx tsx tools/ipl-monitor.ts --host 10.1.9.2 --only Tlm,Evt
  *   npx tsx tools/ipl-monitor.ts --no-color --raw
  */
 
@@ -50,7 +50,7 @@ const getArg = (name: string) => {
 const hasFlag = (name: string) => args.includes(name);
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-const HOST = getArg("--host") ?? defaultHost ?? "10.1.1.133";
+const HOST = getArg("--host") ?? defaultHost ?? "10.1.9.2";
 const PORT = Number.parseInt(getArg("--port") ?? "8902", 10);
 const NO_COLOR = hasFlag("--no-color") || !process.stdout.isTTY;
 const SHOW_RAW = hasFlag("--raw");
