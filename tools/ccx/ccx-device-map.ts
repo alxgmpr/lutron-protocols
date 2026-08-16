@@ -158,7 +158,8 @@ interface LeapData {
 }
 
 function loadLeapData(): LeapData {
-  const dataDir = join(__dir, "../data");
+  // tools/ccx/ → project root is two levels up, not one.
+  const dataDir = join(__dir, "../../data");
   const merged: LeapData = { serials: {}, zones: {}, devices: {} };
 
   if (!existsSync(dataDir)) return merged;
