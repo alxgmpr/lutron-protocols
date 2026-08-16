@@ -1,6 +1,7 @@
 #include "bsp.h"
 
 SPI_HandleTypeDef hspi3;
+SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi3_rx;
 DMA_HandleTypeDef hdma_spi3_tx;
 
@@ -75,6 +76,39 @@ void bsp_spi_init(void)
     hspi3.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
 
     if (HAL_SPI_Init(&hspi3) != HAL_OK) {
+        while (1);
+    }
+}
+
+/**
+ * SPI1 for the W25Q SPI NOR on CN7. Polled, no DMA — transfers here are a
+ * page at a time and the caller is never in a hurry, so there is nothing to
+ * gain against the DMA streams SPI3 is using.
+ *
+ * The prescaler is deliberately conservative. On flying leads with no ground
+ * plane, and a part that may be running without local decoupling, the failure
+ * this avoids is not a wrong byte now and then but a supply sag during a
+ * program that corrupts a whole page.
+ */
+void bsp_spi1_init(void)
+{
+    __HAL_RCC_SPI1_CLK_ENABLE();
+
+    hspi1.Instance = W25Q_SPI;
+    hspi1.Init.Mode = SPI_MODE_MASTER;
+    hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+    hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+    hspi1.Init.CLKPolarity = SPI_POLARITY_LOW; /* mode 0 */
+    hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
+    hspi1.Init.NSS = SPI_NSS_SOFT;
+    hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+    hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
+    hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
+    hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
+    hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
+
+    if (HAL_SPI_Init(&hspi1) != HAL_OK) {
         while (1);
     }
 }

@@ -190,6 +190,8 @@ set(APP_SOURCES
     src/shell/shell.cpp
     src/storage/flash_store.cpp
     src/storage/crc32.c
+    src/storage/w25q.c
+    src/storage/w25q_spi.c
     src/storage/ota_image.c
     src/storage/ota_flash.c
     src/storage/ota_service.c

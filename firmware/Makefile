@@ -49,7 +49,7 @@ test:
 	    -I src/cca -I src/ccx -I tests/stubs -I src/net -I src/storage -I src/swd -I tests \
 	    tests/test_main.cpp tests/test_crc.cpp tests/test_n81.cpp \
 	    tests/test_swd.cpp tests/test_swd_mem.cpp tests/test_nrf_swd.cpp \
-	    tests/test_ihex.cpp tests/test_nrf_flash.cpp \
+	    tests/test_ihex.cpp tests/test_nrf_flash.cpp tests/test_w25q.cpp \
 	    tests/test_ncp_watchdog.cpp \
 	    tests/test_flash_crc32.cpp \
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
@@ -66,7 +66,7 @@ test:
 	    src/swd/swd.c src/swd/swd_mem.c src/swd/nrf_swd.c src/swd/ihex.c \
 	    src/swd/nrf_flash.c \
 	    src/ccx/ncp_watchdog.c \
-	    src/storage/crc32.c src/storage/ota_image.c \
+	    src/storage/crc32.c src/storage/ota_image.c src/storage/w25q.c \
 	    src/storage/boot_policy.c src/storage/boot_request.c \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \

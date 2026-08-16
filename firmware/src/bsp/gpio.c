@@ -94,7 +94,34 @@ void bsp_gpio_init(void)
     gpio.Pin = CC1101_MOSI_PIN;
     HAL_GPIO_Init(CC1101_MOSI_PORT, &gpio);
 
+    /* --- W25Q SPI1 pins: PA5 SCK, PA6 MISO, PB5 MOSI (AF5), CN7 --- */
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Alternate = W25Q_SPI_AF;
+
+    gpio.Pin = W25Q_SCK_PIN;
+    HAL_GPIO_Init(W25Q_SCK_PORT, &gpio);
+
+    gpio.Pin = W25Q_MISO_PIN;
+    HAL_GPIO_Init(W25Q_MISO_PORT, &gpio);
+
+    gpio.Pin = W25Q_MOSI_PIN;
+    HAL_GPIO_Init(W25Q_MOSI_PORT, &gpio);
+
+    /* CS idles high, and is driven high before it is an output so the part
+       never sees a spurious select while the pin settles. */
+    HAL_GPIO_WritePin(W25Q_CS_PORT, W25Q_CS_PIN, GPIO_PIN_SET);
+    gpio.Pin = W25Q_CS_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(W25Q_CS_PORT, &gpio);
+
     /* --- USART2 pins: PD5 TX, PD6 RX (AF7) --- */
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF7_USART2;
 
     gpio.Pin = NRF_TX_PIN;

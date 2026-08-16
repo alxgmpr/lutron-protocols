@@ -166,6 +166,7 @@ extern "C" {
  * Peripheral handles (defined in respective .c files)
  * ----------------------------------------------------------------------- */
 extern SPI_HandleTypeDef hspi3;
+extern SPI_HandleTypeDef hspi1;
 extern DMA_HandleTypeDef hdma_spi3_rx;
 extern DMA_HandleTypeDef hdma_spi3_tx;
 extern UART_HandleTypeDef huart2;
@@ -179,6 +180,8 @@ extern ETH_HandleTypeDef heth;
 void bsp_clock_init(void);
 void bsp_gpio_init(void);
 void bsp_spi_init(void);
+/** SPI1 for the W25Q SPI NOR on CN7 (polled, no DMA). */
+void bsp_spi1_init(void);
 void bsp_uart_init(void);
 
 /* EXTI telemetry for CC1101 debug */

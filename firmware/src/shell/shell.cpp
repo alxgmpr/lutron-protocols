@@ -36,6 +36,7 @@
 #include "swd_lock.h"
 #include "crc32.h"
 #include "cca_ota_session.h"
+#include "w25q_spi.h"
 #include "ccx_msg.h"
 #include "coap.h"
 #include "stream.h"
@@ -2184,6 +2185,107 @@ static void swd_dump_aps(swd_t* swd)
     }
 }
 
+/**
+ * External SPI NOR on CN7.
+ *
+ *   mem            probe: JEDEC ID and capacity
+ *   mem read <addr> [n]   hex dump, n bytes (default 64, max 256)
+ *   mem erase <addr>      erase the 4 KB sector containing addr
+ *   mem test <addr>       erase, program a pattern, read it back
+ *
+ * `mem` on its own is the bring-up check: a Winbond part answers 0xEF and a
+ * plausible capacity. Anything else means the wiring, not the software.
+ */
+static void cmd_mem(const char* args)
+{
+    w25q_status_t st = w25q_spi_start();
+    if (st != W25Q_OK) {
+        printf("probe FAILED: %s\r\n", w25q_strerror(st));
+        printf("Expected CN7-10 SCK, CN7-12 MISO, CN7-13 MOSI, CN7-16 CS,\r\n");
+        printf("GND CN7-8, 3V3 CN11-16, and WP#/HOLD# pulled to VCC.\r\n");
+        return;
+    }
+
+    w25q_t* f = w25q_device();
+
+    if (*args == '\0') {
+        printf("--- SPI NOR (SPI1, CN7) ---\r\n");
+        printf("JEDEC ID  : %02X %02X %02X\r\n", f->manufacturer, f->mem_type, f->capacity_code);
+        printf("vendor    : %s\r\n", f->manufacturer == 0xEF ? "Winbond" : "(not Winbond)");
+        printf("capacity  : %lu bytes (%lu Mbit)\r\n", (unsigned long)f->capacity,
+               (unsigned long)(f->capacity / 128u / 1024u));
+        printf("geometry  : %u-byte pages, %u-byte sectors\r\n", (unsigned)W25Q_PAGE_SIZE, (unsigned)W25Q_SECTOR_SIZE);
+        return;
+    }
+
+    if (strncmp(args, "read ", 5) == 0) {
+        char* end = NULL;
+        uint32_t addr = (uint32_t)strtoul(args + 5, &end, 16);
+        uint32_t n = (end && *end) ? (uint32_t)strtoul(end, NULL, 16) : 64;
+        if (n == 0 || n > 256) {
+            n = 64;
+        }
+        static uint8_t buf[256];
+        st = w25q_read(f, addr, buf, n);
+        if (st != W25Q_OK) {
+            printf("read FAILED: %s\r\n", w25q_strerror(st));
+            return;
+        }
+        for (uint32_t i = 0; i < n; i += 16) {
+            printf("%08lX  ", (unsigned long)(addr + i));
+            for (uint32_t j = 0; j < 16 && i + j < n; j++) {
+                printf("%02X ", buf[i + j]);
+            }
+            printf("\r\n");
+        }
+        return;
+    }
+
+    if (strncmp(args, "erase ", 6) == 0) {
+        uint32_t addr = (uint32_t)strtoul(args + 6, NULL, 16);
+        st = w25q_erase_sector(f, addr);
+        printf("erase sector @%08lX: %s\r\n", (unsigned long)(addr & ~(W25Q_SECTOR_SIZE - 1u)), w25q_strerror(st));
+        return;
+    }
+
+    if (strncmp(args, "test ", 5) == 0 || strcmp(args, "test") == 0) {
+        uint32_t addr = (args[4] == ' ') ? (uint32_t)strtoul(args + 5, NULL, 16) : 0;
+        addr &= ~(W25Q_SECTOR_SIZE - 1u);
+
+        /* A pattern that catches the failures flying leads actually produce:
+           a stuck bit shows as a constant, a swapped bus line shows as a
+           shifted value, and a page-wrap shows as a repeat. */
+        static uint8_t pattern[512];
+        for (uint32_t i = 0; i < sizeof(pattern); i++) {
+            pattern[i] = (uint8_t)(i ^ (i >> 8) ^ 0x5A);
+        }
+
+        printf("erase  @%08lX ... ", (unsigned long)addr);
+        st = w25q_erase_sector(f, addr);
+        printf("%s\r\n", w25q_strerror(st));
+        if (st != W25Q_OK) {
+            return;
+        }
+
+        printf("program %u bytes ... ", (unsigned)sizeof(pattern));
+        st = w25q_program(f, addr, pattern, sizeof(pattern));
+        printf("%s\r\n", w25q_strerror(st));
+        if (st != W25Q_OK) {
+            return;
+        }
+
+        printf("verify ... ");
+        st = w25q_verify(f, addr, pattern, sizeof(pattern));
+        printf("%s\r\n", w25q_strerror(st));
+        if (st == W25Q_OK) {
+            printf("PASS — erase, program and read-back all agree\r\n");
+        }
+        return;
+    }
+
+    printf("Usage: mem [read <addr> [n] | erase <addr> | test [addr]]\r\n");
+}
+
 /** The read-only/reset half of `swd`, run with the pin lock already held. */
 static void cmd_swd_locked(const char* args);
 
@@ -4087,6 +4189,7 @@ static void cmd_help(void)
     printf("  spinel [cmd] — raw Spinel property access\r\n");
     printf("  swd [cmd]    — nRF52840 debug port: probe, reset, flash, recover\r\n");
     printf("  ota [cmd]    — STM32 self-update: staged image status, install\r\n");
+    printf("  mem [cmd]    — external SPI NOR on CN7: probe, read, erase, test\r\n");
     printf("  eth          — Ethernet PHY debug\r\n");
     printf("  config       — show stored settings\r\n");
     printf("  save         — save settings to flash\r\n");
@@ -4185,6 +4288,12 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "swd") == 0) {
         cmd_swd("");
+    }
+    else if (strcmp(line, "mem") == 0) {
+        cmd_mem("");
+    }
+    else if (strncmp(line, "mem ", 4) == 0) {
+        cmd_mem(line + 4);
     }
     else if (strncmp(line, "swd ", 4) == 0) {
         cmd_swd(line + 4);
