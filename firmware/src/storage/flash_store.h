@@ -10,6 +10,15 @@
  *
  * On init, validates magic + version + CRC-32. If invalid (first boot or
  * corruption), loads defaults and does NOT auto-save (user must `save`).
+ *
+ * Version history:
+ *   1 — original. Checksummed with a hand-transcribed table that was not
+ *       actually CRC-32 (114 of 256 entries wrong).
+ *   2 — same layout, but checksummed with real CRC-32 (crc32.h). The
+ *       layout did not change; the version bump exists so that v1 records
+ *       are dropped as an explicit format change rather than surfacing as
+ *       a CRC mismatch that looks like flash corruption. Settings revert
+ *       to defaults once on upgrade and must be re-saved.
  */
 
 #include <stdint.h>
@@ -20,7 +29,7 @@ extern "C" {
 #endif
 
 #define FLASH_STORE_MAGIC 0x4C555421 /* "LUT!" */
-#define FLASH_STORE_VERSION 1
+#define FLASH_STORE_VERSION 2
 #define FLASH_STORE_ADDR 0x080E0000
 #define FLASH_STORE_SECTOR 7
 

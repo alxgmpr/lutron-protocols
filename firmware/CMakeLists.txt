@@ -188,6 +188,7 @@ set(APP_SOURCES
     src/ccx/ipv6_udp.c
     src/shell/shell.cpp
     src/storage/flash_store.cpp
+    src/storage/crc32.c
 )
 
 # ------------------------------------------------------------------
