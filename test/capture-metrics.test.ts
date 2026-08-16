@@ -82,12 +82,13 @@ describe("analyzeSequence", () => {
 describe("summarizeDecode", () => {
   it("separates frames we could not decode from frames we could not identify", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, typeName: "BUTTON_PRESS" },
-      // Decoded fine, but the type byte means nothing to us yet.
-      { band: "cca", decoded: true, typeName: "UNKNOWN" },
+      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
+      { band: "ccx", decoded: true, identified: true, typeName: "BUTTON_PRESS" },
+      // Decoded fine, but the type byte means nothing to us yet. CCA names
+      // these by their type byte ("0x5F"), so only the flag is reliable.
+      { band: "cca", decoded: true, identified: false, typeName: "0x5F" },
       // Never got as far as a type — decrypt or framing failed.
-      { band: "ccx", decoded: false, typeName: null },
+      { band: "ccx", decoded: false, identified: false, typeName: null },
     ]);
 
     assert.equal(s.frames, 4);
@@ -100,9 +101,9 @@ describe("summarizeDecode", () => {
 
   it("totals unconsumed CBOR keys across frames", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, typeName: "LEVEL_CONTROL", unknownKeys: 2 },
-      { band: "ccx", decoded: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, typeName: "DIM_HOLD", unknownKeys: 1 },
+      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL", unknownKeys: 2 },
+      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
+      { band: "ccx", decoded: true, identified: true, typeName: "DIM_HOLD", unknownKeys: 1 },
     ]);
 
     assert.equal(s.unknownKeyTotal, 3);
@@ -111,12 +112,12 @@ describe("summarizeDecode", () => {
 
   it("counts what was seen per message type", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, typeName: "LEVEL_CONTROL" },
-      { band: "cca", decoded: true, typeName: "UNKNOWN" },
+      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
+      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
+      { band: "cca", decoded: true, identified: false, typeName: "0x5F" },
     ]);
 
-    assert.deepEqual(s.byType, { LEVEL_CONTROL: 2, UNKNOWN: 1 });
+    assert.deepEqual(s.byType, { LEVEL_CONTROL: 2, "0x5F": 1 });
   });
 
   it("reports zeros rather than NaN for an empty capture", () => {

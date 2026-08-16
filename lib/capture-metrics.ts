@@ -115,14 +115,17 @@ function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
 }
 
-/** Name the decoders use for a frame whose type they don't recognize. */
-export const UNIDENTIFIED = "UNKNOWN";
-
 export interface DecodedFrame {
   band: "cca" | "ccx";
   /** Did the pipeline get as far as a message at all. */
   decoded: boolean;
-  /** Message type, `UNKNOWN` when unrecognized, null when never decoded. */
+  /**
+   * Do we actually recognize the message type. Set by the per-band adapter,
+   * not inferred from the name: CCA labels an unrecognized packet with its
+   * own type byte ("0x5F"), which reads like a real name.
+   */
+  identified: boolean;
+  /** Message type as reported, or null when never decoded. */
   typeName: string | null;
   /** Unconsumed CBOR keys on the decoded message. */
   unknownKeys?: number;
@@ -164,11 +167,9 @@ export function summarizeDecode(frames: DecodedFrame[]): DecodeSummary {
     if (!f.decoded) continue;
     decoded++;
 
-    if (f.typeName) {
-      byType[f.typeName] = (byType[f.typeName] ?? 0) + 1;
-      if (f.typeName === UNIDENTIFIED) unidentified++;
-      else identified++;
-    }
+    if (f.typeName) byType[f.typeName] = (byType[f.typeName] ?? 0) + 1;
+    if (f.identified) identified++;
+    else unidentified++;
 
     if (f.unknownKeys) {
       unknownKeyTotal += f.unknownKeys;
