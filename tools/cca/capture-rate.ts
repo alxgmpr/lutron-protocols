@@ -45,11 +45,14 @@ import { decodeBytes } from "../../ccx/decoder";
 import { summarizeDecode } from "../../lib/capture-metrics";
 import {
   analyzeCapture,
+  type CaptureAnalysis,
   compareCapture,
   diagnose,
   diffStatus,
+  dispersionInputs,
   type FrameObservation,
   type LossBaseline,
+  slotDispersion,
 } from "../../lib/capture-run";
 import { decodeCcaFrame } from "../../lib/cca-decode-adapter";
 import { config, defaultHost } from "../../lib/config";
@@ -94,6 +97,7 @@ const { values } = parseArgs({
     cycles: { type: "string", default: "10" },
     duration: { type: "string" },
     settle: { type: "string", default: "3000" },
+    control: { type: "string", default: "20" },
     out: { type: "string" },
     save: { type: "string" },
     gate: { type: "boolean", default: false },
@@ -114,6 +118,7 @@ if (values.help) {
       "  --cycles <n>         Stimulus repetitions (default: 10)",
       "  --duration <sec>     Capture window for --stimulus none (default: 60)",
       "  --settle <ms>        Quiet period before the closing snapshot",
+      "  --control <sec>      Idle window measured before the stimulus (default: 20)",
       "  --out <file>         Write the JSON report here",
       "  --save <file>        Append captured CCA frames as JSONL for corpus use",
       "  --gate               Exit 1 if loss regressed past the baseline",
@@ -127,6 +132,7 @@ const host = values.host ?? config.openBridge;
 const cycles = Number.parseInt(values.cycles!, 10);
 const settleMs = Number.parseInt(values.settle!, 10);
 const durationSec = Number.parseInt(values.duration ?? "60", 10);
+const controlSec = Number.parseInt(values.control!, 10);
 const stimulus = values.stimulus!;
 
 if (!["levels", "raise", "none"].includes(stimulus)) {
@@ -461,6 +467,19 @@ async function main(): Promise<number> {
       );
     }
 
+    // Idle control window. Without it there is no way to tell a counter that
+    // ate our frames from one that ticks along at the same rate whatever we
+    // do — ccaDrop runs at ~6/s on this rig with nothing happening at all,
+    // and reading that as evidence pinned the verdict to LOCAL forever.
+    console.log(`Idle control window: ${controlSec}s ...`);
+    await sleep(controlSec * 1000);
+    const afterControl = await stream.status();
+    const control = diffStatus(before, afterControl);
+    const idleDrop = control.counters?.ccaDrop ?? 0;
+    console.log(
+      `  ambient: ccaDrop ${(idleDrop / controlSec).toFixed(2)}/s, ccaRx ${((control.counters?.ccaRx ?? 0) / controlSec).toFixed(2)}/s`,
+    );
+
     stream.startCollecting();
     const startedAt = Date.now();
 
@@ -479,7 +498,7 @@ async function main(): Promise<number> {
     const elapsedMs = Date.now() - startedAt;
 
     const after = await stream.status();
-    const delta = diffStatus(before, after);
+    const delta = diffStatus(afterControl, after);
     const analysis = analyzeCapture(stream.frames.map((f) => f.observation));
     const decode = summarizeDecode(
       stream.frames
@@ -491,9 +510,10 @@ async function main(): Promise<number> {
           typeName: f.typeName,
         })),
     );
-    const verdict = diagnose(analysis, delta);
+    const dispersion = slotDispersion(dispersionInputs(analysis));
+    const verdict = diagnose(analysis, delta, { control, dispersion });
 
-    report(analysis, delta, decode, verdict, elapsedMs);
+    report(analysis, delta, decode, verdict, dispersion, control, elapsedMs);
 
     const current: LossBaseline = {
       cca: analysis.byBand.cca.lossPct,
@@ -505,11 +525,13 @@ async function main(): Promise<number> {
       host,
       processor: stimulus === "none" ? null : values.processor,
       zone: zone ? { id: zone.id, name: zone.name } : null,
-      stimulus: { kind: stimulus, cycles, durationSec, settleMs },
+      stimulus: { kind: stimulus, cycles, durationSec, settleMs, controlSec },
       elapsedMs,
       loss: current,
       analysis,
+      dispersion,
       counters: delta,
+      control,
       decode,
       diagnosis: verdict,
     };
@@ -553,10 +575,12 @@ async function main(): Promise<number> {
 }
 
 function report(
-  analysis: ReturnType<typeof analyzeCapture>,
+  analysis: CaptureAnalysis,
   delta: ReturnType<typeof diffStatus>,
   decode: ReturnType<typeof summarizeDecode>,
   verdict: ReturnType<typeof diagnose>,
+  dispersion: ReturnType<typeof slotDispersion>,
+  control: ReturnType<typeof diffStatus>,
   elapsedMs: number,
 ): void {
   const line = "—".repeat(72);
@@ -598,16 +622,53 @@ function report(
     }
   }
 
-  if (delta.counters) {
+  if (dispersion.result === "insufficient") {
+    console.log(`\nSlot dispersion: ${dispersion.detail}`);
+  } else {
+    console.log(
+      `\nSlot dispersion: ${dispersion.result.toUpperCase()} — ${dispersion.detail}`,
+    );
+    const peak = Math.max(...dispersion.byPosition, 1);
+    for (let i = 0; i < dispersion.byPosition.length; i++) {
+      const n = dispersion.byPosition[i];
+      const bar = "█".repeat(Math.round((n / peak) * 32));
+      console.log(
+        `  slot ${String(i).padStart(2)}  ${String(n).padStart(4)}  ${bar}`,
+      );
+    }
+  }
+
+  // Rates, not raw deltas: a counter that ticks along at the same rate whether
+  // or not we are driving traffic has told us nothing about this run.
+  const runSec = (delta.elapsedMs ?? 0) / 1000;
+  const idleSec = (control.elapsedMs ?? 0) / 1000;
+  if (delta.counters && runSec > 0) {
     const moved = Object.entries(delta.counters)
       .filter(([, v]) => v !== 0)
       .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    console.log("\nCounter deltas:");
+    console.log(
+      `\nCounters (${runSec.toFixed(0)}s run vs ${idleSec.toFixed(0)}s idle control):`,
+    );
+    console.log(
+      `  ${"counter".padEnd(22)} ${"delta".padStart(7)} ${"run/s".padStart(8)} ${"idle/s".padStart(8)}`,
+    );
     for (const [k, v] of moved) {
-      console.log(`  ${k.padEnd(22)} ${v > 0 ? "+" : ""}${v}`);
+      const runRate = v / runSec;
+      const idle = control.counters?.[k];
+      const idleRate =
+        idle !== undefined && idleSec > 0 ? idle / idleSec : null;
+      const flag =
+        idleRate !== null &&
+        runRate > idleRate * 1.5 &&
+        v - idleRate * runSec >= 3
+          ? "  <-- above ambient"
+          : "";
+      console.log(
+        `  ${k.padEnd(22)} ${(v > 0 ? `+${v}` : String(v)).padStart(7)} ${runRate.toFixed(2).padStart(8)} ${(idleRate === null ? "—" : idleRate.toFixed(2)).padStart(8)}${flag}`,
+      );
     }
   } else {
-    console.log("\nCounter deltas: unavailable (board rebooted mid-run)");
+    console.log("\nCounters: unavailable (board rebooted mid-run)");
   }
 
   console.log(`\nVerdict: ${verdict.verdict.toUpperCase()}`);
