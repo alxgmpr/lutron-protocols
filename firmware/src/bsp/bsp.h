@@ -40,6 +40,21 @@ extern "C" {
 #define NRF_RX_PORT GPIOD
 #define NRF_RX_PIN GPIO_PIN_6 /* PD6  USART2_RX */
 
+/* nRF52840 NCP SWD programming lines.
+ *
+ * NOT WIRED YET. GPIOF is entirely unused in this design, so these are free
+ * picks; confirm the header position against the Nucleo-H723ZG pinout before
+ * soldering, and change these two defines if PF12/PF13 are not broken out.
+ *
+ * Both lines are parked as high-impedance inputs whenever SWD is idle — see
+ * swd_gpio_deinit(). If the dongle's supply is ever switched, a driven SWDIO
+ * or SWDCLK backfeeds it through the pin's ESD diode and it never actually
+ * powers down, which is the same trap the UART pins present. */
+#define NRF_SWDIO_PORT GPIOF
+#define NRF_SWDIO_PIN GPIO_PIN_12 /* PF12 — to the SWDIO pad on the dongle */
+#define NRF_SWCLK_PORT GPIOF
+#define NRF_SWCLK_PIN GPIO_PIN_13 /* PF13 — to the SWDCLK pad on the dongle */
+
 /* Shell USART3 (ST-LINK VCP) */
 #define SHELL_USART USART3
 #define SHELL_TX_PORT GPIOD

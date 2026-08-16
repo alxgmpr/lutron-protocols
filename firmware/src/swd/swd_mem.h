@@ -57,8 +57,8 @@ extern "C" {
 typedef struct {
     swd_t* swd;
     uint8_t apsel;
-    uint32_t csw;    /* last value written to CSW */
-    bool csw_known;  /* false until CSW has been written at least once */
+    uint32_t csw;   /* last value written to CSW */
+    bool csw_known; /* false until CSW has been written at least once */
 } swd_mem_t;
 
 /** Bind a MEM-AP view to a link. Does not touch the wire. */

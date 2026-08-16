@@ -173,7 +173,8 @@ static bool flash_range_ok(uint32_t addr, uint32_t words)
     if ((addr & 3u) != 0) {
         return false;
     }
-    if (addr < NRF_FLASH_BASE || addr >= NRF_FLASH_BASE + NRF_FLASH_SIZE) {
+    /* No lower bound to test: NRF_FLASH_BASE is 0. */
+    if (addr >= NRF_FLASH_BASE + NRF_FLASH_SIZE) {
         return false;
     }
     uint32_t bytes = words * 4u;

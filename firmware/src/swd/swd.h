@@ -32,10 +32,10 @@ extern "C" {
  * ----------------------------------------------------------------------- */
 typedef enum {
     SWD_OK = 0,
-    SWD_ERR_ARG = -1,     /* null pointer or unaligned//out-of-range argument */
-    SWD_ERR_WAIT = -2,    /* target answered WAIT more than swd_t::max_retries times */
-    SWD_ERR_FAULT = -3,   /* target answered FAULT; sticky error was cleared via ABORT */
-    SWD_ERR_NO_ACK = -4,  /* no valid ACK — target absent, unpowered, or line dead */
+    SWD_ERR_ARG = -1,      /* null pointer, or unaligned/out-of-range argument */
+    SWD_ERR_WAIT = -2,     /* target answered WAIT more than swd_t::max_retries times */
+    SWD_ERR_FAULT = -3,    /* target answered FAULT; sticky error was cleared via ABORT */
+    SWD_ERR_NO_ACK = -4,   /* no valid ACK — target absent, unpowered, or line dead */
     SWD_ERR_PARITY = -5,   /* read data parity did not check */
     SWD_ERR_PROTOCOL = -6, /* target reported something the sequence cannot continue from */
     SWD_ERR_LOCKED = -7,   /* APPROTECT is set; only a CTRL-AP ERASEALL gets in */
@@ -114,7 +114,7 @@ typedef struct {
  * ----------------------------------------------------------------------- */
 typedef struct {
     swd_io_t io;
-    uint32_t select;  /* last value written to DP SELECT */
+    uint32_t select;   /* last value written to DP SELECT */
     bool select_known; /* false until SELECT has been written at least once */
 } swd_t;
 

@@ -15,8 +15,8 @@ uint8_t swd_request_byte(bool ap, bool rnw, uint8_t addr)
     uint8_t parity = (uint8_t)((apn ^ rw ^ a2 ^ a3) & 1u);
 
     /* bit0 start, bit6 stop, bit7 park are fixed. */
-    return (uint8_t)(0x01u | (uint8_t)(apn << 1) | (uint8_t)(rw << 2) | (uint8_t)(a2 << 3) |
-                     (uint8_t)(a3 << 4) | (uint8_t)(parity << 5) | 0x80u);
+    return (uint8_t)(0x01u | (uint8_t)(apn << 1) | (uint8_t)(rw << 2) | (uint8_t)(a2 << 3) | (uint8_t)(a3 << 4) |
+                     (uint8_t)(parity << 5) | 0x80u);
 }
 
 uint8_t swd_data_parity(uint32_t data)
@@ -87,8 +87,7 @@ void swd_line_reset(swd_t* s)
  * Exactly one request/ACK/data exchange. Reports the raw ACK; retry policy and
  * error recovery belong to the caller.
  */
-static swd_status_t transfer_once(swd_t* s, bool ap, bool rnw, uint8_t addr, uint32_t* data,
-                                  uint32_t* ack_out)
+static swd_status_t transfer_once(swd_t* s, bool ap, bool rnw, uint8_t addr, uint32_t* data, uint32_t* ack_out)
 {
     drive(s, true);
     out_bits(s, swd_request_byte(ap, rnw, addr), 8);

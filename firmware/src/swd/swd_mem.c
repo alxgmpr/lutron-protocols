@@ -153,8 +153,7 @@ swd_status_t swd_mem_write_block(swd_mem_t* m, uint32_t addr, const uint32_t* in
 swd_status_t swd_core_halt(swd_mem_t* m)
 {
     /* DHCSR discards any write whose top half is not the debug key. */
-    return swd_mem_write32(m, SWD_DHCSR,
-                           SWD_DHCSR_DBGKEY | SWD_DHCSR_C_DEBUGEN | SWD_DHCSR_C_HALT);
+    return swd_mem_write32(m, SWD_DHCSR, SWD_DHCSR_DBGKEY | SWD_DHCSR_C_DEBUGEN | SWD_DHCSR_C_HALT);
 }
 
 swd_status_t swd_core_resume(swd_mem_t* m)
@@ -176,7 +175,8 @@ swd_status_t swd_core_set_reset_catch(swd_mem_t* m, bool enable)
     }
     if (enable) {
         demcr |= SWD_DEMCR_VC_CORERESET;
-    } else {
+    }
+    else {
         demcr &= ~SWD_DEMCR_VC_CORERESET;
     }
     return swd_mem_write32(m, SWD_DEMCR, demcr);

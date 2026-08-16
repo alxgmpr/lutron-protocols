@@ -189,6 +189,11 @@ set(APP_SOURCES
     src/shell/shell.cpp
     src/storage/flash_store.cpp
     src/storage/crc32.c
+    src/swd/swd.c
+    src/swd/swd_mem.c
+    src/swd/nrf_swd.c
+    src/swd/ihex.c
+    src/swd/swd_gpio.c
 )
 
 # ------------------------------------------------------------------
@@ -203,6 +208,7 @@ set(INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/net
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shell
     ${CMAKE_CURRENT_SOURCE_DIR}/src/storage
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/swd
     ${HAL_DIR}/Inc
     ${CMSIS_DIR}/Include
     ${CMSIS_DIR}/Device/ST/STM32H7xx/Include
