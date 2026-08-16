@@ -38,7 +38,7 @@ monitor:
 test:
 	@mkdir -p $(BUILD_DIR)
 	clang++ -std=c++17 -Wall -Wextra -Wno-unused-parameter \
-	    -I src/cca -I src/ccx -I tests/stubs -I src/net \
+	    -I src/cca -I src/ccx -I tests/stubs -I src/net -I src/storage \
 	    tests/test_main.cpp tests/test_crc.cpp tests/test_n81.cpp \
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
 	    tests/test_tdma.cpp tests/test_encoder.cpp \
@@ -47,9 +47,10 @@ test:
 	    tests/test_spinel.cpp tests/test_ccx_coap.cpp \
 	    tests/test_smp_dfu.cpp tests/test_ota_tx.cpp \
 	    tests/test_ota_session.cpp tests/test_ota_full_tx.cpp \
-	    tests/test_stream_frame.cpp \
+	    tests/test_stream_frame.cpp tests/test_ota_image.cpp \
 	    src/cca/cca_commands.cpp src/cca/cca_ota_session.cpp \
 	    src/net/stream_frame.c \
+	    src/storage/ota_image.c src/storage/crc32.c \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \
 	    src/ccx/coap.c src/ccx/smp_serial.c \
