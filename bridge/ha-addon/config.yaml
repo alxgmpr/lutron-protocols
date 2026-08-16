@@ -19,6 +19,11 @@ options:
   sniffer_device: /dev/ttyACM0
   wiz_port: 38899
   nucleo_host: "10.0.0.3"
+  mqtt_url: ""
+  mqtt_username: ""
+  mqtt_password: ""
+  mqtt_base_topic: lutron
+  mqtt_discovery_prefix: homeassistant
   device_serials: []
   pairings: []
 schema:
@@ -27,6 +32,12 @@ schema:
   sniffer_device: str
   wiz_port: port
   nucleo_host: "str?"
+  # Leave mqtt_url empty to run without MQTT — the bridge behaves as before.
+  mqtt_url: "str?"
+  mqtt_username: "str?"
+  mqtt_password: "password?" # betterleaks:allow — HA field type, not a value
+  mqtt_base_topic: "str?"
+  mqtt_discovery_prefix: "str?"
   device_serials:
     - zone_id: int
       serial: int

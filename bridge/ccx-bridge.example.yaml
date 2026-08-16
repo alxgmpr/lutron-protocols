@@ -8,6 +8,15 @@
 #   - Warm dim mode (CBOR key 5=5) → B-spline CCT computation → RGBWC channels
 #   - Standard dimming (no CCT keys) → brightness only (10% floor applies)
 # Raw channel control bypasses the WiZ 10% dimming floor.
+#
+# MQTT / Home Assistant discovery is configured by environment variable rather
+# than here (the HA add-on exposes the same settings in its UI). Unset MQTT_URL
+# means no broker and no MQTT sink:
+#
+#   MQTT_URL=mqtt://homeassistant.local:1883
+#   MQTT_USERNAME= / MQTT_PASSWORD=
+#   MQTT_BASE_TOPIC=lutron            # state topics: lutron/zone/<id>/state
+#   MQTT_DISCOVERY_PREFIX=homeassistant
 
 pairings:
   - name: Living Room Lamp

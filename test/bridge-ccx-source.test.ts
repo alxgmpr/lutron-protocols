@@ -169,6 +169,20 @@ function recorder(result: ApplyResult = { accepted: true, applied: 1 }) {
   };
 }
 
+/**
+ * Pick the one intent of a given kind. A packet can yield several — a button
+ * press is both a device event and a scene recall — so tests say which fact
+ * they are asserting on rather than relying on emission order.
+ */
+function pick<K extends SourceIntent["kind"]>(
+  intents: SourceIntent[],
+  kind: K,
+): Extract<SourceIntent, { kind: K }> {
+  const hits = intents.filter((i) => i.kind === kind);
+  assert.equal(hits.length, 1, `expected exactly one ${kind} intent`);
+  return hits[0] as Extract<SourceIntent, { kind: K }>;
+}
+
 async function makeSource(
   target: { apply(i: SourceIntent, onAccepted?: () => void): ApplyResult },
   log?: (msg: string) => void,
@@ -257,12 +271,84 @@ describe("CcxSource BUTTON_PRESS", () => {
       makeButtonPressPacket({ presetId: 0x0c2c, sequence: 4 }),
     );
 
-    const intent = target.intents[0];
-    assert.equal(intent.kind, "preset");
-    if (intent.kind !== "preset") return;
+    const intent = pick(target.intents, "preset");
     assert.equal(intent.presetId, 0x0c2c);
     assert.equal(intent.origin, "PRESET");
     assert.equal(intent.dedupKey, "1:3116:4");
+  });
+});
+
+// ── Device events ────────────────────────────────────────
+//
+// A button press is two different facts about one packet: the press itself
+// (which HA surfaces as an `event` entity) and the scene it recalls. Both have
+// consumers, so the source emits both.
+
+describe("CcxSource device events", () => {
+  test("BUTTON_PRESS emits a device event alongside the preset intent", async () => {
+    const target = recorder();
+    const source = await makeSource(target);
+
+    source.handlePacket(
+      makeButtonPressPacket({ presetId: 0x0c2c, sequence: 4 }),
+    );
+
+    assert.equal(target.intents.length, 2, "one packet, two facts");
+    const kinds = target.intents.map((i) => i.kind);
+    assert.deepEqual(kinds, ["deviceEvent", "preset"]);
+  });
+
+  test("the device event carries identity, button, action and origin", async () => {
+    const target = recorder();
+    const source = await makeSource(target);
+
+    source.handlePacket(
+      makeButtonPressPacket({ presetId: 0x0c2c, sequence: 4 }),
+    );
+
+    const intent = target.intents[0];
+    assert.equal(intent.kind, "deviceEvent");
+    if (intent.kind !== "deviceEvent") return;
+    // Full 4-byte wire device id, not the 2-byte preset slice.
+    assert.equal(intent.deviceId, "0c2cef20");
+    assert.equal(intent.button, 0x2c);
+    assert.equal(intent.action, "press");
+    assert.equal(intent.origin, "PRESET");
+    assert.equal(intent.source, "ccx");
+    assert.equal(intent.sequence, 4);
+  });
+
+  test("the device event dedup key is keyed on the wire sequence", async () => {
+    const target = recorder();
+    const source = await makeSource(target);
+
+    source.handlePacket(
+      makeButtonPressPacket({ presetId: 0x0c2c, sequence: 4 }),
+    );
+
+    const intent = target.intents[0];
+    if (intent.kind !== "deviceEvent") throw new Error("wrong intent");
+    assert.equal(intent.dedupKey, "4:0c2cef20:press:4");
+  });
+
+  test("DIM_HOLD and DIM_STEP emit hold and release device events", async () => {
+    const target = recorder();
+    const source = await makeSource(target);
+
+    source.handlePacket(
+      makeDimHoldPacket({ zoneId: 0, action: 3, presetId: 7, sequence: 5 }),
+    );
+    source.handlePacket(
+      makeDimStepPacket({ zoneId: 0, presetId: 7, sequence: 6 }),
+    );
+
+    const events = target.intents.filter((i) => i.kind === "deviceEvent");
+    assert.equal(events.length, 2);
+    assert.equal(events[0].kind === "deviceEvent" && events[0].action, "hold");
+    assert.equal(
+      events[1].kind === "deviceEvent" && events[1].action,
+      "release",
+    );
   });
 });
 
@@ -277,9 +363,7 @@ describe("CcxSource dim ramps", () => {
       makeDimHoldPacket({ zoneId: 100, action: 3, sequence: 2 }),
     );
 
-    const intent = target.intents[0];
-    assert.equal(intent.kind, "ramp");
-    if (intent.kind !== "ramp") return;
+    const intent = pick(target.intents, "ramp");
     assert.equal(intent.action, "start");
     assert.equal(intent.direction, "raise");
     assert.equal(intent.zoneId, 100);
@@ -292,9 +376,7 @@ describe("CcxSource dim ramps", () => {
 
     source.handlePacket(makeDimHoldPacket({ zoneId: 100, action: 2 }));
 
-    const intent = target.intents[0];
-    if (intent.kind !== "ramp") throw new Error("wrong intent");
-    assert.equal(intent.direction, "lower");
+    assert.equal(pick(target.intents, "ramp").direction, "lower");
   });
 
   test("a pico DIM_HOLD carries no zone but does carry the preset fallback", async () => {
@@ -305,8 +387,7 @@ describe("CcxSource dim ramps", () => {
       makeDimHoldPacket({ zoneId: 0, action: 3, presetId: 7, sequence: 5 }),
     );
 
-    const intent = target.intents[0];
-    if (intent.kind !== "ramp") throw new Error("wrong intent");
+    const intent = pick(target.intents, "ramp");
     assert.equal(
       intent.zoneId,
       undefined,
@@ -322,8 +403,7 @@ describe("CcxSource dim ramps", () => {
 
     source.handlePacket(makeDimStepPacket({ zoneId: 100, sequence: 3 }));
 
-    const intent = target.intents[0];
-    if (intent.kind !== "ramp") throw new Error("wrong intent");
+    const intent = pick(target.intents, "ramp");
     assert.equal(intent.action, "stop");
     assert.equal(intent.origin, "DIM_STEP");
     assert.equal(intent.dedupKey, "3:100:3");

@@ -18,7 +18,7 @@ import { EventEmitter } from "events";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import YAML from "yaml";
-import { getZoneName } from "../ccx/config";
+import { getPresetInfo, getZoneName } from "../ccx/config";
 import type { CCXPacket } from "../ccx/types";
 import { DeviceModel } from "./bridge/model";
 import { LogSink } from "./bridge/sinks/log";
@@ -61,6 +61,23 @@ export interface BridgeCoreOptions {
   deviceSerials?: Map<number, number>;
 }
 
+// ── Name resolution ───────────────────────────────────────
+
+/**
+ * Resolve a control's display name from its wire device id.
+ *
+ * The first two bytes of the id are the preset address, which is what LEAP
+ * knows the control by; the remaining bytes are constant. Falls back to the
+ * preset's own name when the owning device is not recorded, and to the model's
+ * `Device <id>` default when neither is.
+ */
+function resolveDeviceName(deviceId: string): string | undefined {
+  const presetId = Number.parseInt(deviceId.slice(0, 4), 16);
+  if (Number.isNaN(presetId)) return undefined;
+  const info = getPresetInfo(presetId);
+  return info?.device ?? info?.name;
+}
+
 // ── BridgeCore ────────────────────────────────────────────
 
 export class BridgeCore extends EventEmitter {
@@ -86,6 +103,7 @@ export class BridgeCore extends EventEmitter {
       watchedZones: opts.watchedZones,
       zoneCurves,
       resolveZoneName: getZoneName,
+      resolveDeviceName,
     });
 
     this.source = new CcxSource({ model: this.model, log });

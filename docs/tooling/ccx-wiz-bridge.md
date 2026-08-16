@@ -177,10 +177,46 @@ Where `identifyingField` is:
 - LEVEL_CONTROL: `zoneId`
 - BUTTON_PRESS: `presetId`
 - DIM_HOLD/DIM_STEP: `zoneId` (or `presetId` if zone=0)
+- device events: `deviceId:action` (see §5.1)
 
 200ms window. Thread retransmissions arrive within ~170ms. The current 2000ms window was conflating dedup with (unnecessary) echo suppression.
 
 Cleanup: evict entries older than window on every check. Map stays small.
+
+### What dedup is for, and what it must never do
+
+Dedup suppresses **retransmissions of one wire event**. Nothing else. It must
+never collapse two distinct user actions.
+
+Every key therefore includes that event's **wire sequence number**, never just
+`(device, button)` or `(zone, level)`. Pressing the same button twice inside
+the window is two events and both must get through — a Pico double-tap is a
+real thing people do, and swallowing the second press is worse than publishing
+a duplicate.
+
+CCX can honour this because it carries a sequence number, so a retransmit is
+identifiable. CCA has no comparable guarantee and so dedupes less. That
+asymmetry is deliberate, not an oversight: under-deduping shows up as a
+duplicate event, over-deduping shows up as a press that did nothing.
+
+### 5.1 Device events
+
+A BUTTON_PRESS is two different facts about one packet:
+
+1. **the press itself** — `SourceIntent` kind `deviceEvent` → model → the
+   `device:event` sink channel, carrying device identity, button, action and
+   origin
+2. **the scene it recalls** — the existing `preset` intent
+
+Both are emitted, because both have consumers. Before this split the press was
+collapsed straight into the preset intent and `deviceId`/`buttonZone` were
+discarded, so a Pico bound to no watched zone produced no output at all.
+
+Device events **bypass the watch filter** on purpose. Watching is a statement
+about which zones the bridge drives; a press is a fact about the button. A
+control that drives nothing is still an automation trigger.
+
+DIM_HOLD and DIM_STEP emit `hold` and `release` on the same channel.
 
 ## 6. Dispatch Contract
 
@@ -389,6 +425,67 @@ On startup, fetch CCT tables using the shared socket:
 
 WiZ UDP is inherently fire-and-forget. No ack, no retry. The tick loop sends and moves on. If a bulb is unreachable, the packet is lost — this is by design (WiZ protocol has no reliability layer).
 
+## 9.5 MQTT / Home Assistant transport
+
+`lib/bridge/sinks/mqtt.ts`. Read path only — Phase 1 of GLAB-92. No command
+topics and no write path yet.
+
+### Topic layout
+
+Topics carry **identity, not transport**. One process covers CCA + CCX + LEAP,
+so a zone observed on two transports is one entity that either source can
+update, rather than two that never reconcile.
+
+```
+lutron/zone/<zoneId>/state                 retained
+lutron/device/<deviceId>/event             NOT retained
+lutron/bridge/availability                 retained, also the LWT
+lutron/bridge/source/<name>/availability   retained
+```
+
+Transport appears in exactly one place: health. Each entity's `availability`
+lists the bridge topic *and* the topic of the source feeding it, with
+`availability_mode: all`. A dead CCX sniffer greys out CCX-backed entities
+without touching LEAP-backed ones, and without marking the bridge itself down.
+
+### Retention policy
+
+- **State and discovery are retained.** HA must find current levels, and its
+  entities, after a restart.
+- **Button events are not.** A retained press is delivered to every new
+  subscriber, so it would re-fire every automation bound to it each time HA
+  restarts.
+- **Command topics (Phase 2) must not be retained** either, for the same
+  reason — a retained command replays on reconnect.
+
+### Entity identity
+
+`unique_id` is keyed on the Lutron zone id (`lutron_zone_<id>`) and the 4-byte
+wire device id (`lutron_button_<hex>`). Both survive a rename in Designer, a
+bridge restart, and the device being seen on a second transport.
+
+It is deliberately **not** the IPv6 source address: a device's primary ML-EID
+rotates — `ccx/config.ts` keeps a separate stable `fd00::` secondary for
+exactly this reason — and a rotating key would orphan every HA entity built on
+it. Display names resolve separately, through `ccx/config.ts`.
+
+### Failure behaviour
+
+The bridge runs unattended. A missing or flapping broker is a normal operating
+condition, not an error path:
+
+- publishes are dropped while the client is disconnected, never queued
+  unboundedly
+- publish failures are caught and logged, never propagated
+- an `error` event has a listener, so an unreachable broker cannot become an
+  unhandled throw
+- on reconnect the sink re-announces every entity it has seen, since the broker
+  may have lost its retained set
+
+Occupancy would slot in here as a third entity kind (`binary_sensor`, off a
+future `sensor:occupancy` channel). There is no occupancy in the vocabulary
+yet.
+
 ## 10. Logging Contract
 
 Every silent failure in the current bridge becomes an explicit log:
@@ -444,6 +541,7 @@ The CCX→WiZ bridge captures Lutron Thread traffic via nRF sniffer dongle (dire
 - `lib/bridge/sinks/wiz.ts` — `WizSink`: zone:changed → WiZ UDP `setPilot`
 - `lib/bridge/sinks/nucleo-report.ts` — `NucleoReportSink`: zone:settled → DEVICE_REPORT over the Nucleo stream
 - `lib/bridge/sinks/log.ts` — `LogSink`: command events → human-readable lines
+- `lib/bridge/sinks/mqtt.ts` — `MqttSink`: zone:changed + device:event → MQTT with HA discovery (§9.5)
 - `lib/bridge-core.ts` — `BridgeCore`: the default composition of the above, plus config loading
 - `bridge/main.ts` — entry point, reads HA options.json OR YAML config file
 - `bridge/ha-addon/` — Home Assistant local add-on (config.yaml, Dockerfile, run.sh)

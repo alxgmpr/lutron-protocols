@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import type {
   CommandEvent,
+  DeviceEvent,
   SourceIntent,
   ZoneChangedEvent,
   ZoneSettledEvent,
@@ -70,6 +71,131 @@ async function makeModel(opts: {
     reportDelayMs: 2000,
   });
 }
+
+function pressIntent(
+  deviceId: string,
+  button: number,
+  sequence: number,
+  opts: { action?: "press" | "hold" | "release"; origin?: string } = {},
+): SourceIntent {
+  const action = opts.action ?? "press";
+  return {
+    kind: "deviceEvent",
+    deviceId,
+    button,
+    action,
+    origin: opts.origin ?? "PRESET",
+    source: "ccx",
+    sequence,
+    dedupKey: `4:${deviceId}:${action}:${sequence}`,
+  };
+}
+
+// ── Device events ─────────────────────────────────────────
+
+describe("model device events", () => {
+  test("emits device:event with identity, button, action and origin", async () => {
+    const model = await makeModel({});
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    const result = model.apply(pressIntent("0c2cef20", 0x2c, 1));
+
+    assert.equal(result.accepted, true);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].deviceId, "0c2cef20");
+    assert.equal(events[0].button, 0x2c);
+    assert.equal(events[0].action, "press");
+    assert.equal(events[0].origin, "PRESET");
+    assert.equal(events[0].source, "ccx");
+    assert.equal(events[0].sequence, 1);
+    model.destroy();
+  });
+
+  test("resolves a display name, falling back to the device id", async () => {
+    const { DeviceModel } = await import("../lib/bridge/model");
+    const model = new DeviceModel({
+      autoTick: false,
+      resolveDeviceName: (id) =>
+        id === "0c2cef20" ? "Kitchen Pico" : undefined,
+    });
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    model.apply(pressIntent("0c2cef20", 0x2c, 1));
+    model.apply(pressIntent("deadbeef", 0x01, 2));
+
+    assert.equal(events[0].deviceName, "Kitchen Pico");
+    assert.equal(events[1].deviceName, "Device deadbeef");
+    model.destroy();
+  });
+
+  test("a press on a device bound to no watched zone still fires", async () => {
+    // The whole point of the device channel: watch filtering is a zone concern.
+    // A Pico that drives nothing is still an automation trigger.
+    const model = await makeModel({ watchedZones: new Set([100]) });
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    model.apply(pressIntent("0c2cef20", 0x2c, 1));
+
+    assert.equal(events.length, 1, "unwatched zones must not silence a press");
+    model.destroy();
+  });
+});
+
+// ── The dedup principle ───────────────────────────────────
+//
+// Dedup exists to suppress retransmissions of ONE wire event. It must never
+// collapse two distinct user actions. CCX carries a sequence number, so a
+// retransmit is identifiable and we key on it — never on (device, button).
+
+describe("device event dedup keys on the wire sequence, not the action", () => {
+  test("pressing the same button twice fires twice", async () => {
+    const clock = fakeClock();
+    const model = await makeModel({ now: clock.now });
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    // Two real presses of one button, back to back, well inside the 500ms
+    // dedup window. Distinct wire events, so distinct sequence numbers.
+    model.apply(pressIntent("0c2cef20", 0x2c, 1));
+    clock.advance(80);
+    model.apply(pressIntent("0c2cef20", 0x2c, 2));
+
+    assert.equal(events.length, 2, "a double press is two events, not one");
+    model.destroy();
+  });
+
+  test("a retransmission of one press fires once", async () => {
+    const clock = fakeClock();
+    const model = await makeModel({ now: clock.now });
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    // Thread relays the same frame across the mesh; same sequence every time.
+    for (let i = 0; i < 3; i++) {
+      model.apply(pressIntent("0c2cef20", 0x2c, 7));
+      clock.advance(120);
+    }
+
+    assert.equal(events.length, 1);
+    model.destroy();
+  });
+
+  test("distinct buttons and distinct actions never collapse into each other", async () => {
+    const model = await makeModel({});
+    const events: DeviceEvent[] = [];
+    model.on("device:event", (e: DeviceEvent) => events.push(e));
+
+    model.apply(pressIntent("0c2cef20", 0x2c, 1));
+    model.apply(pressIntent("0c2def20", 0x2d, 1)); // different device, same seq
+    model.apply(pressIntent("0c2cef20", 0x2c, 1, { action: "hold" }));
+
+    assert.equal(events.length, 3);
+    model.destroy();
+  });
+});
 
 // ── Dedup (lives in the model, so every sink benefits) ────
 

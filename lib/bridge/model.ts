@@ -15,6 +15,7 @@ import type {
   ApplyResult,
   BridgeSink,
   CommandEvent,
+  DeviceEvent,
   PresetZoneEntry,
   SourceIntent,
   ZoneChangedEvent,
@@ -39,6 +40,8 @@ export interface DeviceModelOptions {
   zoneCurves?: Map<number, string>;
   /** Display-name lookup, injected so the model owns no config loading */
   resolveZoneName?: (zoneId: number) => string | undefined;
+  /** Device display-name lookup, injected for the same reason */
+  resolveDeviceName?: (deviceId: string) => string | undefined;
   /** Clock, injectable for deterministic tests */
   now?: () => number;
   /** Tick interval; set autoTick false to drive tick() manually */
@@ -56,6 +59,7 @@ export class DeviceModel extends EventEmitter {
   private watchedZones: Set<number>;
   private zoneCurves: Map<number, string>;
   private resolveZoneName: (zoneId: number) => string | undefined;
+  private resolveDeviceName: (deviceId: string) => string | undefined;
   private now: () => number;
   private reportDelayMs: number;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
@@ -69,6 +73,7 @@ export class DeviceModel extends EventEmitter {
     this.watchedZones = opts.watchedZones ?? new Set();
     this.zoneCurves = opts.zoneCurves ?? new Map();
     this.resolveZoneName = opts.resolveZoneName ?? (() => undefined);
+    this.resolveDeviceName = opts.resolveDeviceName ?? (() => undefined);
     this.now = opts.now ?? Date.now;
     this.reportDelayMs = opts.reportDelayMs ?? REPORT_DELAY_MS;
 
@@ -120,6 +125,10 @@ export class DeviceModel extends EventEmitter {
     return this.resolveZoneName(zoneId) ?? `Zone ${zoneId}`;
   }
 
+  deviceName(deviceId: string): string {
+    return this.resolveDeviceName(deviceId) ?? `Device ${deviceId}`;
+  }
+
   private snapshot(zoneId: number, zone: ZoneState): ZoneChangedEvent {
     return {
       zoneId,
@@ -147,7 +156,38 @@ export class DeviceModel extends EventEmitter {
         return this.applyPreset(intent, onAccepted);
       case "ramp":
         return this.applyRamp(intent, onAccepted);
+      case "deviceEvent":
+        return this.applyDeviceEvent(intent, onAccepted);
     }
+  }
+
+  /**
+   * Device events bypass the watch filter on purpose: watching is a statement
+   * about which zones the bridge drives, and a button press is a fact about
+   * the button. A Pico bound to nothing is still an automation trigger.
+   *
+   * Dedup still applies, and the caller's key must be built from the wire
+   * sequence number — see `isDuplicate`.
+   */
+  private applyDeviceEvent(
+    intent: Extract<SourceIntent, { kind: "deviceEvent" }>,
+    onAccepted?: () => void,
+  ): ApplyResult {
+    if (this.isDuplicate(intent.dedupKey))
+      return { accepted: false, applied: 0 };
+
+    onAccepted?.();
+    this.emit("device:event", {
+      deviceId: intent.deviceId,
+      deviceName: this.deviceName(intent.deviceId),
+      button: intent.button,
+      action: intent.action,
+      origin: intent.origin,
+      source: intent.source,
+      sequence: intent.sequence,
+    } satisfies DeviceEvent);
+    // No zone was driven; the event is the whole outcome.
+    return { accepted: true, applied: 0 };
   }
 
   private applyZoneLevel(
@@ -469,6 +509,15 @@ export class DeviceModel extends EventEmitter {
 
   // ── Dedup ───────────────────────────────────────────────
 
+  /**
+   * Dedup suppresses retransmissions of ONE wire event — nothing else. Every
+   * key a source builds must therefore include that event's wire sequence
+   * number, never just (device, button) or (zone, level): two presses of one
+   * button are two events and must both get through, however close together.
+   *
+   * CCX can honour this because it carries a sequence number. A transport that
+   * cannot (CCA) simply dedupes less; that asymmetry is deliberate.
+   */
   private isDuplicate(key: string | undefined): boolean {
     if (key === undefined) return false;
     const now = this.now();
