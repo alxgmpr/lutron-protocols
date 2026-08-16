@@ -26,6 +26,7 @@
 #include "eth.h"
 #include "bsp.h"
 #include "watchdog.h"
+#include "ota_service.h"
 
 #include "lwip/api.h"
 #include "lwip/ip_addr.h"
@@ -360,6 +361,31 @@ static void send_status_response(const ip_addr_t* addr, uint16_t port)
     send_to_client(resp, sizeof(resp), addr, port);
 }
 
+static uint32_t read_le32(const uint8_t* p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+/** Ack an FW OTA command with the session state the host needs to make its
+ *  next decision — chiefly `written`, which is the resume point after a gap. */
+static void send_fw_ota_response(ota_status_t status, const ip_addr_t* addr, uint16_t port)
+{
+    ota_service_info_t info;
+    ota_service_info(&info);
+
+    uint8_t resp[2 + STREAM_RESP_FW_OTA_LEN];
+    resp[0] = STREAM_RESP_FW_OTA;
+    resp[1] = STREAM_RESP_FW_OTA_LEN;
+    resp[2] = (uint8_t)(int8_t)status;
+    put_le32(resp + 3, info.written);
+    put_le32(resp + 7, ota_service_capacity());
+    resp[11] = info.staged_valid ? 1 : 0;
+    put_le32(resp + 12, info.staged_len);
+    put_le32(resp + 16, info.staged_version);
+
+    send_to_client(resp, sizeof(resp), addr, port);
+}
+
 /* -----------------------------------------------------------------------
  * Handle incoming command from a UDP client
  * ----------------------------------------------------------------------- */
@@ -687,6 +713,38 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
                (unsigned long)cca_ota_session_expected_len(), cca_ota_session_complete() ? "complete" : "INCOMPLETE");
         break;
     }
+
+    /* --- STM32 self-update staging (GLAB-106) ---
+     * Every one of these is acked. The host needs the reply to know when the
+     * (blocking, ~1-2 s) erase finished and, after a lost datagram, exactly
+     * which byte to resume from. */
+    case STREAM_CMD_FW_OTA_START: {
+        if (data_len < 12) {
+            send_fw_ota_response(OTA_ERR_ARG, src_addr, src_port);
+            break;
+        }
+        uint32_t image_len = read_le32(buf + 2);
+        uint32_t crc = read_le32(buf + 6);
+        uint32_t version = read_le32(buf + 10);
+        send_fw_ota_response(ota_service_start(image_len, crc, version), src_addr, src_port);
+        break;
+    }
+    case STREAM_CMD_FW_OTA_CHUNK: {
+        if (data_len < 4) {
+            send_fw_ota_response(OTA_ERR_ARG, src_addr, src_port);
+            break;
+        }
+        uint32_t offset = read_le32(buf + 2);
+        send_fw_ota_response(ota_service_chunk(offset, buf + 6, (uint32_t)(data_len - 4)), src_addr, src_port);
+        break;
+    }
+    case STREAM_CMD_FW_OTA_END:
+        send_fw_ota_response(ota_service_end(), src_addr, src_port);
+        break;
+
+    case STREAM_CMD_FW_OTA_INFO:
+        send_fw_ota_response(OTA_OK, src_addr, src_port);
+        break;
 
     case STREAM_CMD_STATUS_QUERY:
         printf("[stream] Status query\r\n");

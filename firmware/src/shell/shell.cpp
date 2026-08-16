@@ -33,6 +33,7 @@
 #include "stream.h"
 #include "eth.h"
 #include "flash_store.h"
+#include "ota_service.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -3511,6 +3512,30 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "config") == 0) {
         flash_store_print();
+    }
+    else if (strcmp(line, "ota") == 0) {
+        ota_service_info_t info;
+        ota_service_info(&info);
+        printf("OTA staging slot (sectors 4-6, %lu KB usable)\r\n", (unsigned long)(ota_service_capacity() / 1024));
+        if (info.active) {
+            printf("  session: ACTIVE  %lu/%lu bytes\r\n", (unsigned long)info.written,
+                   (unsigned long)info.expected_len);
+        }
+        else {
+            printf("  session: idle  (last: %s)\r\n", ota_status_name(info.last_status));
+        }
+        if (info.staged_valid) {
+            printf("  staged:  %lu bytes  version=%lu  crc=0x%08lX\r\n", (unsigned long)info.staged_len,
+                   (unsigned long)info.staged_version, (unsigned long)info.staged_crc32);
+        }
+        else {
+            printf("  staged:  none\r\n");
+        }
+        printf("  NOTE: no bootloader yet — a staged image is not bootable.\r\n");
+    }
+    else if (strcmp(line, "ota abort") == 0) {
+        ota_service_abort();
+        printf("OTA session aborted\r\n");
     }
     else if (strcmp(line, "save") == 0) {
         if (flash_store_save()) {
