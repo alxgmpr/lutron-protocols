@@ -73,6 +73,16 @@ public:
     void set_nvmc_busy_polls(int n) { nvmc_busy_ = n; }
     /** ERASEALLSTATUS reads busy for @p n polls after ERASEALL is triggered. */
     void set_eraseall_busy_polls(int n) { eraseall_poll_reload_ = n; }
+    /**
+     * Make the bits in @p mask refuse to program at @p addr — they stay at
+     * whatever the erase left them. Models a marginal flash cell, which is the
+     * only thing that tells a real verify apart from one that always passes.
+     */
+    void set_stuck_bits(uint32_t addr, uint32_t mask)
+    {
+        stuck_addr_ = addr & ~3u;
+        stuck_mask_ = mask;
+    }
 
     /* ---- observation ---- */
 
@@ -137,6 +147,8 @@ public:
         present_ = true;
         locked_ = false;
         nvmc_busy_ = 0;
+        stuck_addr_ = 0xFFFFFFFFu;
+        stuck_mask_ = 0;
         nvmc_write_violations_ = 0;
         nvmc_erase_violations_ = 0;
         nvmc_busy_violations_ = 0;
@@ -642,9 +654,11 @@ private:
                 nvmc_write_violations_++;
                 return; /* NVMC not in WriteEnable — the write is dropped */
             }
-            /* Programming flash can only clear bits. */
+            /* Programming flash can only clear bits, and a stuck cell does not
+               even manage that. */
             uint32_t old = mem_.count(addr) ? mem_[addr] : 0xFFFFFFFFu;
-            mem_[addr] = old & v;
+            uint32_t stuck = (addr == stuck_addr_) ? stuck_mask_ : 0u;
+            mem_[addr] = old & (v | stuck);
             return;
         }
         mem_[addr] = v;
@@ -758,6 +772,8 @@ private:
     bool present_;
     bool locked_;
     int nvmc_busy_;
+    uint32_t stuck_addr_;
+    uint32_t stuck_mask_;
     int nvmc_write_violations_;
     int nvmc_erase_violations_;
     int nvmc_busy_violations_;
