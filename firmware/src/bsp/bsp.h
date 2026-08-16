@@ -87,6 +87,43 @@ extern "C" {
 #define NRF_PWR_EN_PORT GPIOD
 #define NRF_PWR_EN_PIN GPIO_PIN_3 /* PD3  -> MOSFET gate  CN9-10 (not wired) */
 
+/* Winbond W25Q SPI NOR (SOIC-8) — SPI1 on CN7, 3V3 from CN11-16.
+ *
+ * ST's own Zio naming puts most of this on one connector already: CN7-10, -12
+ * and -16 are labelled SPI_A_SCK, SPI_A_MISO and SPI_A_CS, and SPI_A is SPI1.
+ *
+ * MOSI is the one deviation. The natural SPI_A_MOSI is D11 at CN7-14, but on
+ * this board that pin is PA7 — RMII_CRS_DV, already spoken for by the Ethernet
+ * PHY through SB31. PB5 is the alternate SPI_A_MOSI that solder bridges
+ * SB33/SB35 select between, and it has a pin of its own at CN7-13, so it is
+ * taken there and no bridge is touched.
+ *
+ * Power: CN7 has GND at pin 8 but no 3V3 at all — pin 6 is VREFP, the ADC
+ * reference, and must never be used as a supply (UM2407 carries a caution
+ * about R37 for exactly that). The board has precisely two 3V3 pins, CN8-7 and
+ * CN11-16 (UM2407 §7.4.5); CN8-7 feeds the CC1101, so this takes CN11-16.
+ *
+ * Two pins on CN7 are off-limits and neither is used here: pin 5 (PB13,
+ * RMII_TXD1 via JP6) and pin 14 (PA7, above).
+ *
+ * PA5 is also LD1's alternate location. The default SB39/SB47 setting keeps
+ * the green LED on PB0 — see LED_GREEN_PIN below — which is what leaves PA5
+ * free. Moving those bridges would land the LED on top of SCK.
+ *
+ * WP# and HOLD# are tied to VCC at the package through 10k and take no board
+ * pin. Leaving either floating makes the part refuse writes or stall
+ * mid-transfer, which reads as a flaky driver rather than as a wiring fault. */
+#define W25Q_SPI SPI1
+#define W25Q_SCK_PORT GPIOA
+#define W25Q_SCK_PIN GPIO_PIN_5 /* PA5  SPI1_SCK  (AF5)  CN7-10 (D13) */
+#define W25Q_MISO_PORT GPIOA
+#define W25Q_MISO_PIN GPIO_PIN_6 /* PA6  SPI1_MISO (AF5)  CN7-12 (D12) */
+#define W25Q_MOSI_PORT GPIOB
+#define W25Q_MOSI_PIN GPIO_PIN_5 /* PB5  SPI1_MOSI (AF5)  CN7-13 (D22) */
+#define W25Q_CS_PORT GPIOD
+#define W25Q_CS_PIN GPIO_PIN_14 /* PD14 Software NSS     CN7-16 (D10) */
+#define W25Q_SPI_AF GPIO_AF5_SPI1
+
 /* Shell USART3 (ST-LINK VCP) */
 #define SHELL_USART USART3
 #define SHELL_TX_PORT GPIOD
