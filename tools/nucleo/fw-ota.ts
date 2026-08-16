@@ -2,9 +2,9 @@
 /**
  * Stage a firmware image into the Nucleo's OTA slot over Ethernet (GLAB-106).
  *
- * There is no bootloader yet, so a staged image is NOT bootable — this uploads,
- * verifies and commits it, and nothing more. Flashing still goes through
- * `cd firmware && make flash`.
+ * This stages and verifies the image. To actually run it, trigger the install
+ * (shell: `ota install`), which reboots into the bootloader — it copies the
+ * staged image over the application and jumps.
  *
  * Usage:
  *   npx tsx tools/nucleo/fw-ota.ts firmware/build/nucleo-firmware.bin [--host 10.1.10.114]
@@ -255,7 +255,7 @@ async function main() {
       `(${(image.length / 1024 / secs).toFixed(0)} KB/s, ${resyncs} resyncs)`,
   );
   console.log(`Slot now holds: ${describe(done)}`);
-  console.log("NOTE: no bootloader yet — this image is staged, not bootable.");
+  console.log("Run it with: nucleo> ota install   (reboots and installs)");
   client.close();
 }
 

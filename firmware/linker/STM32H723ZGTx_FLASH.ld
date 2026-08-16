@@ -17,21 +17,29 @@ _Min_Heap_Size  = 0x1000;    /* 4 KB (newlib sbrk — FreeRTOS uses its own heap
 _Min_Stack_Size = 0x2000;    /* 8 KB main/ISR stack */
 
 /* Flash sector map (STM32H723ZG: 1 MB, single bank, 8 x 128 KB sectors)
- *   0-3  0x08000000  512K  FLASH        — application (297 KB used)
+ *   0    0x08000000  128K  bootloader   — see linker/bootloader.ld
+ *   1-3  0x08020000  384K  FLASH        — application (this script)
  *   4-6  0x08080000  384K  FLASH_OTA    — OTA staging slot (GLAB-106)
  *   7    0x080E0000  128K  FLASH_STORAGE— settings (flash_store.h)
  *
- * FLASH shrank from 896K to 512K to carve out the staging slot. Nothing is
- * linked into FLASH_OTA — it is written at runtime only, so a staged image can
- * never displace the running one. Watch the application size against 512K.
+ * Sector 0 is reserved entirely for the bootloader: the application region has
+ * to be erasable without touching it, and 128 KB is the smallest thing that can
+ * be erased. Most of that sector is wasted on a few KB of bootloader.
+ *
+ * Nothing is linked into FLASH_OTA — it is written at runtime only, so a staged
+ * image can never displace the running one.
+ *
+ * The first 32 bytes of AXI SRAM are carved off for the install-request record
+ * shared with the bootloader (boot_request.h). Moving ORIGIN keeps startup from
+ * zeroing it and guarantees nothing else is ever placed there.
  */
 MEMORY
 {
-    FLASH    (rx)  : ORIGIN = 0x08000000, LENGTH = 512K
+    FLASH    (rx)  : ORIGIN = 0x08020000, LENGTH = 384K
     FLASH_OTA (rw) : ORIGIN = 0x08080000, LENGTH = 384K
     FLASH_STORAGE (rw) : ORIGIN = 0x080E0000, LENGTH = 128K
     DTCMRAM  (rw)  : ORIGIN = 0x20000000, LENGTH = 128K
-    RAM_D1   (rw)  : ORIGIN = 0x24000000, LENGTH = 320K
+    RAM_D1   (rw)  : ORIGIN = 0x24000020, LENGTH = 320K - 32
     RAM_D2   (rw)  : ORIGIN = 0x30000000, LENGTH = 32K
     RAM_D3   (rw)  : ORIGIN = 0x38000000, LENGTH = 16K
     ITCMRAM  (rw)  : ORIGIN = 0x00000000, LENGTH = 64K

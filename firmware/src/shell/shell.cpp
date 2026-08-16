@@ -34,6 +34,7 @@
 #include "eth.h"
 #include "flash_store.h"
 #include "ota_service.h"
+#include "boot_request.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -3531,11 +3532,25 @@ void shell_execute(const char* line)
         else {
             printf("  staged:  none\r\n");
         }
-        printf("  NOTE: no bootloader yet — a staged image is not bootable.\r\n");
+        printf("  install with: ota install\r\n");
     }
     else if (strcmp(line, "ota abort") == 0) {
         ota_service_abort();
         printf("OTA session aborted\r\n");
+    }
+    else if (strcmp(line, "ota install") == 0) {
+        ota_service_info_t info;
+        ota_service_info(&info);
+        if (!info.staged_valid) {
+            printf("No staged image \u2014 upload one first (tools/nucleo/fw-ota.ts)\r\n");
+        }
+        else {
+            printf("Installing staged image (%lu bytes, version %lu) on reboot...\r\n", (unsigned long)info.staged_len,
+                   (unsigned long)info.staged_version);
+            boot_request_set(boot_request_area());
+            HAL_Delay(50); /* let the reply reach the client before we go */
+            NVIC_SystemReset();
+        }
     }
     else if (strcmp(line, "save") == 0) {
         if (flash_store_save()) {

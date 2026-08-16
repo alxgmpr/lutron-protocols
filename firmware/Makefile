@@ -6,7 +6,7 @@ PROJECT   := nucleo-firmware
 APP_SOURCES := $(shell find src -name '*.c' -o -name '*.cpp' -o -name '*.h')
 INCLUDE_DIRS := -I include -I src -I src/bsp -I src/cca -I src/ccx -I src/net -I src/shell -I src/storage
 
-.PHONY: build clean flash monitor reset test format format-check lint build-check
+.PHONY: build clean flash flash-all monitor reset test format format-check lint build-check
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -21,6 +21,14 @@ clean:
 
 flash: build
 	openocd -f openocd.cfg -c "program $(BUILD_DIR)/$(PROJECT).elf verify reset exit"
+
+# Bootloader + application in one pass. Use this whenever the bootloader or the
+# flash layout changed, so the board is never left with a vector table at
+# 0x08000000 pointing at nothing.
+flash-all: build
+	openocd -f openocd.cfg \
+	    -c "program $(BUILD_DIR)/nucleo-bootloader.elf verify" \
+	    -c "program $(BUILD_DIR)/$(PROJECT).elf verify reset exit"
 
 reset:
 	openocd -f openocd.cfg -c "init; reset run; shutdown"
@@ -48,10 +56,10 @@ test:
 	    tests/test_smp_dfu.cpp tests/test_ota_tx.cpp \
 	    tests/test_ota_session.cpp tests/test_ota_full_tx.cpp \
 	    tests/test_stream_frame.cpp tests/test_ota_image.cpp \
-	    tests/test_boot_policy.cpp \
+	    tests/test_boot_policy.cpp tests/test_boot_request.cpp \
 	    src/cca/cca_commands.cpp src/cca/cca_ota_session.cpp \
 	    src/net/stream_frame.c \
-	    src/storage/ota_image.c src/storage/crc32.c src/storage/boot_policy.c \
+	    src/storage/ota_image.c src/storage/crc32.c src/storage/boot_policy.c src/storage/boot_request.c \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \
 	    src/ccx/coap.c src/ccx/smp_serial.c \

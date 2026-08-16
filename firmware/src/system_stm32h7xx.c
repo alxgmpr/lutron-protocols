@@ -22,6 +22,9 @@ const uint8_t D1CorePrescTable[16] = {0, 0, 0, 0, 1, 2, 3, 4, 1, 2, 3, 4, 6, 7, 
  * Region 0: 0x30000000, 32 KB — Normal Non-cacheable
  * TEX=1, C=0, B=0, S=0 → Normal memory, non-cacheable
  */
+/* Vector table emitted by the CMSIS startup assembly into .isr_vector. */
+extern uint32_t g_pfnVectors;
+
 static void MPU_Config(void)
 {
     __DMB();
@@ -78,8 +81,11 @@ void SystemInit(void)
     /* Disable all clock interrupts */
     RCC->CIER = 0x00000000;
 
-    /* Set vector table offset (FLASH) */
-    SCB->VTOR = FLASH_BANK1_BASE;
+    /* Point VTOR at our own vector table rather than a fixed address. The
+     * application no longer lives at the start of flash (the bootloader does),
+     * and this file is linked into both — deriving the address from the linker
+     * keeps each correct without a build-time switch. */
+    SCB->VTOR = (uint32_t)&g_pfnVectors;
 
     /* Configure MPU before enabling caches */
     MPU_Config();
