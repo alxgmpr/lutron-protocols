@@ -1,0 +1,4160 @@
+{
+  "descriptor_files": 35,
+  "messages": {
+    "AdvancedToggleProgrammingModelDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "led_logic",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "use_reverse_led_logic",
+          "number": 5,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "note",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "lighting_control_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "reference_preset_for_led",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "allow_double_tap",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "held_button_action",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hold_time",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "stop_qed_shades_if_moving",
+          "number": 12,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "ref_press_on_preset_xid",
+          "number": 13,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_press_off_preset_xid",
+          "number": 14,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_double_tap_preset_xid",
+          "number": 15,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_hold_preset_xid",
+          "number": 16,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "no_last_button_press_raise_lower",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/advanced_toggle_programming_model.proto"
+    },
+    "AreaDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "integration_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "user_unique_id",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "hierarchy_level",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "occ_group_xid",
+          "number": 8,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "is_leaf",
+          "number": 9,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "is_partitioned",
+          "number": 10,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "is_partitioned_subspace",
+          "number": 11,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "load_shed_allowed",
+          "number": 12,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "goal_load_shed_amount",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "partitioning_flag_reprogramming",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "partitioning_flag_rezoneing",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "partitioning_flag_resceneing",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "partitioning_flag_zone_chaining",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "partitioning_flag_scene_chaining",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_daylighting_group_xid",
+          "number": 19,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "daylighting_design_type",
+          "number": 20,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "occ_control_type",
+          "number": 21,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "nighttime_daylighting_comissioning_done",
+          "number": 22,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "daytime_daylighting_commisioning_done",
+          "number": 23,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_green_glance_area",
+          "number": 24,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "green_glance_area_name",
+          "number": 25,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "master_processor_xid",
+          "number": 26,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "nightlight_follows_emergency",
+          "number": 27,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "active_target_setpoint_xid",
+          "number": 28,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "bac_net_xid",
+          "number": 29,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_hyperion_area_parameters_xid",
+          "number": 30,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "day_lighting_type",
+          "number": 31,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "minimum_light_level",
+          "number": 32,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "daylighting_to_off",
+          "number": 33,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "daylighting_always_enabled",
+          "number": 34,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_region",
+          "number": 35,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "custom_sort_order",
+          "number": 36,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "associated_area_template_xid",
+          "number": 37,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "full_on_contribution",
+          "number": 38,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "area_type",
+          "number": 39,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "associated_graphical_floor_plan_xid",
+          "number": 40,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "square_feet",
+          "number": 41,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "my_projects_guid",
+          "number": 42,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "hidden",
+          "number": 43,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/area.proto"
+    },
+    "ButtonControllerDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "model_info_id",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "multitap_time",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "wakeup_and_activate",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/button_controller.proto"
+    },
+    "ButtonDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 8,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "backlight_level",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_number",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_info_id",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_type",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "contact_closure_input_normal_state",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_group_xid",
+          "number": 14,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "programming_model_xid",
+          "number": 15,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "programming_model_type",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_seven",
+          "number": 17,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_six",
+          "number": 18,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_five",
+          "number": 19,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_four",
+          "number": 20,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_three",
+          "number": 21,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_two",
+          "number": 22,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_one",
+          "number": 23,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold_zero",
+          "number": 24,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_multitap",
+          "number": 25,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_hold",
+          "number": 26,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_release",
+          "number": 27,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "transmit_press",
+          "number": 28,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "corresponding_led_id",
+          "number": 29,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "position_in_template",
+          "number": 30,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "leap_button_number",
+          "number": 31,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/button.proto"
+    },
+    "ButtonGroupDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_group_info_id",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "note",
+          "number": 9,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "button_group_programming_type",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "group_type",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "programming_mode_ref",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_group_number",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "last_button_press_rl",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "allow_raise_lower_event",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_valid",
+          "number": 16,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "button_group_object_type_processor",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "standalone_qs_template_button_group_info_id_processor",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "button_group_engraving_kit_id",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/button_group.proto"
+    },
+    "ChromaZoneDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_xorder",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "integration_xid",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "zone_xnumber",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "level_xbacnet_xid",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_xcontrol_xtype",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_xtype",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "default_xwarm_xdim_xcurve_xid",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/chroma_zone_gen.proto"
+    },
+    "ControlStationDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "color_info_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "custom_sort_order",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "box_number",
+          "number": 7,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "shade_group_count",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "has_translucent_cover",
+          "number": 9,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "use_pico_pedestal",
+          "number": 10,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "pico_adapter_kit_required",
+          "number": 11,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/control_station.proto"
+    },
+    "ControlStationDeviceDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "integration_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "model_info_id",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "communications_master_device_xid",
+          "number": 7,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "communications_master_device_type",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_number",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "programming_id",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "system",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "processor_number_on_system",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_number_on_proc",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "rf_device_slot",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_number_state",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hardware_revision",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "model_is_locked",
+          "number": 17,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "num_components",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_type",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_class",
+          "number": 20,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "manual_programmed",
+          "number": 21,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "bac_net_id",
+          "number": 22,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "gang_position",
+          "number": 23,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "num_fins_broken",
+          "number": 24,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_auto",
+          "number": 25,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "notes",
+          "number": 26,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "applied_engraving_type",
+          "number": 27,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "power_supply_output_assigned_to_id",
+          "number": 28,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "order_on_communication_link",
+          "number": 29,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_scene_save_enabled",
+          "number": 30,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "device_backlight_intensity",
+          "number": 31,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "associated_template_id",
+          "number": 32,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "my_projects_guid",
+          "number": 33,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/control_station_device.proto"
+    },
+    "DeviceEmitterPropertiesDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_xcomponent_xnumber",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xcomponent_xnumber",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "high_xend_xbrightness_xtrim",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "low_xend_xbrightness_xtrim",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "minimum_xbrightness",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "power_xon_xstate_xtype_xid",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "power_xon_xintensity",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "power_xon_xvibrancy",
+          "number": 12,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "power_xon_xgui_xauto_xvibrancy",
+          "number": 13,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "power_xon",
+          "number": 14,
+          "repeated": false,
+          "type": "message",
+          "type_name": "domainobject.dto.v1.ColorState"
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/device_emitter_properties_gen.proto"
+    },
+    "EmitterControllerDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "emergency_xpower_xon_xstate_xxid",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "emergency_xpower_xon_xstate_xtype",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_xcomponent_xnumber",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xcomponent_xnumber",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "emergency_xmode_xtype_xid",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "daylighting_xdesign_xtype",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "dimming_xcurve_xtype",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "in_xfixture_xdaylighting_xgain",
+          "number": 12,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/emitter_controller_gen.proto"
+    },
+    "EmitterDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "emitter_xcontroller_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "emitter_xcontroller_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "chroma_xzone_xxid",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "chroma_xzone_xtype",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "integration_xid",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 8,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "output_xnumber_xon_xlink",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "gain_xgroup_xid",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_xminimum_xlevel",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "low_xend_xtrim_xintensity",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "high_xend_xtrim_xintensity",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "supported_xlow_xend_xcct",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "supported_xhigh_xend_xcct",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "load_xtype",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_xtuning_xsettings_xsupported",
+          "number": 17,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "emitter_xchannel_xconfig_xid",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/emitter_gen.proto"
+    },
+    "EngravingPositionDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 4,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "engraving_pos_id",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "engraving_style_id",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "engraving_text",
+          "number": 7,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "icon_character",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "icon_position",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "engraving_option",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/engraving_position.proto"
+    },
+    "FanConfigurationDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xdevice_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_xcomponent_xnumber",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_xmaster_xcomponent_xnumber",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "total_xfan_xspeeds",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "low_xlevel",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "medium_xlevel",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "medium_xhigh_xlevel",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "high_xlevel",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/fan_configuration_gen.proto"
+    },
+    "FixtureAssignmentDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "number_xof_xfixtures",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/fixture_assignment_gen.proto"
+    },
+    "FixtureDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ballast_xinfo_xid",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ballast_xinterface_xinfo_xid",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "load_xinterface_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "gui_xload_xtype",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "current_xload_xtype_xproperties_xtype",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xwattage",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "manufacturer_xmodel",
+          "number": 10,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "manufacturer_xname",
+          "number": 11,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "notes",
+          "number": 12,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "price_xcurrency",
+          "number": 13,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "price_xvalue",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "voltage",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xdescription",
+          "number": 16,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "default_xpulse_xtime",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "normal_xstate",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "contact_xclosure_xoutput_xtype",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hard_xstart",
+          "number": 20,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "interlock_xdelay",
+          "number": 21,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xjog_xtime",
+          "number": 22,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "jog_xto_xlatch_xtime",
+          "number": 23,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "time_xto_xoff",
+          "number": 24,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "blanking_xpulse",
+          "number": 25,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "blip_xtime_xoffset",
+          "number": 26,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "blip_xwidth",
+          "number": 27,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "electronic_xbypass_xtime",
+          "number": 28,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "frequency_xfiltering",
+          "number": 29,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "lamp_xquantity",
+          "number": 30,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "lamp_xwattage",
+          "number": 31,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "load_xinterface_xquantity",
+          "number": 32,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "soft_xstart",
+          "number": 33,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "phase_xcontrol",
+          "number": 34,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "slushing",
+          "number": 35,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "software_xpll",
+          "number": 36,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "voltage_xcompensation_xalgorithm",
+          "number": 37,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "voltage_xcompensation_xdisabled",
+          "number": 38,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "low_xend",
+          "number": 39,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "high_xend",
+          "number": 40,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_xminimum_xcolor_xtemperature",
+          "number": 41,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_xmaximum_xcolor_xtemperature",
+          "number": 42,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_xminimum_xlevel",
+          "number": 43,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fixture_xlamp_xtype",
+          "number": 44,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "dimming_xrange",
+          "number": 45,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ballast_xfactor",
+          "number": 46,
+          "repeated": false,
+          "type": "int64",
+          "type_name": null
+        },
+        {
+          "name": "eco_xoffset",
+          "number": 47,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "operating_xtemperature_xoffset",
+          "number": 48,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "operating_xtemperature_xanticipator",
+          "number": 49,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "filter_xchange_xinterval",
+          "number": 50,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "maintenance_xinterval",
+          "number": 51,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "minimum_xrun_xtime",
+          "number": 52,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "minimum_xoff_xtime",
+          "number": 53,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "number_xheat_xstages",
+          "number": 54,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "number_xcool_xstages",
+          "number": 55,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "number_xfan_xstages",
+          "number": 56,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "system_xtype",
+          "number": 57,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fan_xtype",
+          "number": 58,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "change_xover_xtype",
+          "number": 59,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "minim_xheat_xcool_xsetpoint_xdifference",
+          "number": 60,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage1_xon",
+          "number": 61,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage1_xoff",
+          "number": 62,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage2_xon",
+          "number": 63,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage2_xoff",
+          "number": 64,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage3_xon",
+          "number": 65,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "heat_xdelta_xstage3_xoff",
+          "number": 66,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "cool_xdelta_xstage1_xon",
+          "number": 67,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "cool_xdelta_xstage1_xoff",
+          "number": 68,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "cool_xdelta_xstage2_xon",
+          "number": 69,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "cool_xdelta_xstage2_xoff",
+          "number": 70,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "min_xcool_xsetpoint_xq87_xdeg_xf",
+          "number": 71,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "max_xcool_xsetpoint_xq87_xdeg_xf",
+          "number": 72,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "min_xheat_xsetpoint_xq87_xdeg_xf",
+          "number": 73,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "max_xheat_xsetpoint_xq87_xdeg_xf",
+          "number": 74,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "temperature_xunit",
+          "number": 75,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "available_xoperating_xmodes",
+          "number": 76,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "available_xfan_xmodes",
+          "number": 77,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "available_xmisc_xfeatures",
+          "number": 78,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/fixture_gen.proto"
+    },
+    "LedControllerDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "default_nightlight_intensity",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "default_status_on_intensity",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "fake_feedback_time",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "flash_one_off_time",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "flash_one_on_time",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "flash_two_off_time",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "flash_two_on_time",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "model_info_id",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/led_controller.proto"
+    },
+    "LedDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_device_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "status_on_intensity",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "nightlight_intensity",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "led_number",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "led_info_id",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "led_number_on_link",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "active_led_state",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "inactive_led_state",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_prog_model_xid",
+          "number": 15,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_prog_model_type",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "led_type",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/led.proto"
+    },
+    "LinkDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_info_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "max_num_addresses_on_link",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "subnet_address",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "subnet_channel",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "num_repeaters",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "max_device_number",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_refresh_rate",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "coproc_image_type_override",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_type",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "processor_link_number",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_owner_xid",
+          "number": 14,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_owner_type",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/link.proto"
+    },
+    "LinkNodeDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "link_type",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_node_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "model_info_id",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_link_xid",
+          "number": 7,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "address_on_link",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_node_type",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/link_node.proto"
+    },
+    "LoadStateDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "intensity",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "color",
+          "number": 4,
+          "repeated": false,
+          "type": "message",
+          "type_name": "domainobject.dto.v1.ColorState2"
+        },
+        {
+          "name": "vibrancy",
+          "number": 5,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "gui_xauto_xvibrancy",
+          "number": 6,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/load_state_gen.proto"
+    },
+    "NaturalShowStepAssignmentDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "assignable_xobject_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "assignable_xobject_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "assignment_xcommand_xtype",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/natural_show_step_assignment_gen.proto"
+    },
+    "PegasusLinkDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_type",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "processor_link_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_owner_xid",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_owner_type",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/pegasus_link.proto"
+    },
+    "PegasusLinkNodeDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "pegasus_xlink_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "pegasus_xlink_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "address_xon_xlink",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "eui_x64",
+          "number": 6,
+          "repeated": false,
+          "type": "bytes",
+          "type_name": null
+        },
+        {
+          "name": "joiner_xcredentials",
+          "number": 7,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "link_xnode_xnumber",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "unicast_xipv6_xaddress",
+          "number": 9,
+          "repeated": false,
+          "type": "bytes",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/pegasus_link_node_gen.proto"
+    },
+    "PresetAssignmentDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "assignable_object_xid",
+          "number": 4,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "assignable_object_type",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "assignment_command_group",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "assignment_command_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/preset_assignment.proto"
+    },
+    "PresetDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "affected_by_guest_presence_detection",
+          "number": 4,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "preset_type",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/preset.proto"
+    },
+    "ProcessorDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "integration_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "model_info_id",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_number",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "programming_xid",
+          "number": 8,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "system",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "processor_number_on_system",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_number_on_proc",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "rf_device_slot",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_number_state",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hardware_revision",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "model_is_locked",
+          "number": 15,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "communications_master_device_xid",
+          "number": 16,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "communications_master_device_type",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "num_components",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_type",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_class",
+          "number": 20,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "manual_programmed",
+          "number": 21,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "bac_net_id",
+          "number": 22,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "position",
+          "number": 23,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "notes",
+          "number": 24,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "order_on_communication_link",
+          "number": 25,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_scene_save_enabled",
+          "number": 26,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "address_of_processor_in_system",
+          "number": 27,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "mac_address",
+          "number": 28,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ip_address",
+          "number": 29,
+          "repeated": false,
+          "type": "bytes",
+          "type_name": null
+        },
+        {
+          "name": "dhcp_enabled",
+          "number": 30,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "rs232_connection_type",
+          "number": 31,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "rs232_baud_rate",
+          "number": 32,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "rs232_parameters",
+          "number": 33,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/processor.proto"
+    },
+    "SingleActionProgrammingModelDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "led_logic",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "use_reverse_led_logic",
+          "number": 5,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "note",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "lighting_control_type",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "reference_preset_for_led",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "allow_double_tap",
+          "number": 9,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "held_button_action",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hold_time",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "stop_qed_shades_if_moving",
+          "number": 12,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "ref_preset_xid",
+          "number": 13,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_double_tap_preset_xid",
+          "number": 14,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_hold_preset_xid",
+          "number": 15,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "no_last_button_press_raise_lower",
+          "number": 16,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/single_action_programming_model.proto"
+    },
+    "SmartLampDefinition": {
+      "fields": [
+        {
+          "name": "parent_xxid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_xtype",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "communications_xmaster_xdevice_xxid",
+          "number": 3,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "communications_xmaster_xdevice_xtype",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "model_xinfo_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_xnumber",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "system",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "processor_xnumber_xon_xsystem",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "link_xnumber_xon_xproc",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "serial_xnumber_xstate",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "hardware_xrevision",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_xtype",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "device_xclass",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "bacnet_xid",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "form_xfactor",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/smart_lamp_gen.proto"
+    },
+    "SwitchLegControllerDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "output_number",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "raise_lower_configuration",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "accessory_control_type",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_spare",
+          "number": 9,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "power_booster_model_info_id",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "power_booster_chain_count",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_invalid_load_interface_solution",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "dimming_curve_type",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "daylighting_design_type",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/switch_leg_controller.proto"
+    },
+    "SwitchLegDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "integration_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 5,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "ref_zone_xid",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "output_number_on_link",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ref_gain_group_id",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_maximum_level",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "absolute_minimum_level",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "burn_in_time",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "electronic_bypass_level",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "high_end",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "inrush_delay",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "lamp_run_hours_threshold",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "low_end",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "manual_override_level",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_night_light",
+          "number": 18,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "emergency_mode_type",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "emergency_level",
+          "number": 20,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "nightlight_level",
+          "number": 21,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "load_type",
+          "number": 22,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "proc_load_type",
+          "number": 23,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "controllable_output_number",
+          "number": 24,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "feed",
+          "number": 25,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "afci",
+          "number": 26,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "ballast_interface_id",
+          "number": 27,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "life_expectancy",
+          "number": 28,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "end_of_life_warning_time",
+          "number": 29,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "controller_xid",
+          "number": 30,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "is_tuning_settings_supported",
+          "number": 31,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/switch_leg.proto"
+    },
+    "ZoneControllerUserInterfaceDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "device_component_number",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "comm_master_component_number",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "control_number",
+          "number": 6,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "is_spare",
+          "number": 7,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "local_button_double_tap_preset_level",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_double_tap_fade_time_or_rate_value",
+          "number": 9,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_double_tap_fade_type",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_preset_level",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_press_fade_off_time_or_rate_value",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_press_fade_off_type",
+          "number": 13,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_press_fade_on_time_or_rate_value",
+          "number": 14,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "local_button_press_fade_on_type",
+          "number": 15,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "long_fade_to_off_prefade_time",
+          "number": 16,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "long_fade_to_off_time_or_rate_value",
+          "number": 17,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "long_fade_to_off_fade_type",
+          "number": 18,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "raise_lower_rate",
+          "number": 19,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "save_always",
+          "number": 20,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "ref_zone_xid",
+          "number": 21,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "is_remote_zone",
+          "number": 22,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        },
+        {
+          "name": "ref_switch_leg_controller_xid",
+          "number": 23,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "zone_on_indicator_intensity",
+          "number": 24,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_off_indicator_intensity",
+          "number": 25,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/zone_controller_user_interface.proto"
+    },
+    "ZoneDefinition": {
+      "fields": [
+        {
+          "name": "parent_xid",
+          "number": 1,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "parent_type",
+          "number": 2,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "sort_order",
+          "number": 3,
+          "repeated": false,
+          "type": "int32",
+          "type_name": null
+        },
+        {
+          "name": "integration_id",
+          "number": 4,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "raise_lower_configuration",
+          "number": 5,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "name",
+          "number": 6,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "zone_number",
+          "number": 7,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "control_type",
+          "number": 8,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_master_xid",
+          "number": 9,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "bac_net_id",
+          "number": 10,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "address_on_link",
+          "number": 11,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_type",
+          "number": 12,
+          "repeated": false,
+          "type": "uint32",
+          "type_name": null
+        },
+        {
+          "name": "zone_desc",
+          "number": 13,
+          "repeated": false,
+          "type": "string",
+          "type_name": null
+        },
+        {
+          "name": "is_zone_exposed",
+          "number": 14,
+          "repeated": false,
+          "type": "bool",
+          "type_name": null
+        }
+      ],
+      "package": "domainobject.dto.v1",
+      "proto": "domainobject/dto/v1/zone.proto"
+    }
+  },
+  "source": "dom.gobin"
+}

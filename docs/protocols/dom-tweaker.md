@@ -8,10 +8,15 @@ Reversed 2026-08-15 against HWQS firmware 26.05.26f000 (`lutron-core`,
 intensity; see `ipl.md` §12A/§12B for why every IPL and device-config-session
 route fails.
 
-**Status: WORKING.** Live object writes commit successfully with no reboot and
-no database transfer, and they drive the processor's cache refresh + device
-record re-evaluation. See §6 for the `dto_type` encoding, which was the last
-piece, and §10 for the (negative) result on LED intensity specifically.
+**Status: WORKING, and productized as `tools/dom/dom_tweak.py` (§7).** Live
+object writes commit successfully with no reboot and no database transfer, and
+they drive the processor's cache refresh + device record re-evaluation. See §6
+for the `dto_type` encoding, which was the last piece, and §10 for the
+(negative) result on LED intensity specifically.
+
+Two things will bite you before anything else, both covered below: an Update
+**replaces** the whole record (§4), and `lutron-core-client -d` is
+**fire-and-forget** unless you pass `-o` (§3).
 
 ---
 
@@ -66,13 +71,32 @@ message ApplyExternalObjectChangesRequest {
 ```sh
 lutron-core-client -d '{"cmd":"RequestDomManagedTweak","args":{
    "TweakData":"<base64 Transaction>",
-   "OperationSessionId":"Proc-435-Op-9001"}}'
+   "OperationSessionId":"Proc-435-Op-9001"}}' \
+  -o '{"cmd":"DomManagedTweakResponse"}' -t 20
 ```
 
 **Both args are required.** Omitting `OperationSessionId` fails at the JSON
 layer with the unhelpful `Non-singleton parser exists but failed to parse JSON`
 — that message means a *missing sibling field*, not a bad `TweakData` value.
 This cost a lot of time; check both fields before suspecting the blob.
+
+### `-d` alone is fire-and-forget — you must pass `-o`
+
+`lutron-core-client -d …` queues the write, exits **0**, and prints **nothing**.
+The tweak still commits. Without `-o` you therefore cannot tell success from
+failure, and the natural reading of the silence — "it did nothing" — is exactly
+wrong.
+
+`-o '<RESPONSE>'` blocks until a matching response arrives and prints it:
+
+```json
+{"cmd":"DomManagedTweakResponse","args":{"OperationSessionId":"Proc-435-Op-2171","Result":1}}
+```
+
+`Result` is the authoritative verdict: `0` = SUCCESS, `1` = FAILURE,
+`2` = BUSY_ERROR, `5` = INTERNAL_ERROR. Pair `-o` with `-t <seconds>`, and keep
+that below any ssh timeout wrapping it — otherwise ssh kills the client
+mid-wait and the result is lost even though the tweak committed.
 
 ## 4. TweakData — the Transaction
 
@@ -100,6 +124,20 @@ message Transaction {
   `expected ConfigurationStateRevision "X" does not match current "Y"`, so this
   is a concurrency token, not the new revision to write.
 * `data` — the serialized `*Definition` proto for that object type.
+
+### An Update REPLACES the record — compose it whole
+
+`Update.data` is the object's complete new `*Definition`, not a patch. A field
+you leave out is not "left alone"; it decodes to the proto3 default and
+overwrites what was there. This is the same trap as a CoAP `PUT` on a CCX
+config bucket (`ccx/coap.md`), and it destroys neighbouring fields silently —
+the tweak still reports `SUCCESS`.
+
+So always read the object's current row first, apply the change on top, and
+send all fields. `dom-tweak.py` does this for you and refuses to encode a
+partial record. Verified on LedController 2171: a tweak setting one field to a
+*different* value left the other 16 columns byte-identical, and a no-op tweak
+left the whole row unchanged.
 
 ## 5. Object DTO protos
 
@@ -139,13 +177,41 @@ the type back out of the error):
 applyChanges: reading object ID for XID <xid> with ObjectType 0x006C: sql: no rows in result set
 ```
 
-**Registered DTO types observed on 26.05.26f000:**
-`2, 3, 4, 5, 9, 10, 15, 32, 34, 43, 44, 46, 57, 58, 60, 74, 77, 92, 94, 108`
-— Area, SwitchLegController, ControlStation, ControlStationDevice,
-ZoneControlUI, SwitchLeg, Zone, LinkNode, Link, Preset, PresetAssignment,
-Processor, Button, EngravingPosition, SingleActionProgrammingModel,
-AdvancedToggleProgrammingModel, MasterRaiseLowerProgrammingModel,
-KeypadController, ButtonGroup, **LedController**.
+**Registered DTO types observed on 26.05.26f000** — names are the processor's
+own, from the athena `ObjectType` table, and 19 of the 20 have a `*Definition`
+message in the DOM binary:
+
+| Type | ObjectType.Description | `*Definition` | Fields |
+|-----:|------------------------|---------------|-------:|
+| 2 | AREA | AreaDefinition | 43 |
+| 3 | SWITCH_LEG_CONTROLLER | SwitchLegControllerDefinition | 14 |
+| 4 | CONTROL_STATION | ControlStationDefinition | 11 |
+| 5 | CONTROL_STATION_DEVICE | ControlStationDeviceDefinition | 33 |
+| 9 | ZONE_CONTROLLER_UI | ZoneControllerUserInterfaceDefinition | 25 |
+| 10 | SWITCH_LEG | SwitchLegDefinition | 31 |
+| 15 | ZONE | ZoneDefinition | 14 |
+| 32 | LINK_NODE | LinkNodeDefinition | 9 |
+| 34 | LINK | LinkDefinition | 15 |
+| 43 | PRESET | PresetDefinition | 6 |
+| 44 | PRESET_ASSIGNMENT | PresetAssignmentDefinition | 7 |
+| 46 | PROCESSOR | ProcessorDefinition | 33 |
+| 57 | BUTTON | ButtonDefinition | 31 |
+| 58 | ENGRAVING_POSITION | EngravingPositionDefinition | 10 |
+| 60 | SINGLE_ACTION_PROGRAMMING_MODEL | SingleActionProgrammingModelDefinition | 16 |
+| 74 | ADVANCED_TOGGLE_PROGRAMMING_MODEL | AdvancedToggleProgrammingModelDefinition | 17 |
+| 77 | MASTER_RAISE_LOWER_PROGRAMMING_MODEL | *(none in the binary)* | — |
+| 92 | BUTTON_CONTROLLER | ButtonControllerDefinition | 10 |
+| 94 | BUTTON_GROUP | ButtonGroupDefinition | 19 |
+| 108 | LED_CONTROLLER | **LedControllerDefinition** | 15 |
+
+> Two names in the first pass of this document were wrong and are corrected
+> above: **92 is `BUTTON_CONTROLLER`**, not "KeypadController", and **9 is
+> `ZONE_CONTROLLER_UI`**, not "ZoneControlUI". Both came from guessing at the
+> number rather than reading the processor's `ObjectType` table:
+> `SELECT ObjectTypeID, Description FROM ObjectType`.
+>
+> Type **77** is registered for tweaking but has no `*Definition` message
+> anywhere in `domain-object-manager.gobin`, so no payload can be built for it.
 
 > **`107` (Led) is NOT a registered DTO type.** Individual LEDs cannot be
 > tweaked; only the parent `LedController` (108) can.
@@ -193,8 +259,51 @@ failure case and is followed by `Failed to start database update`.
 
 | Tool | Purpose |
 |------|---------|
-| `tools/dom/extract-go-descriptors.py` | Pull embedded protobuf `FileDescriptorProto`s out of a Go binary and print services/messages/enums. Anchors on the `0x0A <len> <name>.proto` prefix and keeps the longest prefix that round-trips. |
-| `tools/dom/build-tweak.py` | Build a base64 `Transaction` for `RequestDomManagedTweak` (hand-rolled protobuf; no deps). |
+| **`tools/dom/dom_tweak.py`** | **The CLI.** Reads the current record, applies `--set` on top, re-reads the revision, builds the Transaction, sends it, and reads the verdict back. Nothing is sent without `--apply`. |
+| `tools/dom/dom_proto.py` | Wire encoding: varints, `*Definition` serialization, `SingleOperation`/`Transaction`. Pure and dependency-free. |
+| `tools/dom/dom_types.py` | The registered `dto_type` table and the type → `*Definition` field maps. |
+| `tools/dom/dom_processor.py` | SSH transport: revision reads, XID resolution, the IPC call, DOM-log classification. |
+| `tools/dom/extract_dto_defs.py` | Generates `dto_definitions.json` from the Go binary. Walks the protobuf wire format to find each descriptor's end in one pass — a whole-binary sweep takes ~0.4 s. |
+| `tools/dom/extract-go-descriptors.py` | Older, general descriptor dumper: prints services/messages/enums for one named `.proto`. Finds a descriptor's end by growing the buffer a byte at a time, so it is far slower but needs no assumptions about field layout. |
+| `tools/dom/dom-api-relay.py` | TCP → `@dom-api` relay for talking gRPC to DOM directly. Self-terminating after `ttl` seconds so it can never be left running on the processor. |
+| `tools/dom/dom-grpc-client.py` | Raw-bytes gRPC client used to probe DOM services through the relay. |
+
+```sh
+# what can be tweaked, and what fields each type has
+tools/dom/dom_tweak.py types
+tools/dom/dom_tweak.py fields 108
+
+# read an object's current record as proto values
+tools/dom/dom_tweak.py show 108 2171
+
+# build the payload and stop (default — sends nothing)
+tools/dom/dom_tweak.py tweak 108 2171 --set default_nightlight_intensity=40
+
+# commit it
+tools/dom/dom_tweak.py tweak 108 2171 --set default_nightlight_intensity=40 --apply
+```
+
+Regenerate the field maps after a firmware change:
+
+```sh
+scp phoenix:/usr/sbin/domain-object-manager.gobin /tmp/
+uv run --with protobuf python tools/dom/extract_dto_defs.py \
+    /tmp/domain-object-manager.gobin -o tools/dom/dto_definitions.json
+```
+
+Tests: `python3 -m unittest discover -s tools/dom -t tools/dom` (53, no processor needed).
+
+### Re-enumerating the registered types
+
+`dom_tweak.py enumerate --xid <any-valid-xid>` sweeps `dto_type` over a range
+and classifies the DOM log for each. This is cheap and safe: an unregistered
+type fails at deserialization and a registered one fails at the XID lookup, so
+neither reaches the database.
+
+```
+dto: DTOType not registered: "..."                       -> not registered
+applyChanges: reading object ID for XID <x> with ObjectType 0x006C   -> REGISTERED
+```
 
 ## 8. Log oracles
 

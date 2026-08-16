@@ -21,8 +21,9 @@
     "format": "biome format --fix .",
     "test:ts": "node --import tsx --test test/**/*.test.ts",
     "test:firmware": "make -C firmware test",
+    "test:python": "python3 -m unittest discover -s tools/dom -t tools/dom",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:ts && npm run test:firmware",
+    "test": "npm run test:ts && npm run test:firmware && npm run test:python",
     "clean": "rm -rf node_modules"
   },
   "dependencies": {
