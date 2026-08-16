@@ -152,6 +152,34 @@ TEST(stream_frame_preserves_other_flag_bits)
 }
 
 /* -----------------------------------------------------------------------
+ * CCA frames — bit 4 is RSSI magnitude, not STREAM_FLAG_SRC
+ * ----------------------------------------------------------------------- */
+
+TEST(stream_frame_preserves_cca_rssi_bit_four)
+{
+    /* |RSSI| = 0x14 (-20 dBm) sets bit 4, which is STREAM_FLAG_SRC's bit. On a
+     * CCA frame that bit belongs to the RSSI magnitude, so clearing it would
+     * silently report -4 dBm instead. Every |RSSI| in 16..31 hits this. */
+    uint8_t out[64];
+    const uint8_t rssi_flags = 0x14 & STREAM_FLAG_RSSI_MASK;
+    size_t n = stream_frame_build(out, sizeof(out), rssi_flags, CBOR, sizeof(CBOR), 1, 2, nullptr);
+
+    ASSERT_EQ(n, STREAM_FRAME_HEADER_LEN + sizeof(CBOR));
+    ASSERT_EQ(out[0], rssi_flags);
+    ASSERT_EQ(out[0] & STREAM_FLAG_RSSI_MASK, 0x14);
+}
+
+TEST(stream_frame_rejects_src_addr_on_non_ccx_frame)
+{
+    /* A trailer on a CCA frame is unfindable — the reader cannot tell
+     * STREAM_FLAG_SRC from an RSSI bit — so building one must fail loudly
+     * rather than emit an unparseable frame. */
+    uint8_t out[64];
+    size_t n = stream_frame_build(out, sizeof(out), 0x14, CBOR, sizeof(CBOR), 1, 2, SRC_RLOC);
+    ASSERT_EQ(n, 0);
+}
+
+/* -----------------------------------------------------------------------
  * Capacity and argument guards
  * ----------------------------------------------------------------------- */
 

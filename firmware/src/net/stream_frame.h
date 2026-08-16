@@ -61,14 +61,19 @@ extern "C" {
 /**
  * Serialize one packet frame into @p out.
  *
- * @param flags     Base flags.  STREAM_FLAG_SRC is set or cleared by this
- *                  function to match @p src_addr — a caller cannot make the
- *                  flag claim a trailer that was not written.
+ * @param flags     Base flags.  On CCX frames STREAM_FLAG_SRC is set or cleared
+ *                  by this function to match @p src_addr — a caller cannot make
+ *                  the flag claim a trailer that was not written.  On CCA frames
+ *                  bit 4 is RSSI magnitude and is passed through untouched.
  * @param data      Payload; may be NULL only when @p len is 0.
  * @param src_addr  16-byte source IPv6 in network byte order, or NULL when the
  *                  frame has no meaningful sender (locally-originated TX).
+ *                  Only valid on CCX frames; see below.
  *
  * @return frame length in bytes, or 0 if the arguments or capacity are invalid.
+ *         Passing @p src_addr on a non-CCX frame is invalid and returns 0: bit 4
+ *         is indistinguishable from RSSI there, so the trailer could not be
+ *         found by any reader.
  */
 size_t stream_frame_build(uint8_t* out, size_t out_cap, uint8_t flags, const uint8_t* data, uint8_t len, uint32_t ts_ms,
                           uint32_t ts_cyc, const uint8_t* src_addr);

@@ -22,12 +22,25 @@ size_t stream_frame_build(uint8_t* out, size_t out_cap, uint8_t flags, const uin
     if (out == NULL) return 0;
     if (data == NULL && len > 0) return 0;
 
+    /* Bit 4 is STREAM_FLAG_SRC on CCX frames and part of |RSSI| on CCA frames.
+     * A source trailer on a non-CCX frame would therefore be unreadable — the
+     * receiver has no way to tell the flag from an RSSI bit — so reject it
+     * rather than emit a frame nobody can parse. */
+    const int ccx = (flags & STREAM_FLAG_CCX) != 0;
+    if (src_addr != NULL && !ccx) return 0;
+
     const size_t trailer = (src_addr != NULL) ? STREAM_SRC_ADDR_LEN : 0;
     const size_t total = STREAM_FRAME_HEADER_LEN + (size_t)len + trailer;
     if (out_cap < total) return 0;
 
-    /* The flag mirrors what we actually write — it can never overstate. */
-    out[0] = (src_addr != NULL) ? (uint8_t)(flags | STREAM_FLAG_SRC) : (uint8_t)(flags & (uint8_t)~STREAM_FLAG_SRC);
+    /* On CCX the flag mirrors what we actually write — it can never overstate.
+     * On CCA bit 4 carries RSSI magnitude and must pass through untouched. */
+    if (ccx) {
+        out[0] = (src_addr != NULL) ? (uint8_t)(flags | STREAM_FLAG_SRC) : (uint8_t)(flags & (uint8_t)~STREAM_FLAG_SRC);
+    }
+    else {
+        out[0] = flags;
+    }
     out[1] = len;
     put_le32(out + 2, ts_ms);
     put_le32(out + 6, ts_cyc);
