@@ -41,6 +41,8 @@
 #include "stream.h"
 #include "eth.h"
 #include "flash_store.h"
+#include "ota_service.h"
+#include "boot_request.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -4084,6 +4086,7 @@ static void cmd_help(void)
     printf("  ot [cmd]     — OpenThread NCP query/control\r\n");
     printf("  spinel [cmd] — raw Spinel property access\r\n");
     printf("  swd [cmd]    — nRF52840 debug port: probe, reset, flash, recover\r\n");
+    printf("  ota [cmd]    — STM32 self-update: staged image status, install\r\n");
     printf("  eth          — Ethernet PHY debug\r\n");
     printf("  config       — show stored settings\r\n");
     printf("  save         — save settings to flash\r\n");
@@ -4109,6 +4112,45 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "config") == 0) {
         flash_store_print();
+    }
+    else if (strcmp(line, "ota") == 0) {
+        ota_service_info_t info;
+        ota_service_info(&info);
+        printf("OTA staging slot (sectors 4-6, %lu KB usable)\r\n", (unsigned long)(ota_service_capacity() / 1024));
+        if (info.active) {
+            printf("  session: ACTIVE  %lu/%lu bytes\r\n", (unsigned long)info.written,
+                   (unsigned long)info.expected_len);
+        }
+        else {
+            printf("  session: idle  (last: %s)\r\n", ota_status_name(info.last_status));
+        }
+        if (info.staged_valid) {
+            printf("  staged:  %lu bytes  version=%lu  crc=0x%08lX\r\n", (unsigned long)info.staged_len,
+                   (unsigned long)info.staged_version, (unsigned long)info.staged_crc32);
+        }
+        else {
+            printf("  staged:  none\r\n");
+        }
+        printf("  install with: ota install\r\n");
+        printf("  running:  built %s %s\r\n", __DATE__, __TIME__);
+    }
+    else if (strcmp(line, "ota abort") == 0) {
+        ota_service_abort();
+        printf("OTA session aborted\r\n");
+    }
+    else if (strcmp(line, "ota install") == 0) {
+        ota_service_info_t info;
+        ota_service_info(&info);
+        if (!info.staged_valid) {
+            printf("No staged image \u2014 upload one first (tools/nucleo/fw-ota.ts)\r\n");
+        }
+        else {
+            printf("Installing staged image (%lu bytes, version %lu) on reboot...\r\n", (unsigned long)info.staged_len,
+                   (unsigned long)info.staged_version);
+            boot_request_set(boot_request_area());
+            HAL_Delay(50); /* let the reply reach the client before we go */
+            NVIC_SystemReset();
+        }
     }
     else if (strcmp(line, "save") == 0) {
         if (flash_store_save()) {
