@@ -56,13 +56,19 @@ struct TestEntry {
     void (*func)();
 };
 
-static TestEntry test_entries[256];
+#define TEST_REGISTRY_MAX 512
+
+static TestEntry test_entries[TEST_REGISTRY_MAX];
 static int test_count = 0;
+static int test_overflow = 0;
 
 void test_registry_add(const char *name, void (*func)())
 {
-    if (test_count < 256) {
+    if (test_count < TEST_REGISTRY_MAX) {
         test_entries[test_count++] = {name, func};
+    } else {
+        /* Silently dropping tests here reads as "everything passed". */
+        test_overflow++;
     }
 }
 
@@ -84,5 +90,12 @@ int main()
     }
 
     printf("\n%d passed, %d failed\n", test_pass_count, test_fail_count);
+
+    if (test_overflow > 0) {
+        printf("\nERROR: %d test(s) did not fit the registry (max %d) and never ran.\n"
+               "       Raise TEST_REGISTRY_MAX in tests/test_main.cpp.\n",
+               test_overflow, TEST_REGISTRY_MAX);
+        return 1;
+    }
     return test_fail_count > 0 ? 1 : 0;
 }
