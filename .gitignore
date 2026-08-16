@@ -72,6 +72,12 @@ node_modules/
 # Packet capture / recording output
 *.jsonl
 
+# Redacted decode-coverage corpus (override *.jsonl ignore). Device ids are
+# replaced positionally and unidentified frames keep only type/format/length,
+# so this carries no installation identity — see tools/cca/build-corpus.ts.
+# Raw captures stay ignored; only the redacted, deduplicated corpus ships.
+!test/fixtures/cca-corpus.jsonl
+
 # Lutron project files (in case any escape data/)
 *.ra3
 *.hw

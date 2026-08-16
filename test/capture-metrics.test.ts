@@ -82,8 +82,18 @@ describe("analyzeSequence", () => {
 describe("summarizeDecode", () => {
   it("separates frames we could not decode from frames we could not identify", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, identified: true, typeName: "BUTTON_PRESS" },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "LEVEL_CONTROL",
+      },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "BUTTON_PRESS",
+      },
       // Decoded fine, but the type byte means nothing to us yet. CCA names
       // these by their type byte ("0x5F"), so only the flag is reliable.
       { band: "cca", decoded: true, identified: false, typeName: "0x5F" },
@@ -101,9 +111,26 @@ describe("summarizeDecode", () => {
 
   it("totals unconsumed CBOR keys across frames", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL", unknownKeys: 2 },
-      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, identified: true, typeName: "DIM_HOLD", unknownKeys: 1 },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "LEVEL_CONTROL",
+        unknownKeys: 2,
+      },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "LEVEL_CONTROL",
+      },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "DIM_HOLD",
+        unknownKeys: 1,
+      },
     ]);
 
     assert.equal(s.unknownKeyTotal, 3);
@@ -112,8 +139,18 @@ describe("summarizeDecode", () => {
 
   it("counts what was seen per message type", () => {
     const s = summarizeDecode([
-      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
-      { band: "ccx", decoded: true, identified: true, typeName: "LEVEL_CONTROL" },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "LEVEL_CONTROL",
+      },
+      {
+        band: "ccx",
+        decoded: true,
+        identified: true,
+        typeName: "LEVEL_CONTROL",
+      },
       { band: "cca", decoded: true, identified: false, typeName: "0x5F" },
     ]);
 
