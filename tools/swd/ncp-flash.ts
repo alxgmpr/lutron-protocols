@@ -43,6 +43,10 @@ const STREAM_RESP_TEXT = 0xfd;
 
 const CHUNK_BYTES = 240;
 
+/** Chunks per burst, and the breather after each. See upload() for why. */
+const CHUNKS_PER_BATCH = 8;
+const BATCH_PAUSE_MS = 2;
+
 /** Default window: comfortably inside the firmware's 110 KB upload buffer. */
 const DEFAULT_WINDOW = 60 * 1024;
 
@@ -130,9 +134,15 @@ class Nucleo {
       data[1] = i & 0xff;
       data.set(slice, 2);
       this.send(STREAM_CMD_OTA_UPLOAD_CHUNK, data);
-      // The receiver is a single-socket lwIP task; a burst with no breathing
-      // room is where the losses come from.
-      if ((i & 0x0f) === 0x0f) await sleep(4);
+      // Pace to something the receiver can actually absorb. The stream task
+      // drains its UDP mailbox once per loop pass, and that loop blocks a tick
+      // on the TX queue when idle, so sustained throughput is bounded by the
+      // tick rate however deep the mailbox is. Bursting past it drops the
+      // overflow silently — the firmware learns nothing, and only the window
+      // CRC downstream notices. A batch per millisecond leaves margin without
+      // making an 11-window image take noticeably longer.
+      if (i % CHUNKS_PER_BATCH === CHUNKS_PER_BATCH - 1)
+        await sleep(BATCH_PAUSE_MS);
     }
     await sleep(100);
     this.send(STREAM_CMD_OTA_UPLOAD_END, new Uint8Array(0));
@@ -269,8 +279,12 @@ async function main(): Promise<void> {
           break;
         }
         if (reply.includes("REJECT")) {
+          const short = reply.match(/short upload, (\d+)\/(\d+)/);
+          const detail = short
+            ? ` (~${Math.ceil((Number(short[2]) - Number(short[1])) / CHUNK_BYTES)} of ${Math.ceil(w.length / CHUNK_BYTES)} chunks lost)`
+            : "";
           console.warn(
-            `[ncp-flash] window ${i + 1} attempt ${attempt}/${retries}: ${reply}`,
+            `[ncp-flash] window ${i + 1} attempt ${attempt}/${retries}: ${reply}${detail}`,
           );
           continue;
         }
@@ -326,7 +340,9 @@ async function main(): Promise<void> {
     const m = status.match(/Thread role:\s*(\S+)/);
     if (m) {
       role = m[1];
-      if (role !== "DETACHED") break;
+      // Match the roles that mean "on the network", rather than anything that
+      // is merely not DETACHED — UNKNOWN is not success.
+      if (role === "CHILD" || role === "ROUTER" || role === "LEADER") break;
     }
   }
   sock.close();

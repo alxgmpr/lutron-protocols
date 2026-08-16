@@ -1719,6 +1719,7 @@ static ncp_wd_t ncp_wd;
 
 static volatile bool ncp_flash_active = false;
 static volatile bool ncp_rejoin_pending = false;
+static volatile bool ncp_reflashed = false;
 
 bool ccx_ncp_flash_begin(void)
 {
@@ -1740,7 +1741,16 @@ void ccx_ncp_flash_end(bool reflashed)
        recovers a part that is perfectly healthy. A part that really is dead is
        still caught, one liveness timeout from now. */
     ncp_wd_alive(&ncp_wd, HAL_GetTick());
-    ncp_rejoin_pending = reflashed;
+
+    /* Always, not just when flash was written. ccx_ncp_flash_begin() cleared
+       ncp_detected, and every exit from a session has reset the part, so its
+       state is unknown either way. Gating this on `reflashed` left an aborted
+       session with ncp_detected stuck false: no health poll, no TX, no RX, and
+       recovery only by accident 30 s later when the liveness watchdog gave up
+       and reset a part that was fine. `reflashed` chooses the wording, not
+       whether we look. */
+    ncp_reflashed = reflashed;
+    ncp_rejoin_pending = true;
     ncp_flash_active = false;
 }
 
@@ -1831,9 +1841,10 @@ static void ncp_recover_via_swd(void)
  * The first round is expected to fail — the image is still coming up — so this
  * gets several.
  */
-static void ncp_rejoin_after_flash(void)
+static void ncp_rejoin_after_flash(bool reflashed)
 {
-    printf("[ccx] Reflashed — the NCP's Thread dataset is gone, re-pushing credentials\r\n");
+    printf(reflashed ? "[ccx] Reflashed — the NCP's Thread dataset is gone, re-pushing credentials\r\n"
+                     : "[ccx] Flash session ended — re-probing the NCP\r\n");
 
     for (int attempt = 1; attempt <= NCP_REFLASH_JOIN_ATTEMPTS; attempt++) {
         watchdog_feed();
@@ -1848,6 +1859,22 @@ static void ncp_rejoin_after_flash(void)
         }
 
         ncp_wd_alive(&ncp_wd, HAL_GetTick());
+
+        /* Push unconditionally. The obvious optimisation — read NET_ROLE, skip
+           the join if it says attached — cannot work here, and quietly broke
+           exactly the thing this function exists to fix:
+             - Seconds after a reset the role is meaningless. A part with a
+               perfectly good dataset has not had time to attach yet, so it
+               reads detached just like a wiped one.
+             - The NCP emits a burst of unsolicited property updates while it
+               comes up, and a synchronous get in that window can come back
+               with a byte from the wrong frame. One such read returned a value
+               that was neither a valid role nor DETACHED, passed the
+               "is it attached" test, and skipped the credential push — leaving
+               the NCP stranded and needing the manual reboot this is meant to
+               avoid.
+           Re-pushing a dataset that was already correct costs one attach cycle.
+           Skipping one that was needed costs the whole point of the feature. */
         thread_role = SPINEL_NET_ROLE_DETACHED;
         bool joined = thread_join();
         watchdog_feed();
@@ -1901,7 +1928,7 @@ static void ccx_task_func(void* param)
 
         if (ncp_rejoin_pending) {
             ncp_rejoin_pending = false;
-            ncp_rejoin_after_flash();
+            ncp_rejoin_after_flash(ncp_reflashed);
             last_health_poll = HAL_GetTick();
             continue;
         }
@@ -2075,8 +2102,14 @@ const char* ccx_thread_role_str(void)
         return "ROUTER";
     case SPINEL_NET_ROLE_LEADER:
         return "LEADER";
-    default:
+    case SPINEL_NET_ROLE_DETACHED:
         return "DETACHED";
+    default:
+        /* Anything else is a value we did not expect, and saying "DETACHED"
+           for it hides that. It read as a plausible status right up until a
+           post-reflash rejoin logged "still attached as DETACHED" and skipped
+           the credential push it existed to perform. */
+        return "UNKNOWN";
     }
 }
 

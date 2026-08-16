@@ -840,10 +840,22 @@ static void stream_task_func(void* param)
             } while (xQueueReceive(tx_queue, &tx_item, 0) == pdTRUE);
         }
 
-        /* --- 2. Receive incoming UDP commands (non-blocking) --- */
-        struct netbuf* inbuf = NULL;
-        err_t err = netconn_recv(udp_conn, &inbuf);
-        if (err == ERR_OK && inbuf != NULL) {
+        /* --- 2. Receive incoming UDP commands ---
+         *
+         * Drain the mailbox, don't sip from it. Taking one datagram per
+         * iteration capped the receive rate at the loop rate — and step 1
+         * blocks a tick when tx_queue is idle, so that was about 1 kHz against
+         * a DEFAULT_UDP_RECVMBOX_SIZE of 4. A chunked upload pushes datagrams
+         * far faster than that, the mailbox fills, and the overflow is dropped
+         * silently: an image arrives with holes in it and nothing says so.
+         *
+         * Bounded rather than unbounded so a flood cannot starve the heartbeat
+         * and client expiry below. */
+        for (int drained = 0; drained < STREAM_RX_DRAIN_MAX; drained++) {
+            struct netbuf* inbuf = NULL;
+            if (netconn_recv(udp_conn, &inbuf) != ERR_OK || inbuf == NULL) {
+                break;
+            }
             const ip_addr_t* src_addr = netbuf_fromaddr(inbuf);
             uint16_t src_port = netbuf_fromport(inbuf);
 

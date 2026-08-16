@@ -77,7 +77,11 @@
 #define DEFAULT_THREAD_STACKSIZE        512
 #define DEFAULT_ACCEPTMBOX_SIZE         4
 #define DEFAULT_RAW_RECVMBOX_SIZE       4
-#define DEFAULT_UDP_RECVMBOX_SIZE       4
+/* Bursty by nature: a chunked firmware upload arrives far faster than the
+ * stream task's loop rate, and anything that does not fit here is dropped with
+ * no indication to either end. Four slots lost the tail of every 60 KB window.
+ * Each slot is one pointer. */
+#define DEFAULT_UDP_RECVMBOX_SIZE       32
 #define DEFAULT_TCP_RECVMBOX_SIZE       4
 
 /* Use standard errno.h for error codes */

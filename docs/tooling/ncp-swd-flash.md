@@ -135,8 +135,8 @@ While a flash is open:
 
 | Symptom | Meaning |
 |---|---|
-| `window REJECT: crc32 ...` | Chunks were lost. The tool re-sends; harmless. |
-| `window REJECT: short upload` | Same, caught by length rather than checksum. |
+| `window REJECT: crc32 ...` | Chunks were lost. The tool re-sends; harmless, and expected once or twice per image. |
+| `window REJECT: short upload` | Same, caught by length rather than checksum. A run of *whole* chunks missing off the tail (the reported byte count is an exact multiple of 240) means the receiver is being outrun, not that the network is dropping packets — see below. |
 | `address outside the permitted region` | The HEX is not the NCP application image — check it starts at `0x1000`. |
 | `read-back did not match` | A page did not take the program. The image on the part is bad; reflash. |
 | `image incomplete (no EOF record)` | The upload lost its tail. Nothing was programmed — the check runs before the last page is flushed. |
@@ -145,6 +145,48 @@ While a flash is open:
 An aborted or failed flash leaves a partial image. The part will not boot, but
 `swd flash` can still reach it — AP0 only closes when an application engages
 APPROTECT, and a part with no working application never gets that far.
+
+### Upload throughput
+
+The receiver is the limit, not the network. `stream_task_func()` drains up to
+`STREAM_RX_DRAIN_MAX` datagrams per loop pass into a 32-deep UDP mailbox; push
+faster than it drains and the overflow is dropped with no indication at either
+end. That is what the per-window CRC is for.
+
+If a window is rejected repeatedly with a byte count that is an exact multiple
+of 240, the sender is outrunning the board — lower `CHUNKS_PER_BATCH` or raise
+`BATCH_PAUSE_MS` in `ncp-flash.ts`. Before this was tuned, four mailbox slots
+and a one-datagram-per-pass drain lost the tail of every single window.
+
+**`tools/cca/ota-upload.ts` shares the transport and has no integrity check at
+all.** It paces the same way this tool used to, so LDF bodies it uploads can
+arrive with holes and nothing will say so. Treat a failed PowPak OTA with that
+in mind.
+
+## What a good run looks like
+
+```
+[ncp-flash] image 0x00001000..0x00037fb8, 225208 bytes in 11 windows of <=61440
+flash session open: region 00001000..000E0000, core halted
+[ncp-flash] window 1/11: window 1 ok: 61425 bytes fed, 21840 image bytes, 5 pages written
+...
+flash OK: 225208 bytes, 55 pages, verified
+reset issued — CCX task is re-probing and re-pushing Thread credentials
+[ncp-flash] rejoined Thread as ROUTER
+```
+
+A window or two rejecting on CRC and succeeding on the retry is normal.
+
+Two things worth checking afterwards, because they are the ones that fail
+quietly:
+
+- `swd` should report **APPROTECT open**. The factory bootloader never clears
+  APPROTECT and the OpenThread application does, so an open AP0 is positive
+  evidence the *application* booted rather than the bootloader.
+- `status` should show **`swd_recoveries=0`**. A nonzero count means the
+  liveness watchdog had to rescue the NCP 30 s later — the flash worked, but
+  the automatic credential push did not, and that is a bug rather than a
+  successful recovery.
 
 ## Related
 

@@ -18,6 +18,11 @@ extern "C" {
 /** Heartbeat interval (ms) */
 #define STREAM_HEARTBEAT_MS 5000
 
+/** Datagrams the stream task will drain in one pass before getting on with the
+ *  rest of its loop. High enough that a chunked upload keeps up, bounded so a
+ *  flood cannot starve the heartbeat and client expiry. */
+#define STREAM_RX_DRAIN_MAX 64
+
 /**
  * Stream command opcodes (host → STM32):
  */
