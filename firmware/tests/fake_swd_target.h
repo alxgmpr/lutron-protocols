@@ -89,6 +89,11 @@ public:
     int eraseall_count() const { return eraseall_count_; }
     /** DP SELECT writes seen — pins that banking is cached, not rewritten. */
     int select_writes() const { return select_writes_; }
+    uint32_t ap_csw() const { return ap_csw_; }
+    uint32_t ap_tar() const { return ap_tar_; }
+    int tar_writes() const { return tar_writes_; }
+    int csw_writes() const { return csw_writes_; }
+    uint32_t nvmc_config() const { return nvmc_config_; }
     bool locked() const { return locked_; }
     bool core_halted() const { return (dhcsr_ & 0x2u) != 0; }
     int sysresets() const { return sysresets_; }
@@ -134,6 +139,8 @@ public:
         nvmc_erase_violations_ = 0;
         eraseall_count_ = 0;
         select_writes_ = 0;
+        tar_writes_ = 0;
+        csw_writes_ = 0;
         eraseall_poll_reload_ = 0;
         eraseall_polls_ = 0;
         sysresets_ = 0;
@@ -502,9 +509,11 @@ private:
             switch (reg) {
             case 0x00:
                 ap_csw_ = v;
+                csw_writes_++;
                 break;
             case 0x04:
                 ap_tar_ = v;
+                tar_writes_++;
                 break;
             case 0x0C:
                 mem_store(ap_tar_, v);
@@ -728,6 +737,8 @@ private:
     int nvmc_erase_violations_;
     int eraseall_count_;
     int select_writes_;
+    int tar_writes_;
+    int csw_writes_;
     int eraseall_poll_reload_;
     int eraseall_polls_;
     int sysresets_;
