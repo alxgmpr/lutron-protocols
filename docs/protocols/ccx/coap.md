@@ -204,17 +204,29 @@ independent of the active level:
 | `[108, {4:200, 5:1}]` | dark | no |
 | `[108, {4:200}]` (key 5 omitted) | dark | no |
 
-To express "idle off", **omit key 5** — which is what the processor itself does. It
-omits default-valued keys generally: a real transfer sends `[108, {4:153}]` with key 5
-absent, exactly as `AAM` omits key 7 when it equals its 153 default. *"Key absent" and
-"key present = 0" are different to the device* even though both render dark.
+**Omitting key 5 does NOT mean "off" — it means "use the device default", and that
+default is dimly lit.** Writing `[108, {4:0}]` therefore produces *inverted* behaviour:
+the LED is dark when active and dimly lit when idle. Three distinct meanings:
+
+| key 5 | Result |
+|-------|--------|
+| omitted | device default — **dimly lit**, no flash |
+| `0` | dark, but **flashes** on active→inactive (out of range) |
+| `1` | dark, no flash — **use this for "idle off"** |
+
+The processor does omit default-valued keys when *it* writes records (a real transfer
+sends `[108, {4:153}]` with key 5 absent, exactly as `AAM` omits key 7 when it equals
+its 153 default) — but that is the processor choosing to inherit the default, not a way
+to express zero.
+
+**To turn a keypad LED fully off in both states, write `[108, {4:1, 5:1}]`.**
 
 Note this floor is specific to AHA key 5. In `AAM`, `0` **is** in range — the processor
 explicitly writes `{7:0, 8:0}` on devices configured that way.
 
-> **The `ccx coap led <addr> <active> <inactive>` Nucleo shell helper is unsafe.** It
-> always emits both keys, so passing `0` stamps in the out-of-range `5:0`. Use a raw
-> `ccx coap put … 82186ca104<active>` (key 5 omitted) instead, or pass 1.
+> **The `ccx coap led <addr> <active> <inactive>` Nucleo shell helper is unsafe for
+> inactive=0.** It always emits both keys, so passing `0` stamps in the out-of-range
+> `5:0` and introduces the flash. Pass `1` instead — `ccx coap led <addr> <active> 1`.
 
 #### Which bucket does a device use?
 
