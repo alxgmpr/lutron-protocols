@@ -8,6 +8,24 @@ All endpoints are CoAP over UDP port 5683. Devices are addressed by Thread RLOC
 (`fd0d:02ef:a82c::00ff:fe00:<rloc16>`). Device RLOCs are available from
 `/var/log/ccx-diagnostics-log.0.gz` on the RA3 processor.
 
+**Getting every RLOC in one shot** — the processor publishes the whole mesh table,
+refreshed roughly every 16 minutes, with ~2 days of rotated history:
+
+```sh
+ssh root@<proc> "zcat /var/log/ccx-diagnostics-log.0.gz"
+# Device ID | SerialNumber | Rx# | Rloc16 | NF (Dev) | Role | ... | Link Margins
+```
+
+No sniffer is needed for this. RLOCs were stable across 192 snapshots / 2.2 days on a
+34-device mesh, but they *can* move (Thread `RLOC16 = RouterID<<10 | ChildID` changes on
+router promotion, parent change, partition merge or rejoin) — re-read before a write
+rather than caching.
+
+Two parser quirks in the Nucleo shell: `rloc:0000` is rejected as "Invalid RLOC16" even
+though it is a legitimate RLOC — pass the full IPv6 (`fd0d:2ef:a82c:0:0:ff:fe00:0`)
+instead. Throughput is ~240 ms/device for `AHA` and ~640 ms/device for `AAM`, and
+requests pipeline, so 33 devices is ≈10 s of real work.
+
 ## Firmware Metadata
 
 ### GET fw/ic/md — Image Catalog
@@ -147,9 +165,66 @@ Hybrid Keypads: 11+ slots (same groups minus some AA* entries).
 | Bucket | CBOR Format | Purpose |
 |--------|-------------|---------|
 | `AAI`  | `[3, {2: high_raw, 3: low_raw, 8: profile}]` | Trim (high/low limits) |
-| `AHA`  | `[108, {4: active_byte, 5: inactive_byte}]`   | Status LED brightness  |
+| `AHA`  | `[108, {4: active_byte, 5: inactive_byte}]`   | Keypad status LED brightness |
+| `AAM`  | `[9, {0: flag, 1: preset_level16, 3: flag, 4: flag, 7: zone_on, 8: zone_off, 10: mode}]` | Dimmer/switch status LED brightness |
 
 **Trim encoding**: `raw = percent × 0xFEFF / 100` — same as level encoding (1% → 0x028C, 100% → 0xFEFF)
+
+The CBOR array's **first element is the Designer `ObjectType` of the component being
+configured** — `AAI`→3 SwitchLegController, `AHA`→108 LedController, `AAM`→9
+ZoneControlUI. Useful for decoding the remaining buckets.
+
+#### ⚠ A PUT REPLACES the whole record
+
+Writing a partial key set silently **drops every key you omit**. Writing
+`[9, {4:…, 5:…}]` to `AAM` dropped key 1 (`LocalButtonPresetLevel`) on a live Sunnata
+dimmer and disabled its "off" button until a Designer transfer rewrote it. Always
+compose the complete record.
+
+The safe way to build one for a device you have no capture for is to derive it from the
+Designer DB (`ZoneControllerUserInterface`):
+
+* `key 1` = `LocalButtonPresetLevel` as level16 — `raw = value × 0xFEFF / 255`
+  (190 → 48640, 255 → 65279)
+* `key 7` / `key 8` = `ZoneOnIndicatorIntensity` / `ZoneOffIndicatorIntensity`, 0–255
+* `key 10` = `LocalButtonControlEnabled ? 3 : 2` (matches all 12 captured samples)
+* `key 0` = present only on `HRST-8ANS-XX`
+* `key 3`, `key 4` = `1` on every observed device
+
+#### ⚠ AHA key 5 (inactive) has a range floor of 1 — `0` is OUT OF RANGE
+
+Writing `5:0` renders dark **but causes a visible flash** on the active→inactive
+transition when a lit button is pressed off. Verified on a Sunnata hybrid keypad,
+independent of the active level:
+
+| Record | Idle LEDs | Flash on turn-off |
+|--------|-----------|-------------------|
+| `[108, {4:15,  5:0}]` | dark | **yes** |
+| `[108, {4:200, 5:0}]` | dark | **yes** |
+| `[108, {4:200, 5:1}]` | dark | no |
+| `[108, {4:200}]` (key 5 omitted) | dark | no |
+
+To express "idle off", **omit key 5** — which is what the processor itself does. It
+omits default-valued keys generally: a real transfer sends `[108, {4:153}]` with key 5
+absent, exactly as `AAM` omits key 7 when it equals its 153 default. *"Key absent" and
+"key present = 0" are different to the device* even though both render dark.
+
+Note this floor is specific to AHA key 5. In `AAM`, `0` **is** in range — the processor
+explicitly writes `{7:0, 8:0}` on devices configured that way.
+
+> **The `ccx coap led <addr> <active> <inactive>` Nucleo shell helper is unsafe.** It
+> always emits both keys, so passing `0` stamps in the out-of-range `5:0`. Use a raw
+> `ccx coap put … 82186ca104<active>` (key 5 omitted) instead, or pass 1.
+
+#### Which bucket does a device use?
+
+Probe read-only with `ccx coap get` — `5.01` means the bucket exists (write-only),
+`4.04` means it does not:
+
+| Device class | Buckets present | LED brightness bucket |
+|--------------|-----------------|----------------------|
+| Keypad / H-Keypad (`Led` rows in DB) | AHA, AAQ, AAU, AAY, ABI, ABM, AFE, AFI, AFM, AFQ, AIE | **`AHA`** |
+| Dimmer / switch (`ZoneControllerUserInterface` rows) | AAI, AAM, AAQ, AAU, AAY | **`AAM`** |
 
 ### Presets (cg/db/pr/c/)
 
