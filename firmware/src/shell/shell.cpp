@@ -450,6 +450,8 @@ static void cmd_status(void)
         else {
             printf("CCX (Thread): DETACHED (joining...)\r\n");
         }
+        printf("  ncp: %s  swd_recoveries=%lu attempts=%lu\r\n", ccx_ncp_healthy() ? "alive" : "UNRESPONSIVE",
+               (unsigned long)ccx_ncp_recoveries(), (unsigned long)ccx_ncp_recovery_attempts());
     }
     else {
         printf("CCX (Thread): NOT STARTED\r\n");
@@ -2245,6 +2247,22 @@ static void cmd_swd(const char* args)
         if (swd_link_up(&swd, &nrf, &io) == SWD_OK) {
             swd_dump_aps(&swd);
         }
+        swd_gpio_deinit();
+        return;
+    }
+
+    if (strcmp(args, "hold") == 0) {
+        /* Assert CTRL-AP reset and leave it asserted. The NCP stops answering,
+           which is the cleanest way to prove the liveness watchdog actually
+           detects and recovers a dead dongle — the watchdog's own reset pulse
+           releases it. Reversible with 'swd reset'. */
+        printf("--- SWD hold in reset ---\r\n");
+        if (swd_link_up(&swd, &nrf, &io) != SWD_OK) {
+            swd_gpio_deinit();
+            return;
+        }
+        swd_status_t st = swd_ap_write(&swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 1u);
+        printf("assert reset : st=%d (NCP now held down)\r\n", (int)st);
         swd_gpio_deinit();
         return;
     }

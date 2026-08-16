@@ -85,6 +85,23 @@ swd_status_t nrf_swd_is_locked(nrf_swd_t* n, bool* locked);
  */
 swd_status_t nrf_swd_recover(nrf_swd_t* n);
 
+/**
+ * Pulse CTRL-AP RESET — the equivalent of a pin reset.
+ *
+ * This is the recovery lever for a dongle stuck in its bootloader. The
+ * nRF52840 engages APPROTECT in hardware at every reset and relies on firmware
+ * to clear it; the OpenThread application does, the factory USB bootloader
+ * does not. So while the part sits in DFU the AHB-AP is unreachable and CTRL-AP
+ * is the only port that still answers — which is exactly what it is for.
+ *
+ * Does NOT clear GPREGRET: that survives a pin reset, so a part put into DFU
+ * by the 0xB1 DFU magic will re-enter DFU. Only a power cycle clears it.
+ *
+ * Note the part takes appreciably longer than a few hundred milliseconds to
+ * come back; probe it again after a generous settle, not immediately.
+ */
+swd_status_t nrf_swd_pin_reset(nrf_swd_t* n);
+
 /** Halt the core. Do this before erasing or programming. */
 swd_status_t nrf_swd_halt(nrf_swd_t* n);
 

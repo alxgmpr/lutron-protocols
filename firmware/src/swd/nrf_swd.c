@@ -123,6 +123,28 @@ swd_status_t nrf_swd_connect(nrf_swd_t* n)
     return SWD_OK;
 }
 
+swd_status_t nrf_swd_pin_reset(nrf_swd_t* n)
+{
+    if (n == NULL) {
+        return SWD_ERR_ARG;
+    }
+
+    swd_status_t st = swd_ap_write(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 1u);
+    if (st != SWD_OK) {
+        /* Still try to release, so a partial failure cannot leave the part
+           held down — that looks identical to the fault being recovered. */
+        (void)swd_ap_write(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 0u);
+        return st;
+    }
+
+    /* Read the register back once; the round trip is a long enough assertion
+       for the reset to be latched without needing a timer in this layer. */
+    uint32_t v = 0;
+    (void)swd_ap_read(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, &v);
+
+    return swd_ap_write(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 0u);
+}
+
 swd_status_t nrf_swd_halt(nrf_swd_t* n)
 {
     return n == NULL ? SWD_ERR_ARG : swd_core_halt(&n->mem);

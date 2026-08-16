@@ -298,6 +298,53 @@ TEST(nrf_swd_locked_part_refuses_ahb_ap_access)
     ASSERT_EQ(nrf_swd_read(&r.nrf, 0x00000000u, &v, 1), SWD_ERR_FAULT);
 }
 
+/* -----------------------------------------------------------------------
+ * CTRL-AP pin reset
+ * ----------------------------------------------------------------------- */
+
+TEST(nrf_swd_pin_reset_pulses_and_releases_ctrl_ap_reset)
+{
+    /* Leaving RESET asserted holds the part down permanently, which presents
+       exactly as the dead dongle the watchdog is trying to fix. */
+    Rig r;
+    nrf_swd_connect(&r.nrf);
+
+    ASSERT_EQ(nrf_swd_pin_reset(&r.nrf), SWD_OK);
+    ASSERT_EQ(r.target.ctrl_ap_reset(), 0u);
+    ASSERT_EQ(r.target.protocol_errors(), 0);
+}
+
+TEST(nrf_swd_pin_reset_works_while_approtect_blocks_the_ahb_ap)
+{
+    /* This is the case that matters. A dongle sitting in its bootloader has
+       APPROTECT engaged, so the AHB-AP is unreachable and every normal
+       recovery route is gone. CTRL-AP is the one that still answers, and the
+       reset has to go through it. */
+    Rig r;
+    r.target.set_locked(true);
+
+    uint32_t v = 0;
+    ASSERT_EQ(nrf_swd_read(&r.nrf, 0x00000000u, &v, 1), SWD_ERR_FAULT);
+    ASSERT_EQ(nrf_swd_pin_reset(&r.nrf), SWD_OK);
+    ASSERT_EQ(r.target.ctrl_ap_reset(), 0u);
+    /* A pin reset must not erase anything — the part stays locked. */
+    ASSERT_TRUE(r.target.locked());
+    ASSERT_EQ(r.target.eraseall_count(), 0);
+}
+
+TEST(nrf_swd_pin_reset_does_not_clear_gpregret)
+{
+    /* Documents the limitation the watchdog is built around: GPREGRET
+       survives a pin reset, so a dongle put into DFU by the 0xB1 magic will
+       come straight back to DFU. Only a real power cycle clears it. */
+    Rig r;
+    nrf_swd_connect(&r.nrf);
+    r.target.poke(0x4000051Cu, 0x000000B1u);
+
+    ASSERT_EQ(nrf_swd_pin_reset(&r.nrf), SWD_OK);
+    ASSERT_EQ(r.target.peek(0x4000051Cu), 0x000000B1u);
+}
+
 TEST(nrf_swd_recover_unlocks_a_protected_part)
 {
     Rig r;

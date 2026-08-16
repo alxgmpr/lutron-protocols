@@ -60,6 +60,15 @@ bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
 
 /** Get RX/TX packet counters */
 uint32_t ccx_rx_count(void);
+
+/* NCP liveness watchdog — see ncp_watchdog.h for the policy. */
+
+/** True while the NCP has answered within the liveness timeout. */
+bool ccx_ncp_healthy(void);
+/** Successful SWD recoveries since boot. */
+uint32_t ccx_ncp_recoveries(void);
+/** Consecutive failed recovery attempts (0 when healthy). */
+uint32_t ccx_ncp_recovery_attempts(void);
 uint32_t ccx_tx_count(void);
 uint32_t ccx_raw_rx_count(void);
 
