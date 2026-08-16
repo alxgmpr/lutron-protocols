@@ -19,10 +19,11 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dir, "..");
+// tools/designer/ → project root is two levels up, not one.
+const PROJECT_ROOT = join(__dir, "../..");
 const DESIGNER_PROJECT_TS = join(__dir, "designer-project.ts");
 
-const dataDir = join(__dir, "../data");
+const dataDir = join(PROJECT_ROOT, "data");
 const outPath = join(dataDir, "preset-zones.json");
 
 const SQL = `

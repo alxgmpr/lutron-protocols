@@ -42,7 +42,6 @@ fi
 echo "Using config: $CONFIG_FILE"
 
 HA_HOST="$(jq -r '.homeassistant.host // empty' "$CONFIG_FILE")"
-PROCESSOR_IP="$(jq -r '.processors | keys[0] // empty' "$CONFIG_FILE")"
 
 if [ -z "$HA_HOST" ]; then
   echo "Error: homeassistant.host not set in $CONFIG_FILE"
@@ -50,10 +49,38 @@ if [ -z "$HA_HOST" ]; then
   exit 1
 fi
 
+# ── Pick the processor ───────────────────────────────────
+# Explicit choice wins. With several processors configured and no explicit
+# choice, refuse rather than guess: `keys[0]` sorts lexically, so a config
+# holding 10.1.10.37 and 10.1.9.2 silently selects .10.37 ("1" < "9" at the
+# fifth character) — which may well be the wrong system entirely.
+
+PROCESSOR_IP="${CCX_PROCESSOR:-$(jq -r '.bridge.processor // empty' "$CONFIG_FILE")}"
+
 if [ -z "$PROCESSOR_IP" ]; then
-  echo "Error: no processors configured in $CONFIG_FILE"
+  PROCESSOR_COUNT="$(jq -r '.processors | length' "$CONFIG_FILE")"
+  if [ "$PROCESSOR_COUNT" = "1" ]; then
+    PROCESSOR_IP="$(jq -r '.processors | keys[0]' "$CONFIG_FILE")"
+  elif [ "$PROCESSOR_COUNT" = "0" ]; then
+    echo "Error: no processors configured in $CONFIG_FILE"
+    exit 1
+  else
+    echo "Error: $PROCESSOR_COUNT processors configured — name the one to deploy:"
+    jq -r '.processors | keys[] | "  " + .' "$CONFIG_FILE"
+    echo ""
+    echo "  CCX_PROCESSOR=<ip> $0 $*"
+    echo '  or add  "bridge": { "processor": "<ip>" }  to config.json'
+    exit 1
+  fi
+fi
+
+if ! jq -e --arg ip "$PROCESSOR_IP" '.processors | has($ip)' "$CONFIG_FILE" >/dev/null; then
+  echo "Error: processor $PROCESSOR_IP is not in $CONFIG_FILE"
+  jq -r '.processors | keys[] | "  " + .' "$CONFIG_FILE"
   exit 1
 fi
+
+echo "Processor: $PROCESSOR_IP"
 
 LEAP_FILE="$PROJECT_ROOT/data/leap-${PROCESSOR_IP}.json"
 DEVICE_MAP_FILE="$PROJECT_ROOT/data/ccx-device-map.json"

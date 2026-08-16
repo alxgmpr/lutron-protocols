@@ -51,7 +51,8 @@ const JSON_OUTPUT = hasFlag("--json");
 const CONFIG_OUTPUT = hasFlag("--config");
 const SAVE_OUTPUT = hasFlag("--save");
 const FULL_OUTPUT = hasFlag("--full");
-const DATA_DIR = join(__dir, "../data");
+// tools/leap/ → project root is two levels up, not one.
+const DATA_DIR = join(__dir, "../../data");
 
 function log(msg: string): void {
   if (!JSON_OUTPUT && !CONFIG_OUTPUT) {
