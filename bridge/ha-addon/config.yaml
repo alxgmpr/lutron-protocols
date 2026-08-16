@@ -1,6 +1,6 @@
 name: CCX-WiZ Bridge
-description: Lutron Thread → WiZ smart bulb bridge via nRF 802.15.4 sniffer
-version: 0.3.0
+description: Lutron Thread → WiZ bulbs and MQTT / Home Assistant discovery
+version: 0.4.0
 slug: ccx-bridge
 arch:
   - aarch64
