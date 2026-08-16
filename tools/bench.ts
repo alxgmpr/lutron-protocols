@@ -63,6 +63,19 @@ const WARMUP = 5;
  */
 const TOLERANCE_PCT = 40;
 
+/**
+ * Cases that need a wider band than the default, with why.
+ *
+ * bridge.dispatch allocates an intent per packet and its cost moves with GC
+ * timing: it drifted 28% between two identical CI runs where no other case
+ * moved more than 16%. At the default band that is a false failure waiting to
+ * happen, and a gate that cries wolf gets ignored or deleted. 80% still
+ * catches the gross regressions worth catching here.
+ */
+const PER_CASE_TOLERANCE_PCT: Record<string, number> = {
+  "bridge.dispatch": 80,
+};
+
 const REFERENCE = "reference";
 
 // ── Inputs ───────────────────────────────────────────────
@@ -225,6 +238,14 @@ function main() {
     console.log(`  ${name.padEnd(20)} ${ratio.toFixed(4)}`);
   }
 
+  if (write && !process.env.CI) {
+    console.error(
+      "\nRefusing to write a baseline off CI — the gate runs on CI, and numbers\n" +
+        "from this machine do not transfer. Take them from a CI run's log.",
+    );
+    process.exit(1);
+  }
+
   if (write) {
     writeFileSync(
       BASELINE_PATH,
@@ -232,6 +253,7 @@ function main() {
         {
           note: "Ratios vs the reference workload — machine-independent. Regenerate with: npm run bench -- --write",
           tolerancePct: TOLERANCE_PCT,
+          perCaseTolerancePct: PER_CASE_TOLERANCE_PCT,
           ratios,
         },
         null,
@@ -243,7 +265,12 @@ function main() {
   }
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-  const verdict = compareBench(ratios, baseline.ratios, baseline.tolerancePct);
+  const verdict = compareBench(
+    ratios,
+    baseline.ratios,
+    baseline.tolerancePct,
+    baseline.perCaseTolerancePct ?? {},
+  );
 
   // The baseline is CI-derived. Enforcing it on other hardware produces
   // confident nonsense, so a local run reports and stops there.

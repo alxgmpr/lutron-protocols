@@ -114,6 +114,35 @@ describe("compareBench", () => {
     );
   });
 
+  it("honours a per-case tolerance over the default band", () => {
+    // Some paths are inherently noisier than others — bridge.dispatch drifts
+    // ~28% between identical CI runs — so one band cannot serve them all.
+    const v = compareBench({ decode: 3.0, parse: 1.0 }, baseline, 30, {
+      decode: 80,
+    });
+
+    assert.equal(v.ok, true);
+    assert.deepEqual(v.regressions, []);
+  });
+
+  it("still fails a per-case band that is exceeded", () => {
+    const v = compareBench({ decode: 4.0, parse: 1.0 }, baseline, 30, {
+      decode: 80,
+    });
+
+    assert.equal(v.ok, false);
+    assert.equal(v.regressions[0].name, "decode");
+  });
+
+  it("leaves cases without an override on the default band", () => {
+    const v = compareBench({ decode: 2.0, parse: 1.5 }, baseline, 30, {
+      decode: 80,
+    });
+
+    assert.equal(v.ok, false);
+    assert.equal(v.regressions[0].name, "parse");
+  });
+
   it("fails when a benchmark the baseline covers has disappeared", () => {
     const v = compareBench({ decode: 2.0 }, baseline, 30);
 

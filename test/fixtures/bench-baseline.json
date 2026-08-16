@@ -1,11 +1,14 @@
 {
-  "note": "Ratios vs the reference workload — machine-independent. Regenerate with: npm run bench -- --write",
-  "tolerancePct": 30,
+  "note": "Ratios vs the reference workload, measured on CI. The gate runs on CI only \u2014 see tools/bench.ts. Mean of two runs of commit 5cd4e0a.",
+  "tolerancePct": 40,
+  "perCaseTolerancePct": {
+    "bridge.dispatch": 80
+  },
   "ratios": {
-    "cca.identifyPacket": 0.5111465341428538,
-    "cca.decodeFrame": 0.6702128351188104,
-    "stream.parseFrame": 0.4922368863155098,
-    "ccx.decodeAndParse": 0.9004899005290014,
-    "bridge.dispatch": 1.9584560975800338
+    "cca.identifyPacket": 0.2309,
+    "cca.decodeFrame": 0.4001,
+    "stream.parseFrame": 0.2527,
+    "ccx.decodeAndParse": 0.6269,
+    "bridge.dispatch": 1.3659
   }
 }

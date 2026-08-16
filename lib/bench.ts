@@ -107,11 +107,18 @@ export interface BenchVerdict {
  *
  * Slower than the band fails. Faster does not — but it is reported, because
  * an unrefreshed baseline quietly widens the band until it catches nothing.
+ *
+ * A case may override the default band. Paths differ in how much they drift
+ * between identical runs — an allocation-heavy one at the mercy of GC timing
+ * moves several times more than a tight parse loop — and holding them all to
+ * one number means either false alarms on the noisy ones or no gate at all on
+ * the quiet ones.
  */
 export function compareBench(
   current: Record<string, number>,
   baseline: Record<string, number>,
   tolerancePct: number,
+  perCaseTolerancePct: Record<string, number> = {},
 ): BenchVerdict {
   const regressions: BenchDelta[] = [];
   const improvements: BenchDelta[] = [];
@@ -121,6 +128,7 @@ export function compareBench(
     if (value === undefined) continue;
 
     const changePct = ((value - baseValue) / baseValue) * 100;
+    const band = perCaseTolerancePct[name] ?? tolerancePct;
     const delta: BenchDelta = {
       name,
       baseline: baseValue,
@@ -130,8 +138,8 @@ export function compareBench(
 
     // Compare with slack: a ratio exactly on the band edge computes to
     // 30.000000000000004, and a build must not fail on float error.
-    if (changePct > tolerancePct + EDGE_EPSILON) regressions.push(delta);
-    else if (changePct < -tolerancePct - EDGE_EPSILON) improvements.push(delta);
+    if (changePct > band + EDGE_EPSILON) regressions.push(delta);
+    else if (changePct < -band - EDGE_EPSILON) improvements.push(delta);
   }
 
   const missing = Object.keys(baseline).filter((n) => !(n in current));
