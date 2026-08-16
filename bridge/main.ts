@@ -27,6 +27,11 @@ interface HAOptions {
   sniffer_device?: string;
   wiz_port?: number;
   nucleo_host?: string;
+  mqtt_url?: string;
+  mqtt_username?: string;
+  mqtt_password?: string;
+  mqtt_base_topic?: string;
+  mqtt_discovery_prefix?: string;
   device_serials?: Array<{ zone_id: number; serial: number }>;
   pairings?: Array<{
     zone_id: number;
@@ -142,6 +147,48 @@ async function main() {
     deviceSerials: deviceSerials.size > 0 ? deviceSerials : undefined,
   });
 
+  // ── MQTT / Home Assistant discovery ───────────────────────
+  //
+  // Entirely optional: with no broker configured the bridge behaves exactly as
+  // it did before, and `mqtt` is never even imported.
+
+  const mqttUrl = process.env.MQTT_URL ?? haOptions?.mqtt_url ?? "";
+  const mqttBaseTopic =
+    process.env.MQTT_BASE_TOPIC ?? haOptions?.mqtt_base_topic ?? "lutron";
+
+  if (mqttUrl) {
+    const { MqttSink, connectMqttClient } = await import(
+      "../lib/bridge/sinks/mqtt"
+    );
+    try {
+      const client = await connectMqttClient({
+        url: mqttUrl,
+        username: process.env.MQTT_USERNAME ?? haOptions?.mqtt_username,
+        password: process.env.MQTT_PASSWORD ?? haOptions?.mqtt_password,
+        clientId: "lutron-bridge",
+        baseTopic: mqttBaseTopic,
+      });
+      bridge.addSink(
+        new MqttSink({
+          client,
+          baseTopic: mqttBaseTopic,
+          discoveryPrefix:
+            process.env.MQTT_DISCOVERY_PREFIX ??
+            haOptions?.mqtt_discovery_prefix,
+          // The one source this process runs today. Each gets its own
+          // availability topic so one dying does not grey out the others.
+          sources: ["ccx"],
+          log: (msg: string) => console.log(msg),
+        }),
+      );
+    } catch (err) {
+      // A broker that is down is not a reason to stop decoding packets; the
+      // client reconnects on its own, and this only catches setup failures.
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[mqtt] setup failed, continuing without it: ${message}`);
+    }
+  }
+
   // ── Fetch per-bulb calibration data ───────────────────────
 
   await bridge.fetchCctTables();
@@ -185,6 +232,9 @@ async function main() {
   console.log(`Channel: ${channel}`);
   console.log(`Decrypt: enabled (key: ${masterKey.slice(0, 8)}...)`);
   console.log(`Address table: ${pipeline.addressCount} EUI-64s pre-loaded`);
+  console.log(
+    `MQTT:    ${mqttUrl ? `${mqttUrl} (topics under ${mqttBaseTopic}/)` : "disabled"}`,
+  );
 
   if (pairings.length > 0) {
     console.log(`Pairings:`);
