@@ -6,15 +6,14 @@
  * Client registrations expire after 30s of silence.
  *
  * Binary framing (one datagram = one frame):
- *   STM32 → host:  [FLAGS:1][LEN:1][TS_MS:4 LE][DATA:N]
+ *   STM32 → host:  [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]([SRC:16])
  *   host → STM32:  [CMD:1][LEN:1][DATA:N]
  *   Heartbeat:      [0xFF][0x00]
  *   Status resp:    [0xFE][len][blob]
  *
- * FLAGS byte:
- *   Bit 7:   Direction (0=RX, 1=TX echo)
- *   Bit 6:   Protocol  (0=CCA, 1=CCX)
- *   Bits 0-5: |RSSI| for RX packets
+ * The 16-byte source IPv6 trailer rides on CCX frames when STREAM_FLAG_SRC is
+ * set.  Layout and flag semantics live in stream_frame.h; the serializer is
+ * stream_frame_build().
  */
 
 #include "stream.h"
@@ -64,6 +63,9 @@ struct StreamTxItem {
     uint8_t len;
     uint32_t timestamp_ms;
     uint32_t timestamp_cyc; /* DWT->CYCCNT at RF arrival; 0 for locally-timestamped frames */
+    /* Sender IPv6, valid only when flags & STREAM_FLAG_SRC.  Held in its own
+     * field rather than inlined into data[] so the payload budget is unchanged. */
+    uint8_t src_addr[STREAM_SRC_ADDR_LEN];
 };
 
 /* -----------------------------------------------------------------------
@@ -106,12 +108,16 @@ void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool i
     if (xQueueSend(tx_queue, &item, 0) != pdTRUE) tx_drop_count++;
 }
 
-void stream_send_ccx_packet(const uint8_t* data, size_t len)
+void stream_send_ccx_packet(const uint8_t* data, size_t len, const uint8_t* src_addr)
 {
     if (tx_queue == NULL || len > TX_ITEM_MAX_DATA) return;
 
     StreamTxItem item;
     item.flags = STREAM_FLAG_CCX;
+    if (src_addr != NULL) {
+        item.flags |= STREAM_FLAG_SRC;
+        memcpy(item.src_addr, src_addr, STREAM_SRC_ADDR_LEN);
+    }
     memcpy(item.data, data, len);
     item.len = static_cast<uint8_t>(len);
     item.timestamp_ms = HAL_GetTick();
@@ -761,14 +767,13 @@ static void stream_task_func(void* param)
                     broadcast_frame(frame, (uint16_t)(1 + tx_item.len));
                 }
                 else {
-                    /* Wire format: FLAGS(1) LEN(1) TS_MS(4) TS_CYC(4) DATA(N) */
-                    uint8_t frame[TX_ITEM_MAX_DATA + 10];
-                    frame[0] = tx_item.flags;
-                    frame[1] = tx_item.len;
-                    put_le32(frame + 2, tx_item.timestamp_ms);
-                    put_le32(frame + 6, tx_item.timestamp_cyc);
-                    memcpy(frame + 10, tx_item.data, tx_item.len);
-                    broadcast_frame(frame, (uint16_t)(10 + tx_item.len));
+                    /* Wire format: FLAGS(1) LEN(1) TS_MS(4) TS_CYC(4) DATA(N) [SRC(16)] */
+                    uint8_t frame[STREAM_FRAME_HEADER_LEN + TX_ITEM_MAX_DATA + STREAM_SRC_ADDR_LEN];
+                    const uint8_t* src = (tx_item.flags & STREAM_FLAG_SRC) ? tx_item.src_addr : NULL;
+                    size_t frame_len =
+                        stream_frame_build(frame, sizeof(frame), tx_item.flags, tx_item.data, tx_item.len,
+                                           tx_item.timestamp_ms, tx_item.timestamp_cyc, src);
+                    if (frame_len > 0) broadcast_frame(frame, (uint16_t)frame_len);
                 }
             } while (xQueueReceive(tx_queue, &tx_item, 0) == pdTRUE);
         }

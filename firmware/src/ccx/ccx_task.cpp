@@ -992,7 +992,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
             printf("\r\n");
         }
 
-        stream_send_ccx_packet(coap_buf, coap_len);
+        /* We built and sent this CoAP request — there is no remote sender. */
+        stream_send_ccx_packet(coap_buf, coap_len, CCX_SRC_LOCAL);
         return;
     }
 
@@ -1096,7 +1097,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
         printf("[ccx] TX RAW CBOR (%u):", (unsigned)cbor_len);
         for (size_t i = 0; i < cbor_len; i++) printf(" %02X", cbor[i]);
         printf("\r\n");
-        stream_send_ccx_packet(cbor, cbor_len);
+        /* Host-supplied CBOR we transmitted — locally originated. */
+        stream_send_ccx_packet(cbor, cbor_len, CCX_SRC_LOCAL);
         return;
     }
 
@@ -1147,8 +1149,8 @@ static void ccx_process_tx(const ccx_tx_request_t* req)
     for (size_t i = 0; i < cbor_len; i++) printf(" %02X", cbor_buf[i]);
     printf("\r\n");
 
-    /* Stream CBOR to TCP client */
-    stream_send_ccx_packet(cbor_buf, cbor_len);
+    /* Stream CBOR to TCP client — locally originated multicast command. */
+    stream_send_ccx_packet(cbor_buf, cbor_len, CCX_SRC_LOCAL);
 }
 
 /* -----------------------------------------------------------------------
@@ -1172,7 +1174,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
      * programming database write transactions can complete end-to-end. */
     if (src_port == COAP_UDP_PORT || dst_port == COAP_UDP_PORT || src_port == 49136 || dst_port == 49136 ||
         src_port == COAP_TMF_PORT || dst_port == COAP_TMF_PORT) {
-        stream_send_ccx_packet(udp_data, udp_payload_len);
+        stream_send_ccx_packet(udp_data, udp_payload_len, src_addr);
 
         uint8_t coap_type = 0;
         uint8_t coap_code = 0;
@@ -1574,8 +1576,8 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         if (n > 0) stream_broadcast_text(buf, (size_t)n);
     }
 
-    /* Forward raw CBOR to TCP stream */
-    stream_send_ccx_packet(udp_data, udp_payload_len);
+    /* Forward raw CBOR to TCP stream, attributed to the sending device. */
+    stream_send_ccx_packet(udp_data, udp_payload_len, src_addr);
 }
 
 void ccx_set_rx_log_enabled(bool enabled)

@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+/* Wire format + FLAGS bits live in stream_frame.h (pure, host-testable). */
+#include "stream_frame.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,17 +17,6 @@ extern "C" {
 
 /** Heartbeat interval (ms) */
 #define STREAM_HEARTBEAT_MS 5000
-
-/**
- * Stream packet FLAGS byte:
- *   Bit 7:   Direction (0=RX from radio, 1=TX echo)
- *   Bit 6:   Protocol  (0=CCA, 1=CCX)
- *   Bits 0-5: |RSSI| for RX packets
- */
-#define STREAM_FLAG_TX 0x80
-#define STREAM_FLAG_CCX 0x40
-#define STREAM_FLAG_RAW 0x20 /* Raw 802.15.4 frame (promiscuous sniff) */
-#define STREAM_FLAG_RSSI_MASK 0x1F
 
 /**
  * Stream command opcodes (host → STM32):
@@ -78,8 +70,14 @@ void stream_task_start(void);
 void stream_send_cca_packet(const uint8_t* data, size_t len, int8_t rssi, bool is_tx, uint32_t timestamp_ms,
                             uint32_t timestamp_cyc);
 
-/** Send a CCX packet to all registered UDP clients */
-void stream_send_ccx_packet(const uint8_t* data, size_t len);
+/** Sentinel for stream_send_ccx_packet(): the frame has no meaningful sender
+ *  (locally-originated TX).  Emits no source trailer — never a zero address. */
+#define CCX_SRC_LOCAL NULL
+
+/** Send a CCX packet to all registered UDP clients.
+ *  src_addr = 16-byte sender IPv6 in network byte order for received frames,
+ *  or CCX_SRC_LOCAL for frames this node originated. */
+void stream_send_ccx_packet(const uint8_t* data, size_t len, const uint8_t* src_addr);
 
 /** Send a raw 802.15.4 frame to all registered UDP clients (promiscuous mode) */
 void stream_send_raw_frame(const uint8_t* data, size_t len);

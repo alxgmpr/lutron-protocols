@@ -169,6 +169,7 @@ set(APP_SOURCES
     src/bsp/watchdog.c
     src/net/eth.c
     src/net/stream.cpp
+    src/net/stream_frame.c
     src/cca/cc1101.c
     src/cca/cca_timer.c
     src/cca/cca_task.cpp
