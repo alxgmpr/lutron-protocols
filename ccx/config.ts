@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type { LeapDumpData } from "../lib/leap-client";
-import { eui64ToSecondaryMleid } from "./addressing";
+import { canonicalizeIpv6, eui64ToSecondaryMleid } from "./addressing";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -125,10 +125,26 @@ function getDeviceMap(): DeviceMapData | null {
 // Lookup indices — address → device is keyed by BOTH the stable secondary
 // ML-EID and the legacy primary ML-EID, so RX packets seen on either address
 // path resolve to the same device entry.
+//
+// Each address is registered under its literal spelling AND its canonical form,
+// because callers arrive with either: LEAP-sourced strings keep whatever the
+// processor wrote, while addresses recovered from raw packet bytes (the Nucleo
+// stream's source trailer) are canonicalized.
 function getIndices(): DeviceIndices {
   if (_indices) return _indices;
   const byAddr = new Map<string, CCXDeviceEntry>();
   const bySerial = new Map<number, CCXDeviceEntry>();
+
+  const register = (addr: string | undefined, dev: CCXDeviceEntry) => {
+    if (!addr) return;
+    byAddr.set(addr, dev);
+    try {
+      byAddr.set(canonicalizeIpv6(addr), dev);
+    } catch {
+      // Not a parseable address — the literal key above still works.
+    }
+  };
+
   const map = getDeviceMap();
   if (map) {
     for (const dev of map.devices) {
@@ -136,8 +152,8 @@ function getIndices(): DeviceIndices {
       if (!dev.secondaryMleid && dev.eui64) {
         dev.secondaryMleid = eui64ToSecondaryMleid(dev.eui64);
       }
-      if (dev.secondaryMleid) byAddr.set(dev.secondaryMleid, dev);
-      if (dev.primaryMleid) byAddr.set(dev.primaryMleid, dev);
+      register(dev.secondaryMleid, dev);
+      register(dev.primaryMleid, dev);
       bySerial.set(dev.serial, dev);
     }
   }
@@ -190,9 +206,17 @@ function formatZoneName(zone: { name: string; area?: string }): string {
   return zone.area ? `${zone.area} ${zone.name}` : zone.name;
 }
 
-/** Look up a device name by IPv6 address (primary ML-EID) */
+/** Look up a device name by IPv6 address (primary or secondary ML-EID).
+ *  Accepts any spelling of the address. */
 export function getDeviceName(ipv6: string): string | undefined {
-  return getIndices().byAddr.get(ipv6)?.name;
+  const { byAddr } = getIndices();
+  const hit = byAddr.get(ipv6);
+  if (hit) return hit.name;
+  try {
+    return byAddr.get(canonicalizeIpv6(ipv6))?.name;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -154,6 +154,46 @@ test("getDeviceName resolves both secondaryMleid and primaryMleid to the same de
   );
 });
 
+test("getDeviceName tolerates a differently-spelled form of the same address", async () => {
+  // Addresses recovered from raw packet bytes (the Nucleo stream source
+  // trailer) are canonicalized, while LEAP-sourced strings keep whatever the
+  // processor wrote. Both must resolve.
+  await withIsolatedConfig(
+    {
+      "ccx-device-map.json": {
+        meshLocalPrefix: "fd0d:2ef:a82c:0",
+        devices: [
+          {
+            serial: 71148018,
+            eui64: "e2:79:8d:ff:fe:92:85:fe",
+            secondaryMleid: "fd00::e079:8dff:fe92:85fe",
+            primaryMleid: "FD0D:02EF:A82C:0000:DEAD:BEEF:1234:5678",
+            name: "Dining Room Back Doorway",
+            area: "Dining Room",
+            station: "Back Doorway",
+            deviceType: "SunnataDimmer",
+            zones: [],
+          },
+        ],
+      },
+    },
+    (mod) => {
+      // Fully expanded form of the secondary ML-EID
+      assert.equal(
+        mod.getDeviceName("fd00:0000:0000:0000:e079:8dff:fe92:85fe"),
+        "Dining Room Back Doorway",
+      );
+      // Canonical form of an upper-case, zero-padded primary ML-EID
+      assert.equal(
+        mod.getDeviceName("fd0d:2ef:a82c:0:dead:beef:1234:5678"),
+        "Dining Room Back Doorway",
+      );
+      assert.equal(mod.getDeviceName("fd00::1"), undefined);
+      assert.equal(mod.getDeviceName("not-an-address"), undefined);
+    },
+  );
+});
+
 test("getDeviceAddress derives secondaryMleid from eui64 when the field is missing", async () => {
   await withIsolatedConfig(
     {

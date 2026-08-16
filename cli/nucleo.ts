@@ -35,12 +35,18 @@ import {
 import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
+import {
+  FLAG_TX,
+  parseStreamPacketFrame,
+  type StreamPacketFrame,
+} from "../lib/stream-frame";
 import { DeviceClassNames } from "../protocol/cca.protocol";
 import {
   fingerprintDevice,
   identifyPacket,
   parseFieldValue,
 } from "../protocol/protocol-ui";
+import { type CcxSourceLabel, CcxSourceResolver } from "./core/ccx-source";
 import {
   BLUE,
   BOLD,
@@ -81,9 +87,7 @@ const CMD = {
 const RESP_TEXT = 0xfd;
 const TEXT_CMD_TIMEOUT_MS = 10000;
 
-// Stream flags (STM32 → host)
-const FLAG_TX = 0x80;
-const FLAG_CCX = 0x40;
+// Stream flags (STM32 → host) — see lib/stream-frame.ts for the rest
 const FLAG_RSSI_MASK = 0x3f;
 const CCA_SLOT_MS = 12.5;
 const CCA_SLOT_MAX_DT_MS = 400;
@@ -324,6 +328,11 @@ let ccaRxCount = 0;
 let ccaTxCount = 0;
 let ccxRxCount = 0;
 let ccxTxCount = 0;
+
+// CCX source attribution (GLAB-78): resolves a frame's sender IPv6 to a device
+// name, mirroring the firmware peer table for RLOC-sourced traffic.
+const ccxSource = new CcxSourceResolver();
+let warnedNoSourceSupport = false;
 
 function updateColumnHeaders(): void {
   const layout = getPacketLayout(raw, screen.width, verbose);
@@ -959,13 +968,22 @@ function formatCcxMessage(msg: CCXMessage): {
   }
 }
 
+/** Verbose-line fragments describing where a CCX frame came from. */
+function srcDetail(src: CcxSourceLabel): string[] {
+  const out = [`src=${src.text}`];
+  if (src.rloc16 !== undefined && src.name) {
+    out.push(`rloc=0x${src.rloc16.toString(16).padStart(4, "0")}`);
+  }
+  if (src.addr && src.addr !== src.text) out.push(src.addr);
+  return out;
+}
+
 function displayCcxPacket(
   data: Buffer,
-  flags: number,
-  _radioTs: number = 0,
+  frame: StreamPacketFrame,
   deltaMs: number = 0,
 ) {
-  const isTx = !!(flags & FLAG_TX);
+  const isTx = frame.isTx;
   if (isTx) ccxTxCount++;
   else ccxRxCount++;
   updateHeader();
@@ -981,6 +999,20 @@ function displayCcxPacket(
   } catch {
     // Fall back to raw hex display
   }
+
+  // Bind this sender's RLOC to a device identity when the message carries one,
+  // mirroring the firmware peer table, then label the source.
+  if (msg) {
+    ccxSource.observe(frame.srcAddr, {
+      serial:
+        "deviceSerial" in msg
+          ? (msg as { deviceSerial: number }).deviceSerial
+          : undefined,
+      deviceId:
+        "deviceId" in msg ? (msg as { deviceId: number }).deviceId : undefined,
+    });
+  }
+  const src = ccxSource.label(frame);
 
   if (msg) {
     const { typeName, parts } = formatCcxMessage(msg);
@@ -1003,13 +1035,19 @@ function displayCcxPacket(
     const rawHex = Array.from(data)
       .map((b) => b.toString(16).padStart(2, "0"))
       .join(" ");
+    // The frame's source names the sender; the CBOR body's device id only
+    // appears on some message types. Prefer a resolved sender name.
     let deviceText = "";
-    if ("deviceId" in msg) {
+    if (src.name) {
+      deviceText = src.name;
+    } else if ("deviceId" in msg) {
       const devId = (msg as { deviceId: number }).deviceId;
       deviceText = devId.toString(16).toUpperCase().padStart(8, "0");
     } else if ("deviceSerial" in msg) {
       const serial = (msg as { deviceSerial: number }).deviceSerial;
       deviceText = serial.toString(16).toUpperCase().padStart(8, "0");
+    } else {
+      deviceText = src.text;
     }
 
     // Zone from CCX message
@@ -1045,7 +1083,7 @@ function displayCcxPacket(
       state: compactParts.join("  "),
       raw: raw ? rawHex : "",
       delta: deltaStr,
-      verboseLine: parts.length > 0 ? parts.join("  ") : undefined,
+      verboseLine: [...parts, ...srcDetail(src)].join("  ") || undefined,
     });
   } else {
     // Fallback: raw hex (always show)
@@ -1063,11 +1101,13 @@ function displayCcxPacket(
       opcode: data.length > 0 ? data[0].toString(16).padStart(2, "0") : "",
       typeAction: "RAW",
       typeActionColor: WHITE,
-      device: "",
+      device: src.text,
+      deviceColor: CYAN,
       zone: "",
       state: raw ? "" : rawHex,
       raw: raw ? rawHex : "",
       delta: deltaStr,
+      verboseLine: srcDetail(src).join("  ") || undefined,
     });
   }
 
@@ -1239,13 +1279,12 @@ function handleDatagram(msg: Buffer) {
     return;
   }
 
-  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]
-  if (msg.length < 10 + len) return;
+  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]([SRC:16])
+  const frame = parseStreamPacketFrame(msg);
+  if (!frame) return; // truncated — dropped rather than misparsed
 
-  const radioTs = readU32LE(msg, 2);
-  // radioCyc at offset 6 (DWT cycle count, ~1.82 ns @ 548 MHz) — ignored by CLI display
-  const data = msg.subarray(10, 10 + len);
-  const isCcx = !!(flags & FLAG_CCX);
+  const { data, isCcx } = frame;
+  const radioTs = frame.tsMs;
 
   // Compute per-protocol inter-packet delta
   let deltaMs = 0;
@@ -1261,13 +1300,22 @@ function handleDatagram(msg: Buffer) {
     lastCcaRadioTs = radioTs;
   }
 
+  // Warn once if the attached firmware predates the source trailer (GLAB-78),
+  // so missing attribution reads as a version gap rather than a silent blank.
+  if (isCcx && frame.srcKind === "unsupported" && !warnedNoSourceSupport) {
+    warnedNoSourceSupport = true;
+    screen.appendLine(
+      `${YELLOW}Nucleo firmware predates CCX source attribution — packet sources unavailable. Reflash with 'cd firmware && make flash'.${RESET}`,
+    );
+  }
+
   if (quiet) return;
 
   // Protocol dispatch
   if (isCcx) {
-    displayCcxPacket(data, flags, radioTs, deltaMs);
+    displayCcxPacket(data, frame, deltaMs);
   } else {
-    displayCcaPacket(data, flags, radioTs, deltaMs);
+    displayCcaPacket(data, frame.flags, radioTs, deltaMs);
   }
   updateStatusBar();
 }
