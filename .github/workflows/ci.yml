@@ -45,6 +45,20 @@ jobs:
       - run: npm ci
       - run: npm run test:ts
 
+  bench:
+    # Decode-path performance gate. Compares ratios against a fixed reference
+    # workload rather than wall-clock times, so a shared runner's speed does
+    # not decide the verdict. See tools/bench.ts.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run bench
+
   test-firmware:
     runs-on: ubuntu-latest
     steps:

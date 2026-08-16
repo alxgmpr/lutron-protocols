@@ -1,0 +1,12 @@
+{
+  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% \u2014 the 40% band is sized from that.",
+  "tolerancePct": 40,
+  "perCaseTolerancePct": {},
+  "ratios": {
+    "cca.identifyPacket": 1.4427,
+    "cca.decodeFrame": 2.3003,
+    "stream.parseFrame": 1.6551,
+    "ccx.decodeAndParse": 3.5871,
+    "bridge.dispatch": 7.0309
+  }
+}
