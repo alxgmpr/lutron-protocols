@@ -15,6 +15,7 @@
     "bench": "npx tsx tools/bench.ts",
     "corpus:build": "npx tsx tools/cca/build-corpus.ts",
     "corpus:check": "npx tsx tools/cca/build-corpus.ts --check",
+    "capture-rate": "tsx tools/cca/capture-rate.ts",
     "cca:ota-upload": "npx tsx tools/cca/ota-upload.ts",
     "cca:ota-tx-loopback": "npx tsx tools/cca/ota-tx-loopback.ts",
     "cca:ota-tx-replay": "npx tsx tools/cca/ota-tx-replay.ts",

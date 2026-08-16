@@ -13,6 +13,16 @@ export interface SequenceOptions {
    * a single byte, so a run of any length rolls over at 256.
    */
   modulus?: number;
+  /**
+   * Known spacing between consecutive numbers, used instead of inferring one.
+   *
+   * Inference from a handful of numbers is fragile in both directions: two
+   * arrivals cannot reveal a step at all, and one value off the lattice drags
+   * the GCD to 1 and inflates `expected` accordingly. A caller that has seen
+   * the sender across many bursts knows the step better than any single burst
+   * can show it.
+   */
+  step?: number;
 }
 
 export interface SequenceAnalysis {
@@ -67,16 +77,17 @@ export function analyzeSequence(
   const duplicates = unwrapped.length - unique.length;
 
   // One number tells us nothing about spacing, so it tells us nothing about
-  // loss either. Reporting 0% here would read as a clean run.
-  if (unique.length < 2) {
+  // loss either — unless the caller already knows the step, in which case a
+  // lone arrival is still a span of one.
+  if (unique.length < 2 && !opts.step) {
     return { ...EMPTY, received: unique.length, duplicates };
   }
 
   const first = unique[0];
   const last = unique[unique.length - 1];
-  const step = unique
-    .slice(1)
-    .reduce((acc, s, i) => gcd(acc, s - unique[i]), 0);
+  const step =
+    opts.step ??
+    unique.slice(1).reduce((acc, s, i) => gcd(acc, s - unique[i]), 0);
 
   const seen = new Set(unique);
   const missing: number[] = [];
@@ -84,7 +95,11 @@ export function analyzeSequence(
     if (!seen.has(s)) missing.push(rewrap(s, opts.modulus));
   }
 
-  const expected = (last - first) / step + 1;
+  // Whole slots only, and the same ones the scan above visited. When the step
+  // is supplied rather than inferred, the span need not divide by it — a
+  // single arrival off the lattice would otherwise make a capture report a
+  // fractional number of frames it was waiting for.
+  const expected = Math.floor((last - first) / step) + 1;
   return {
     step,
     received: unique.length,
