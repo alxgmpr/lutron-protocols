@@ -74,6 +74,7 @@ reference tables.
 | Doc | Description |
 |-----|-------------|
 | [tooling/nucleo.md](tooling/nucleo.md) | STM32H723 Nucleo transceiver — toolchain, flashing, build, wiring |
+| [tooling/ncp-swd-flash.md](tooling/ncp-swd-flash.md) | Reflashing the nRF52840 NCP over SWD from the Nucleo — windowed HEX streaming, region guards, Thread credential re-push |
 | [tooling/bdm-recovery.md](tooling/bdm-recovery.md) | PowPak BDM recovery — USBDM wiring and the `bdm-prog.py` programmer |
 | [tooling/ccx-wiz-bridge.md](tooling/ccx-wiz-bridge.md) | CCX-WiZ bridge — state machine, HA add-on deployment, WiZ integration |
 | [tooling/network.md](tooling/network.md) | Network topology, IP assignments, LEAP infrastructure |

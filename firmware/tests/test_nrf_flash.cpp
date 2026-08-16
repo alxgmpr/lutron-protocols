@@ -604,6 +604,11 @@ TEST(nrf_flash_ticks_at_least_once_per_page)
 
 TEST(nrf_flash_bootloader_base_reads_uicr_nrffw0)
 {
+    /* 0x000E0000 is not a guess: it is what the bench dongle actually holds.
+       Read back over SWD from the running board —
+         [10001014] = 000E0000   NRFFW[0], bootloader start
+         [10001018] = 000FE000   NRFFW[1], bootloader settings page
+       and the image it is protecting spans 0x1000..0x37FB8. */
     Rig r;
     r.target.poke(0x10001014u, 0x000E0000u);
     ASSERT_EQ(nrf_flash_bootloader_base(&r.nrf, 0x12345u), 0x000E0000u);
