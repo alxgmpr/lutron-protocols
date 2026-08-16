@@ -25,6 +25,10 @@
 #include "stream.h"
 #include "bsp.h"
 #include "watchdog.h"
+#include "ncp_watchdog.h"
+#include "swd.h"
+#include "swd_gpio.h"
+#include "nrf_swd.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -1675,6 +1679,81 @@ static void shell_cmd_process(void)
 /* -----------------------------------------------------------------------
  * Main task
  * ----------------------------------------------------------------------- */
+/* -----------------------------------------------------------------------
+ * NCP liveness watchdog
+ *
+ * The NCP used to be probed exactly once at startup; if that failed the task
+ * slept forever and the board sat dead until somebody noticed. A CTRL-AP reset
+ * over SWD can recover a dongle stuck in its bootloader, so the failure is now
+ * detected and acted on. Policy lives in ncp_watchdog.c and is host-tested;
+ * this is just the actuator.
+ * ----------------------------------------------------------------------- */
+
+/** How often to ask the NCP to prove it is alive. */
+#define NCP_HEALTH_POLL_MS 5000u
+
+/** Settle time after a CTRL-AP reset before judging the outcome. The part
+ *  takes appreciably longer than a few hundred ms to come back — checking too
+ *  early reports a working reset as a failure. ncp_probe() waits 2 s more. */
+#define NCP_RESET_SETTLE_MS 500u
+
+static ncp_wd_t ncp_wd;
+
+uint32_t ccx_ncp_recoveries(void)
+{
+    return ncp_wd_recoveries(&ncp_wd);
+}
+
+uint32_t ccx_ncp_recovery_attempts(void)
+{
+    return ncp_wd_attempts(&ncp_wd);
+}
+
+bool ccx_ncp_healthy(void)
+{
+    return ncp_wd_state(&ncp_wd) == NCP_WD_HEALTHY;
+}
+
+/** Pulse CTRL-AP reset over SWD, then re-probe and rejoin if it came back. */
+static void ncp_recover_via_swd(void)
+{
+    printf("[ccx] NCP unresponsive — SWD recovery, attempt %lu\r\n", (unsigned long)(ncp_wd_attempts(&ncp_wd) + 1u));
+
+    swd_gpio_init();
+    swd_io_t io = swd_gpio_io();
+    swd_t swd;
+    swd_init(&swd, &io);
+
+    uint32_t idcode = 0;
+    if (swd_connect(&swd, &idcode) == SWD_OK && swd_power_up(&swd) == SWD_OK) {
+        nrf_swd_t nrf;
+        nrf_swd_init(&nrf, &swd);
+        swd_status_t st = nrf_swd_pin_reset(&nrf);
+        printf("[ccx] SWD: IDCODE=0x%08lX, CTRL-AP reset st=%d\r\n", (unsigned long)idcode, (int)st);
+    }
+    else {
+        printf("[ccx] SWD: debug port did not answer — check wiring and 3V3\r\n");
+    }
+    swd_gpio_deinit();
+
+    watchdog_feed();
+    vTaskDelay(pdMS_TO_TICKS(NCP_RESET_SETTLE_MS));
+
+    /* ncp_probe() and thread_join() together can run well past the 10 s
+       hardware watchdog, so keep feeding it across them. */
+    watchdog_feed();
+    bool ok = ncp_probe();
+    watchdog_feed();
+
+    ncp_detected = ok;
+    if (ok) {
+        printf("[ccx] NCP recovered — rejoining Thread\r\n");
+        thread_join();
+        watchdog_feed();
+    }
+    ncp_wd_recovery_done(&ncp_wd, ok, HAL_GetTick());
+}
+
 static void ccx_task_func(void* param)
 {
     (void)param;
@@ -1684,8 +1763,15 @@ static void ccx_task_func(void* param)
 
     running = true;
 
+    ncp_wd_cfg_t wd_cfg;
+    ncp_wd_default_cfg(&wd_cfg);
+    ncp_wd_init(&ncp_wd, &wd_cfg, HAL_GetTick());
+
     /* Probe the NCP on startup */
     ncp_detected = ncp_probe();
+    if (ncp_detected) {
+        ncp_wd_alive(&ncp_wd, HAL_GetTick());
+    }
 
     /* Join Thread network if NCP is alive */
     if (ncp_detected) {
@@ -1694,8 +1780,28 @@ static void ccx_task_func(void* param)
         }
     }
 
+    uint32_t last_health_poll = HAL_GetTick();
+
     for (;;) {
         watchdog_feed();
+
+        /* Positive liveness check. Passive RX is not proof of life — an idle
+           Thread network is silent for long stretches — so ask the NCP for a
+           property and treat the answer as the evidence. */
+        uint32_t now = HAL_GetTick();
+        if (ncp_detected && dfu_state == CCX_DFU_IDLE && (uint32_t)(now - last_health_poll) >= NCP_HEALTH_POLL_MS) {
+            last_health_poll = now;
+            uint8_t resp[16];
+            if (spinel_prop_get(SPINEL_PROP_NET_ROLE, resp, sizeof(resp), 250) > 0) {
+                ncp_wd_alive(&ncp_wd, HAL_GetTick());
+            }
+        }
+
+        /* Never fight a DFU upload for the UART. */
+        if (dfu_state == CCX_DFU_IDLE && ncp_wd_should_recover(&ncp_wd, HAL_GetTick())) {
+            ncp_recover_via_swd();
+            continue;
+        }
 
         /* Check if shell task has a pending Spinel command */
         if (xSemaphoreTake(shell_cmd_ready, 0) == pdTRUE) {

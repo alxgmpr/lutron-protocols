@@ -179,6 +179,7 @@ set(APP_SOURCES
     src/cca/cca_auto_pair.cpp
     src/cca/cca_ota_session.cpp
     src/ccx/ccx_task.cpp
+    src/ccx/ncp_watchdog.c
     src/ccx/ccx_cbor.c
     src/ccx/ccx_msg.c
     src/ccx/coap.c
@@ -189,6 +190,11 @@ set(APP_SOURCES
     src/shell/shell.cpp
     src/storage/flash_store.cpp
     src/storage/crc32.c
+    src/swd/swd.c
+    src/swd/swd_mem.c
+    src/swd/nrf_swd.c
+    src/swd/ihex.c
+    src/swd/swd_gpio.c
 )
 
 # ------------------------------------------------------------------
@@ -203,6 +209,7 @@ set(INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/net
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shell
     ${CMAKE_CURRENT_SOURCE_DIR}/src/storage
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/swd
     ${HAL_DIR}/Inc
     ${CMSIS_DIR}/Include
     ${CMSIS_DIR}/Device/ST/STM32H7xx/Include

@@ -116,7 +116,7 @@ static size_t rx_pend_count = 0;
 static cca_rx_hook_t rx_hook = NULL;
 
 /* -----------------------------------------------------------------------
- * GDO0 ISR callback — called from EXTI9_5_IRQHandler (stm32h7xx_it.c)
+ * GDO0 ISR callback — called from EXTI2_IRQHandler (stm32h7xx_it.c)
  * ----------------------------------------------------------------------- */
 extern "C" void cca_gdo0_isr_callback(void)
 {
