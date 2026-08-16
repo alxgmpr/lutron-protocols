@@ -2117,35 +2117,188 @@ static void cmd_rx(const char* arg)
  * This is also the only exercise the GPIO bit-bang backend gets — everything
  * above it is covered by host tests, this is the part that needs wires.
  */
-static void cmd_swd(void)
+/** Bring the SWD link up. Caller must swd_gpio_deinit() when done. */
+static swd_status_t swd_link_up(swd_t* swd, nrf_swd_t* nrf, swd_io_t* io)
 {
-    printf("--- SWD probe (PD4 SWDIO / PD7 SWCLK) ---\r\n");
-
     swd_gpio_init();
-    swd_io_t io = swd_gpio_io();
-    swd_t swd;
-    swd_init(&swd, &io);
+    *io = swd_gpio_io();
+    swd_init(swd, io);
 
     uint32_t idcode = 0;
-    swd_status_t st = swd_connect(&swd, &idcode);
+    swd_status_t st = swd_connect(swd, &idcode);
     printf("connect      : st=%d IDCODE=0x%08lX %s\r\n", (int)st, (unsigned long)idcode,
            (st == SWD_OK && idcode == 0x2BA01477u) ? "(nRF52840 SW-DP)" : "");
     if (st != SWD_OK) {
         printf("  no answer — check SWDIO/SWCLK wiring and that the dongle has 3V3\r\n");
+        return st;
+    }
+
+    st = swd_power_up(swd);
+    printf("power up     : st=%d\r\n", (int)st);
+    nrf_swd_init(nrf, swd);
+    return st;
+}
+
+/**
+ * Is the AHB-AP actually answering?
+ *
+ * Worth checking explicitly before trusting any memory read. When APPROTECT is
+ * engaged the AP still ACKs but returns a fixed pattern, so a read "succeeds"
+ * and hands back a value that means nothing. Everything downstream — RESETREAS,
+ * GPREGRET, even an APPROTECT status bit — is then decoded from noise.
+ */
+static bool swd_ahb_ap_alive(nrf_swd_t* nrf)
+{
+    uint32_t idr = 0;
+    return swd_mem_read_idr(&nrf->mem, &idr) == SWD_OK && idr == 0x24770011u;
+}
+
+/** Dump the IDR of each AP so it is obvious which ones are reachable. */
+static void swd_dump_aps(swd_t* swd)
+{
+    for (uint8_t ap = 0; ap < 4; ap++) {
+        uint32_t idr = 0;
+        swd_status_t st = swd_ap_read(swd, ap, SWD_AP_IDR, &idr);
+        const char* note = "";
+        if (st == SWD_OK && idr == 0x24770011u) {
+            note = "AHB-AP";
+        }
+        else if (st == SWD_OK && idr == 0x02880000u) {
+            note = "CTRL-AP";
+        }
+        else if (st == SWD_OK && idr == 0) {
+            note = "(absent)";
+        }
+        else if (st == SWD_OK) {
+            note = "(unrecognised — AP not really answering)";
+        }
+        printf("AP%u IDR      : st=%d 0x%08lX %s\r\n", (unsigned)ap, (int)st, (unsigned long)idr, note);
+    }
+}
+
+/**
+ * SWD access to the nRF52840 NCP.
+ *
+ *   swd              probe: identity and status, read-only
+ *   swd ap           dump AP IDRs (which access ports actually answer)
+ *   swd reset        CTRL-AP pin-reset pulse — non-destructive, works with
+ *                    APPROTECT engaged, does NOT clear GPREGRET
+ *   swd read <a> [n] read n words from address a
+ *   swd write <a> <v> write one word
+ *
+ * Nothing here erases. CTRL-AP ERASEALL is deliberately not wired to a command
+ * yet: it wipes the MBR and bootloader as well as the app, and ot-ncp-ftd.hex
+ * starts at 0x1000 so it cannot restore the MBR on its own.
+ */
+static void cmd_swd(const char* args)
+{
+    swd_io_t io;
+    swd_t swd;
+    nrf_swd_t nrf;
+
+    if (strncmp(args, "read ", 5) == 0 || strncmp(args, "write ", 6) == 0) {
+        bool is_write = args[0] == 'w';
+        const char* p = args + (is_write ? 6 : 5);
+        char* end = NULL;
+        uint32_t addr = (uint32_t)strtoul(p, &end, 16);
+        uint32_t arg2 = 0;
+        if (end && *end) {
+            arg2 = (uint32_t)strtoul(end, NULL, 16);
+        }
+        if ((addr & 3u) != 0) {
+            printf("address must be word aligned\r\n");
+            return;
+        }
+
+        printf("--- SWD %s ---\r\n", is_write ? "write" : "read");
+        if (swd_link_up(&swd, &nrf, &io) != SWD_OK) {
+            swd_gpio_deinit();
+            return;
+        }
+        if (!swd_ahb_ap_alive(&nrf)) {
+            printf("AHB-AP not answering — memory access unavailable\r\n");
+            swd_gpio_deinit();
+            return;
+        }
+
+        if (is_write) {
+            swd_status_t st = swd_mem_write32(&nrf.mem, addr, arg2);
+            printf("[%08lX] <= %08lX  st=%d\r\n", (unsigned long)addr, (unsigned long)arg2, (int)st);
+        }
+        else {
+            uint32_t n = arg2 ? arg2 : 1;
+            if (n > 32) {
+                n = 32;
+            }
+            for (uint32_t i = 0; i < n; i++) {
+                uint32_t v = 0;
+                swd_status_t st = swd_mem_read32(&nrf.mem, addr + i * 4u, &v);
+                printf("[%08lX] = %08lX  st=%d\r\n", (unsigned long)(addr + i * 4u), (unsigned long)v, (int)st);
+            }
+        }
         swd_gpio_deinit();
         return;
     }
 
-    st = swd_power_up(&swd);
-    printf("power up     : st=%d\r\n", (int)st);
+    if (strcmp(args, "ap") == 0) {
+        printf("--- SWD access ports ---\r\n");
+        if (swd_link_up(&swd, &nrf, &io) == SWD_OK) {
+            swd_dump_aps(&swd);
+        }
+        swd_gpio_deinit();
+        return;
+    }
 
-    nrf_swd_t nrf;
-    nrf_swd_init(&nrf, &swd);
+    if (strcmp(args, "reset") == 0) {
+        printf("--- SWD CTRL-AP reset ---\r\n");
+        if (swd_link_up(&swd, &nrf, &io) != SWD_OK) {
+            swd_gpio_deinit();
+            return;
+        }
+        /* CTRL-AP stays reachable when APPROTECT blocks the AHB-AP; that is
+           what it is for. This is a pin-reset equivalent, so GPREGRET survives
+           it — if the bootloader was entered via the DFU magic it will be
+           entered again. */
+        swd_status_t st = swd_ap_write(&swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 1u);
+        printf("assert reset : st=%d\r\n", (int)st);
+        HAL_Delay(20);
+        st = swd_ap_write(&swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 0u);
+        printf("release      : st=%d\r\n", (int)st);
+
+        /* Give the part a moment to come out of reset and run startup. */
+        HAL_Delay(250);
+        uint32_t idcode = 0;
+        if (swd_connect(&swd, &idcode) == SWD_OK && swd_power_up(&swd) == SWD_OK) {
+            nrf_swd_init(&nrf, &swd);
+            printf("after reset  : AHB-AP %s\r\n",
+                   swd_ahb_ap_alive(&nrf) ? "ALIVE (application is running)" : "still blocked (bootloader/APPROTECT)");
+        }
+        swd_gpio_deinit();
+        return;
+    }
+
+    printf("--- SWD probe (PD4 SWDIO / PD7 SWCLK) ---\r\n");
+    if (swd_link_up(&swd, &nrf, &io) != SWD_OK) {
+        swd_gpio_deinit();
+        return;
+    }
 
     uint32_t idr = 0;
-    st = swd_mem_read_idr(&nrf.mem, &idr);
+    swd_status_t st = swd_mem_read_idr(&nrf.mem, &idr);
+    bool ahb_ok = (st == SWD_OK && idr == 0x24770011u);
     printf("AHB-AP IDR   : st=%d 0x%08lX %s\r\n", (int)st, (unsigned long)idr,
-           (st == SWD_OK && idr == 0x24770011u) ? "(expected)" : "");
+           ahb_ok ? "(expected)" : "(WRONG — AP is not answering)");
+
+    if (!ahb_ok) {
+        /* Do not decode anything else. With the AP returning a fixed pattern
+           every further "read" is that same pattern, and reporting an APPROTECT
+           bit or a RESETREAS value out of it is worse than reporting nothing. */
+        printf("\r\nAP access is blocked — no memory reads are meaningful.\r\n");
+        printf("Consistent with APPROTECT engaged while the bootloader runs.\r\n");
+        printf("Try 'swd ap' to see which ports answer, then 'swd reset'.\r\n");
+        swd_gpio_deinit();
+        return;
+    }
 
     bool locked = true;
     st = nrf_swd_is_locked(&nrf, &locked);
@@ -3612,7 +3765,10 @@ void shell_execute(const char* line)
         cmd_eth();
     }
     else if (strcmp(line, "swd") == 0) {
-        cmd_swd();
+        cmd_swd("");
+    }
+    else if (strncmp(line, "swd ", 4) == 0) {
+        cmd_swd(line + 4);
     }
     else if (strncmp(line, "rx ", 3) == 0) {
         cmd_rx(line + 3);
