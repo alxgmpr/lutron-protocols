@@ -147,19 +147,52 @@ interface BenchCase {
 }
 
 /**
- * Fixed arithmetic workload. Must not touch any code under test, or the
- * ratios move when that code changes and the baseline means nothing.
+ * Fixed workload standing in for "a decode path", used to normalize away
+ * machine speed.
+ *
+ * Deliberately NOT a tight arithmetic loop. The first version was, and it
+ * failed: pure integer ALU work relates differently to allocation-heavy code
+ * on arm64 than on x86, so the ratios moved 39-51% between a laptop and a CI
+ * runner. This mixes the primitives the decoders actually spend their time
+ * on — buffer reads, short-lived object literals, Map lookups, small array
+ * iteration, hex formatting — so that a machine which is fast or slow at
+ * decoding is fast or slow at the reference in the same proportion.
+ *
+ * It must not call any code under test, or the ratios move when that code
+ * changes and the baseline stops meaning anything.
  */
 function referenceWorkload(): void {
-  let x = 123456789;
-  let acc = 0;
-  for (let i = 0; i < 8_000_000; i++) {
-    x ^= x << 13;
-    x ^= x >>> 17;
-    x ^= x << 5;
-    acc = (acc + (x & 0xffff)) >>> 0;
+  const scratch = Buffer.alloc(32);
+  const table = new Map<number, string>();
+  for (let i = 0; i < 256; i++) table.set(i, `type_${i.toString(16)}`);
+
+  let sink = 0;
+  for (let i = 0; i < 120_000; i++) {
+    scratch.writeUInt32BE((i * 2654435761) >>> 0, 0);
+    scratch.writeUInt32LE((i * 40503) >>> 0, 4);
+
+    const typeByte = scratch[0];
+    const name = table.get(typeByte) ?? "unknown";
+
+    const fields = [
+      { offset: 0, size: 4, value: scratch.readUInt32BE(0) },
+      { offset: 4, size: 4, value: scratch.readUInt32LE(4) },
+      { offset: 8, size: 2, value: scratch.readUInt16BE(8) },
+    ];
+
+    let parsed = 0;
+    for (const f of fields) {
+      if (f.offset + f.size > scratch.length) continue;
+      parsed += f.value & 0xff;
+    }
+
+    const record = { name, parsed, seq: i & 0xff, raw: scratch[1] };
+    sink = (sink + record.parsed + record.seq + record.raw) >>> 0;
+
+    if ((i & 0x3fff) === 0)
+      sink = (sink + scratch.toString("hex").length) >>> 0;
   }
-  if (acc === 1) throw new Error("unreachable — keeps the loop live");
+  if (sink === 1) throw new Error("unreachable — keeps the loop live");
 }
 
 const CASES: BenchCase[] = [

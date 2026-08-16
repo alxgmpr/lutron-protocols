@@ -1,14 +1,14 @@
 {
-  "note": "Ratios vs the reference workload, measured on CI. The gate runs on CI only \u2014 see tools/bench.ts. Mean of two runs of commit 5cd4e0a.",
+  "note": "PROVISIONAL \u2014 laptop-measured, pushed to test whether the decode-shaped reference makes ratios transfer across machines. Replace with CI numbers.",
   "tolerancePct": 40,
   "perCaseTolerancePct": {
     "bridge.dispatch": 80
   },
   "ratios": {
-    "cca.identifyPacket": 0.2309,
-    "cca.decodeFrame": 0.4001,
-    "stream.parseFrame": 0.2527,
-    "ccx.decodeAndParse": 0.6269,
-    "bridge.dispatch": 1.3659
+    "cca.identifyPacket": 1.3106,
+    "cca.decodeFrame": 1.7077,
+    "stream.parseFrame": 1.2561,
+    "ccx.decodeAndParse": 2.3129,
+    "bridge.dispatch": 4.9732
   }
 }
