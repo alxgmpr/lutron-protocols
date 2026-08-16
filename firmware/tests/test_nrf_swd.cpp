@@ -391,6 +391,101 @@ TEST(nrf_swd_recover_releases_the_ctrl_ap_reset_it_asserted)
     ASSERT_EQ(r.target.ctrl_ap_reset(), 0u);
 }
 
+/* -----------------------------------------------------------------------
+ * Waiting for AP0 to come back after a reset
+ * ----------------------------------------------------------------------- */
+
+namespace {
+
+/** Counts delays, and can hand the part back partway through the wait. */
+struct Waiter {
+    FakeSwdTarget* target;
+    int calls = 0;
+    int unlock_after = -1; /* -1 = never */
+
+    static void tick(void* ctx, uint32_t ms)
+    {
+        (void)ms;
+        Waiter* w = (Waiter*)ctx;
+        w->calls++;
+        if (w->unlock_after >= 0 && w->calls >= w->unlock_after) {
+            w->target->set_locked(false);
+        }
+    }
+};
+
+} // namespace
+
+TEST(nrf_swd_wait_ap_ready_returns_at_once_when_the_ap_already_answers)
+{
+    Rig r;
+    Waiter w{&r.target};
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, Waiter::tick, &w, 10, 250), SWD_OK);
+    ASSERT_EQ(w.calls, 0);
+}
+
+TEST(nrf_swd_wait_ap_ready_keeps_polling_until_the_part_comes_back)
+{
+    /* The reason this is a poll and not a sleep: during GLAB-111 a re-probe at
+       250 ms reported "still blocked" on a reset that had in fact worked. The
+       part takes appreciably longer than one settle to come back, so a single
+       early look is a false negative. */
+    Rig r;
+    r.target.set_locked(true);
+    Waiter w{&r.target};
+    w.unlock_after = 6;
+
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, Waiter::tick, &w, 20, 250), SWD_OK);
+    ASSERT_EQ(w.calls, 6);
+}
+
+TEST(nrf_swd_wait_ap_ready_spends_its_whole_budget_before_giving_up)
+{
+    Rig r;
+    r.target.set_locked(true);
+    Waiter w{&r.target};
+
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, Waiter::tick, &w, 8, 250), SWD_ERR_LOCKED);
+    ASSERT_EQ(w.calls, 8);
+}
+
+TEST(nrf_swd_wait_ap_ready_works_without_a_delay_callback)
+{
+    Rig r;
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, NULL, NULL, 3, 0), SWD_OK);
+}
+
+TEST(nrf_swd_wait_ap_ready_clears_a_sticky_error_between_attempts)
+{
+    /* A faulted AP access latches STICKYERR, and while it is latched every
+       further AP access faults too. swd.c's transfer path clears it; this pins
+       that the retry loop actually benefits, because a wait that inherited a
+       latched error would report a healthy part as blocked forever. */
+    Rig r;
+    r.target.inject_fault(1);
+
+    Waiter w{&r.target};
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, Waiter::tick, &w, 5, 250), SWD_OK);
+    ASSERT_EQ(r.target.protocol_errors(), 0);
+}
+
+TEST(nrf_swd_wait_ap_ready_leaves_the_link_usable_after_a_pin_reset)
+{
+    Rig r;
+    ASSERT_EQ(nrf_swd_connect(&r.nrf), SWD_OK);
+    ASSERT_EQ(nrf_swd_pin_reset(&r.nrf), SWD_OK);
+
+    Waiter w{&r.target};
+    ASSERT_EQ(nrf_swd_wait_ap_ready(&r.nrf, Waiter::tick, &w, 10, 250), SWD_OK);
+
+    /* The point of waiting is to get to memory access, so prove it works. */
+    uint32_t v = 0;
+    r.target.poke(0x20000000u, 0xA5A5A5A5u);
+    ASSERT_EQ(swd_mem_read32(&r.nrf.mem, 0x20000000u, &v), SWD_OK);
+    ASSERT_EQ(v, 0xA5A5A5A5u);
+    ASSERT_EQ(r.target.protocol_errors(), 0);
+}
+
 TEST(nrf_swd_recovered_part_can_be_programmed)
 {
     Rig r;

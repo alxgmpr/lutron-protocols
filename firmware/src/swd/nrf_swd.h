@@ -102,6 +102,29 @@ swd_status_t nrf_swd_recover(nrf_swd_t* n);
  */
 swd_status_t nrf_swd_pin_reset(nrf_swd_t* n);
 
+/** Somewhere for the caller to sleep. Left to the caller because the shell,
+ *  the CCX task and the host tests all wait differently. */
+typedef void (*swd_delay_fn)(void* ctx, uint32_t ms);
+
+/**
+ * Poll until the AHB-AP answers, or the attempt budget runs out.
+ *
+ * This is the step after a CTRL-AP reset. The nRF52840 engages APPROTECT at
+ * every reset and relies on firmware to clear it, so AP0 stays blocked from the
+ * release of reset until the application's startup gets around to it — and the
+ * gap is not small. A single early re-probe reports a reset that worked as a
+ * failure, which is exactly what happened during GLAB-111 at 250 ms.
+ *
+ * Each attempt re-runs the full bring-up — line reset, JTAG-to-SWD, power-up —
+ * rather than re-reading the AP through a link that may have gone out from
+ * under it. It costs one line reset per poll and removes the question.
+ *
+ * Returns SWD_ERR_LOCKED if the budget is spent with AP0 still blocked.
+ * @p delay may be NULL.
+ */
+swd_status_t nrf_swd_wait_ap_ready(nrf_swd_t* n, swd_delay_fn delay, void* ctx, uint32_t attempts,
+                                   uint32_t interval_ms);
+
 /** Halt the core. Do this before erasing or programming. */
 swd_status_t nrf_swd_halt(nrf_swd_t* n);
 
