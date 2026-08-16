@@ -3533,6 +3533,7 @@ void shell_execute(const char* line)
             printf("  staged:  none\r\n");
         }
         printf("  install with: ota install\r\n");
+        printf("  running:  built %s %s\r\n", __DATE__, __TIME__);
     }
     else if (strcmp(line, "ota abort") == 0) {
         ota_service_abort();
