@@ -32,6 +32,10 @@
 #include "swd_mem.h"
 #include "nrf_swd.h"
 #include "swd_gpio.h"
+#include "nrf_flash.h"
+#include "swd_lock.h"
+#include "crc32.h"
+#include "cca_ota_session.h"
 #include "ccx_msg.h"
 #include "coap.h"
 #include "stream.h"
@@ -2178,6 +2182,327 @@ static void swd_dump_aps(swd_t* swd)
     }
 }
 
+/** The read-only/reset half of `swd`, run with the pin lock already held. */
+static void cmd_swd_locked(const char* args);
+
+/* -----------------------------------------------------------------------
+ * swd flash — program the NCP from an Intel HEX image uploaded over Ethernet
+ *
+ * The image is far too large to hold: 633 KB of hex text against ~76 KB of
+ * free RAM. So it arrives a window at a time through the existing OTA upload
+ * commands, and each window is fed straight through the HEX parser into flash,
+ * a page at a time, before the next one is asked for. Nothing bigger than one
+ * 4 KB target page is ever buffered.
+ *
+ *   swd flash begin [<start> [<end>]]  open a session (hex bounds)
+ *   swd flash window <crc32>           program the window just uploaded
+ *   swd flash end                      finish, verify complete, reset, rejoin
+ *   swd flash abort                    give up and put everything back
+ *   swd flash status                   where the session is up to
+ *
+ * The window CRC is checked before a single byte of it is parsed. The upload
+ * transport is unacknowledged UDP, so a lost chunk is normal, and a window
+ * that has already been half-programmed cannot be safely re-sent.
+ *
+ * Host side: tools/swd/ncp-flash.ts.
+ * ----------------------------------------------------------------------- */
+
+/** The application region of an nRF52840 USB dongle. The app starts above the
+ *  MBR because the NCP is built with -DOT_BOOTLOADER=USB. */
+#define NCP_APP_START 0x1000u
+
+/** Used when UICR does not name a bootloader. Well clear of the ~0xE0000 the
+ *  open bootloader occupies, and far above any image we flash. */
+#define NCP_APP_END_FALLBACK 0xE0000u
+
+/** How long to wait for AP0 after a CTRL-AP reset: 40 polls at 250 ms. A
+ *  single early look reports a reset that worked as a failure. */
+#define NCP_AP_WAIT_ATTEMPTS 40u
+#define NCP_AP_WAIT_INTERVAL 250u
+
+static struct {
+    bool open;
+    swd_io_t io;
+    swd_t swd;
+    nrf_swd_t nrf;
+    nrf_flash_t fl;
+    uint32_t windows;
+} s_ncp_flash;
+
+/** Per-page callback. The bit-bang loop runs far longer than the IWDG allows
+ *  between refreshes, so this is where it gets one. */
+static void ncp_flash_tick(void* ctx)
+{
+    (void)ctx;
+    watchdog_feed();
+}
+
+static void ncp_flash_delay(void* ctx, uint32_t ms)
+{
+    (void)ctx;
+    watchdog_feed();
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+/** Put the pins, the lock and the CCX task back the way they were. */
+static void ncp_flash_release(bool reflashed)
+{
+    swd_gpio_deinit();
+    swd_lock_give();
+    ccx_ncp_flash_end(reflashed);
+    s_ncp_flash.open = false;
+}
+
+static void cmd_swd_flash_begin(const char* args)
+{
+    if (s_ncp_flash.open) {
+        printf("a flash session is already open — 'swd flash abort' to drop it\r\n");
+        return;
+    }
+
+    char* end = NULL;
+    uint32_t start = NCP_APP_START;
+    uint32_t limit = 0;
+    if (*args) {
+        start = (uint32_t)strtoul(args, &end, 16);
+        if (end && *end) {
+            limit = (uint32_t)strtoul(end, NULL, 16);
+        }
+    }
+
+    /* Stand the CCX task down first. Its liveness watchdog reads an NCP that
+       stopped answering Spinel as one to reset, and that is exactly what an
+       NCP being programmed looks like. */
+    if (!ccx_ncp_flash_begin()) {
+        printf("CCX task busy (DFU or another flash in progress)\r\n");
+        return;
+    }
+    if (!swd_lock_take(5000)) {
+        printf("SWD pins are held by another task\r\n");
+        ccx_ncp_flash_end(false);
+        return;
+    }
+
+    memset(&s_ncp_flash.fl, 0, sizeof(s_ncp_flash.fl));
+    s_ncp_flash.windows = 0;
+
+    swd_gpio_init();
+    s_ncp_flash.io = swd_gpio_io();
+    swd_init(&s_ncp_flash.swd, &s_ncp_flash.io);
+    nrf_swd_init(&s_ncp_flash.nrf, &s_ncp_flash.swd);
+
+    swd_status_t st = nrf_swd_connect(&s_ncp_flash.nrf);
+    if (st == SWD_ERR_LOCKED) {
+        /* The dongle is almost certainly sitting in its factory USB bootloader.
+           APPROTECT is engaged in hardware at every reset and the 2018-era
+           bootloader never clears it; OpenThread's startup does. So reset it
+           and wait for the application to come up and open AP0. */
+        printf("AP0 blocked (APPROTECT) — dongle is likely in its USB bootloader\r\n");
+        printf("CTRL-AP reset, then waiting up to %lu s for the app to clear it...\r\n",
+               (unsigned long)(NCP_AP_WAIT_ATTEMPTS * NCP_AP_WAIT_INTERVAL / 1000u));
+        (void)nrf_swd_pin_reset(&s_ncp_flash.nrf);
+        st = nrf_swd_wait_ap_ready(&s_ncp_flash.nrf, ncp_flash_delay, NULL, NCP_AP_WAIT_ATTEMPTS, NCP_AP_WAIT_INTERVAL);
+    }
+    if (st != SWD_OK) {
+        printf("cannot reach the part: st=%d\r\n", (int)st);
+        printf("A reset does not clear GPREGRET, so a dongle put into DFU by the\r\n");
+        printf("0xB1 magic re-enters DFU every time — that one needs a power cycle.\r\n");
+        ncp_flash_release(false);
+        return;
+    }
+
+    if (limit == 0) {
+        limit = nrf_flash_bootloader_base(&s_ncp_flash.nrf, NCP_APP_END_FALLBACK);
+    }
+
+    nrf_flash_status_t fst = nrf_flash_begin(&s_ncp_flash.fl, &s_ncp_flash.nrf, start, limit);
+    if (fst != NRF_FLASH_OK) {
+        printf("flash begin failed: %s\r\n", nrf_flash_strerror(fst));
+        ncp_flash_release(false);
+        return;
+    }
+    nrf_flash_set_tick(&s_ncp_flash.fl, ncp_flash_tick, NULL);
+    s_ncp_flash.open = true;
+
+    printf("flash session open: region %08lX..%08lX, core halted\r\n", (unsigned long)start, (unsigned long)limit);
+    printf("upload a window, then 'swd flash window <crc32>'\r\n");
+}
+
+static void cmd_swd_flash_window(const char* args)
+{
+    if (!s_ncp_flash.open) {
+        printf("no flash session — run 'swd flash begin' first\r\n");
+        return;
+    }
+
+    uint32_t want = (uint32_t)strtoul(args, NULL, 16);
+    const uint8_t* body = cca_ota_session_body();
+    uint32_t len = cca_ota_session_body_len();
+    uint32_t expected = cca_ota_session_expected_len();
+
+    if (expected == 0) {
+        printf("window REJECT: nothing uploaded\r\n");
+        return;
+    }
+    if (len != expected) {
+        printf("window REJECT: short upload, %lu/%lu bytes\r\n", (unsigned long)len, (unsigned long)expected);
+        return;
+    }
+
+    /* Before parsing, not after. A window that has already been partly
+       programmed cannot be re-sent — the pages behind it are erased and
+       written, and feeding them again would be a step backwards. */
+    uint32_t crc = crc32_compute(body, len);
+    if (crc != want) {
+        printf("window REJECT: crc32 %08lX, expected %08lX — resend\r\n", (unsigned long)crc, (unsigned long)want);
+        return;
+    }
+
+    nrf_flash_status_t st = nrf_flash_feed(&s_ncp_flash.fl, (const char*)body, len);
+    cca_ota_session_reset();
+    if (st != NRF_FLASH_OK) {
+        printf("window FAILED: %s\r\n", nrf_flash_strerror(st));
+        return;
+    }
+
+    s_ncp_flash.windows++;
+    printf("window %lu ok: %lu bytes fed, %lu image bytes, %lu pages written\r\n", (unsigned long)s_ncp_flash.windows,
+           (unsigned long)len, (unsigned long)nrf_flash_image_bytes(&s_ncp_flash.fl),
+           (unsigned long)nrf_flash_pages_written(&s_ncp_flash.fl));
+}
+
+static void cmd_swd_flash_end(void)
+{
+    if (!s_ncp_flash.open) {
+        printf("no flash session\r\n");
+        return;
+    }
+
+    nrf_flash_status_t st = nrf_flash_finish(&s_ncp_flash.fl);
+    uint32_t bytes = nrf_flash_image_bytes(&s_ncp_flash.fl);
+    uint32_t pages = nrf_flash_pages_written(&s_ncp_flash.fl);
+
+    if (st != NRF_FLASH_OK) {
+        printf("flash FAILED: %s (%lu bytes, %lu pages written)\r\n", nrf_flash_strerror(st), (unsigned long)bytes,
+               (unsigned long)pages);
+        /* Pages were written either way, so the dataset is gone either way. */
+        ncp_flash_release(pages > 0);
+        return;
+    }
+
+    printf("flash OK: %lu bytes, %lu pages, verified\r\n", (unsigned long)bytes, (unsigned long)pages);
+
+    /* Start the new image from reset rather than from wherever the old one was
+       halted. */
+    (void)nrf_swd_pin_reset(&s_ncp_flash.nrf);
+    ncp_flash_release(true);
+    printf("reset issued — CCX task is re-probing and re-pushing Thread credentials\r\n");
+}
+
+static void cmd_swd_flash_status(void)
+{
+    if (!s_ncp_flash.open) {
+        printf("flash session: closed\r\n");
+        printf("CCX rejoin pending: %s\r\n", ccx_ncp_rejoin_pending() ? "yes" : "no");
+        return;
+    }
+    printf("flash session: open\r\n");
+    printf("region       : %08lX..%08lX\r\n", (unsigned long)s_ncp_flash.fl.region_start,
+           (unsigned long)s_ncp_flash.fl.region_end);
+    printf("windows      : %lu\r\n", (unsigned long)s_ncp_flash.windows);
+    printf("image bytes  : %lu\r\n", (unsigned long)nrf_flash_image_bytes(&s_ncp_flash.fl));
+    printf("pages written: %lu\r\n", (unsigned long)nrf_flash_pages_written(&s_ncp_flash.fl));
+}
+
+static void cmd_swd_flash(const char* args)
+{
+    if (strncmp(args, "begin", 5) == 0) {
+        const char* p = args + 5;
+        while (*p == ' ') {
+            p++;
+        }
+        cmd_swd_flash_begin(p);
+    }
+    else if (strncmp(args, "window ", 7) == 0) {
+        cmd_swd_flash_window(args + 7);
+    }
+    else if (strcmp(args, "end") == 0) {
+        cmd_swd_flash_end();
+    }
+    else if (strcmp(args, "abort") == 0) {
+        if (!s_ncp_flash.open) {
+            printf("no flash session\r\n");
+            return;
+        }
+        uint32_t pages = nrf_flash_pages_written(&s_ncp_flash.fl);
+        (void)nrf_flash_finish(&s_ncp_flash.fl);
+        (void)nrf_swd_pin_reset(&s_ncp_flash.nrf);
+        ncp_flash_release(pages > 0);
+        printf("flash aborted after %lu pages — the image on the part is partial\r\n", (unsigned long)pages);
+    }
+    else if (strcmp(args, "status") == 0 || *args == '\0') {
+        cmd_swd_flash_status();
+    }
+    else {
+        printf("Usage: swd flash begin|window <crc32>|end|abort|status\r\n");
+    }
+}
+
+/**
+ * Unlock a part whose APPROTECT cannot be cleared any other way.
+ *
+ * This is CTRL-AP ERASEALL and it takes the MBR and the factory USB bootloader
+ * with it. Afterwards nrfutil DFU no longer exists on that dongle and SWD is
+ * the only way to program it — and ot-ncp-ftd.hex starts at 0x1000, so it
+ * cannot put the MBR back. Separate command, separate name, explicit
+ * confirmation, deliberately not reachable from `swd flash`.
+ */
+static void cmd_swd_recover(const char* args)
+{
+    if (strcmp(args, "confirm") != 0) {
+        printf("--- SWD recover: CTRL-AP ERASEALL ---\r\n");
+        printf("This erases ALL of flash and UICR, including the MBR and the\r\n");
+        printf("factory USB bootloader. nrfutil DFU recovery will no longer\r\n");
+        printf("exist on this dongle; SWD becomes the only way in, forever.\r\n");
+        printf("\r\nOnly worth it for a part that is already unreachable.\r\n");
+        printf("Type 'swd recover confirm' to go ahead.\r\n");
+        return;
+    }
+
+    if (!swd_lock_take(5000)) {
+        printf("SWD pins are held by another task\r\n");
+        return;
+    }
+    if (!ccx_ncp_flash_begin()) {
+        printf("CCX task busy\r\n");
+        swd_lock_give();
+        return;
+    }
+
+    swd_io_t io;
+    swd_t swd;
+    nrf_swd_t nrf;
+    swd_gpio_init();
+    io = swd_gpio_io();
+    swd_init(&swd, &io);
+    nrf_swd_init(&nrf, &swd);
+
+    uint32_t idcode = 0;
+    if (swd_connect(&swd, &idcode) != SWD_OK || swd_power_up(&swd) != SWD_OK) {
+        printf("debug port did not answer — check wiring and 3V3\r\n");
+    }
+    else {
+        swd_status_t st = nrf_swd_recover(&nrf);
+        printf("ERASEALL: st=%d\r\n", (int)st);
+        printf("The part is blank. It has no MBR and no bootloader; only\r\n");
+        printf("'swd flash' can put an image on it now.\r\n");
+    }
+
+    swd_gpio_deinit();
+    swd_lock_give();
+    ccx_ncp_flash_end(true);
+}
+
 /**
  * SWD access to the nRF52840 NCP.
  *
@@ -2187,12 +2512,45 @@ static void swd_dump_aps(swd_t* swd)
  *                    APPROTECT engaged, does NOT clear GPREGRET
  *   swd read <a> [n] read n words from address a
  *   swd write <a> <v> write one word
+ *   swd flash ...    program the NCP from an uploaded Intel HEX image
+ *   swd recover      CTRL-AP ERASEALL — destroys the bootloader, needs confirm
  *
- * Nothing here erases. CTRL-AP ERASEALL is deliberately not wired to a command
- * yet: it wipes the MBR and bootloader as well as the app, and ot-ncp-ftd.hex
- * starts at 0x1000 so it cannot restore the MBR on its own.
+ * Everything except `swd flash` and `swd recover` is read-only or a reset.
  */
 static void cmd_swd(const char* args)
+{
+    if (strncmp(args, "flash", 5) == 0) {
+        const char* p = args + 5;
+        while (*p == ' ') {
+            p++;
+        }
+        cmd_swd_flash(p);
+        return;
+    }
+    if (strncmp(args, "recover", 7) == 0) {
+        const char* p = args + 7;
+        while (*p == ' ') {
+            p++;
+        }
+        cmd_swd_recover(p);
+        return;
+    }
+
+    /* Everything below drives the pins directly and must not interleave with
+       ccx_task's recovery or with an open flash session. */
+    if (s_ncp_flash.open) {
+        printf("a flash session holds the SWD pins — 'swd flash abort' first\r\n");
+        return;
+    }
+    if (!swd_lock_take(2000)) {
+        printf("SWD pins are held by another task\r\n");
+        return;
+    }
+    cmd_swd_locked(args);
+    swd_lock_give();
+}
+
+static void cmd_swd_locked(const char* args)
 {
     swd_io_t io;
     swd_t swd;
@@ -3725,6 +4083,7 @@ static void cmd_help(void)
     printf("  stream [cmd] — packet stream/log transport\r\n");
     printf("  ot [cmd]     — OpenThread NCP query/control\r\n");
     printf("  spinel [cmd] — raw Spinel property access\r\n");
+    printf("  swd [cmd]    — nRF52840 debug port: probe, reset, flash, recover\r\n");
     printf("  eth          — Ethernet PHY debug\r\n");
     printf("  config       — show stored settings\r\n");
     printf("  save         — save settings to flash\r\n");

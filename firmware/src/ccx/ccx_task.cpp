@@ -29,6 +29,7 @@
 #include "swd.h"
 #include "swd_gpio.h"
 #include "nrf_swd.h"
+#include "swd_lock.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -1699,6 +1700,60 @@ static void shell_cmd_process(void)
 
 static ncp_wd_t ncp_wd;
 
+/* -----------------------------------------------------------------------
+ * Reflash interlock
+ *
+ * While something else is programming the NCP over SWD, this task must keep
+ * its hands off. The liveness watchdog is the specific problem: a part being
+ * flashed has stopped answering Spinel by definition, which is exactly the
+ * evidence the watchdog acts on — it would pulse CTRL-AP reset into the middle
+ * of a page write, and it would be driving the same two pins to do it.
+ * ----------------------------------------------------------------------- */
+
+/** Time for a freshly programmed image to boot before it is worth probing. */
+#define NCP_REFLASH_BOOT_MS 2000u
+
+/** How many probe-and-join rounds to give a reflashed NCP. The first is
+ *  expected to fail: the image is still coming up. */
+#define NCP_REFLASH_JOIN_ATTEMPTS 3
+
+static volatile bool ncp_flash_active = false;
+static volatile bool ncp_rejoin_pending = false;
+
+bool ccx_ncp_flash_begin(void)
+{
+    if (ncp_flash_active || dfu_state != CCX_DFU_IDLE) {
+        return false;
+    }
+    ncp_flash_active = true;
+    /* Stop TX and the health poll from reaching for a part that is about to
+       stop being a Thread radio. */
+    ncp_detected = false;
+    thread_role = SPINEL_NET_ROLE_DETACHED;
+    return true;
+}
+
+void ccx_ncp_flash_end(bool reflashed)
+{
+    /* Restart the liveness clock from here rather than from before the flash.
+       Otherwise the first poll after release sees a minute of silence and
+       recovers a part that is perfectly healthy. A part that really is dead is
+       still caught, one liveness timeout from now. */
+    ncp_wd_alive(&ncp_wd, HAL_GetTick());
+    ncp_rejoin_pending = reflashed;
+    ncp_flash_active = false;
+}
+
+bool ccx_ncp_flash_in_progress(void)
+{
+    return ncp_flash_active;
+}
+
+bool ccx_ncp_rejoin_pending(void)
+{
+    return ncp_rejoin_pending;
+}
+
 uint32_t ccx_ncp_recoveries(void)
 {
     return ncp_wd_recoveries(&ncp_wd);
@@ -1719,6 +1774,14 @@ static void ncp_recover_via_swd(void)
 {
     printf("[ccx] NCP unresponsive — SWD recovery, attempt %lu\r\n", (unsigned long)(ncp_wd_attempts(&ncp_wd) + 1u));
 
+    /* The shell's `swd` commands drive the same two pins. Wait briefly rather
+       than interleave bit-bang halfway through somebody else's transfer. */
+    if (!swd_lock_take(2000)) {
+        printf("[ccx] SWD busy (shell holds the pins) — retrying later\r\n");
+        ncp_wd_recovery_done(&ncp_wd, false, HAL_GetTick());
+        return;
+    }
+
     swd_gpio_init();
     swd_io_t io = swd_gpio_io();
     swd_t swd;
@@ -1735,6 +1798,7 @@ static void ncp_recover_via_swd(void)
         printf("[ccx] SWD: debug port did not answer — check wiring and 3V3\r\n");
     }
     swd_gpio_deinit();
+    swd_lock_give();
 
     watchdog_feed();
     vTaskDelay(pdMS_TO_TICKS(NCP_RESET_SETTLE_MS));
@@ -1752,6 +1816,49 @@ static void ncp_recover_via_swd(void)
         watchdog_feed();
     }
     ncp_wd_recovery_done(&ncp_wd, ok, HAL_GetTick());
+}
+
+/**
+ * Bring a freshly programmed NCP back onto the Thread network.
+ *
+ * A reflash wipes the NCP's Thread dataset, and the credentials only ever get
+ * pushed from thread_join(), which until now ran once at boot. That is what
+ * made this the non-obvious failure: from the outside a reflashed NCP is
+ * indistinguishable from a dead radio. It answers Spinel, `ot channel` and
+ * `ot panid` read back plausible values, and the role sits at DETACHED with
+ * nothing ever received. Nothing looks broken; it is simply not on a network.
+ *
+ * The first round is expected to fail — the image is still coming up — so this
+ * gets several.
+ */
+static void ncp_rejoin_after_flash(void)
+{
+    printf("[ccx] Reflashed — the NCP's Thread dataset is gone, re-pushing credentials\r\n");
+
+    for (int attempt = 1; attempt <= NCP_REFLASH_JOIN_ATTEMPTS; attempt++) {
+        watchdog_feed();
+        vTaskDelay(pdMS_TO_TICKS(NCP_REFLASH_BOOT_MS));
+        watchdog_feed();
+
+        ncp_detected = ncp_probe();
+        watchdog_feed();
+        if (!ncp_detected) {
+            printf("[ccx] Reflash: no Spinel answer yet (%d/%d)\r\n", attempt, NCP_REFLASH_JOIN_ATTEMPTS);
+            continue;
+        }
+
+        ncp_wd_alive(&ncp_wd, HAL_GetTick());
+        thread_role = SPINEL_NET_ROLE_DETACHED;
+        bool joined = thread_join();
+        watchdog_feed();
+        if (joined) {
+            printf("[ccx] Reflash: rejoined as %s\r\n", ccx_thread_role_str());
+            return;
+        }
+        printf("[ccx] Reflash: join attempt %d/%d failed\r\n", attempt, NCP_REFLASH_JOIN_ATTEMPTS);
+    }
+
+    printf("[ccx] Reflash: still detached — leaving it to the liveness watchdog\r\n");
 }
 
 static void ccx_task_func(void* param)
@@ -1784,6 +1891,20 @@ static void ccx_task_func(void* param)
 
     for (;;) {
         watchdog_feed();
+
+        /* Somebody is programming the NCP over SWD. Do not poll it, do not
+           recover it, and above all do not drive the SWD pins. */
+        if (ncp_flash_active) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        if (ncp_rejoin_pending) {
+            ncp_rejoin_pending = false;
+            ncp_rejoin_after_flash();
+            last_health_poll = HAL_GetTick();
+            continue;
+        }
 
         /* Positive liveness check. Passive RX is not proof of life — an idle
            Thread network is silent for long stretches — so ask the NCP for a

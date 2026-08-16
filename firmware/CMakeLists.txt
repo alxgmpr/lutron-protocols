@@ -194,7 +194,9 @@ set(APP_SOURCES
     src/swd/swd_mem.c
     src/swd/nrf_swd.c
     src/swd/ihex.c
+    src/swd/nrf_flash.c
     src/swd/swd_gpio.c
+    src/swd/swd_lock.c
 )
 
 # ------------------------------------------------------------------

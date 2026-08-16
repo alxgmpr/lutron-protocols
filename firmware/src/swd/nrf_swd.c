@@ -145,8 +145,7 @@ swd_status_t nrf_swd_pin_reset(nrf_swd_t* n)
     return swd_ap_write(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 0u);
 }
 
-swd_status_t nrf_swd_wait_ap_ready(nrf_swd_t* n, swd_delay_fn delay, void* ctx, uint32_t attempts,
-                                   uint32_t interval_ms)
+swd_status_t nrf_swd_wait_ap_ready(nrf_swd_t* n, swd_delay_fn delay, void* ctx, uint32_t attempts, uint32_t interval_ms)
 {
     if (n == NULL || attempts == 0) {
         return SWD_ERR_ARG;

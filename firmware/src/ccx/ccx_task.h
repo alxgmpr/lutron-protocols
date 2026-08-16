@@ -69,6 +69,37 @@ bool ccx_ncp_healthy(void);
 uint32_t ccx_ncp_recoveries(void);
 /** Consecutive failed recovery attempts (0 when healthy). */
 uint32_t ccx_ncp_recovery_attempts(void);
+
+/* -----------------------------------------------------------------------
+ * Reflash interlock — see `swd flash` in the shell.
+ * ----------------------------------------------------------------------- */
+
+/**
+ * Stand down while something else programs the NCP over SWD.
+ *
+ * A part being flashed has stopped answering Spinel by definition, which is
+ * precisely the evidence the liveness watchdog acts on. Left running it would
+ * pulse CTRL-AP reset into the middle of a page write, over the same two pins.
+ *
+ * @return false if a flash or a DFU is already in progress.
+ */
+bool ccx_ncp_flash_begin(void);
+
+/**
+ * Resume normal operation.
+ *
+ * @param reflashed true if flash was actually written. A reflash wipes the
+ *        NCP's Thread dataset, so the credentials have to be pushed again —
+ *        the task does that itself, asynchronously, rather than waiting for
+ *        somebody to reboot the STM32.
+ */
+void ccx_ncp_flash_end(bool reflashed);
+
+/** True between ccx_ncp_flash_begin() and ccx_ncp_flash_end(). */
+bool ccx_ncp_flash_in_progress(void);
+
+/** True while a post-reflash credential push is still outstanding. */
+bool ccx_ncp_rejoin_pending(void);
 uint32_t ccx_tx_count(void);
 uint32_t ccx_raw_rx_count(void);
 
