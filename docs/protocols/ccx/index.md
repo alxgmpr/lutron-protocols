@@ -1125,18 +1125,47 @@ udp send ff03::1 9190 -x 8200a300a20019feff03010182101903c105185c
 >
 > **How to apply:** Any code that takes an extended address from a parsed 802.15.4 frame and uses it for CCM* decryption must reverse the 8 bytes first. The LEAP-derived EUI-64s (from `getAllDevices()`) are already in BE/canonical order and don't need reversal.
 
-## Stream Source Address Limitation
+## Stream Source Attribution
 
-> **Discovery:** The Nucleo's CCX stream framing (`StreamTxItem`) discards source IPv6 address before sending to TCP clients. Current frame: `[FLAGS:1][LEN:1][TS_MS:4][CBOR:N]` — no sender info.
->
-> The firmware already extracts full source IPv6 (16 bytes) and RLOC16 (2 bytes) in `ccx_process_rx()` (ccx_task.cpp ~line 1252), uses them for peer table updates and UART logging, but `stream_send_ccx_packet()` only passes the CBOR payload.
->
-> **Why:** This is why the sniffer (tshark) shows device names per packet but the Nucleo CLI doesn't — the CLI never receives who sent each message.
->
-> **Fix plan:** Extend stream framing to include source RLOC16 (2 bytes, minimal) or full IPv6 (16 bytes). Requires:
-> 1. Extend `StreamTxItem` struct in `stream.cpp` to carry source address
-> 2. Update stream framing format (new version byte or extended FLAGS)
-> 3. Update CLI `nucleo.ts` stream parser to extract and display source
-> 4. Use `getDeviceName()` or peer table lookup for sender name resolution
->
-> Most CCX traffic is multicast (LEVEL_CONTROL, BUTTON_PRESS, DIM, SCENE_RECALL, DEVICE_REPORT) so the Nucleo sees it all — it just can't show WHO sent it.
+Most CCX traffic is multicast (LEVEL_CONTROL, BUTTON_PRESS, DIM, SCENE_RECALL, DEVICE_REPORT), so the Nucleo sees all of it. Received CCX frames carry the sender's IPv6 address to the host as a trailer on the stream frame.
+
+### Wire format
+
+```
+[FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:LEN]([SRC:16])
+```
+
+`SRC` is the 16-byte source IPv6 in network byte order, present only when `STREAM_FLAG_SRC` (0x10) is set — and only on CCX frames.
+
+**It is a trailer, not a header field.** `LEN` still counts payload bytes only, and the payload still begins at offset 10. A client written before the trailer existed slices `[10, 10+LEN)` and recovers the identical payload, ignoring the extra bytes.
+
+Bit 4 is not globally free: it is also part of the CCA `|RSSI|` field (`STREAM_FLAG_RSSI_MASK` = 0x1F). Readers **must** check `STREAM_FLAG_CCX` (0x40) before interpreting `STREAM_FLAG_SRC`.
+
+### FLAGS combinations on CCX frames
+
+| TX (0x80) | SRC (0x10) | Meaning |
+|---|---|---|
+| clear | set | Received frame, attributed to the sender in the trailer |
+| set | clear | Locally originated by the Nucleo — no sender exists, so none is faked |
+| clear | clear | Firmware predates the trailer; attribution unavailable |
+
+The CLI surfaces the third case as a one-time notice rather than a blank column, so a version gap reads as a version gap. There is no version byte — the flag bit carries the capability.
+
+### Why full IPv6 rather than RLOC16
+
+RLOC16 is 2 bytes and would have been cheaper, but:
+
+- `extract_rloc16()` returns 0 for **sleepy children**, which source from an ML-EID with no RLOC pattern. Those are exactly the battery devices (picos, remotes) attribution matters most for.
+- The host resolver `getDeviceName()` is keyed on ML-EID strings, not RLOC16.
+- RLOC16 is derivable from the IPv6 client-side, so 16 bytes is a strict superset.
+
+The address rides in its own `StreamTxItem` field rather than inside `data[]`, so the 140-byte payload budget is unchanged. Cost is 16 bytes per frame plus 1 KB of SRAM (64 ring slots × 16 B).
+
+### Resolving a sender to a device
+
+Two address families arrive, so there are two paths:
+
+- **ML-EID** (`fd00::<iid>`, `fd0d::<iid>`) — `getDeviceName()` hits the device map directly.
+- **RLOC** (`fd..::00ff:fe00:XXXX`) — carries no identity. The CLI mirrors the firmware peer table (`ccx_task.cpp`), binding RLOC16 → serial/device id as DEVICE_REPORT, STATUS and BUTTON_PRESS traffic arrives, then resolves through `getSerialName()`.
+
+Implementation: `firmware/src/net/stream_frame.{c,h}` (serializer, host-unit-tested), `lib/stream-frame.ts` (parser), `cli/core/ccx-source.ts` (resolution).
