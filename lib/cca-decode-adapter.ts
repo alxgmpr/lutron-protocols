@@ -40,12 +40,29 @@ export function ccaSender(data: Buffer): string | null {
   if (data.length < 2) return null;
   const info = identifyPacket(data);
   if (info.category === "unknown") return null;
+  return senderFrom(
+    info,
+    [...data].map((b) => b.toString(16).padStart(2, "0")),
+    data.length,
+  );
+}
 
-  const bytes = [...data].map((b) => b.toString(16).padStart(2, "0"));
-
+/**
+ * The body of `ccaSender`, taking work the caller has already done.
+ *
+ * `decodeCcaFrame` needs both the identification and the hex bytes anyway.
+ * Having it call `ccaSender` instead cost a second `identifyPacket` and a
+ * second hex mapping per frame — +67% on the decode benchmark, which is what
+ * the GLAB-108 CI gate is there to notice.
+ */
+function senderFrom(
+  info: ReturnType<typeof identifyPacket>,
+  bytes: string[],
+  length: number,
+): string | null {
   for (const name of SENDER_ID_FIELDS) {
     const field = info.fields.find((f) => f.name === name);
-    if (!field || field.offset + field.size > data.length) continue;
+    if (!field || field.offset + field.size > length) continue;
     // Wire order, deliberately ignoring `usesBigEndianDeviceId`.
     //
     // That flag is a display convention and packet types disagree on it: a
@@ -62,7 +79,7 @@ export function ccaSender(data: Buffer): string | null {
   const parts: string[] = [];
   for (const name of STATE_ADDRESS_FIELDS) {
     const field = info.fields.find((f) => f.name === name);
-    if (!field || field.offset + field.size > data.length) return null;
+    if (!field || field.offset + field.size > length) return null;
     parts.push(bytes.slice(field.offset, field.offset + field.size).join(""));
   }
   return parts.length === STATE_ADDRESS_FIELDS.length
@@ -132,7 +149,7 @@ export function decodeCcaFrame(data: Buffer): CcaObservation {
     identified,
     typeName: info.typeName,
     seq: data.length > 1 ? data[1] : null,
-    sender: ccaSender(data),
+    sender: identified ? senderFrom(info, bytes, data.length) : null,
     fieldsDefined: info.fields.length,
     fieldsPresent,
     fieldsNamed,
