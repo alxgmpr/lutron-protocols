@@ -25,7 +25,7 @@
  */
 
 import { Decoder, Encoder } from "cbor-x";
-import { createCcxCoapClient, type CoapTarget } from "../../lib/ccx-coap";
+import { type CoapTarget, createCcxCoapClient } from "../../lib/ccx-coap";
 import { config } from "../../lib/config";
 
 const AHA_PATH = "cg/db/ct/c/AHA";
@@ -81,7 +81,9 @@ function encodeAha(active: number, inactive: number): Buffer {
 
 async function main() {
   if (mode !== "get" && mode !== "set") {
-    console.error("usage: aha-brightness.ts <get|set> --rloc <hex> [--active n --inactive n]");
+    console.error(
+      "usage: aha-brightness.ts <get|set> --rloc <hex> [--active n --inactive n]",
+    );
     process.exit(2);
   }
   if (!rloc) throw new Error("--rloc is required");
@@ -95,9 +97,13 @@ async function main() {
       const active = parseLevel("--active");
       const inactive = parseLevel("--inactive");
       const payload = encodeAha(active, inactive);
-      console.log(`PUT ${AHA_PATH} rloc:${rloc} active=${active} inactive=${inactive}`);
+      console.log(
+        `PUT ${AHA_PATH} rloc:${rloc} active=${active} inactive=${inactive}`,
+      );
       console.log(`  cbor=${payload.toString("hex")}`);
-      const put = await client.put(target, AHA_PATH, payload, { timeoutMs: timeout });
+      const put = await client.put(target, AHA_PATH, payload, {
+        timeoutMs: timeout,
+      });
       console.log(`  -> ${put.code}${put.ok ? " OK" : " FAILED"}`);
       if (!put.ok) process.exitCode = 1;
     }
