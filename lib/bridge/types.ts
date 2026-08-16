@@ -47,6 +47,38 @@ export interface PresetZoneEntry {
   >;
 }
 
+// ── Device events ─────────────────────────────────────────
+
+/** What a control did. `press` is a discrete tap; hold/release bracket a ramp. */
+export type DeviceAction = "press" | "hold" | "release";
+
+/**
+ * A control was operated. Device-scoped, not zone-scoped: it is a fact about
+ * the button, independent of whether anything is bound to it. A Pico that
+ * drives no watched zone still emits these — that is the point of the channel,
+ * and why watch filtering does not apply to it.
+ */
+export interface DeviceEvent {
+  /**
+   * Stable hex identity of the control, taken from the wire payload.
+   *
+   * Deliberately NOT the IPv6 source address: a device's primary ML-EID
+   * rotates (see ccx/config.ts, which keeps a separate stable `fd00::`
+   * secondary for exactly this reason), and a rotating key would orphan every
+   * Home Assistant entity built on it. This id is constant across presses,
+   * across bridge restarts, and across a rename.
+   */
+  deviceId: string;
+  /** Resolved display name, falling back to `Device <deviceId>`. */
+  deviceName: string;
+  button: number;
+  action: DeviceAction;
+  origin: string;
+  /** Transport that observed it — "ccx" today. */
+  source: string;
+  sequence: number;
+}
+
 // ── Source intents ────────────────────────────────────────
 
 /**
@@ -84,6 +116,22 @@ export type SourceIntent =
       /** fallback scene target, used when zoneId is absent or unwatched */
       presetId?: number;
       origin: string;
+      dedupKey?: string;
+    }
+  | {
+      kind: "deviceEvent";
+      /**
+       * Stable hex identity of the control, straight off the wire. Not an
+       * address: see DeviceEvent.deviceId for why.
+       */
+      deviceId: string;
+      button: number;
+      action: DeviceAction;
+      origin: string;
+      /** Transport that observed it — "ccx" today. */
+      source: string;
+      /** Wire sequence number the dedup key is built from. */
+      sequence: number;
       dedupKey?: string;
     };
 
@@ -151,6 +199,7 @@ export interface SinkHost {
   on(event: "zone:changed", listener: (e: ZoneChangedEvent) => void): unknown;
   on(event: "zone:settled", listener: (e: ZoneSettledEvent) => void): unknown;
   on(event: "command", listener: (e: CommandEvent) => void): unknown;
+  on(event: "device:event", listener: (e: DeviceEvent) => void): unknown;
   /** True only for zones named explicitly in the watch list. */
   isExplicitlyWatched(zoneId: number): boolean;
 }

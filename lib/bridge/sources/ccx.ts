@@ -10,7 +10,14 @@
 import { presetIdFromDeviceId } from "../../../ccx/config";
 import { formatMessage, getMessageTypeName } from "../../../ccx/decoder";
 import type { CCXPacket } from "../../../ccx/types";
-import type { ApplyResult, SourceIntent } from "../types";
+import type { ApplyResult, DeviceAction, SourceIntent } from "../types";
+
+/** Lowercase hex of a wire device id; empty when the packet carried none. */
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 /** The slice of DeviceModel a source needs. */
 export interface IntentTarget {
@@ -35,11 +42,70 @@ export class CcxSource {
 
   handlePacket(pkt: CCXPacket): void {
     this.packetCount++;
-    const intent = this.toIntent(pkt);
-    if (!intent) return;
+    const intents = this.toIntents(pkt);
+    if (intents.length === 0) return;
     // Logged via the accept hook rather than the return value so the packet
-    // line precedes the command line the model resolves it into.
-    this.model.apply(intent, () => this.logPacket(pkt));
+    // line precedes the command line the model resolves it into. One packet
+    // logs at most once, however many intents it carries.
+    let logged = false;
+    const logOnce = () => {
+      if (logged) return;
+      logged = true;
+      this.logPacket(pkt);
+    };
+    for (const intent of intents) this.model.apply(intent, logOnce);
+  }
+
+  /**
+   * One packet can be more than one fact. A button press is both the press
+   * itself (a device event, which Home Assistant surfaces as an `event`
+   * entity) and the scene it recalls — different facts with different
+   * consumers, so both are emitted. The raw event comes first; the
+   * interpretation follows it.
+   */
+  private toIntents(pkt: CCXPacket): SourceIntent[] {
+    const msg = pkt.parsed;
+    const event = this.toDeviceEvent(msg);
+    const intent = this.toIntent(pkt);
+    return [event, intent].filter((i): i is SourceIntent => i !== null);
+  }
+
+  private toDeviceEvent(msg: CCXPacket["parsed"]): SourceIntent | null {
+    let action: DeviceAction;
+    let origin: string;
+    switch (msg.type) {
+      case "BUTTON_PRESS":
+        action = "press";
+        origin = "PRESET";
+        break;
+      case "DIM_HOLD":
+        action = "hold";
+        origin = "DIM_HOLD";
+        break;
+      case "DIM_STEP":
+        action = "release";
+        origin = "DIM_STEP";
+        break;
+      default:
+        return null;
+    }
+
+    const deviceId = toHex(msg.deviceId);
+    if (!deviceId) return null;
+
+    return {
+      kind: "deviceEvent",
+      deviceId,
+      // deviceId[1] is the button/preset selector within the control.
+      button: msg.deviceId[1] ?? 0,
+      action,
+      origin,
+      source: "ccx",
+      sequence: msg.sequence,
+      // Keyed on the wire sequence: a retransmit repeats it, a second press
+      // never does. Keying on (device, button) would eat real double presses.
+      dedupKey: `4:${deviceId}:${action}:${msg.sequence}`,
+    };
   }
 
   private toIntent(pkt: CCXPacket): SourceIntent | null {
