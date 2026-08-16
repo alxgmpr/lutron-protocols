@@ -3,15 +3,26 @@
  * bench — decode-path performance regression gate.
  *
  * Absolute timings cannot be committed: a GitHub runner is not the machine a
- * baseline was taken on, and the spread between them dwarfs any regression
- * worth catching. So every case is measured as a ratio against a fixed
- * reference workload run in the same process, and the ratios are what ship in
- * bench-baseline.json. Machine speed cancels out.
+ * baseline was taken on. Each case is therefore measured as a ratio against a
+ * fixed reference workload run in the same process.
+ *
+ * That is necessary but NOT sufficient, which the first CI run proved: every
+ * case read 39-51% "faster" on the x86 runner than on an arm64 laptop. The
+ * reference is integer-ALU work while the decode paths are allocation- and
+ * branch-heavy, and the two architectures differ in how those relate. Using
+ * one of our own decode paths as the reference does not fix it either —
+ * ccx.decodeAndParse still shifts ~50% between the two.
+ *
+ * So the gate runs in one environment. The baseline is generated on CI and
+ * enforced on CI; a local run reports the same numbers but does not fail,
+ * because they are not comparable to a baseline taken on other hardware.
+ * Compare local runs against each other instead.
  *
  * Inputs are the committed corpora, so the work is identical every run.
  *
- * Run:   npm run bench            report and gate against the baseline
+ * Run:   npm run bench            report; gate only when CI is set
  *        npm run bench -- --write rewrite the baseline from this run
+ *        npm run bench -- --gate  force gating locally (expect false alarms)
  *
  * Not covered: lib/frame-pipeline. Benchmarking it needs valid encrypted
  * Thread frames, and lib/thread-crypto only exports the decrypt half, so
@@ -40,10 +51,17 @@ const BASELINE_PATH = fileURLToPath(
 );
 
 /** Reps per case, including warmup. Odd so the median is a real sample. */
-const REPS = 11;
-const WARMUP = 3;
-/** How much slower than baseline is a regression, in percent. */
-const TOLERANCE_PCT = 30;
+const REPS = 15;
+const WARMUP = 5;
+/**
+ * How much slower than baseline counts as a regression.
+ *
+ * Wide enough to absorb variation between the CPU models GitHub hands out
+ * and the noise of a shared runner; narrow enough that the regressions this
+ * exists to catch — an accidentally quadratic loop, a lookup table rebuilt
+ * per packet — are several times larger.
+ */
+const TOLERANCE_PCT = 40;
 
 const REFERENCE = "reference";
 
@@ -226,6 +244,17 @@ function main() {
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
   const verdict = compareBench(ratios, baseline.ratios, baseline.tolerancePct);
+
+  // The baseline is CI-derived. Enforcing it on other hardware produces
+  // confident nonsense, so a local run reports and stops there.
+  const gating = Boolean(process.env.CI) || process.argv.includes("--gate");
+  if (!gating) {
+    console.log(
+      "\nReport only — the baseline was taken on CI and does not transfer to\n" +
+        "this machine. Compare successive local runs instead, or --gate to force.",
+    );
+    return;
+  }
 
   for (const r of verdict.regressions) {
     console.error(
