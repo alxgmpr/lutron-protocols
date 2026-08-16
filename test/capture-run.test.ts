@@ -14,6 +14,7 @@ import {
   diagnose,
   diffStatus,
   type FrameObservation,
+  slotDispersion,
 } from "../lib/capture-run";
 import type { NucleoStatus } from "../lib/nucleo-status";
 
@@ -227,6 +228,19 @@ describe("analyzeCapture", () => {
     assert.equal(a.runs[0].sequence.lossPct, 0);
   });
 
+  it("exposes the segmented bursts so dispersion can be measured", () => {
+    // slotDispersion needs the actual slot values per burst, not just a count
+    // of them — where a miss landed is the whole question.
+    const frames = run("aaaa", [135, 141, 147, 135, 147]);
+
+    const a = analyzeCapture(frames);
+
+    assert.deepEqual(a.runs[0].burstSlots, [
+      [135, 141, 147],
+      [135, 147],
+    ]);
+  });
+
   it("finds a repeat missing from one burst", () => {
     const frames = run("aaaa", [135, 141, 147, 135, 147]);
 
@@ -374,8 +388,9 @@ describe("diagnose", () => {
     assert.match(d.reasons.join(" "), /-92|weak/i);
   });
 
-  it("blames our RX path when strong frames go missing and counters moved", () => {
-    // Loud sender, gaps anyway, and the CC1101 says it saw and lost them.
+  it("blames our RX path when strong frames go missing and counters rise above idle", () => {
+    // Loud sender, gaps anyway, and the CC1101 says it saw and lost them —
+    // at a rate it does not reach when nothing is happening.
     const a = analyzeCapture(run("near", [2, 4, 8, 10], { rssi: -38 }));
     const delta = diffStatus(
       status(),
@@ -384,8 +399,9 @@ describe("diagnose", () => {
         radio: { ...status().radio!, syncMiss: 30 },
       }),
     );
+    const control = diffStatus(status(), status({ uptimeMs: 1_060_000 }));
 
-    const d = diagnose(a, delta);
+    const d = diagnose(a, delta, { control });
 
     assert.equal(d.verdict, "local");
     assert.match(d.reasons.join(" "), /syncMiss/);
@@ -423,8 +439,9 @@ describe("diagnose", () => {
       status(),
       status({ uptimeMs: 1_060_000, ccaDrop: 40 }),
     );
+    const control = diffStatus(status(), status({ uptimeMs: 1_060_000 }));
 
-    const d = diagnose(a, delta);
+    const d = diagnose(a, delta, { control });
 
     assert.equal(d.verdict, "local");
     assert.match(d.reasons.join(" "), /blind/);
@@ -498,5 +515,143 @@ describe("compareCapture", () => {
     const v = compareCapture({ cca: 2, ccx: 30 }, { cca: 2, ccx: null }, 5);
 
     assert.equal(v.ok, true);
+  });
+});
+
+describe("diagnose with an idle control", () => {
+  /** A lossy run with no usable signal level — the CCA case today. */
+  const lossy = analyzeCapture(run("near", [2, 4, 8, 10], { rssi: null }));
+
+  /** 60s idle window, ccaDrop ticking along at its ambient ~6/s. */
+  const idle = diffStatus(
+    status(),
+    status({ uptimeMs: 1_060_000, ccaDrop: 360 }),
+  );
+
+  it("does not blame the RX path for a counter running at its idle rate", () => {
+    // Measured on the rig: ccaDrop runs at 6.86/s with no stimulus at all and
+    // 4.4-6.0/s under heavy stimulus. It is ambient, and treating any
+    // movement as evidence pinned every run to LOCAL.
+    const during = diffStatus(
+      status(),
+      status({ uptimeMs: 1_030_000, ccaDrop: 180 }),
+    );
+
+    const d = diagnose(lossy, during, { control: idle });
+
+    assert.notEqual(d.verdict, "local");
+    assert.match(d.reasons.join(" "), /ccaDrop.*idle|idle.*ccaDrop/i);
+  });
+
+  it("blames the RX path when a counter runs well above its idle rate", () => {
+    // 30s window, 600 drops = 20/s against an idle 6/s.
+    const during = diffStatus(
+      status(),
+      status({ uptimeMs: 1_030_000, ccaDrop: 600 }),
+    );
+
+    const d = diagnose(lossy, during, { control: idle });
+
+    assert.equal(d.verdict, "local");
+    assert.match(d.reasons.join(" "), /ccaDrop/);
+  });
+
+  it("says how much of the loss the counter excess actually accounts for", () => {
+    // Measured on the rig: 14 CRC failures and 5 N81 errors against 64
+    // missing frames. Naming the RX path without that ratio implies the
+    // counters explain the loss, when they explain under a third of it.
+    // step 2 over 0..34 — 18 expected, 10 received, 8 missing.
+    const lossy20 = analyzeCapture(
+      run("near", [0, 2, 8, 10, 16, 18, 24, 26, 32, 34], { rssi: null }),
+    );
+    const during = diffStatus(
+      status(),
+      status({ uptimeMs: 1_030_000, ccaCrcFail: 5 }),
+    );
+
+    const d = diagnose(lossy20, during, {
+      control: diffStatus(status(), status({ uptimeMs: 1_060_000 })),
+    });
+
+    assert.equal(d.verdict, "local");
+    assert.match(d.reasons.join(" "), /accounts for at most 5 of 8/);
+    assert.match(d.reasons.join(" "), /unaccounted/i);
+  });
+
+  it("will not decide on counters at all without a control window", () => {
+    // This is the GLAB-116 bug: with no idle baseline there is no way to tell
+    // an ambient counter from an implicated one, so it must not decide.
+    const during = diffStatus(
+      status(),
+      status({ uptimeMs: 1_030_000, ccaDrop: 180 }),
+    );
+
+    const d = diagnose(lossy, during);
+
+    assert.notEqual(d.verdict, "local");
+    assert.match(d.reasons.join(" "), /no idle control/i);
+  });
+
+  it("still reports the counter movement whatever it decides", () => {
+    const during = diffStatus(
+      status(),
+      status({ uptimeMs: 1_030_000, ccaDrop: 180 }),
+    );
+
+    const d = diagnose(lossy, during, { control: idle });
+
+    assert.match(d.reasons.join(" "), /ccaDrop \+180/);
+  });
+});
+
+describe("diagnose with slot dispersion", () => {
+  const lossy = analyzeCapture(run("near", [2, 4, 8, 10], { rssi: null }));
+  const quiet = diffStatus(status(), status({ uptimeMs: 1_030_000 }));
+  const idle = diffStatus(status(), status({ uptimeMs: 1_060_000 }));
+
+  function dispersionOf(counts: number[]) {
+    const all = counts.map((_, i) => i);
+    const bursts: number[][] = [];
+    for (let pos = 0; pos < counts.length; pos++) {
+      for (let n = 0; n < counts[pos]; n++) {
+        bursts.push(all.filter((i) => i !== pos));
+      }
+    }
+    for (let i = 0; i < 20; i++) bursts.push([...all]);
+    return slotDispersion([{ step: 1, bursts }]);
+  }
+
+  it("blames the RX path when the misses prefer a slot position", () => {
+    // Only something synchronised to the burst can pick a position, and the
+    // air is not synchronised to anything.
+    const d = diagnose(lossy, quiet, {
+      control: idle,
+      dispersion: dispersionOf([0, 0, 40, 0, 0, 0, 0, 0]),
+    });
+
+    assert.equal(d.verdict, "local");
+    assert.match(d.reasons.join(" "), /position 2/);
+  });
+
+  it("points outward when the misses scatter and our counters are quiet", () => {
+    // The rig's actual measurement. Not proof of RF, but positive evidence
+    // against a mechanism of ours, which is more than "unexplained" says.
+    const d = diagnose(lossy, quiet, {
+      control: idle,
+      dispersion: dispersionOf([1, 7, 4, 5, 7, 7, 5, 7, 2]),
+    });
+
+    assert.equal(d.verdict, "rf");
+    assert.match(d.reasons.join(" "), /spread evenly/);
+  });
+
+  it("does not lean on dispersion it could not measure", () => {
+    const d = diagnose(lossy, quiet, {
+      control: idle,
+      dispersion: dispersionOf([0, 1, 0, 0, 0, 0, 0, 0]),
+    });
+
+    assert.notEqual(d.verdict, "rf");
+    assert.notEqual(d.verdict, "local");
   });
 });

@@ -81,7 +81,7 @@ function inferStep(bursts: number[][]): number | undefined {
 /** Pool the gaps found inside each burst into one figure for the sender. */
 function analyzeBursts(seqs: number[]): {
   sequence: SequenceAnalysis;
-  bursts: number;
+  burstSlots: number[][];
 } {
   const bursts = segmentBursts(seqs);
   const step = inferStep(bursts);
@@ -103,7 +103,7 @@ function analyzeBursts(seqs: number[]): {
   }
 
   return {
-    bursts: bursts.length,
+    burstSlots: bursts,
     sequence: {
       step: step ?? null,
       received,
@@ -164,6 +164,11 @@ export interface SenderRun {
   frames: number;
   /** Transmission bursts this sender's frames fell into. Always 1 on CCX. */
   bursts: number;
+  /**
+   * The slot values of each burst, in arrival order. Kept because dispersion
+   * asks *where* a miss landed, which a count of bursts cannot answer.
+   */
+  burstSlots: number[][];
   /** Gaps pooled across the sender's bursts. */
   sequence: SequenceAnalysis;
   /** Null when no frame in the run reported a signal level. */
@@ -232,16 +237,17 @@ export function analyzeCapture(frames: FrameObservation[]): CaptureAnalysis {
     const seqs = group.map((f) => f.seq).filter((s): s is number => s !== null);
     // Only CCA is known to burst. A CCX sequence carries no documented
     // restart behaviour, so segmenting it would invent burst boundaries.
-    const { sequence, bursts } =
+    const { sequence, burstSlots } =
       band === "cca"
         ? analyzeBursts(seqs)
-        : { sequence: analyzeSequence(seqs), bursts: 1 };
+        : { sequence: analyzeSequence(seqs), burstSlots: [seqs] };
     runs.push({
       band,
       sender,
       type,
       frames: group.length,
-      bursts,
+      bursts: burstSlots.length,
+      burstSlots,
       sequence,
       rssi: rssiStats(group),
     });
@@ -382,17 +388,89 @@ export interface Diagnosis {
   lossyRuns: SenderRun[];
 }
 
+export interface DiagnoseOptions {
+  /**
+   * Counter deltas from an idle window in the same session, used to tell an
+   * ambient counter from an implicated one. Without it, counters are reported
+   * but never decide — see the comment on `excessCounters`.
+   */
+  control?: StatusDelta;
+  /** Where in each burst the misses landed. */
+  dispersion?: SlotDispersion;
+}
+
+/**
+ * A counter has to beat its idle rate by this much before it means anything.
+ * Ambient rates wander a little between windows; 1.5x is comfortably outside
+ * the run-to-run wobble measured on the rig without hiding a real doubling.
+ */
+const COUNTER_EXCESS_FACTOR = 1.5;
+
+/** ...and by at least this many events, so small counts cannot trip it. */
+const COUNTER_EXCESS_MIN_EVENTS = 3;
+
+/**
+ * Counters whose rate during the run exceeded their rate while idle.
+ *
+ * The distinction matters more than it looks. `ccaDrop` was measured at
+ * 6.86/s with no stimulus at all and 4.4-6.0/s while 24 frames/s were being
+ * driven — it is a background process, uncorrelated with our traffic. Reading
+ * "it moved" as "it ate our frames" made the verdict LOCAL on every run
+ * regardless of what happened (GLAB-116).
+ */
+function excessCounters(
+  delta: StatusDelta,
+  control: StatusDelta,
+): { name: string; runRate: number; idleRate: number; excess: number }[] {
+  const runSec = (delta.elapsedMs ?? 0) / 1000;
+  const idleSec = (control.elapsedMs ?? 0) / 1000;
+  if (runSec <= 0 || idleSec <= 0 || !delta.counters || !control.counters) {
+    return [];
+  }
+
+  const out: {
+    name: string;
+    runRate: number;
+    idleRate: number;
+    excess: number;
+  }[] = [];
+  for (const name of LOSS_IMPLICATING_COUNTERS) {
+    const runCount = delta.counters[name] ?? 0;
+    if (runCount <= 0) continue;
+    const runRate = runCount / runSec;
+    const idleRate = (control.counters[name] ?? 0) / idleSec;
+    const excess = (runRate - idleRate) * runSec;
+    if (
+      runRate > idleRate * COUNTER_EXCESS_FACTOR &&
+      excess >= COUNTER_EXCESS_MIN_EVENTS
+    ) {
+      out.push({ name, runRate, idleRate, excess });
+    }
+  }
+  return out;
+}
+
 /**
  * Attribute a capture's loss, or decline to.
  *
- * The counter evidence is board-wide, not per sender, so it is only ever used
- * to explain loss that the RSSI evidence has already failed to explain. That
- * ordering matters: a weak-signal run and a busy neighbour ticking `syncMiss`
- * would otherwise convict our RX path for the air's mistake.
+ * Three independent lines of evidence, in order of how directly they speak:
+ *
+ * 1. **Signal strength** — weak frames going missing needs no other
+ *    explanation. Unavailable while the streamed RSSI is truncated
+ *    (GLAB-115), so today this almost never fires.
+ * 2. **Slot dispersion** — only something synchronised to the burst can
+ *    prefer a slot position, so clustering is ours and scatter is not.
+ * 3. **Counter excess over idle** — the CC1101 admitting to dropping more
+ *    than it drops when nothing is happening.
+ *
+ * Counter evidence is board-wide rather than per sender, which is why it is
+ * ranked last and why it is measured against an idle control rather than
+ * against zero.
  */
 export function diagnose(
   analysis: CaptureAnalysis,
   delta: StatusDelta,
+  opts: DiagnoseOptions = {},
 ): Diagnosis {
   const reasons: string[] = [];
   const lossyRuns = analysis.runs.filter(
@@ -418,13 +496,30 @@ export function diagnose(
   // Counters that moved are worth stating whatever the verdict turns out to
   // be. `ccaDrop` in particular counts strong frames the decoder threw away,
   // and those never reach a sequence analysis at all — folding them into a
-  // "clean" line is how they go unnoticed.
-  const implicated = delta.counters
+  // "clean" line is how they go unnoticed. Reporting is not the same as
+  // implicating, though: see `excess` below.
+  const moved = delta.counters
     ? LOSS_IMPLICATING_COUNTERS.filter((c) => (delta.counters?.[c] ?? 0) > 0)
     : [];
-  const counterReasons = implicated.map(
+  const counterReasons = moved.map(
     (c) => `${c} +${delta.counters?.[c]} during the run`,
   );
+
+  const excess = opts.control ? excessCounters(delta, opts.control) : [];
+  const excessReasons = excess.map(
+    (e) =>
+      `${e.name} ran at ${e.runRate.toFixed(1)}/s vs ${e.idleRate.toFixed(1)}/s idle (+${Math.round(e.excess)} beyond ambient)`,
+  );
+  if (opts.control && moved.length > 0 && excess.length === 0) {
+    counterReasons.push(
+      "every counter that moved was at or below its idle rate — ambient, not this run",
+    );
+  }
+  if (!opts.control && moved.length > 0) {
+    counterReasons.push(
+      "no idle control window, so counter movement cannot be told from ambient and does not decide the verdict",
+    );
+  }
 
   // A run of one frame has no span for loss to hide in, so its null loss is
   // an absence of measurement, not a measurement of zero. If no run has a
@@ -490,10 +585,60 @@ export function diagnose(
   }
   reasons.push(...unplaceableReasons);
 
-  if (implicated.length > 0) {
+  // Only something synchronised to the burst can prefer a slot position, and
+  // the air is not synchronised to anything of ours.
+  const dispersion = opts.dispersion;
+  if (dispersion?.result === "clustered") {
     return {
       verdict: "local",
-      reasons: [...reasons, ...counterReasons],
+      reasons: [...reasons, dispersion.detail, ...counterReasons],
+      lossyRuns,
+    };
+  }
+
+  if (excess.length > 0) {
+    // How much of the loss the excess could actually be. A CRC failure or an
+    // N81 error is a frame we heard and threw away, so it shows up as a
+    // missing slot — but naming the RX path without this ratio implies the
+    // counters explain the loss when they may explain a fraction of it.
+    const missingFrames = lossyRuns.reduce(
+      (n, r) => n + r.sequence.missing.length,
+      0,
+    );
+    const accounted = Math.round(excess.reduce((n, e) => n + e.excess, 0));
+    const accounting =
+      missingFrames > 0
+        ? `counter excess accounts for at most ${accounted} of ${missingFrames} missing frames` +
+          (accounted < missingFrames
+            ? ` — the remaining ${missingFrames - accounted} are unaccounted for`
+            : "")
+        : null;
+
+    return {
+      verdict: "local",
+      reasons: [
+        ...reasons,
+        ...excessReasons,
+        ...(accounting ? [accounting] : []),
+        ...counterReasons,
+      ],
+      lossyRuns,
+    };
+  }
+
+  // Scatter is not proof of RF — there is no signal level to check — but it is
+  // positive evidence against a mechanism of ours, which "unexplained" does
+  // not convey. Only claimed when the counters are also at ambient, so the two
+  // lines of evidence have to agree.
+  if (dispersion?.result === "uniform" && opts.control) {
+    return {
+      verdict: "rf",
+      reasons: [
+        ...reasons,
+        dispersion.detail,
+        "nothing in our RX path exceeded its idle rate",
+        ...counterReasons,
+      ],
       lossyRuns,
     };
   }
@@ -505,8 +650,14 @@ export function diagnose(
     return { verdict: "inconclusive", reasons, lossyRuns };
   }
 
-  reasons.push("every loss-implicating counter stayed at zero");
-  return { verdict: "unexplained", reasons, lossyRuns };
+  if (dispersion && dispersion.result === "insufficient") {
+    reasons.push(`slot dispersion: ${dispersion.detail}`);
+  }
+  return {
+    verdict: "unexplained",
+    reasons: [...reasons, ...counterReasons],
+    lossyRuns,
+  };
 }
 
 /** Per-band loss, the shape that gets committed as a baseline. */
@@ -555,4 +706,210 @@ export function compareCapture(
   }
 
   return { ok: regressions.length === 0, regressions };
+}
+
+export type DispersionResult = "uniform" | "clustered" | "insufficient";
+
+/** One sender's bursts, all on the same repeat lattice. */
+export interface DispersionInput {
+  step: number;
+  bursts: number[][];
+}
+
+export interface SlotDispersion {
+  result: DispersionResult;
+  /** Widest lattice seen, in slot positions. */
+  positions: number;
+  /** Frames missing from a position that was on offer. */
+  missing: number;
+  /** Misses at each slot position, index 0 first. */
+  byPosition: number[];
+  /** Bursts that actually had each position in their lattice. */
+  opportunities: number[];
+  chiSquare: number;
+  degreesOfFreedom: number;
+  criticalValue: number;
+  detail: string;
+}
+
+/**
+ * Expected misses per position below which a goodness-of-fit test says
+ * nothing. The textbook rule for chi-square, and worth honouring: with three
+ * misses over eight positions any pattern at all looks significant.
+ */
+const MIN_EXPECTED_PER_POSITION = 5;
+
+/**
+ * Critical chi-square values at p = 0.05, indexed by degrees of freedom.
+ * Above these, "the misses fell evenly" stops being a believable explanation.
+ * A table rather than an incomplete-gamma implementation — burst lengths here
+ * are small and fixed, and a table is checkable by eye.
+ */
+const CHI2_CRITICAL_P05: Record<number, number> = {
+  1: 3.84,
+  2: 5.99,
+  3: 7.81,
+  4: 9.49,
+  5: 11.07,
+  6: 12.59,
+  7: 14.07,
+  8: 15.51,
+  9: 16.92,
+  10: 18.31,
+  11: 19.68,
+  12: 21.03,
+  13: 22.36,
+  14: 23.68,
+  15: 25.0,
+};
+
+/**
+ * Where in a burst do frames go missing?
+ *
+ * Measured by *position within the burst*, not by raw slot value: senders sit
+ * on different lattices — one runs 135,141,… and another 7,13,… — and keyed
+ * on value their losses look like unrelated singletons instead of one
+ * pattern.
+ *
+ * A clustered result is evidence for a mechanism of ours, since only
+ * something synchronised to the burst can prefer a position. A uniform result
+ * is evidence against one; it does not prove the loss is RF, but it does say
+ * the RX path is not eating a particular repeat. That distinction is the only
+ * RF-vs-code test available while the streamed RSSI is unusable (GLAB-115).
+ *
+ * Each sender's lattice origin is the lowest slot value it was ever seen to
+ * send, so a burst that lost its own first frame still lands on the right
+ * positions. Positions are weighted by how many bursts actually had them on
+ * offer, so a sender with a shorter lattice does not make the tail positions
+ * look suspiciously clean.
+ */
+export function slotDispersion(inputs: DispersionInput[]): SlotDispersion {
+  const byPosition: number[] = [];
+  const opportunities: number[] = [];
+  let missing = 0;
+
+  for (const { step, bursts } of inputs) {
+    if (step <= 0) continue;
+    const values = bursts.flat();
+    if (values.length === 0) continue;
+
+    const origin = Math.min(...values);
+    const at = (v: number) => Math.round((v - origin) / step);
+
+    for (const burst of bursts) {
+      if (burst.length < 2) continue;
+      const seen = new Set(burst.map(at));
+      const firstPos = at(burst[0]);
+      const lastPos = at(burst[burst.length - 1]);
+
+      // Strictly interior only. A burst's own first and last arrivals define
+      // its span, and a frame lost at either edge is indistinguishable from a
+      // sender that simply started late or stopped early — the same rule
+      // analyzeSequence follows. Counting the edges made every burst that did
+      // not reach the widest observed lattice look like it lost both ends: on
+      // the rig that read as 38 misses at slot 0 and a CLUSTERED verdict for
+      // loss that is nothing of the sort.
+      for (let i = firstPos + 1; i < lastPos; i++) {
+        opportunities[i] = (opportunities[i] ?? 0) + 1;
+        byPosition[i] = byPosition[i] ?? 0;
+        if (!seen.has(i)) {
+          byPosition[i]++;
+          missing++;
+        }
+      }
+    }
+  }
+
+  // Positions nothing ever had a chance to lose carry no information.
+  const bins: number[] = [];
+  for (let i = 0; i < opportunities.length; i++) {
+    if ((opportunities[i] ?? 0) > 0) bins.push(i);
+  }
+
+  const positions = bins.length;
+  const degreesOfFreedom = Math.max(0, positions - 1);
+  const criticalValue =
+    CHI2_CRITICAL_P05[degreesOfFreedom] ?? Number.POSITIVE_INFINITY;
+  const dense = bins.map((i) => byPosition[i] ?? 0);
+  const denseOpportunities = bins.map((i) => opportunities[i] ?? 0);
+
+  if (positions < 2) {
+    return {
+      result: "insufficient",
+      positions,
+      missing,
+      byPosition: dense,
+      opportunities: denseOpportunities,
+      chiSquare: 0,
+      degreesOfFreedom,
+      criticalValue,
+      detail: "no burst wide enough to have interior slot positions",
+    };
+  }
+
+  if (missing / positions < MIN_EXPECTED_PER_POSITION) {
+    return {
+      result: "insufficient",
+      positions,
+      missing,
+      byPosition: dense,
+      opportunities: denseOpportunities,
+      chiSquare: 0,
+      degreesOfFreedom,
+      criticalValue,
+      detail:
+        missing === 0
+          ? "nothing went missing from an interior slot"
+          : `${missing} missing over ${positions} interior positions — too few to judge, want ${MIN_EXPECTED_PER_POSITION} per position`,
+    };
+  }
+
+  // Expected misses at a position are proportional to how often that position
+  // was on offer, not simply missing/positions.
+  const totalOpportunities = denseOpportunities.reduce((a, b) => a + b, 0);
+  let chiSquare = 0;
+  for (let i = 0; i < positions; i++) {
+    const expected = (missing * denseOpportunities[i]) / totalOpportunities;
+    if (expected <= 0) continue;
+    chiSquare += (dense[i] - expected) ** 2 / expected;
+  }
+
+  if (chiSquare > criticalValue) {
+    const worstBin = dense.indexOf(Math.max(...dense));
+    return {
+      result: "clustered",
+      positions,
+      missing,
+      byPosition: dense,
+      opportunities: denseOpportunities,
+      chiSquare,
+      degreesOfFreedom,
+      criticalValue,
+      detail: `misses concentrate at slot position ${bins[worstBin]} (${dense[worstBin]} of ${missing}); chi2 ${chiSquare.toFixed(1)} > ${criticalValue} at ${degreesOfFreedom} df`,
+    };
+  }
+
+  return {
+    result: "uniform",
+    positions,
+    missing,
+    byPosition: dense,
+    opportunities: denseOpportunities,
+    chiSquare,
+    degreesOfFreedom,
+    criticalValue,
+    detail: `misses spread evenly over ${positions} interior slot positions; chi2 ${chiSquare.toFixed(1)} <= ${criticalValue} at ${degreesOfFreedom} df`,
+  };
+}
+
+/**
+ * Dispersion inputs for every run that has a lattice worth measuring.
+ *
+ * CCA only: the CCX sequence has no known burst structure, so its "bursts"
+ * are the whole stream and a position within one means nothing.
+ */
+export function dispersionInputs(analysis: CaptureAnalysis): DispersionInput[] {
+  return analysis.runs
+    .filter((r) => r.band === "cca" && r.sequence.step !== null)
+    .map((r) => ({ step: r.sequence.step as number, bursts: r.burstSlots }));
 }
