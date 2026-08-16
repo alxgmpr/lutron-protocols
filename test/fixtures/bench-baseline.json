@@ -1,14 +1,12 @@
 {
-  "note": "PROVISIONAL \u2014 laptop-measured, pushed to test whether the decode-shaped reference makes ratios transfer across machines. Replace with CI numbers.",
+  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% \u2014 the 40% band is sized from that.",
   "tolerancePct": 40,
-  "perCaseTolerancePct": {
-    "bridge.dispatch": 80
-  },
+  "perCaseTolerancePct": {},
   "ratios": {
-    "cca.identifyPacket": 1.3106,
-    "cca.decodeFrame": 1.7077,
-    "stream.parseFrame": 1.2561,
-    "ccx.decodeAndParse": 2.3129,
-    "bridge.dispatch": 4.9732
+    "cca.identifyPacket": 1.4427,
+    "cca.decodeFrame": 2.3003,
+    "stream.parseFrame": 1.6551,
+    "ccx.decodeAndParse": 3.5871,
+    "bridge.dispatch": 7.0309
   }
 }

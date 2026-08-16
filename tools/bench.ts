@@ -64,17 +64,16 @@ const WARMUP = 5;
 const TOLERANCE_PCT = 40;
 
 /**
- * Cases that need a wider band than the default, with why.
+ * Cases needing a wider band than the default, with why.
  *
- * bridge.dispatch allocates an intent per packet and its cost moves with GC
- * timing: it drifted 28% between two identical CI runs where no other case
- * moved more than 16%. At the default band that is a false failure waiting to
- * happen, and a gate that cries wolf gets ignored or deleted. 80% still
- * catches the gross regressions worth catching here.
+ * Empty, and that is a result rather than an oversight: bridge.dispatch once
+ * needed 80% because it drifted 28% between identical CI runs, but that was
+ * under the old ALU reference. With a decode-shaped reference its drift fell
+ * to 12% and the override stopped being justified. Kept as a mechanism
+ * because paths do differ in volatility — stream.parseFrame is now the
+ * twitchiest at 28% — and one band will not always serve them all.
  */
-const PER_CASE_TOLERANCE_PCT: Record<string, number> = {
-  "bridge.dispatch": 80,
-};
+const PER_CASE_TOLERANCE_PCT: Record<string, number> = {};
 
 const REFERENCE = "reference";
 
