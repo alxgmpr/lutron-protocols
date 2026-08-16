@@ -1,0 +1,11 @@
+{
+  "note": "Ratios vs the reference workload — machine-independent. Regenerate with: npm run bench -- --write",
+  "tolerancePct": 30,
+  "ratios": {
+    "cca.identifyPacket": 0.5111465341428538,
+    "cca.decodeFrame": 0.6702128351188104,
+    "stream.parseFrame": 0.4922368863155098,
+    "ccx.decodeAndParse": 0.9004899005290014,
+    "bridge.dispatch": 1.9584560975800338
+  }
+}
