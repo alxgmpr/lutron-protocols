@@ -166,3 +166,53 @@ describe("summarizeDecode", () => {
     assert.deepEqual(s.byType, {});
   });
 });
+
+describe("analyzeSequence with a forced step", () => {
+  it("uses the given step instead of inferring one", () => {
+    // Two numbers cannot reveal a step, so inference reads 135→147 as one
+    // clean stride. Told the step is 6, the missing 141 shows up.
+    const inferred = analyzeSequence([135, 147]);
+    const forced = analyzeSequence([135, 147], { step: 6 });
+
+    assert.equal(inferred.step, 12);
+    assert.deepEqual(inferred.missing, []);
+    assert.equal(forced.step, 6);
+    assert.deepEqual(forced.missing, [141]);
+  });
+
+  it("survives a value off the lattice without collapsing the step", () => {
+    // A stray 166 among a 6-step run drags the GCD to 1 and inflates
+    // `expected` by six. With the step supplied, it is just an extra arrival.
+    const collapsed = analyzeSequence([135, 141, 147, 166, 171]);
+    const forced = analyzeSequence([135, 141, 147, 166, 171], { step: 6 });
+
+    assert.equal(collapsed.step, 1);
+    assert.equal(forced.step, 6);
+    assert.equal(forced.expected, 7);
+  });
+});
+
+describe("analyzeSequence expected count", () => {
+  it("counts whole slots when the span does not divide by the step", () => {
+    // 135 → 166 is not a whole number of 6-wide slots. `expected` has to
+    // agree with the slots the gap scan actually visits, or a capture reports
+    // a fractional number of frames it was waiting for.
+    const a = analyzeSequence([135, 141, 147, 166], { step: 6 });
+
+    assert.equal(a.expected, 6);
+    assert.ok(Number.isInteger(a.expected));
+    assert.deepEqual(a.missing, [153, 159, 165]);
+  });
+
+  it("keeps expected consistent with the slots scanned", () => {
+    for (const last of [160, 161, 162, 163, 164, 165, 166]) {
+      const a = analyzeSequence([135, last], { step: 6 });
+      assert.equal(
+        a.expected,
+        a.missing.length +
+          [135, last].filter((v) => (v - 135) % 6 === 0).length,
+        `span 135..${last}`,
+      );
+    }
+  });
+});

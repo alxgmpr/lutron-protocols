@@ -22,6 +22,14 @@ export const FLAG_RAW = 0x20;
 /** Source-address trailer present. Meaningful ONLY when FLAG_CCX is set —
  *  bit 4 is also part of the CCA |RSSI| field. */
 export const FLAG_SRC = 0x10;
+/**
+ * |RSSI| on a CCA RX frame — bits 0-4, matching STREAM_FLAG_RSSI_MASK.
+ *
+ * Five bits, so the firmware's `(uint8_t)(-rssi) & 0x1F` truncates rather
+ * than saturates: anything past -31 dBm aliases modulo 32. Read the value as
+ * a magnitude only when it is known to be in range.
+ */
+export const FLAG_RSSI_MASK = 0x1f;
 
 export const FRAME_HEADER_LEN = 10;
 export const SRC_ADDR_LEN = 16;

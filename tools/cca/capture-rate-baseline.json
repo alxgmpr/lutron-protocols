@@ -1,0 +1,9 @@
+{
+  "recordedAt": "2026-08-16T00:00:00.000Z",
+  "note": "Bench rig only \u2014 Nucleo bridge + Caseta Smart Bridge 2, zone 1 (PD-3PCL-WH plug-in dimmer), --stimulus levels --cycles 20. Re-record after any change to the physical setup. This is the MEDIAN of eight runs taken back to back (3.4, 3.9, 6.6, 7.1, 7.3, 8.2, 9.3, 9.9), not a single sample: any one run lands anywhere in a 6.5-point spread, and a best-case baseline leaves the gate no headroom.",
+  "verdict": "local",
+  "loss": {
+    "cca": 7.2,
+    "ccx": null
+  }
+}
