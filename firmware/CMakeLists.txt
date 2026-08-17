@@ -306,6 +306,7 @@ add_executable(${BOOTLOADER_NAME}.elf
     ${BOOTLOADER_HAL_SOURCES}
     src/system_stm32h7xx.c
     src/boot/boot_main.c
+    src/boot/boot_syscalls.c
     src/storage/boot_policy.c
     src/storage/boot_request.c
     src/storage/crc32.c
@@ -339,8 +340,12 @@ target_link_options(${BOOTLOADER_NAME}.elf PRIVATE
     -Wl,--print-memory-usage
     -Wl,--no-warn-rwx-segments
     --specs=nano.specs
-    --specs=nosys.specs
-    -lc -lm -lnosys
+    # No --specs=nosys.specs here, unlike the application. It force-links
+    # libnosys, whose stubs carry .gnu.warning sections ("_write is not
+    # implemented and will always fail") that check-build-warnings.sh treats as
+    # errors. boot_syscalls.c supplies the same stubs, so libnosys is not
+    # needed and its definitions would collide with ours.
+    -lc -lm
 )
 
 set_target_properties(${BOOTLOADER_NAME}.elf PROPERTIES
