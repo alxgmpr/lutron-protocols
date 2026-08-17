@@ -309,8 +309,10 @@ describe("CcxSource device events", () => {
     const intent = target.intents[0];
     assert.equal(intent.kind, "deviceEvent");
     if (intent.kind !== "deviceEvent") return;
-    // Full 4-byte wire device id, not the 2-byte preset slice.
-    assert.equal(intent.deviceId, "0c2cef20");
+    // Full 4-byte wire device id, not the 2-byte preset slice, namespaced by
+    // transport: a CCA id is also four undifferentiated bytes, and a collision
+    // would merge two physical controls into one Home Assistant entity.
+    assert.equal(intent.deviceId, "ccx_0c2cef20");
     assert.equal(intent.button, 0x2c);
     assert.equal(intent.action, "press");
     assert.equal(intent.origin, "PRESET");
@@ -328,7 +330,7 @@ describe("CcxSource device events", () => {
 
     const intent = target.intents[0];
     if (intent.kind !== "deviceEvent") throw new Error("wrong intent");
-    assert.equal(intent.dedupKey, "4:0c2cef20:press:4");
+    assert.equal(intent.dedupKey, "4:ccx_0c2cef20:press:4");
   });
 
   test("DIM_HOLD and DIM_STEP emit hold and release device events", async () => {

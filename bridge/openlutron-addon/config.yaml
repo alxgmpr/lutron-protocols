@@ -1,0 +1,60 @@
+# openlutron Bridge — HA local add-on manifest.
+#
+# Separate slug from ccx-bridge on purpose: this is a different transport, not a
+# new version of that one. It supersedes the CCX-WiZ add-on; run one at a time
+# against the same broker, or their entities compete.
+name: openlutron Bridge
+description: Lutron CCA + CCX from an openlutron board → MQTT / Home Assistant discovery
+version: 0.3.0
+slug: openlutron-bridge
+# Ask the Supervisor for the broker instead of being told. `want` rather than
+# `need`: with no MQTT service the bridge still decodes and still drives WiZ.
+services:
+  - mqtt:want
+arch:
+  - aarch64
+  - amd64
+init: false
+# The board is on the LAN and the stream is bidirectional UDP, as is the WiZ
+# path. Host networking keeps the board's replies off NAT and conntrack.
+host_network: true
+# No devices: block. Unlike the sniffer add-on there is no dongle — the radios
+# are on the board, and CCX arrives already decrypted because the board is a
+# Thread node. Nothing here needs Thread credentials.
+map:
+  - config:rw
+environment:
+  CCX_DATA_DIR: /config/ccx-bridge
+options:
+  openlutron_host: "10.0.0.3"
+  report_state: true
+  mqtt_url: ""
+  mqtt_username: ""
+  mqtt_password: ""
+  mqtt_base_topic: lutron
+  mqtt_discovery_prefix: homeassistant
+  device_serials: []
+  pairings: []
+schema:
+  openlutron_host: str
+  # DEVICE_REPORT state injection back to the board. Needs device_serials to
+  # have something to inject under.
+  report_state: "bool?"
+  # Leave mqtt_url empty and the broker comes from the Supervisor's mqtt
+  # service — host, port and generated credentials. Set it only to point at a
+  # broker Home Assistant does not know about.
+  mqtt_url: "str?"
+  mqtt_username: "str?"
+  mqtt_password: "password?" # betterleaks:allow — HA field type, not a value
+  mqtt_base_topic: "str?"
+  mqtt_discovery_prefix: "str?"
+  device_serials:
+    - zone_id: int
+      serial: int
+  # WiZ pairings are optional here: with none, the add-on observes and publishes
+  # and drives nothing.
+  pairings:
+    - zone_id: int
+      name: "str?"
+      wiz_ips:
+        - str

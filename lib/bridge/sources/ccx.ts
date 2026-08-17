@@ -10,6 +10,7 @@
 import { presetIdFromDeviceId } from "../../../ccx/config";
 import { formatMessage, getMessageTypeName } from "../../../ccx/decoder";
 import type { CCXPacket } from "../../../ccx/types";
+import { deviceIdFor } from "../device-id";
 import type { ApplyResult, DeviceAction, SourceIntent } from "../types";
 
 /** Lowercase hex of a wire device id; empty when the packet carried none. */
@@ -90,8 +91,9 @@ export class CcxSource {
         return null;
     }
 
-    const deviceId = toHex(msg.deviceId);
-    if (!deviceId) return null;
+    const wireId = toHex(msg.deviceId);
+    if (!wireId) return null;
+    const deviceId = deviceIdFor("ccx", wireId);
 
     return {
       kind: "deviceEvent",

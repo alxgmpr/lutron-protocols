@@ -36,12 +36,11 @@
  * including when the run fails partway.
  */
 
-import { createSocket, type Socket } from "dgram";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { parseArgs } from "util";
-import { decodeBytes } from "../../ccx/decoder";
+import { type CapturedFrame, FrameCollector } from "../../lib/capture-collect";
 import { summarizeDecode } from "../../lib/capture-metrics";
 import {
   analyzeCapture,
@@ -50,24 +49,16 @@ import {
   diagnose,
   diffStatus,
   dispersionInputs,
-  type FrameObservation,
   type LossBaseline,
   slotDispersion,
 } from "../../lib/capture-run";
-import { decodeCcaFrame } from "../../lib/cca-decode-adapter";
 import { config, defaultHost } from "../../lib/config";
 import { hrefId, LeapConnection } from "../../lib/leap-client";
 import type { NucleoStatus } from "../../lib/nucleo-status";
-import { parseNucleoStatus } from "../../lib/nucleo-status";
-import { FLAG_RSSI_MASK, parseStreamPacketFrame } from "../../lib/stream-frame";
-
-const UDP_PORT = 9433;
-const CMD_KEEPALIVE = 0x00;
-const CMD_STATUS_QUERY = 0x11;
-const CMD_TEXT = 0x20;
-const RESP_TEXT = 0xfd;
-const RESP_STATUS = 0xfe;
-const RESP_HEARTBEAT = 0xff;
+import {
+  OPENLUTRON_UDP_PORT,
+  OpenlutronStream,
+} from "../../lib/openlutron-stream";
 
 const STATUS_TIMEOUT_MS = 5000;
 const CONNECT_TIMEOUT_MS = 8000;
@@ -145,183 +136,58 @@ if (stimulus !== "none" && !values.zone) {
 }
 
 // ---------------------------------------------------------------------------
-// Nucleo stream client
+// Capture session
 // ---------------------------------------------------------------------------
 
-/** Frames plus everything needed to rebuild the capture afterwards. */
-interface CapturedFrame {
-  observation: FrameObservation;
-  /** CCA payload hex, for feeding tools/cca/build-corpus.ts. */
-  hex: string | null;
-  /**
-   * The five-bit |RSSI| the firmware actually sends, negated. Aliased modulo
-   * 32 and therefore not a signal level — kept only so a run's raw readings
-   * are recoverable from the report. Never fed to the analysis.
-   */
-  rssiRaw5Bit?: number | null;
-  typeName: string | null;
-  decoded: boolean;
-  identified: boolean;
-}
+/**
+ * The stream client plus the collecting window.
+ *
+ * The socket, keepalive and status plumbing this used to hand-roll now live in
+ * lib/openlutron-stream.ts, and what counts as an observation lives in
+ * lib/capture-collect.ts — where, unlike here, it can be tested without the
+ * bench rig. What remains is the part that is specific to a measurement run.
+ */
+class CaptureSession {
+  private readonly stream: OpenlutronStream;
+  private readonly collector = new FrameCollector();
 
-class NucleoStream {
-  private sock: Socket;
-  private keepalive: NodeJS.Timeout | null = null;
-  private statusWaiters: Array<(s: NucleoStatus) => void> = [];
-  private collecting = false;
+  constructor(host: string) {
+    this.stream = new OpenlutronStream({ host, keepaliveMs: KEEPALIVE_MS });
+    this.stream.on("frame", (frame) => this.collector.handleFrame(frame));
+    // A measurement run is attended and short. A socket that dies mid-run
+    // invalidates the numbers, so it is reported rather than absorbed.
+    this.stream.on("error", (err) =>
+      console.error(`  stream error: ${err.message}`),
+    );
+  }
 
-  readonly frames: CapturedFrame[] = [];
-
-  constructor(private readonly host: string) {
-    this.sock = createSocket("udp4");
-    this.sock.on("message", (msg) => this.onMessage(msg));
+  get frames(): CapturedFrame[] {
+    return this.collector.frames;
   }
 
   async connect(): Promise<void> {
-    await new Promise<void>((done) => this.sock.bind(() => done()));
-    this.send(Buffer.from([CMD_KEEPALIVE, 0]));
-    this.keepalive = setInterval(
-      () => this.send(Buffer.from([CMD_KEEPALIVE, 0])),
-      KEEPALIVE_MS,
-    );
-
+    await this.stream.connect();
     // The board only streams to registered clients, so the first datagram
     // back is the proof the registration took.
-    await withTimeout(
-      new Promise<void>((done) => {
-        const onFirst = () => {
-          this.sock.off("message", onFirst);
-          done();
-        };
-        this.sock.on("message", onFirst);
-      }),
-      CONNECT_TIMEOUT_MS,
-      `no response from ${this.host}:${UDP_PORT} — is the bridge powered and on the network?`,
-    );
-
-    this.sendText("rx on");
+    await this.stream.ready(CONNECT_TIMEOUT_MS);
+    this.stream.sendText("rx on");
   }
 
-  send(frame: Buffer): void {
-    this.sock.send(frame, 0, frame.length, UDP_PORT, this.host);
-  }
-
-  sendText(text: string): void {
-    const body = Buffer.from(text, "utf-8");
-    const frame = Buffer.alloc(2 + body.length);
-    frame[0] = CMD_TEXT;
-    frame[1] = body.length;
-    body.copy(frame, 2);
-    this.send(frame);
-  }
-
-  async status(): Promise<NucleoStatus> {
-    const waited = new Promise<NucleoStatus>((done) =>
-      this.statusWaiters.push(done),
-    );
-    this.send(Buffer.from([CMD_STATUS_QUERY, 0]));
-    return withTimeout(
-      waited,
-      STATUS_TIMEOUT_MS,
-      "no status response — firmware too old to answer 0x11?",
-    );
+  status(): Promise<NucleoStatus> {
+    return this.stream.requestStatus(STATUS_TIMEOUT_MS);
   }
 
   startCollecting(): void {
-    this.collecting = true;
+    this.collector.start();
   }
 
   stopCollecting(): void {
-    this.collecting = false;
+    this.collector.stop();
   }
 
   close(): void {
-    if (this.keepalive) clearInterval(this.keepalive);
-    this.sock.close();
+    this.stream.close();
   }
-
-  private onMessage(msg: Buffer): void {
-    if (msg.length < 2) return;
-    const flags = msg[0];
-    const len = msg[1];
-
-    if (flags === RESP_HEARTBEAT && len === 0) return;
-    if (flags === RESP_TEXT) return;
-
-    if (flags === RESP_STATUS) {
-      const parsed = parseNucleoStatus(msg.subarray(2, 2 + len));
-      if (!parsed) return;
-      const waiters = this.statusWaiters;
-      this.statusWaiters = [];
-      for (const w of waiters) w(parsed);
-      return;
-    }
-
-    if (!this.collecting) return;
-    const frame = parseStreamPacketFrame(msg);
-    if (!frame) return;
-    this.frames.push(frame.isCcx ? observeCcx(frame) : observeCca(frame));
-  }
-}
-
-type StreamFrame = NonNullable<ReturnType<typeof parseStreamPacketFrame>>;
-
-function observeCca(frame: StreamFrame): CapturedFrame {
-  const obs = decodeCcaFrame(frame.data);
-  return {
-    observation: {
-      band: "cca",
-      sender: obs.sender,
-      type: obs.typeName,
-      seq: obs.seq,
-      // Deliberately withheld — see rssiRaw5Bit below.
-      rssi: null,
-      isTx: frame.isTx,
-    },
-    // The firmware packs |RSSI| into five bits of the flags byte
-    // (`(uint8_t)(-rssi) & 0x1F` in stream.cpp), so anything past -31 dBm
-    // aliases modulo 32: a real -70 dBm frame arrives here reading -6. The
-    // value is kept for the record but must not reach the RF-vs-code
-    // discriminator, which would read every frame as strong. GLAB-115.
-    rssiRaw5Bit: frame.isTx ? null : -(frame.flags & FLAG_RSSI_MASK),
-    hex: frame.data.toString("hex"),
-    typeName: obs.typeName,
-    decoded: obs.decoded,
-    identified: obs.identified,
-  };
-}
-
-function observeCcx(frame: StreamFrame): CapturedFrame {
-  let sequence: number | null = null;
-  let typeName: string | null = null;
-  let decoded = false;
-  try {
-    const msg = decodeBytes(new Uint8Array(frame.data));
-    decoded = true;
-    typeName = (msg as { type?: string }).type ?? null;
-    if ("sequence" in msg) sequence = (msg as { sequence: number }).sequence;
-  } catch {
-    // Undecodable frame — counted, not attributed.
-  }
-
-  return {
-    observation: {
-      band: "ccx",
-      // The stream's own source trailer, not the device inventory: that makes
-      // band and sender self-verifying rather than a lookup that can go stale.
-      sender: frame.srcAddr,
-      type: typeName,
-      seq: sequence,
-      // CCX arrives via the NCP, which does not hand up a per-frame RSSI.
-      rssi: null,
-      isTx: frame.isTx,
-    },
-    rssiRaw5Bit: null,
-    hex: null,
-    typeName,
-    decoded,
-    identified: decoded && typeName !== null,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -427,29 +293,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((done) => setTimeout(done, ms));
 }
 
-function withTimeout<T>(
-  p: Promise<T>,
-  ms: number,
-  message: string,
-): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, fail) =>
-      setTimeout(
-        () => fail(new Error(`timeout after ${ms}ms: ${message}`)),
-        ms,
-      ),
-    ),
-  ]);
-}
-
 async function main(): Promise<number> {
-  const stream = new NucleoStream(host);
+  const stream = new CaptureSession(host);
   let leap: LeapConnection | null = null;
   let zone: ZoneTarget | null = null;
 
   try {
-    console.log(`Connecting to Nucleo ${host}:${UDP_PORT} ...`);
+    console.log(`Connecting to openlutron ${host}:${OPENLUTRON_UDP_PORT} ...`);
     await stream.connect();
 
     const before = await stream.status();

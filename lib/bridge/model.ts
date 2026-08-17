@@ -52,7 +52,12 @@ export interface DeviceModelOptions {
 
 export class DeviceModel extends EventEmitter {
   private zones = new Map<number, ZoneState>();
-  private dedup = new Map<string, number>();
+  /**
+   * Dedup table. Each entry carries the window it was admitted under, because
+   * the windows differ per source (CCX 500 ms, CCA 1200 ms) and the overflow
+   * prune has to age entries out against their own window, not a global one.
+   */
+  private dedup = new Map<string, { at: number; window: number }>();
   private sinks: BridgeSink[] = [];
 
   private presetZones: Map<number, PresetZoneEntry>;
@@ -173,7 +178,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "deviceEvent" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -197,7 +208,13 @@ export class DeviceModel extends EventEmitter {
     // Watch filter runs before dedup so unwatched traffic never occupies the
     // dedup table.
     if (!this.isWatched(intent.zoneId)) return { accepted: false, applied: 0 };
-    if (this.isDuplicate(intent.dedupKey))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -218,7 +235,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "preset" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -250,7 +273,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "ramp" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -515,22 +544,57 @@ export class DeviceModel extends EventEmitter {
    * number, never just (device, button) or (zone, level): two presses of one
    * button are two events and must both get through, however close together.
    *
-   * CCX can honour this because it carries a sequence number. A transport that
-   * cannot (CCA) simply dedupes less; that asymmetry is deliberate.
+   * CCX can honour this because a retransmit repeats its sequence number and a
+   * second press never does. CCA cannot: its sequence byte *increments* per
+   * retransmit (it carries the TDMA slot in the low bits — see
+   * docs/protocols/cca/tdma.md §2), so on that transport identical payload
+   * bytes arriving close together are the only retransmit signal there is.
+   *
+   * That is why `windowMs` is per-intent. CCA asks for a window sized to its
+   * retransmit burst instead of the default, keeping the span in which it
+   * cannot distinguish a double press as short as the protocol allows. A
+   * transport that cannot key on a sequence dedupes less; the asymmetry is
+   * deliberate.
    */
-  private isDuplicate(key: string | undefined): boolean {
+  private isDuplicate(
+    key: string | undefined,
+    windowMs?: number,
+    isNewWireEvent?: boolean,
+  ): boolean {
     if (key === undefined) return false;
+    const window = windowMs ?? DEDUP_WINDOW_MS;
     const now = this.now();
     const prev = this.dedup.get(key);
-    if (prev !== undefined && now - prev < DEDUP_WINDOW_MS) return true;
-    this.dedup.set(key, now);
-
-    if (this.dedup.size > DEDUP_MAX_ENTRIES) {
-      for (const [k, ts] of this.dedup) {
-        if (now - ts > DEDUP_WINDOW_MS) this.dedup.delete(k);
-      }
+    // A source that can prove the wire started a new event overrides the timer
+    // outright. CCA can: a frame whose retransmit counter is zero begins a new
+    // burst, so a second tap 100 ms after the first is still two events.
+    // Without this, a window long enough to cover an 11-frame retransmit burst
+    // would eat the double tap.
+    if (isNewWireEvent) {
+      this.dedup.set(key, { at: now, window });
+      this.pruneDedup(now);
+      return false;
     }
+    if (prev !== undefined && now - prev.at < window) return true;
+    this.dedup.set(key, { at: now, window });
+    this.pruneDedup(now);
     return false;
+  }
+
+  /**
+   * Drop entries that have outlived the window they were admitted under.
+   *
+   * Against each entry's own window, not a global one: pruning a 1200 ms CCA
+   * entry after 500 ms would re-admit the rest of an in-flight retransmit
+   * burst as fresh events and publish one press two or three times. Runs on
+   * both admit paths — the burst-start path used to return early and never
+   * prune, so burst-dominated traffic grew the table without bound.
+   */
+  private pruneDedup(now: number): void {
+    if (this.dedup.size <= DEDUP_MAX_ENTRIES) return;
+    for (const [k, e] of this.dedup) {
+      if (now - e.at > e.window) this.dedup.delete(k);
+    }
   }
 
   // ── Lifecycle ───────────────────────────────────────────

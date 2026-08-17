@@ -1,11 +1,21 @@
 #!/bin/bash
-# Deploy CCX-WiZ Bridge to Home Assistant as a local add-on via SMB.
+# Deploy a bridge add-on to Home Assistant as a local add-on via SMB.
+#
+# Two add-ons share this script because they share their source tree and their
+# LEAP data:
+#
+#   ADDON=openlutron  (default)  openlutron board → MQTT/HA, CCA + CCX
+#   ADDON=ccx                    nRF sniffer dongle → WiZ + MQTT/HA
+#
+# The openlutron add-on supersedes the CCX-WiZ one. Run one at a time against a
+# given broker — two bridges publishing the same topics will fight.
 #
 # Reads the HA host and the primary processor IP from config.json (looking in
 # the worktree root and falling back to the main checkout, since config.json
 # is gitignored and typically lives only in the main repo).
 #
 # Usage: ./bridge/deploy-ha.sh [config-mount] [addons-mount]
+#        ADDON=ccx ./bridge/deploy-ha.sh [config-mount] [addons-mount]
 #
 # Prerequisites:
 #   Mount HA SMB shares first:
@@ -16,8 +26,32 @@ set -euo pipefail
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG_MOUNT="${1:-/Volumes/config}"
 ADDONS_MOUNT="${2:-/Volumes/addons}"
+ADDON="${ADDON:-openlutron}"
 
-ADDON_DEST="$ADDONS_MOUNT/local/ccx-bridge"
+case "$ADDON" in
+  openlutron)
+    ADDON_SLUG="openlutron-bridge"
+    ADDON_SRC="$PROJECT_ROOT/bridge/openlutron-addon"
+    ADDON_ENTRY="bridge/openlutron-main.ts"
+    ADDON_TITLE="openlutron Bridge"
+    ;;
+  ccx)
+    ADDON_SLUG="ccx-bridge"
+    ADDON_SRC="$PROJECT_ROOT/bridge/ha-addon"
+    ADDON_ENTRY="bridge/main.ts"
+    ADDON_TITLE="CCX-WiZ Bridge"
+    ;;
+  *)
+    echo "Error: unknown ADDON=$ADDON (use openlutron or ccx)"
+    exit 1
+    ;;
+esac
+
+echo "=== Deploying $ADDON_TITLE (slug: $ADDON_SLUG) ==="
+
+ADDON_DEST="$ADDONS_MOUNT/local/$ADDON_SLUG"
+# Both add-ons read LEAP data from the same place; there is one system to
+# describe, so duplicating the dump per add-on would just create two truths.
 DATA_DEST="$CONFIG_MOUNT/ccx-bridge"
 
 # ── Locate config.json ──────────────────────────────────
@@ -140,9 +174,9 @@ rm -rf "${ADDON_DEST:?}/lib" "${ADDON_DEST:?}/ccx" "${ADDON_DEST:?}/protocol" \
        "${ADDON_DEST:?}/bridge"
 
 # Add-on manifest and entrypoint
-cp -v "$PROJECT_ROOT/bridge/ha-addon/config.yaml"  "$ADDON_DEST/config.yaml"
-cp -v "$PROJECT_ROOT/bridge/ha-addon/Dockerfile"    "$ADDON_DEST/Dockerfile"
-cp -v "$PROJECT_ROOT/bridge/ha-addon/run.sh"        "$ADDON_DEST/run.sh"
+cp -v "$ADDON_SRC/config.yaml"  "$ADDON_DEST/config.yaml"
+cp -v "$ADDON_SRC/Dockerfile"   "$ADDON_DEST/Dockerfile"
+cp -v "$ADDON_SRC/run.sh"       "$ADDON_DEST/run.sh"
 
 # Node.js project files
 cp -v "$PROJECT_ROOT/package.json"      "$ADDON_DEST/package.json"
@@ -159,9 +193,9 @@ cp -r "$PROJECT_ROOT/ccx" "$ADDON_DEST/ccx"
 echo "Copying protocol/..."
 cp -r "$PROJECT_ROOT/protocol" "$ADDON_DEST/protocol"
 
-echo "Copying bridge/main.ts..."
+echo "Copying $ADDON_ENTRY..."
 mkdir -p "$ADDON_DEST/bridge"
-cp "$PROJECT_ROOT/bridge/main.ts" "$ADDON_DEST/bridge/main.ts"
+cp "$PROJECT_ROOT/$ADDON_ENTRY" "$ADDON_DEST/$ADDON_ENTRY"
 
 echo ""
 echo "=== Deployment complete ==="
@@ -171,9 +205,20 @@ echo "LEAP data:  $DATA_DEST"
 echo ""
 echo "Next steps:"
 echo "  1. HA UI → Settings → Add-ons → ⋮ → Check for updates"
-echo "  2. Find 'CCX-WiZ Bridge' under Local add-ons → Install"
+echo "  2. Find '$ADDON_TITLE' under Local add-ons → Install"
 echo "     (already installed? Update if offered, else ⋮ → Rebuild — a local"
 echo "      add-on only rebuilds when config.yaml's version changes)"
-echo "  3. Configuration tab → set ALL settings (pairings, Thread creds, etc.)"
-echo "     For MQTT/HA discovery set mqtt_url; leave empty to disable."
-echo "  4. Start the add-on, check Logs tab (the banner prints an MQTT: line)"
+if [ "$ADDON" = "openlutron" ]; then
+  echo "  3. Configuration tab → set openlutron_host (the board). That is all."
+  echo "     Leave mqtt_url empty: the broker comes from the Supervisor's mqtt"
+  echo "     service, credentials included. Set it only to override."
+  echo "     No Thread credentials either: the board decrypts CCX itself."
+  echo "     WiZ pairings are optional — with none it observes and publishes."
+  echo "  4. Start the add-on, check Logs tab (the banner prints Board/MQTT/Health)"
+  echo "  5. Stop the ccx-bridge add-on if it is still running — one bridge per"
+  echo "     broker, or their entities compete."
+else
+  echo "  3. Configuration tab → set ALL settings (pairings, Thread creds, etc.)"
+  echo "     For MQTT/HA discovery set mqtt_url; leave empty to disable."
+  echo "  4. Start the add-on, check Logs tab (the banner prints an MQTT: line)"
+fi
