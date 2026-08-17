@@ -75,7 +75,7 @@ reference tables.
 |-----|-------------|
 | [tooling/nucleo.md](tooling/nucleo.md) | STM32H723 Nucleo transceiver — toolchain, flashing, build, wiring |
 | [tooling/bdm-recovery.md](tooling/bdm-recovery.md) | PowPak BDM recovery — USBDM wiring and the `bdm-prog.py` programmer |
-| [tooling/ccx-wiz-bridge.md](tooling/ccx-wiz-bridge.md) | CCX-WiZ bridge — state machine, HA add-on deployment, WiZ integration |
+| [tooling/ccx-wiz-bridge.md](tooling/ccx-wiz-bridge.md) | Bridge spec — state machine, dedup, both HA add-ons (openlutron and sniffer), WiZ integration |
 | [tooling/network.md](tooling/network.md) | Network topology, IP assignments, LEAP infrastructure |
 | [tooling/cloud-proxy.md](tooling/cloud-proxy.md) | Cloud LEAP proxy — remote tunneling, firmware-check flow |
 | [tooling/firmware-updates.md](tooling/firmware-updates.md) | Firmware update infrastructure — download API, CDN paths, device-class enum |

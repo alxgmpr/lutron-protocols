@@ -1,6 +1,17 @@
-# CCX-WiZ Bridge State Machine Spec
+# Bridge State Machine Spec
 
-*State machine spec for the CCX-WiZ bridge: message sources, zone state, deduplication, and dispatch.*
+*State machine spec for the Lutron bridges: message sources, zone state, deduplication, and dispatch.*
+
+Two add-ons are built on this spec. They differ only in their source:
+
+| Add-on | Slug | Source | Outputs |
+|---|---|---|---|
+| openlutron Bridge | `openlutron-bridge` | openlutron board, UDP :9433 — CCA **and** CCX | MQTT/HA, WiZ, DEVICE_REPORT |
+| CCX-WiZ Bridge | `ccx-bridge` | nRF sniffer dongle, serial — CCX only | WiZ, MQTT/HA, DEVICE_REPORT |
+
+The openlutron add-on supersedes the sniffer one: same model, same sinks, a
+front end that hears both radios and needs no Thread credentials. Run one at a
+time against a given broker — two bridges publishing the same topics compete.
 
 ## 0. Shape: model, sources, sinks
 
@@ -8,12 +19,13 @@ The state machine below lives in one transport-agnostic place, `DeviceModel`.
 Everything else plugs into it:
 
 ```
-  CCX sniffer ─┐                         ┌─ WiZ UDP        (zone:changed)
-  CCA radio  ──┼─ sources ─► DeviceModel ─┼─ MQTT / HA      (zone:changed)
-  LEAP subs  ──┤    (intents)   │        ├─ DEVICE_REPORT  (zone:settled)
-  IPL telemetry┘                │        └─ CLI log        (command)
-                                └─ dedup, watch filter, scene resolve,
-                                   warm dim, fade/ramp, settle-to-idle
+  openlutron ┬ CCX ┐                     ┌─ WiZ UDP        (zone:changed)
+  (UDP :9433)└ CCA ┤                     ├─ MQTT / HA      (zone:changed)
+  CCX sniffer ─────┼─ sources ─► DeviceModel ─┼─ DEVICE_REPORT  (zone:settled)
+  LEAP subs ───────┤    (intents)   │    └─ CLI log        (command)
+  IPL telemetry ───┘                │
+                                    └─ dedup, watch filter, scene resolve,
+                                       warm dim, fade/ramp, settle-to-idle
 ```
 
 A **source** normalizes its wire format into a `SourceIntent` and makes no
@@ -21,6 +33,21 @@ decisions. A **sink** subscribes to model events and never sees a packet.
 Everything worth getting right — deduplication, ramp tracking, settle-to-idle —
 is decided once in the model, so every sink inherits it rather than only
 whichever one happened to be written first.
+
+`lib/bridge/sources/openlutron.ts` is a demux rather than a third
+normalization: it splits the board's stream on `FLAG_CCX` and hands each frame
+to the CCX or CCA source. That order is load-bearing — `FLAG_SRC` (0x10) shares
+bit 4 with the CCA `|RSSI|` field, so a CCX frame read as CCA would report a
+source-attribution bit as signal strength.
+
+### What CCA carries, and what it does not
+
+CCA produces **device events only**. It addresses loads by 4-byte device id, not
+by the LEAP zone ids the model and HA are keyed on, and nothing maps between
+them — `SET_LEVEL` carries a `target_id`, not a zone. Guessing a zone would
+drive the wrong entity, which is worse than driving none, so CCA level and state
+frames are counted and dropped. A `device_id` → LEAP zone table is what unlocks
+the CCA zone path.
 
 ## 1. CCX Message Sources
 
@@ -194,10 +221,31 @@ the window is two events and both must get through — a Pico double-tap is a
 real thing people do, and swallowing the second press is worse than publishing
 a duplicate.
 
-CCX can honour this because it carries a sequence number, so a retransmit is
-identifiable. CCA has no comparable guarantee and so dedupes less. That
-asymmetry is deliberate, not an oversight: under-deduping shows up as a
-duplicate event, over-deduping shows up as a press that did nothing.
+CCX can honour this because it carries a sequence number: a retransmit repeats
+it and a second press never does.
+
+**CCA's sequence byte means the opposite, so its keys are not built from it.**
+Every CCA frame carries a sequence at offset 1, but per
+[CCA TDMA §2](../protocols/cca/tdma.md) it packs a retransmit counter in bits
+7-3 and the sender's TDMA slot in bits 2-0, and the counter advances by
+`slot_count` on every retransmit. The two frames of one tap burst therefore
+carry two *different* sequence values for one press. Keying on it would let
+every retransmit through as its own event.
+
+A CCA key is instead the **payload with that byte masked out**: frames identical
+apart from the sequence are one wire event, and anything else is not. The
+residual limit is real and stated rather than hidden — two byte-identical
+presses of one button inside the window cannot be told apart on this transport.
+
+That is why an intent may declare its own `dedupWindowMs`. CCA asks for
+**250 ms**, sized to its 2-frame ~75 ms tap burst plus observed jitter, instead
+of inheriting the model's default: every millisecond past the burst is a double
+press this transport would swallow, so the window is as short as the protocol
+allows.
+
+So CCA dedupes *less* than CCX, deliberately: under-deduping shows up as a
+duplicate event, over-deduping shows up as a press that did nothing. Neither
+transport keys on `(device, button)`, which would swallow all of them.
 
 ### 5.1 Device events
 
@@ -217,6 +265,29 @@ about which zones the bridge drives; a press is a fact about the button. A
 control that drives nothing is still an automation trigger.
 
 DIM_HOLD and DIM_STEP emit `hold` and `release` on the same channel.
+
+**CCA device events** come from the button packet types (0x88-0x8B and
+`PICO_EXTENDED`), read through the protocol definitions rather than hardcoded
+offsets: `device_id` for identity, `button` for which one, `action` for
+press/hold/release. `SAVE` (favourite programming) is not in the vocabulary and
+emits nothing. A TX echo emits nothing either — that is the board reporting its
+own transmission, and reading it back would re-fire whatever the bridge just
+did.
+
+### Device identity
+
+`deviceId` is the wire device id **namespaced by transport** —
+`ccx_0c2cef20`, `cca_deadbeef` — built by `lib/bridge/device-id.ts`.
+
+The wire id is right because it is provisioned into the device: it survives a
+rename (names live in LEAP/Designer, not on the wire) and a restart. The
+namespace is necessary because a CCX wire id and a CCA wire id are both four
+undifferentiated bytes, so without it two physical controls sharing four bytes
+would collapse into one HA entity.
+
+Name resolution strips the namespace again, since the LEAP preset lookup is
+keyed on the raw wire bytes. CCA controls are not in that table and fall back to
+`Device <id>`.
 
 ## 6. Dispatch Contract
 
@@ -458,10 +529,17 @@ without touching LEAP-backed ones, and without marking the bridge itself down.
 - **Command topics (Phase 2) must not be retained** either, for the same
   reason — a retained command replays on reconnect.
 
+Source names in that last topic are per **stream**, not per radio. The
+openlutron add-on publishes one, `lutron/bridge/source/openlutron/availability`,
+even though it carries two radios: the board is the single thing that can go
+away. Per-radio health would need per-radio liveness, and a quiet CC1101 is
+indistinguishable from a quiet room.
+
 ### Entity identity
 
-`unique_id` is keyed on the Lutron zone id (`lutron_zone_<id>`) and the 4-byte
-wire device id (`lutron_button_<hex>`). Both survive a rename in Designer, a
+`unique_id` is keyed on the Lutron zone id (`lutron_zone_<id>`) and the
+transport-namespaced wire device id (`lutron_button_ccx_<hex>`,
+`lutron_button_cca_<hex>` — see §5.1). Both survive a rename in Designer, a
 bridge restart, and the device being seen on a second transport.
 
 It is deliberately **not** the IPv6 source address: a device's primary ML-EID
@@ -481,6 +559,16 @@ condition, not an error path:
   unhandled throw
 - on reconnect the sink re-announces every entity it has seen, since the broker
   may have lost its retained set
+
+The same rule applies to the board on the openlutron path, and it is the reason
+source availability starts at `offline`. UDP has no handshake, so a bound socket
+is no evidence a board exists; publishing `online` until proven otherwise would
+show HA a live-looking set of entities fed by nothing. The stream's `up`/`down`
+come from datagrams actually arriving, and a socket that errors is rebound
+rather than reported as a dead bridge. An unreachable board at start-up, a board
+that goes quiet mid-run, and a dead socket are all normal operating conditions
+that must not take the bridge down — `test/openlutron-bridge.test.ts` covers
+each.
 
 Occupancy would slot in here as a third entity kind (`binary_sensor`, off a
 future `sensor:occupancy` channel). There is no occupancy in the vocabulary
@@ -505,8 +593,10 @@ Every silent failure in the current bridge becomes an explicit log:
 
 Validate on startup, fail fast:
 
-- Thread master key: 32 hex chars
-- Thread channel: 11-26
+- openlutron host: required on that add-on (there is nothing to stream from
+  without it); Thread key and channel do not apply — the board decrypts
+- Thread master key: 32 hex chars *(sniffer add-on only)*
+- Thread channel: 11-26 *(sniffer add-on only)*
 - Pairings: each must have `zoneId` (number) and at least one WiZ IP (valid IPv4)
 - Warm dim curve names: must exist in curve registry
 - Sniffer device: path must exist (or be auto-detected)
@@ -530,7 +620,19 @@ Use runtime validation (Zod or manual checks). Invalid config = immediate exit w
 
 ## Bridge Architecture
 
-The CCX→WiZ bridge captures Lutron Thread traffic via nRF sniffer dongle (direct serial) and forwards commands to WiZ bulbs.
+**openlutron path** (`bridge/openlutron-main.ts`): the board streams CCA and CCX
+over UDP :9433; the bridge decodes both and publishes to MQTT/HA.
+
+- `lib/openlutron-stream.ts` — the one UDP :9433 client: bind, register,
+  keep registering, notice silence, rebind. Shared with `cli/nucleo.ts` and
+  `tools/cca/capture-rate.ts`, which used to hand-roll it
+- `lib/stream-frame.ts` — the wire framing, including source attribution
+- `lib/bridge/sources/openlutron.ts` — demux on `FLAG_CCX`
+- `lib/bridge/sources/cca.ts` — CCA button frames → device events
+- `lib/openlutron-bridge.ts` — the assembled read path, sinks and availability
+
+**Sniffer path** (`bridge/main.ts`): captures Lutron Thread traffic via nRF
+sniffer dongle (direct serial) and forwards commands to WiZ bulbs.
 
 **Code structure:**
 - `lib/serial-sniffer.ts` — serial driver (115200 baud, text protocol: `sleep` → `shell echo off` → `channel N` → `receive`)
@@ -561,7 +663,40 @@ Serial mode is faster and self-contained vs tshark (which dies on laptop sleep).
 
 ## HA Add-on Deployment
 
-The CCX→WiZ bridge runs as a Home Assistant local add-on on the HA machine at 10.0.0.4 (Pi5, aarch64).
+Both add-ons run as Home Assistant local add-ons on the HA machine (Pi5,
+aarch64; address in `config.json`). One deploy script covers them:
+
+```bash
+./bridge/deploy-ha.sh /Volumes/config /Volumes/addons              # openlutron (default)
+ADDON=ccx ./bridge/deploy-ha.sh /Volumes/config /Volumes/addons    # the sniffer add-on
+```
+
+They share `/config/ccx-bridge/` for LEAP data — one system to describe, so a
+per-add-on copy would only create two truths.
+
+**Access** (either add-on): SMB on the HA host exposes `/addons`, `/config`,
+`/share`; SSH via the HA SSH add-on. A local add-on only rebuilds when its
+`config.yaml` version changes — otherwise use ⋮ → Rebuild. HA OS does not
+expose Docker directly, so `/addons/local/<slug>/` is the only route, and config
+changes go through the HA UI rather than by editing files.
+
+### openlutron Bridge (`openlutron-bridge`)
+
+Source in `bridge/openlutron-addon/`, entry point `bridge/openlutron-main.ts`.
+
+- **No `/dev/ttyACM0`.** It needs network access to the board instead, and
+  `host_network: true` so the board's UDP replies are not NAT'd.
+- **No Thread credentials.** The board is a Thread node, so CCX arrives already
+  decrypted. There is no channel and no master key to configure — a real
+  simplification against the sniffer add-on, and one less secret on the HA box.
+- **Options:** `openlutron_host`, `report_state`, the MQTT block from GLAB-92,
+  `device_serials`, and optional `pairings`. With no pairings it observes and
+  publishes, driving nothing.
+- **Health:** `lutron/bridge/source/openlutron/availability`.
+
+### CCX-WiZ Bridge (`ccx-bridge`) — superseded
+
+The original, kept while the openlutron path proves itself on hardware.
 
 **Access:** SMB at `smb://10.0.0.4` exposes `/addons`, `/config`, `/share`. SSH via HA SSH addon.
 
