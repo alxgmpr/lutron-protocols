@@ -31,7 +31,6 @@ This project started with Caseta CCA radios and expanded into reverse engineerin
 
 <img width="461" alt="image" src="https://github.com/user-attachments/assets/11533b74-ef90-4847-9f7d-609a5c813bd4" />
 
-
 ```
   CC1101 (433 MHz CCA)  ──┐                                ┌── UART shell (ST-LINK VCP)
                           ├── STM32H723 Nucleo (FreeRTOS) ─┤
@@ -44,7 +43,6 @@ This is architecturally similar to Lutron's production bridges. Caseta/Vive/RA2 
 
 ## Protocol Coverage
 
-
 | Layer    | Transport                 | Description                                                       |
 | -------- | ------------------------- | ----------------------------------------------------------------- |
 | **CCA**  | 433 MHz 2-FSK, CC1101     | Dimmer control, pico remotes, pairing, state reports              |
@@ -52,11 +50,10 @@ This is architecturally similar to Lutron's production bridges. Caseta/Vive/RA2 
 | **LEAP** | TLS mutual-auth JSON      | Processor API for zone/device/area hierarchy, status, configuration |
 | **IPL**  | TLS:8902 binary frames    | Designer integration protocol — project sync, real-time telemetry, device config |
 
-
 ## Quick Start
 
 ```bash
-git clone https://github.com/alxgmpr/lutron-tools.git && cd lutron-tools
+git clone https://github.com/alxgmpr/lutron-protocols.git && cd lutron-protocols
 npm install
 cp config.example.json config.json  # configure processor IPs and cert paths
 
@@ -101,7 +98,6 @@ status                                  # Radio/network status
 
 ## Tools
 
-
 | Tool                         | Purpose                                                   |
 | ---------------------------- | --------------------------------------------------------- |
 | `cli/nucleo.ts`              | Interactive TUI — packet display, commands, CoAP explorer |
@@ -121,7 +117,6 @@ status                                  # Radio/network status
 | `tools/cca/rtlsdr-cca-decode.ts` | Decode CCA from RTL-SDR captures                          |
 | `tools/designer/designer-project.ts`  | Parse Lutron Designer `.hw`/`.ra3` project files          |
 | `bridge/`                    | CCX→WiZ bridge (HA add-on) — Thread sniffer to WiZ UDP    |
-
 
 ## Documentation
 
@@ -163,4 +158,4 @@ Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than sta
 
 ## License
 
-Research and educational purposes. Not affiliated with Lutron Electronics.  
+Research and educational purposes. Not affiliated with Lutron Electronics.
