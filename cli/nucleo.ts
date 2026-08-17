@@ -12,7 +12,6 @@
  */
 
 import { decode as cborDecode } from "cbor-x";
-import { createSocket, type Socket } from "dgram";
 import {
   appendFileSync,
   existsSync,
@@ -36,8 +35,12 @@ import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
 import {
+  OPENLUTRON_UDP_PORT,
+  OpenlutronStream,
+} from "../lib/openlutron-stream";
+import {
+  FLAG_RSSI_MASK,
   FLAG_TX,
-  parseStreamPacketFrame,
   type StreamPacketFrame,
 } from "../lib/stream-frame";
 import { DeviceClassNames } from "../protocol/cca.protocol";
@@ -69,7 +72,6 @@ import { createScreen, type InkScreen } from "./ui/screen";
 // Constants
 // ============================================================================
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const UDP_PORT = 9433;
 const KEEPALIVE_MS = 5000;
 const CONNECTION_TIMEOUT_MS = 12000; // no datagram for 12s → disconnected
 const CAPTURES_DIR = join(__dirname, "../captures/cca-sessions");
@@ -83,12 +85,8 @@ const CMD = {
   TEXT: 0x20,
 } as const;
 
-// Stream response opcodes (STM32 → host)
-const RESP_TEXT = 0xfd;
 const TEXT_CMD_TIMEOUT_MS = 10000;
 
-// Stream flags (STM32 → host) — see lib/stream-frame.ts for the rest
-const FLAG_RSSI_MASK = 0x3f;
 const CCA_SLOT_MS = 12.5;
 const CCA_SLOT_MAX_DT_MS = 400;
 const CCA_SLOT_MAX_DSEQ = 32;
@@ -138,15 +136,14 @@ let host = "";
   }
 }
 if (!host) host = process.env.OPEN_BRIDGE_HOST || config.openBridge;
-let udpSocket: Socket;
+let stream: OpenlutronStream | null = null;
 let quiet = false;
 let raw = true;
 let verbose = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
-let keepaliveTimer: ReturnType<typeof setInterval>;
 let lastCcaRadioTs = 0; // for CCA inter-packet delta
 let lastCcxRadioTs = 0; // for CCX inter-packet delta
-let lastDatagramTime = 0; // wall-clock ms of last received datagram
+// Mirrors the stream's own liveness so the header can be redrawn on change.
 let connected = false;
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
@@ -239,13 +236,13 @@ function buildCmd(cmd: number, data?: Uint8Array | number[]): Buffer {
   return frame;
 }
 
-/** Send a command frame to the Nucleo via UDP */
+/** Send a command frame to the board over the stream */
 function send(frame: Buffer): boolean {
-  if (!udpSocket) {
+  if (!stream) {
     screen.appendLine(`${RED}Socket not ready${RESET}`);
     return false;
   }
-  udpSocket.send(frame, 0, frame.length, UDP_PORT, host);
+  stream.send(frame);
   return true;
 }
 
@@ -361,7 +358,7 @@ function updateHeader(): void {
   const connState = connected
     ? `${GREEN}● Connected${RESET}`
     : `${RED}● Disconnected${RESET}`;
-  const left = `${BOLD}Nucleo CLI${RESET} — ${host}:${UDP_PORT}  ${connState}`;
+  const left = `${BOLD}openlutron CLI${RESET} — ${host}:${OPENLUTRON_UDP_PORT}  ${connState}`;
   const counters = `${DIM}CCA ${ccaRxCount}rx ${ccaTxCount}tx  CCX ${ccxRxCount}rx ${ccxTxCount}tx${RESET}`;
   screen.setHeader(left, counters);
 }
@@ -1196,93 +1193,66 @@ function displayStatus(blob: Buffer) {
 }
 
 // ============================================================================
-// RX datagram handler — each UDP datagram is one complete frame
+// Stream handlers — the transport itself is lib/openlutron-stream.ts
 // ============================================================================
 
-function handleDatagram(msg: Buffer) {
-  if (msg.length < 2) return;
-
-  const flags = msg[0];
-  const len = msg[1];
-
-  // Track connection liveness from any datagram
-  const wasConnected = connected;
-  lastDatagramTime = Date.now();
-  connected = true;
-  if (!wasConnected) updateHeader();
-
-  // Heartbeat: [0xFF][0x00]
-  if (flags === 0xff && len === 0x00) {
-    return;
+/**
+ * A shell response, already trimmed by the stream client, which also drops the
+ * empty ones.
+ */
+function handleText(text: string) {
+  if (textCmdTimer) {
+    clearTimeout(textCmdTimer);
+    textCmdTimer = null;
   }
 
-  // Text response: [0xFD][text...]
-  if (flags === RESP_TEXT) {
-    if (textCmdTimer) {
-      clearTimeout(textCmdTimer);
-      textCmdTimer = null;
-    }
-    const text = msg.subarray(1).toString("utf-8").trim();
-    if (text.length === 0) return;
-
-    // Check for [coap] broadcast (async response notification)
-    const coapBc = text.match(
-      /^\[coap\] (\d+\.\d+)(?: (.+?))? mid=0x([0-9A-Fa-f]+) len=(\d+)/,
+  // Check for [coap] broadcast (async response notification)
+  const coapBc = text.match(
+    /^\[coap\] (\d+\.\d+)(?: (.+?))? mid=0x([0-9A-Fa-f]+) len=(\d+)/,
+  );
+  if (coapBc) {
+    handleCoapBroadcast(
+      coapBc[1],
+      coapBc[2] || null,
+      coapBc[3],
+      parseInt(coapBc[4], 10),
     );
-    if (coapBc) {
-      handleCoapBroadcast(
-        coapBc[1],
-        coapBc[2] || null,
-        coapBc[3],
-        parseInt(coapBc[4], 10),
-      );
-      return;
-    }
-
-    // Suppress [diag] lines when diag display is off
-    if (!showDiag && text.startsWith("[diag]")) return;
-
-    // Suppress [ccx] CoAP TX/Observe broadcast lines (noise during pending/scan)
-    if (text.startsWith("[ccx] CoAP") && (coapPending || coapScan)) return;
-
-    // Suppress "OK" from probe commands during scan
-    if (text === "OK" && coapScan) return;
-
-    // If we have a pending CoAP request, accumulate response lines
-    if (coapPending) {
-      for (const l of text.split("\n")) {
-        const lt = l.trim();
-        if (lt) coapPending.lines.push(lt);
-      }
-      // Check for terminal conditions
-      if (
-        text.includes("Payload (") ||
-        text.includes("(no payload)") ||
-        text.includes("No CoAP response") ||
-        text.includes("CoAP TX failed")
-      ) {
-        finishCoapPending();
-      }
-      return;
-    }
-
-    // Normal text passthrough — always inline
-    const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
-    for (const line of lines) screen.appendLine(line);
     return;
   }
 
-  // Status response: [0xFE][len][status blob]
-  if (flags === 0xfe) {
-    const data = msg.subarray(2, 2 + len);
-    displayStatus(data);
+  // Suppress [diag] lines when diag display is off
+  if (!showDiag && text.startsWith("[diag]")) return;
+
+  // Suppress [ccx] CoAP TX/Observe broadcast lines (noise during pending/scan)
+  if (text.startsWith("[ccx] CoAP") && (coapPending || coapScan)) return;
+
+  // Suppress "OK" from probe commands during scan
+  if (text === "OK" && coapScan) return;
+
+  // If we have a pending CoAP request, accumulate response lines
+  if (coapPending) {
+    for (const l of text.split("\n")) {
+      const lt = l.trim();
+      if (lt) coapPending.lines.push(lt);
+    }
+    // Check for terminal conditions
+    if (
+      text.includes("Payload (") ||
+      text.includes("(no payload)") ||
+      text.includes("No CoAP response") ||
+      text.includes("CoAP TX failed")
+    ) {
+      finishCoapPending();
+    }
     return;
   }
 
-  // Packet frames: [FLAGS:1][LEN:1][TS_MS:4 LE][TS_CYC:4 LE][DATA:N]([SRC:16])
-  const frame = parseStreamPacketFrame(msg);
-  if (!frame) return; // truncated — dropped rather than misparsed
+  // Normal text passthrough — always inline
+  const lines = text.split("\n").map((l) => `${DIM}> ${l}${RESET}`);
+  for (const line of lines) screen.appendLine(line);
+}
 
+function handleFrame(frame: StreamPacketFrame) {
   const { data, isCcx } = frame;
   const radioTs = frame.tsMs;
 
@@ -1305,7 +1275,7 @@ function handleDatagram(msg: Buffer) {
   if (isCcx && frame.srcKind === "unsupported" && !warnedNoSourceSupport) {
     warnedNoSourceSupport = true;
     screen.appendLine(
-      `${YELLOW}Nucleo firmware predates CCX source attribution — packet sources unavailable. Reflash with 'cd firmware && make flash'.${RESET}`,
+      `${YELLOW}openlutron firmware predates CCX source attribution — packet sources unavailable. Reflash with 'cd firmware && make flash'.${RESET}`,
     );
   }
 
@@ -1321,41 +1291,34 @@ function handleDatagram(msg: Buffer) {
 }
 
 // ============================================================================
-// UDP connection
+// Stream connection
 // ============================================================================
 
-function setupUdp() {
-  udpSocket = createSocket("udp4");
-
-  udpSocket.on("message", (msg: Buffer) => {
-    handleDatagram(msg);
+async function setupStream() {
+  stream = new OpenlutronStream({
+    host,
+    keepaliveMs: KEEPALIVE_MS,
+    connectionTimeoutMs: CONNECTION_TIMEOUT_MS,
   });
 
-  udpSocket.on("error", (err: Error) => {
+  stream.on("frame", handleFrame);
+  stream.on("text", handleText);
+  stream.on("status", (blob) => displayStatus(blob));
+  stream.on("up", () => {
+    connected = true;
+    updateHeader();
+  });
+  stream.on("down", () => {
+    connected = false;
+    updateHeader();
+  });
+  stream.on("error", (err) => {
     screen.appendLine(`${RED}UDP error: ${err.message}${RESET}`);
   });
 
-  udpSocket.bind(() => {
-    // Send initial keepalive to register with the Nucleo
-    send(buildCmd(CMD.KEEPALIVE));
-
-    // Periodic keepalive + connection liveness check
-    keepaliveTimer = setInterval(() => {
-      send(buildCmd(CMD.KEEPALIVE));
-      // Check if we've heard back recently
-      if (
-        connected &&
-        lastDatagramTime > 0 &&
-        Date.now() - lastDatagramTime > CONNECTION_TIMEOUT_MS
-      ) {
-        connected = false;
-        updateHeader();
-      }
-    }, KEEPALIVE_MS);
-
-    updateHeader();
-    updateStatusBar();
-  });
+  await stream.connect();
+  updateHeader();
+  updateStatusBar();
 }
 
 // ============================================================================
@@ -1781,7 +1744,6 @@ function handleCommand(line: string) {
 function cleanup() {
   screen.stop();
   screen.destroy();
-  if (keepaliveTimer) clearInterval(keepaliveTimer);
   if (recording) {
     const fileName = recording.file.split("/").pop();
     console.log(
@@ -1789,9 +1751,9 @@ function cleanup() {
     );
     recording = null;
   }
-  if (udpSocket) {
-    udpSocket.close();
-  }
+  // Closes the socket and stops the keepalive together.
+  stream?.close();
+  stream = null;
 }
 
 // ============================================================================
@@ -1982,8 +1944,8 @@ async function startup() {
 
   screen.start(handleCommand);
 
-  // Start UDP socket
-  setupUdp();
+  // Bind the stream and register with the board
+  await setupStream();
 }
 
 startup();
