@@ -543,7 +543,9 @@ describe("MqttSink behind the real CCX source and model", () => {
     const evt = client.json("lutron/device/ccx_0c2cef20/event");
     assert.equal(evt.event_type, "press");
     assert.equal(evt.button, 0x2c);
-    assert.ok(client.last("homeassistant/event/lutron_button_ccx_0c2cef20/config"));
+    assert.ok(
+      client.last("homeassistant/event/lutron_button_ccx_0c2cef20/config"),
+    );
     model.destroy();
   });
 
