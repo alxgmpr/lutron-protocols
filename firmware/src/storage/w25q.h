@@ -40,6 +40,7 @@ extern "C" {
 #define W25Q_CMD_READ_DATA 0x03
 #define W25Q_CMD_PAGE_PROGRAM 0x02
 #define W25Q_CMD_SECTOR_ERASE 0x20
+#define W25Q_CMD_BLOCK_ERASE_64K 0xD8
 #define W25Q_CMD_JEDEC_ID 0x9F
 #define W25Q_CMD_READ_STATUS2 0x35
 #define W25Q_CMD_READ_STATUS3 0x15
@@ -47,6 +48,7 @@ extern "C" {
 
 #define W25Q_PAGE_SIZE 256u
 #define W25Q_SECTOR_SIZE 4096u
+#define W25Q_BLOCK_SIZE 65536u
 
 /** Status register 1 bits. */
 #define W25Q_STATUS_BUSY 0x01
@@ -112,6 +114,14 @@ w25q_status_t w25q_program(w25q_t* f, uint32_t addr, const uint8_t* data, size_t
 
 /** Erase the 4 KB sector containing @p addr. */
 w25q_status_t w25q_erase_sector(w25q_t* f, uint32_t addr);
+
+/**
+ * Erase the 64 KB block containing @p addr.
+ *
+ * Sixteen of these clear a megabyte; the same span as sector erases is 256
+ * commands and takes long enough to matter during an update.
+ */
+w25q_status_t w25q_erase_block(w25q_t* f, uint32_t addr);
 
 /** Read back and compare. W25Q_ERR_VERIFY on the first mismatching byte. */
 w25q_status_t w25q_verify(w25q_t* f, uint32_t addr, const uint8_t* data, size_t len);

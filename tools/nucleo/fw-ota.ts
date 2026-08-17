@@ -149,7 +149,9 @@ class OtaClient {
     p.writeUInt32LE(crc, 4);
     p.writeUInt32LE(version, 8);
     // The erase blocks the firmware for a second or two; wait longer for this one.
-    return this.request(CMD_FW_OTA_START, p, 15000, 1);
+    // Erasing a megabyte of external NOR is 16 block erases; allow for the
+    // datasheet worst case rather than the typical.
+    return this.request(CMD_FW_OTA_START, p, 60000, 1);
   }
 
   chunk(offset: number, data: Buffer): Promise<OtaReply> {
@@ -160,7 +162,11 @@ class OtaClient {
   }
 
   end(): Promise<OtaReply> {
-    return this.request(CMD_FW_OTA_END, Buffer.alloc(0), 10000, 1);
+    // The device verifies by reading the whole staged image back and CRCing
+    // it. That slot is now external SPI NOR clocked conservatively for a
+    // flying-lead harness, so a 320 KB image takes tens of seconds — far
+    // longer than when the slot was memory-mapped internal flash.
+    return this.request(CMD_FW_OTA_END, Buffer.alloc(0), 120000, 1);
   }
 }
 

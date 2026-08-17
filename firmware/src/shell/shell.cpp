@@ -2251,6 +2251,33 @@ static void cmd_mem(const char* args)
         return;
     }
 
+    if (strncmp(args, "crc ", 4) == 0) {
+        char* end = NULL;
+        uint32_t addr = (uint32_t)strtoul(args + 4, &end, 16);
+        uint32_t n = (end && *end) ? (uint32_t)strtoul(end, NULL, 16) : 0;
+        if (n == 0) {
+            printf("Usage: mem crc <addr> <len>\r\n");
+            return;
+        }
+        uint32_t crc = CRC32_INIT;
+        uint8_t buf[256];
+        uint32_t done = 0;
+        while (done < n) {
+            uint32_t chunk = n - done;
+            if (chunk > sizeof(buf)) chunk = sizeof(buf);
+            if (w25q_read(f, addr + done, buf, chunk) != W25Q_OK) {
+                printf("read FAILED at %08lX\r\n", (unsigned long)(addr + done));
+                return;
+            }
+            crc = crc32_update(crc, buf, chunk);
+            done += chunk;
+            watchdog_feed();
+        }
+        printf("crc32 %08lX..%08lX = %08lX\r\n", (unsigned long)addr, (unsigned long)(addr + n),
+               (unsigned long)crc32_final(crc));
+        return;
+    }
+
     if (strncmp(args, "read ", 5) == 0) {
         char* end = NULL;
         uint32_t addr = (uint32_t)strtoul(args + 5, &end, 16);
@@ -2316,7 +2343,7 @@ static void cmd_mem(const char* args)
         return;
     }
 
-    printf("Usage: mem [status | qe | read <addr> [n] | erase <addr> | test [addr]]\r\n");
+    printf("Usage: mem [status | qe | read <addr> [n] | crc <addr> <len> | erase <addr> | test [addr]]\r\n");
 }
 
 /** The read-only/reset half of `swd`, run with the pin lock already held. */
@@ -4252,7 +4279,8 @@ void shell_execute(const char* line)
     else if (strcmp(line, "ota") == 0) {
         ota_service_info_t info;
         ota_service_info(&info);
-        printf("OTA staging slot (sectors 4-6, %lu KB usable)\r\n", (unsigned long)(ota_service_capacity() / 1024));
+        printf("OTA staging slot (external SPI NOR, %lu KB usable)\r\n",
+               (unsigned long)(ota_service_capacity() / 1024));
         if (info.active) {
             printf("  session: ACTIVE  %lu/%lu bytes\r\n", (unsigned long)info.written,
                    (unsigned long)info.expected_len);

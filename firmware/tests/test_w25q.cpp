@@ -307,6 +307,44 @@ TEST(w25q_erase_sector_waits_for_busy_to_clear)
     ASSERT_EQ(r.part.peek(0x1000), 0x5A);
 }
 
+TEST(w25q_erase_block_clears_sixteen_sectors)
+{
+    Rig r;
+    r.part.poke(0x30000, 0x00);
+    r.part.poke(0x3FFFF, 0x00);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_erase_block(&r.f, 0x30000), W25Q_OK);
+
+    ASSERT_EQ(r.part.peek(0x30000), 0xFF);
+    ASSERT_EQ(r.part.peek(0x3FFFF), 0xFF);
+}
+
+TEST(w25q_erase_block_leaves_the_neighbouring_block_alone)
+{
+    Rig r;
+    r.part.poke(0x2FFFF, 0x11);
+    r.part.poke(0x40000, 0x22);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_erase_block(&r.f, 0x38000), W25Q_OK);
+
+    ASSERT_EQ(r.part.peek(0x2FFFF), 0x11);
+    ASSERT_EQ(r.part.peek(0x40000), 0x22);
+}
+
+TEST(w25q_erase_block_write_enables_and_waits)
+{
+    Rig r;
+    r.part.set_busy_polls(6);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_erase_block(&r.f, 0), W25Q_OK);
+    const uint8_t b = 0x5A;
+    ASSERT_EQ(w25q_program(&r.f, 0, &b, 1), W25Q_OK);
+
+    ASSERT_EQ(r.part.wel_violations(), 0);
+    ASSERT_EQ(r.part.busy_violations(), 0);
+    ASSERT_EQ(r.part.peek(0), 0x5A);
+}
+
 TEST(w25q_erase_sector_rejects_an_address_past_the_device)
 {
     Rig r;

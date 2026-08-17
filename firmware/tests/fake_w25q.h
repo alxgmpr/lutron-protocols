@@ -149,7 +149,7 @@ class FakeW25Q {
                when the *operation* finishes, not per byte — a page program
                holds its write enable for all 256 bytes. */
             bool programmed = (cmd_ == W25Q_CMD_PAGE_PROGRAM && phase_ > 4);
-            bool erased = (cmd_ == W25Q_CMD_SECTOR_ERASE && phase_ >= 4);
+            bool erased = ((cmd_ == W25Q_CMD_SECTOR_ERASE || cmd_ == W25Q_CMD_BLOCK_ERASE_64K) && phase_ >= 4);
             bool status_written = (cmd_ == W25Q_CMD_WRITE_STATUS2 && phase_ > 1);
             if ((programmed || erased || status_written) && wel_) {
                 wel_ = false;
@@ -246,10 +246,11 @@ class FakeW25Q {
             phase_++;
             return 0xFF;
         case W25Q_CMD_SECTOR_ERASE:
+        case W25Q_CMD_BLOCK_ERASE_64K:
             addr_ = (addr_ << 8) | in;
             phase_++;
             if (phase_ == 4) {
-                do_erase();
+                do_erase(cmd_ == W25Q_CMD_BLOCK_ERASE_64K ? 65536u : FAKE_W25Q_SECTOR);
             }
             return 0xFF;
         default:
@@ -261,7 +262,7 @@ class FakeW25Q {
     void start_command()
     {
         bool mutating =
-            (cmd_ == W25Q_CMD_PAGE_PROGRAM || cmd_ == W25Q_CMD_SECTOR_ERASE || cmd_ == W25Q_CMD_WRITE_STATUS2);
+            (cmd_ == W25Q_CMD_PAGE_PROGRAM || cmd_ == W25Q_CMD_SECTOR_ERASE || cmd_ == W25Q_CMD_BLOCK_ERASE_64K || cmd_ == W25Q_CMD_WRITE_STATUS2);
         if (busy_ > 0 && cmd_ != W25Q_CMD_READ_STATUS1) {
             /* Real silicon ignores everything but a status read while busy. */
             busy_violations_++;
@@ -300,13 +301,13 @@ class FakeW25Q {
            the page. */
     }
 
-    void do_erase()
+    void do_erase(uint32_t span)
     {
         if (!wel_) {
             return;
         }
-        uint32_t base = addr_ & ~(FAKE_W25Q_SECTOR - 1u);
-        for (uint32_t a = base; a < base + FAKE_W25Q_SECTOR; a++) {
+        uint32_t base = addr_ & ~(span - 1u);
+        for (uint32_t a = base; a < base + span; a++) {
             mem_.erase(a);
         }
         erases_++;

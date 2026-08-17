@@ -296,6 +296,9 @@ set(BOOTLOADER_HAL_SOURCES
     ${HAL_DIR}/Src/stm32h7xx_hal_pwr_ex.c
     ${HAL_DIR}/Src/stm32h7xx_hal_flash.c
     ${HAL_DIR}/Src/stm32h7xx_hal_flash_ex.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_gpio.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_spi.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_spi_ex.c
 )
 
 add_executable(${BOOTLOADER_NAME}.elf
@@ -306,12 +309,16 @@ add_executable(${BOOTLOADER_NAME}.elf
     src/storage/boot_policy.c
     src/storage/boot_request.c
     src/storage/crc32.c
+    src/storage/ota_flash.c
+    src/storage/w25q.c
+    src/storage/w25q_spi.c
 )
 
 target_include_directories(${BOOTLOADER_NAME}.elf PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/boot
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bsp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/storage
     ${HAL_DIR}/Inc
     ${CMSIS_DIR}/Include

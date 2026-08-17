@@ -307,6 +307,25 @@ w25q_status_t w25q_erase_sector(w25q_t* f, uint32_t addr)
     return wait_ready(f);
 }
 
+w25q_status_t w25q_erase_block(w25q_t* f, uint32_t addr)
+{
+    if (f == NULL) {
+        return W25Q_ERR_ARG;
+    }
+    if (!f->present) {
+        return W25Q_ERR_STATE;
+    }
+    if (addr >= f->capacity) {
+        return W25Q_ERR_RANGE;
+    }
+
+    cmd_only(f, W25Q_CMD_WRITE_ENABLE);
+    begin_addressed(f, W25Q_CMD_BLOCK_ERASE_64K, addr & ~(W25Q_BLOCK_SIZE - 1u));
+    cs(f, false);
+
+    return wait_ready(f);
+}
+
 /* -----------------------------------------------------------------------
  * Verify
  * ----------------------------------------------------------------------- */

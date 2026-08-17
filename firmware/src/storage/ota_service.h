@@ -5,7 +5,8 @@
  * OTA upload session — binds the staging state machine (ota_image.h) to the
  * real slot (ota_flash.h) and holds the one in-flight session.
  *
- * Still no bootloader and no jump: the most this can do is fill sectors 4-6.
+ * Fills the staging slot on the external SPI NOR (ota_flash.h); the bootloader
+ * reads it back from there to install.
  */
 
 #include "ota_image.h"

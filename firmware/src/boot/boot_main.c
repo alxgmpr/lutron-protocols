@@ -17,28 +17,33 @@
 #include "boot_policy.h"
 #include "boot_request.h"
 #include "crc32.h"
+#include "ota_flash.h"
 #include "ota_image.h"
+#include "w25q_spi.h"
 
 #include "stm32h7xx.h"
 
 #include <string.h>
 
 #define APP_BASE 0x08020000u
-#define APP_SIZE (384u * 1024u)
+#define APP_SIZE (768u * 1024u)
 #define APP_FIRST_SECTOR 1u
-#define APP_NUM_SECTORS 3u
+#define APP_NUM_SECTORS 6u
 
-#define SLOT_BASE 0x08080000u
-#define SLOT_SIZE (384u * 1024u)
-
-/* Keep the two flash maps from drifting apart silently. */
+/* Keep the flash map here and in the linker script from drifting apart. */
 _Static_assert(APP_BASE == 0x08000000u + APP_FIRST_SECTOR * 128u * 1024u, "app base/sector mismatch");
 _Static_assert(APP_SIZE == APP_NUM_SECTORS * 128u * 1024u, "app size/sector mismatch");
-_Static_assert(SLOT_BASE == APP_BASE + APP_SIZE, "staging slot must follow the app region");
+_Static_assert(APP_BASE + APP_SIZE == 0x080E0000u, "app region must end where flash storage begins");
 
-static const uint8_t* slot_ptr(uint32_t offset)
+/* The staging slot is on the external SPI NOR, so it cannot be dereferenced —
+ * every read of it is a transaction that can fail. `ops` is NULL when the part
+ * did not answer at all, which is a different thing from a bad image: a wire
+ * off the flash must still boot whatever application is already installed. */
+static const ota_flash_ops_t* g_slot;
+
+static bool slot_read(uint32_t offset, uint8_t* out, uint32_t len)
 {
-    return (const uint8_t*)(uintptr_t)(SLOT_BASE + offset);
+    return g_slot != NULL && g_slot->read(g_slot->ctx, offset, out, len) == 0;
 }
 
 /* -----------------------------------------------------------------------
@@ -82,21 +87,36 @@ void UsageFault_Handler(void)
 /** Read the staged header and re-verify the image CRC before trusting it.
  *  The header was written after a verify at upload time, but this costs a few
  *  milliseconds and covers flash that decayed or was disturbed since. */
-static bool staged_image_valid(uint32_t* out_len)
+static bool staged_image_valid(uint32_t* out_len, uint32_t* out_crc)
 {
+    if (g_slot == NULL) return false;
+
     ota_image_header_t hdr;
-    memcpy(&hdr, slot_ptr(SLOT_SIZE - OTA_FLASH_WORD), sizeof(hdr));
+    if (!slot_read(OTA_SLOT_SIZE - OTA_FLASH_WORD, (uint8_t*)&hdr, sizeof(hdr))) return false;
 
     if (hdr.magic != OTA_IMAGE_MAGIC) return false;
     if (crc32_compute((const uint8_t*)&hdr, offsetof(ota_image_header_t, header_crc32)) != hdr.header_crc32) {
         return false;
     }
-    if (hdr.image_len == 0 || hdr.image_len > SLOT_SIZE - OTA_FLASH_WORD) return false;
+    if (hdr.image_len == 0 || hdr.image_len > OTA_SLOT_SIZE - OTA_FLASH_WORD) return false;
     if (hdr.image_len > APP_SIZE) return false;
 
-    if (crc32_compute(slot_ptr(0), hdr.image_len) != hdr.image_crc32) return false;
+    /* Streamed, because the slot is no longer memory-mapped and the image does
+     * not fit in RAM. Same CRC either way — crc32_compute() is these two
+     * wrapped around a single loop. */
+    uint32_t crc = CRC32_INIT;
+    uint8_t buf[256];
+    for (uint32_t off = 0; off < hdr.image_len; off += sizeof(buf)) {
+        uint32_t n = hdr.image_len - off;
+        if (n > sizeof(buf)) n = sizeof(buf);
+        if (!slot_read(off, buf, n)) return false;
+        crc = crc32_update(crc, buf, n);
+        if ((IWDG1->SR & 0x7u) == 0) IWDG1->KR = 0xAAAAu;
+    }
+    if (crc32_final(crc) != hdr.image_crc32) return false;
 
     *out_len = hdr.image_len;
+    *out_crc = hdr.image_crc32;
     return true;
 }
 
@@ -111,7 +131,7 @@ static bool app_bootable(void)
 }
 
 /** Erase the application sectors and copy the staged image over them. */
-static bool install_staged(uint32_t image_len)
+static bool install_staged(uint32_t image_len, uint32_t image_crc)
 {
     HAL_FLASH_Unlock();
 
@@ -136,7 +156,10 @@ static bool install_staged(uint32_t image_len)
         uint32_t n = image_len - off;
         if (n > OTA_FLASH_WORD) n = OTA_FLASH_WORD;
         memset(word, 0xFF, sizeof(word));
-        memcpy(word, slot_ptr(off), n);
+        if (!slot_read(off, word, n)) {
+            HAL_FLASH_Lock();
+            return false;
+        }
 
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, APP_BASE + off, (uint32_t)(uintptr_t)word) != HAL_OK) {
             HAL_FLASH_Lock();
@@ -149,8 +172,11 @@ static bool install_staged(uint32_t image_len)
     HAL_FLASH_Lock();
     SCB_InvalidateDCache_by_Addr((uint32_t*)(uintptr_t)APP_BASE, (int32_t)APP_SIZE);
 
-    /* Confirm what actually landed rather than assuming the programs took. */
-    return crc32_compute((const uint8_t*)(uintptr_t)APP_BASE, image_len) == crc32_compute(slot_ptr(0), image_len);
+    /* Confirm what actually landed rather than assuming the programs took.
+     * Compared against the header CRC, which staged_image_valid() has already
+     * checked against the slot contents — so this needs no second pass over
+     * the SPI part. */
+    return crc32_compute((const uint8_t*)(uintptr_t)APP_BASE, image_len) == image_crc;
 }
 
 /* -----------------------------------------------------------------------
@@ -221,10 +247,17 @@ int main(void)
 
     boot_request_t* req = boot_request_area();
 
+    /* Bring the external flash up before asking anything about the slot. If it
+     * does not answer, g_slot stays NULL, staged_valid is false, and the
+     * decision collapses to "run whatever is installed" — a wire off the SPI
+     * part must not stop the board booting. */
+    g_slot = ota_flash_ops();
+
     uint32_t staged_len = 0;
+    uint32_t staged_crc = 0;
     boot_state_t state;
     state.app_bootable = app_bootable();
-    state.staged_valid = staged_image_valid(&staged_len);
+    state.staged_valid = staged_image_valid(&staged_len, &staged_crc);
     state.install_requested = boot_request_pending(req);
     state.install_attempts = boot_request_attempts(req);
 
@@ -235,7 +268,7 @@ int main(void)
          * retrying instead of looping forever. */
         boot_request_bump(req);
 
-        if (install_staged(staged_len)) {
+        if (install_staged(staged_len, staged_crc)) {
             boot_request_clear(req);
             jump_to_app();
         }
