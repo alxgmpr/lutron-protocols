@@ -76,7 +76,12 @@ function pressIntent(
   deviceId: string,
   button: number,
   sequence: number,
-  opts: { action?: "press" | "hold" | "release"; origin?: string } = {},
+  opts: {
+    action?: "press" | "hold" | "release";
+    origin?: string;
+    dedupKey?: string;
+    dedupWindowMs?: number;
+  } = {},
 ): SourceIntent {
   const action = opts.action ?? "press";
   return {
@@ -87,7 +92,8 @@ function pressIntent(
     origin: opts.origin ?? "PRESET",
     source: "ccx",
     sequence,
-    dedupKey: `4:${deviceId}:${action}:${sequence}`,
+    dedupKey: opts.dedupKey ?? `4:${deviceId}:${action}:${sequence}`,
+    dedupWindowMs: opts.dedupWindowMs,
   };
 }
 
@@ -229,6 +235,41 @@ describe("model dedup", () => {
 
     assert.equal(again.accepted, true);
     assert.equal(model.appliedCount, 2);
+    model.destroy();
+  });
+
+  test("an intent may declare a window shorter than the default", async () => {
+    // CCA has no way to tell a retransmit from a second press except by time,
+    // so it asks for a window sized to its retransmit burst rather than the
+    // 500 ms default. Past that window a second press must get through.
+    const clock = fakeClock();
+    const model = await makeModel({ now: clock.now });
+
+    model.apply(
+      pressIntent("cca_deadbeef", 2, 0, { dedupKey: "k", dedupWindowMs: 250 }),
+    );
+    clock.advance(300);
+    const again = model.apply(
+      pressIntent("cca_deadbeef", 2, 8, { dedupKey: "k", dedupWindowMs: 250 }),
+    );
+
+    assert.equal(again.accepted, true);
+    model.destroy();
+  });
+
+  test("a declared window still suppresses a repeat inside it", async () => {
+    const clock = fakeClock();
+    const model = await makeModel({ now: clock.now });
+
+    model.apply(
+      pressIntent("cca_deadbeef", 2, 0, { dedupKey: "k", dedupWindowMs: 250 }),
+    );
+    clock.advance(100);
+    const again = model.apply(
+      pressIntent("cca_deadbeef", 2, 8, { dedupKey: "k", dedupWindowMs: 250 }),
+    );
+
+    assert.equal(again.accepted, false);
     model.destroy();
   });
 

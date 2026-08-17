@@ -173,7 +173,7 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "deviceEvent" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -197,7 +197,7 @@ export class DeviceModel extends EventEmitter {
     // Watch filter runs before dedup so unwatched traffic never occupies the
     // dedup table.
     if (!this.isWatched(intent.zoneId)) return { accepted: false, applied: 0 };
-    if (this.isDuplicate(intent.dedupKey))
+    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -218,7 +218,7 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "preset" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -250,7 +250,7 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "ramp" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey))
+    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -515,14 +515,24 @@ export class DeviceModel extends EventEmitter {
    * number, never just (device, button) or (zone, level): two presses of one
    * button are two events and must both get through, however close together.
    *
-   * CCX can honour this because it carries a sequence number. A transport that
-   * cannot (CCA) simply dedupes less; that asymmetry is deliberate.
+   * CCX can honour this because a retransmit repeats its sequence number and a
+   * second press never does. CCA cannot: its sequence byte *increments* per
+   * retransmit (it carries the TDMA slot in the low bits — see
+   * docs/protocols/cca/tdma.md §2), so on that transport identical payload
+   * bytes arriving close together are the only retransmit signal there is.
+   *
+   * That is why `windowMs` is per-intent. CCA asks for a window sized to its
+   * retransmit burst instead of the default, keeping the span in which it
+   * cannot distinguish a double press as short as the protocol allows. A
+   * transport that cannot key on a sequence dedupes less; the asymmetry is
+   * deliberate.
    */
-  private isDuplicate(key: string | undefined): boolean {
+  private isDuplicate(key: string | undefined, windowMs?: number): boolean {
     if (key === undefined) return false;
+    const window = windowMs ?? DEDUP_WINDOW_MS;
     const now = this.now();
     const prev = this.dedup.get(key);
-    if (prev !== undefined && now - prev < DEDUP_WINDOW_MS) return true;
+    if (prev !== undefined && now - prev < window) return true;
     this.dedup.set(key, now);
 
     if (this.dedup.size > DEDUP_MAX_ENTRIES) {

@@ -100,12 +100,16 @@ export type SourceIntent =
       warmDimHint?: string;
       origin: string;
       dedupKey?: string;
+      /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
+      dedupWindowMs?: number;
     }
   | {
       kind: "preset";
       presetId: number;
       origin: string;
       dedupKey?: string;
+      /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
+      dedupWindowMs?: number;
     }
   | {
       kind: "ramp";
@@ -117,6 +121,8 @@ export type SourceIntent =
       presetId?: number;
       origin: string;
       dedupKey?: string;
+      /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
+      dedupWindowMs?: number;
     }
   | {
       kind: "deviceEvent";
@@ -133,6 +139,8 @@ export type SourceIntent =
       /** Wire sequence number the dedup key is built from. */
       sequence: number;
       dedupKey?: string;
+      /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
+      dedupWindowMs?: number;
     };
 
 /**

@@ -540,10 +540,10 @@ describe("MqttSink behind the real CCX source and model", () => {
 
     source.handlePacket(buttonPacket({ presetId: 0x0c2c, sequence: 1 }));
 
-    const evt = client.json("lutron/device/0c2cef20/event");
+    const evt = client.json("lutron/device/ccx_0c2cef20/event");
     assert.equal(evt.event_type, "press");
     assert.equal(evt.button, 0x2c);
-    assert.ok(client.last("homeassistant/event/lutron_button_0c2cef20/config"));
+    assert.ok(client.last("homeassistant/event/lutron_button_ccx_0c2cef20/config"));
     model.destroy();
   });
 
@@ -555,7 +555,7 @@ describe("MqttSink behind the real CCX source and model", () => {
     source.handlePacket(buttonPacket({ presetId: 0x0c2c, sequence: 1 }));
     source.handlePacket(buttonPacket({ presetId: 0x0c2c, sequence: 2 }));
 
-    assert.equal(client.on_("lutron/device/0c2cef20/event").length, 2);
+    assert.equal(client.on_("lutron/device/ccx_0c2cef20/event").length, 2);
     model.destroy();
   });
 
@@ -567,7 +567,7 @@ describe("MqttSink behind the real CCX source and model", () => {
       source.handlePacket(buttonPacket({ presetId: 0x0c2c, sequence: 9 }));
     }
 
-    assert.equal(client.on_("lutron/device/0c2cef20/event").length, 1);
+    assert.equal(client.on_("lutron/device/ccx_0c2cef20/event").length, 1);
     model.destroy();
   });
 
@@ -580,7 +580,7 @@ describe("MqttSink behind the real CCX source and model", () => {
 
     source.handlePacket(buttonPacket({ presetId: 0x0c2c, sequence: 1 }));
 
-    assert.equal(client.on_("lutron/device/0c2cef20/event").length, 1);
+    assert.equal(client.on_("lutron/device/ccx_0c2cef20/event").length, 1);
     model.destroy();
   });
 });

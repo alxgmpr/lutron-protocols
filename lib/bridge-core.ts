@@ -20,6 +20,7 @@ import { join } from "path";
 import YAML from "yaml";
 import { getPresetInfo, getZoneName } from "../ccx/config";
 import type { CCXPacket } from "../ccx/types";
+import { wireIdOf } from "./bridge/device-id";
 import { DeviceModel } from "./bridge/model";
 import { LogSink } from "./bridge/sinks/log";
 import { NucleoReportSink } from "./bridge/sinks/nucleo-report";
@@ -64,15 +65,22 @@ export interface BridgeCoreOptions {
 // ── Name resolution ───────────────────────────────────────
 
 /**
- * Resolve a control's display name from its wire device id.
+ * Resolve a control's display name from its device id.
  *
- * The first two bytes of the id are the preset address, which is what LEAP
- * knows the control by; the remaining bytes are constant. Falls back to the
- * preset's own name when the owning device is not recorded, and to the model's
- * `Device <id>` default when neither is.
+ * Ids are namespaced by transport (`ccx_`/`cca_`) so two transports cannot
+ * collide on four identical bytes; the namespace is stripped here because the
+ * preset lookup is about the wire id. The first two bytes of that id are the
+ * preset address, which is what LEAP knows the control by; the remaining bytes
+ * are constant. Falls back to the preset's own name when the owning device is
+ * not recorded, and to the model's `Device <id>` default when neither is.
+ *
+ * A CCA id resolves to nothing today: the lookup is a CCX preset table, and CCA
+ * controls are not in it. They surface under the model's default name.
  */
 function resolveDeviceName(deviceId: string): string | undefined {
-  const presetId = Number.parseInt(deviceId.slice(0, 4), 16);
+  const wireId = wireIdOf(deviceId);
+  if (wireId.length < 4) return undefined;
+  const presetId = Number.parseInt(wireId.slice(0, 4), 16);
   if (Number.isNaN(presetId)) return undefined;
   const info = getPresetInfo(presetId);
   return info?.device ?? info?.name;
