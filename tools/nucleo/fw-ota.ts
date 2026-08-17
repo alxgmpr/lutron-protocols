@@ -9,11 +9,16 @@
  * Usage:
  *   npx tsx tools/nucleo/fw-ota.ts firmware/build/nucleo-firmware.bin [--host 10.1.10.114]
  *   npx tsx tools/nucleo/fw-ota.ts --info
+ *
+ * --host defaults to `openBridge` from config.json — the board. It used to
+ * default to the first configured *processor*, which is a Lutron repeater on a
+ * different address entirely, so every invocation without --host sent staging
+ * commands somewhere that would never answer.
  */
 
 import { createSocket, type Socket } from "dgram";
 import { readFileSync } from "fs";
-import { defaultHost } from "../../lib/config";
+import { config } from "../../lib/config";
 
 const UDP_PORT = 9433;
 
@@ -183,7 +188,7 @@ async function main() {
     const i = args.indexOf(n);
     return i !== -1 ? args[i + 1] : undefined;
   };
-  const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? defaultHost;
+  const host = getArg("--host") ?? process.env.NUCLEO_HOST ?? config.openBridge;
   const client = new OtaClient(host);
   await client.bind();
 
