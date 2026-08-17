@@ -206,6 +206,50 @@ describe("device event dedup keys on the wire sequence, not the action", () => {
 // ── Dedup (lives in the model, so every sink benefits) ────
 
 describe("model dedup", () => {
+  test("overflow prune ages entries out against their own window", async () => {
+    // The table is capped at 100 entries, and CCA keys embed the whole frame
+    // hex, so busy traffic reaches the cap. The prune used to age everything
+    // out against the 500 ms CCX window — which evicts a 1200 ms CCA entry
+    // while its retransmit burst is still arriving, and the rest of that one
+    // press is then re-admitted as fresh events and published again.
+    const clock = fakeClock();
+    const model = await makeModel({ now: clock.now });
+
+    const burstKey = "4:cca_deadbeef:press:burst";
+    assert.equal(
+      model.apply(
+        pressIntent("cca_deadbeef", 2, 0, {
+          dedupKey: burstKey,
+          dedupWindowMs: 1200,
+        }),
+      ).accepted,
+      true,
+    );
+
+    // Age past the CCX window but well inside CCA's, then push the table over
+    // its cap so the prune runs.
+    clock.advance(600);
+    for (let i = 0; i < 150; i++) {
+      model.apply(
+        pressIntent("ccx_filler", 1, i, { dedupKey: `4:filler:${i}` }),
+      );
+    }
+
+    // Still inside 1200 ms, so a retransmit of that press must stay suppressed.
+    const retransmit = model.apply(
+      pressIntent("cca_deadbeef", 2, 6, {
+        dedupKey: burstKey,
+        dedupWindowMs: 1200,
+      }),
+    );
+    assert.equal(
+      retransmit.accepted,
+      false,
+      "prune evicted an in-flight CCA burst entry early, so the press fires twice",
+    );
+    model.destroy();
+  });
+
   test("rejects a repeat of the same dedup key inside the window", async () => {
     const clock = fakeClock();
     const model = await makeModel({

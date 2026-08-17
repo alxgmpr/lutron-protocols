@@ -575,6 +575,15 @@ rotates — `ccx/config.ts` keeps a separate stable `fd00::` secondary for
 exactly this reason — and a rotating key would orphan every HA entity built on
 it. Display names resolve separately, through `ccx/config.ts`.
 
+> **Upgrading past the transport namespace orphans existing button entities.**
+> Button `unique_id`s used to be `lutron_button_<hex>`, with no transport
+> segment. Both add-ons share `CcxSource`, so this applies to the CCX-WiZ
+> bridge as well as the openlutron one: after the upgrade Home Assistant sees
+> `lutron_button_ccx_<hex>` as a new entity, creates it, and leaves the old one
+> behind as unavailable. Automations referencing the old entity id stop firing
+> until they are repointed. Zone entities are unaffected — `lutron_zone_<id>`
+> did not change. Delete the stale button entities once the new ones appear.
+
 ### Failure behaviour
 
 The bridge runs unattended. A missing or flapping broker is a normal operating

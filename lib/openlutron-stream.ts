@@ -172,8 +172,31 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
     const socket = this.socketFactory();
     this.socket = socket;
     socket.on("message", (msg: Buffer) => this.onDatagram(msg));
-    socket.on("error", (err: Error) => this.onSocketError(socket, err));
-    await new Promise<void>((done) => socket.bind(() => done()));
+
+    // dgram reports a failed bind with an `error` event and never calls the
+    // listening callback, so awaiting that callback alone hangs forever on
+    // EADDRINUSE: connect() would never return, the keepalive timer would
+    // never start, and nothing would re-register with the board once its
+    // registration expired. Route the first error into the pending bind
+    // instead, and hand every later one to the normal rebind path.
+    let failBind: ((err: Error) => void) | null = null;
+    socket.on("error", (err: Error) => {
+      if (failBind !== null) {
+        const fail = failBind;
+        failBind = null;
+        fail(err);
+        return;
+      }
+      this.onSocketError(socket, err);
+    });
+
+    await new Promise<void>((done, fail) => {
+      failBind = fail;
+      socket.bind(() => {
+        failBind = null;
+        done();
+      });
+    });
     this.sendCommand(CMD_KEEPALIVE);
   }
 
@@ -307,16 +330,25 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
     if (kind === RESP_HEARTBEAT && len === 0x00) return;
 
     if (kind === RESP_TEXT) {
+      // Emitted even when empty. A shell command whose output is blank still
+      // answered, and dropping that datagram left the caller's pending-command
+      // timer running until it reported a timeout for a command that worked.
       const text = msg.subarray(1).toString("utf-8").trim();
-      if (text.length > 0) this.emit("text", text);
+      this.emit("text", text);
       return;
     }
 
     if (kind === RESP_STATUS) {
       const blob = msg.subarray(2, 2 + len);
-      const waiters = this.statusWaiters;
-      this.statusWaiters = [];
-      for (const w of waiters) w(blob);
+      // Only consume the waiters once the blob is known to parse. Clearing
+      // first dropped them on a short or garbled status datagram, so a later
+      // good reply had nobody left to resolve and the caller timed out with
+      // "unreachable, or firmware too old" — for a board that answered.
+      if (parseNucleoStatus(blob)) {
+        const waiters = this.statusWaiters;
+        this.statusWaiters = [];
+        for (const w of waiters) w(blob);
+      }
       this.emit("status", blob);
       return;
     }

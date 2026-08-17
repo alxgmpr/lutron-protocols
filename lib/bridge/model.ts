@@ -52,7 +52,12 @@ export interface DeviceModelOptions {
 
 export class DeviceModel extends EventEmitter {
   private zones = new Map<number, ZoneState>();
-  private dedup = new Map<string, number>();
+  /**
+   * Dedup table. Each entry carries the window it was admitted under, because
+   * the windows differ per source (CCX 500 ms, CCA 1200 ms) and the overflow
+   * prune has to age entries out against their own window, not a global one.
+   */
+  private dedup = new Map<string, { at: number; window: number }>();
   private sinks: BridgeSink[] = [];
 
   private presetZones: Map<number, PresetZoneEntry>;
@@ -561,22 +566,35 @@ export class DeviceModel extends EventEmitter {
     const now = this.now();
     const prev = this.dedup.get(key);
     // A source that can prove the wire started a new event overrides the timer
-    // outright. CCA can: every burst starts at sequence 0, so a second tap
-    // 100 ms after the first is still two events. Without this, a window long
-    // enough to cover an 11-frame retransmit burst would eat the double tap.
+    // outright. CCA can: a frame whose retransmit counter is zero begins a new
+    // burst, so a second tap 100 ms after the first is still two events.
+    // Without this, a window long enough to cover an 11-frame retransmit burst
+    // would eat the double tap.
     if (isNewWireEvent) {
-      this.dedup.set(key, now);
+      this.dedup.set(key, { at: now, window });
+      this.pruneDedup(now);
       return false;
     }
-    if (prev !== undefined && now - prev < window) return true;
-    this.dedup.set(key, now);
-
-    if (this.dedup.size > DEDUP_MAX_ENTRIES) {
-      for (const [k, ts] of this.dedup) {
-        if (now - ts > DEDUP_WINDOW_MS) this.dedup.delete(k);
-      }
-    }
+    if (prev !== undefined && now - prev.at < window) return true;
+    this.dedup.set(key, { at: now, window });
+    this.pruneDedup(now);
     return false;
+  }
+
+  /**
+   * Drop entries that have outlived the window they were admitted under.
+   *
+   * Against each entry's own window, not a global one: pruning a 1200 ms CCA
+   * entry after 500 ms would re-admit the rest of an in-flight retransmit
+   * burst as fresh events and publish one press two or three times. Runs on
+   * both admit paths — the burst-start path used to return early and never
+   * prune, so burst-dominated traffic grew the table without bound.
+   */
+  private pruneDedup(now: number): void {
+    if (this.dedup.size <= DEDUP_MAX_ENTRIES) return;
+    for (const [k, e] of this.dedup) {
+      if (now - e.at > e.window) this.dedup.delete(k);
+    }
   }
 
   // ── Lifecycle ───────────────────────────────────────────

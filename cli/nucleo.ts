@@ -1197,14 +1197,19 @@ function displayStatus(blob: Buffer) {
 // ============================================================================
 
 /**
- * A shell response, already trimmed by the stream client, which also drops the
- * empty ones.
+ * A shell response, already trimmed by the stream client.
+ *
+ * Empty ones arrive too, and clearing the pending-command timer before looking
+ * at the content is deliberate: a command whose output is blank has still been
+ * answered, and treating it as no reply reports a timeout for a command that
+ * worked.
  */
 function handleText(text: string) {
   if (textCmdTimer) {
     clearTimeout(textCmdTimer);
     textCmdTimer = null;
   }
+  if (text.length === 0) return;
 
   // Check for [coap] broadcast (async response notification)
   const coapBc = text.match(

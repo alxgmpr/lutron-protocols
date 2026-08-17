@@ -46,6 +46,8 @@ class FakeSocket implements StreamDatagramSocket {
   bound = false;
   closed = false;
   failSend: Error | null = null;
+  /** Bind reports failure the way dgram does: an `error` event, no callback. */
+  failBind: Error | null = null;
 
   private messageListeners: Array<(msg: Buffer) => void> = [];
   private errorListeners: Array<(err: Error) => void> = [];
@@ -57,6 +59,11 @@ class FakeSocket implements StreamDatagramSocket {
   }
 
   bind(callback?: () => void): void {
+    if (this.failBind) {
+      const err = this.failBind;
+      for (const l of this.errorListeners) l(err);
+      return;
+    }
     this.bound = true;
     callback?.();
   }
@@ -548,6 +555,38 @@ describe("openlutron stream client", () => {
     timers.advance(5000);
 
     await assert.rejects(pending, /status/);
+
+    stream.close();
+  });
+
+  it("connect() rejects instead of hanging when the bind fails", async () => {
+    // dgram reports a failed bind with an `error` event and never calls the
+    // listening callback. Awaiting only that callback left connect() pending
+    // forever: no keepalive timer, nothing to re-register with the board, and
+    // in cli/nucleo.ts a `await setupStream()` that never returns.
+    const { stream, socket } = makeStream();
+    socket.failBind = new Error("EADDRINUSE");
+
+    await assert.rejects(stream.connect(), /EADDRINUSE/);
+
+    stream.close();
+  });
+
+  it("keeps the status waiter when a status datagram does not parse", async () => {
+    // The waiters used to be cleared before the blob was parsed, so one short
+    // or garbled status reply dropped them permanently and the caller timed
+    // out with "unreachable, or firmware too old" — for a board that answered.
+    const { stream, socket, timers } = makeStream();
+    await stream.connect();
+
+    const pending = stream.requestStatus(5000);
+    // Too short to be a status blob — parseNucleoStatus rejects it.
+    socket.deliver(statusDatagram(Buffer.from([0x00, 0x00])));
+    timers.advance(10);
+    socket.deliver(statusDatagram(statusBlob()));
+
+    const status = await pending;
+    assert.equal(status.ccaRx, 4242);
 
     stream.close();
   });
