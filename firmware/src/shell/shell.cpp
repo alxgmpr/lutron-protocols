@@ -2218,6 +2218,39 @@ static void cmd_mem(const char* args)
         return;
     }
 
+    if (strcmp(args, "status") == 0) {
+        uint8_t sr1 = 0, sr2 = 0, sr3 = 0;
+        w25q_read_status_reg(f, 1, &sr1);
+        w25q_read_status_reg(f, 2, &sr2);
+        w25q_read_status_reg(f, 3, &sr3);
+        printf("SR1 = %02X  BUSY=%d WEL=%d BP=%d TB=%d SRP0=%d\r\n", sr1, sr1 & 1, (sr1 >> 1) & 1, (sr1 >> 2) & 7,
+               (sr1 >> 5) & 1, (sr1 >> 7) & 1);
+        printf("SR2 = %02X  SRL=%d QE=%d\r\n", sr2, (sr2 >> 0) & 1, (sr2 >> 1) & 1);
+        printf("SR3 = %02X  WPS=%d\r\n", sr3, (sr3 >> 2) & 1);
+
+        /* The decisive one: does a write enable actually latch? If WEL reads
+           back 0 straight after 06h, every program and erase is being dropped
+           on the floor and no amount of retrying will help. */
+        w25q_write_enable(f);
+        uint8_t after = 0;
+        w25q_read_status_reg(f, 1, &after);
+        printf("after 06h : SR1 = %02X  WEL=%s\r\n", after, (after & W25Q_STATUS_WEL) ? "SET (good)" : "NOT SET");
+        return;
+    }
+
+    if (strcmp(args, "qe") == 0) {
+        uint8_t before = 0;
+        w25q_read_status_reg(f, 2, &before);
+        st = w25q_set_quad_enable(f);
+        uint8_t after = 0;
+        w25q_read_status_reg(f, 2, &after);
+        printf("SR2 %02X -> %02X : %s\r\n", before, after, w25q_strerror(st));
+        if (st == W25Q_OK && (after & W25Q_SR2_QE)) {
+            printf("QE set — WP#/HOLD# are now IO2/IO3 and may be left unconnected\r\n");
+        }
+        return;
+    }
+
     if (strncmp(args, "read ", 5) == 0) {
         char* end = NULL;
         uint32_t addr = (uint32_t)strtoul(args + 5, &end, 16);
@@ -2283,7 +2316,7 @@ static void cmd_mem(const char* args)
         return;
     }
 
-    printf("Usage: mem [read <addr> [n] | erase <addr> | test [addr]]\r\n");
+    printf("Usage: mem [status | qe | read <addr> [n] | erase <addr> | test [addr]]\r\n");
 }
 
 /** The read-only/reset half of `swd`, run with the pin lock already held. */

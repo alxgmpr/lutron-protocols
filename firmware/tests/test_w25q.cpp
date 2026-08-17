@@ -352,6 +352,114 @@ TEST(w25q_verify_reads_the_part_back)
     ASSERT_EQ(w25q_verify(&r.f, 0x7000, data, sizeof(data)), W25Q_ERR_VERIFY);
 }
 
+/* -----------------------------------------------------------------------
+ * Quad Enable
+ *
+ * With QE clear, pins 3 and 7 are WP# and HOLD#: live, active-low inputs that
+ * abort a transfer if they drift low. Setting QE turns them into IO2/IO3,
+ * which in single-SPI mode are simply unused — which is what makes leaving
+ * them unconnected safe.
+ *
+ * The register this lives in also holds bits that cannot be taken back. SRL
+ * locks the status register permanently, and LB1..LB3 are one-time
+ * programmable. Setting any of them by accident is not recoverable, so the
+ * tests pin that they stay clear rather than trusting the constant.
+ * ----------------------------------------------------------------------- */
+
+TEST(w25q_set_quad_enable_sets_the_qe_bit)
+{
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+
+    uint8_t sr2 = 0;
+    ASSERT_EQ(w25q_read_status_reg(&r.f, 2, &sr2), W25Q_OK);
+    ASSERT_EQ(sr2 & 0x02, 0x02);
+}
+
+TEST(w25q_set_quad_enable_never_sets_the_status_register_lock)
+{
+    /* SRL is a one-way door: with it set, the status register can never be
+       written again, and QE could never be cleared. */
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+
+    ASSERT_EQ(r.part.srl_attempts(), 0);
+    uint8_t sr2 = 0;
+    ASSERT_EQ(w25q_read_status_reg(&r.f, 2, &sr2), W25Q_OK);
+    ASSERT_EQ(sr2 & 0x01, 0);
+}
+
+TEST(w25q_set_quad_enable_never_sets_the_one_time_lock_bits)
+{
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+
+    ASSERT_EQ(r.part.otp_attempts(), 0);
+    uint8_t sr2 = 0;
+    ASSERT_EQ(w25q_read_status_reg(&r.f, 2, &sr2), W25Q_OK);
+    ASSERT_EQ(sr2 & 0x38, 0);
+}
+
+TEST(w25q_set_quad_enable_write_enables_first)
+{
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+    ASSERT_EQ(r.part.wel_violations(), 0);
+}
+
+TEST(w25q_set_quad_enable_waits_for_the_write_to_finish)
+{
+    /* A non-volatile status write takes milliseconds. Issuing the next command
+       while it is still running loses it. */
+    Rig r;
+    r.part.set_busy_polls(4);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+    /* The collision only shows up against a following command, so issue one —
+       the part ignores everything but a status read while it is busy. */
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x1000), W25Q_OK);
+    ASSERT_EQ(r.part.busy_violations(), 0);
+}
+
+TEST(w25q_set_quad_enable_preserves_bits_it_does_not_own)
+{
+    /* CMP changes what the block-protect bits mean. Clobbering it while
+       setting QE would silently change the protection scheme. */
+    Rig r;
+    r.part.set_sr2(0x40); /* CMP set */
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+
+    uint8_t sr2 = 0;
+    ASSERT_EQ(w25q_read_status_reg(&r.f, 2, &sr2), W25Q_OK);
+    ASSERT_EQ(sr2 & 0x40, 0x40);
+    ASSERT_EQ(sr2 & 0x02, 0x02);
+}
+
+TEST(w25q_set_quad_enable_on_an_already_enabled_part_is_a_no_op)
+{
+    Rig r;
+    r.part.set_sr2(0x02);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_OK);
+    /* Nothing to change, so nothing should have been written. */
+    ASSERT_EQ(r.part.status_writes(), 0);
+}
+
+TEST(w25q_set_quad_enable_refuses_a_locked_status_register)
+{
+    /* If SRL is already set the write cannot land, and reporting success would
+       send the caller off believing the pins are safe to float. */
+    Rig r;
+    r.part.set_sr2(0x01);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    ASSERT_EQ(w25q_set_quad_enable(&r.f), W25Q_ERR_LOCKED);
+}
+
 TEST(w25q_verify_accepts_a_matching_image)
 {
     Rig r;

@@ -41,6 +41,9 @@ extern "C" {
 #define W25Q_CMD_PAGE_PROGRAM 0x02
 #define W25Q_CMD_SECTOR_ERASE 0x20
 #define W25Q_CMD_JEDEC_ID 0x9F
+#define W25Q_CMD_READ_STATUS2 0x35
+#define W25Q_CMD_READ_STATUS3 0x15
+#define W25Q_CMD_WRITE_STATUS2 0x31
 
 #define W25Q_PAGE_SIZE 256u
 #define W25Q_SECTOR_SIZE 4096u
@@ -48,6 +51,12 @@ extern "C" {
 /** Status register 1 bits. */
 #define W25Q_STATUS_BUSY 0x01
 #define W25Q_STATUS_WEL 0x02
+
+/* Status register 2 bits. SRL and the LB bits are one-way: once set they can
+ * never be cleared, so nothing here may write them. */
+#define W25Q_SR2_SRL 0x01
+#define W25Q_SR2_QE 0x02
+#define W25Q_SR2_LB_MASK 0x38
 
 /** Status polls allowed before an operation is called failed. */
 #define W25Q_POLL_LIMIT 1000000
@@ -59,7 +68,8 @@ typedef enum {
     W25Q_ERR_RANGE = -3,     /* address or length outside the device */
     W25Q_ERR_TIMEOUT = -4,   /* BUSY never cleared */
     W25Q_ERR_VERIFY = -5,    /* read-back did not match */
-    W25Q_ERR_ARG = -6
+    W25Q_ERR_ARG = -6,
+    W25Q_ERR_LOCKED = -7 /* status register is locked (SRL set) */
 } w25q_status_t;
 
 typedef struct {
@@ -105,6 +115,34 @@ w25q_status_t w25q_erase_sector(w25q_t* f, uint32_t addr);
 
 /** Read back and compare. W25Q_ERR_VERIFY on the first mismatching byte. */
 w25q_status_t w25q_verify(w25q_t* f, uint32_t addr, const uint8_t* data, size_t len);
+
+/**
+ * Read status register 1, 2 or 3 — diagnostics only.
+ *
+ * SR1 carries BUSY, WEL and the block-protect bits; SR2 carries QE and SRP1;
+ * SR3 carries the drive strength and WPS. When a program reports success and
+ * the data does not appear, these say why: memory locked by BP2:0, or a write
+ * enable that is not sticking.
+ */
+w25q_status_t w25q_read_status_reg(w25q_t* f, uint8_t which, uint8_t* out);
+
+/** Issue 06h. Exposed so a caller can check whether WEL actually latches. */
+w25q_status_t w25q_write_enable(w25q_t* f);
+
+/**
+ * Set the Quad Enable bit, which retires WP# and HOLD#.
+ *
+ * With QE clear those two pins are live active-low inputs: leave them floating
+ * and a long transfer aborts partway, so a program reports success and no data
+ * appears. Setting QE turns them into IO2/IO3, unused in single-SPI mode, and
+ * unconnected becomes harmless.
+ *
+ * Non-volatile, and a no-op if QE is already set. Never writes SRL or the LB
+ * bits — they cannot be undone. Returns W25Q_ERR_LOCKED if SRL is already set,
+ * because then the write cannot land and saying otherwise would send the
+ * caller away believing the pins are safe to float.
+ */
+w25q_status_t w25q_set_quad_enable(w25q_t* f);
 
 const char* w25q_strerror(w25q_status_t st);
 

@@ -56,6 +56,15 @@ class FakeW25Q {
     void set_busy_polls(int n) { busy_reload_ = n; }
     /** Stop answering — models an absent part (MISO floats high). */
     void set_present(bool p) { present_ = p; }
+    /** Preset status register 2 (QE, SRL, CMP, the OTP lock bits). */
+    void set_sr2(uint8_t v) { sr2_ = v; }
+    /** Attempts to set SRL, which would lock the status register forever. */
+    int srl_attempts() const { return srl_attempts_; }
+    /** Attempts to set any of the one-time-programmable LB bits. */
+    int otp_attempts() const { return otp_attempts_; }
+    /** Completed status-register writes. */
+    int status_writes() const { return status_writes_; }
+
     /** Override the JEDEC ID, for the miswired and garbled-read cases. */
     void set_id(uint8_t mfr, uint8_t type, uint8_t capacity)
     {
@@ -111,6 +120,10 @@ class FakeW25Q {
         stuck_addr_ = 0xFFFFFFFFu;
         stuck_mask_ = 0;
         prog_page_base_ = 0;
+        sr2_ = 0;
+        srl_attempts_ = 0;
+        otp_attempts_ = 0;
+        status_writes_ = 0;
         id_mfr_ = FAKE_W25Q_MFR_WINBOND;
         id_type_ = FAKE_W25Q_TYPE;
         id_cap_ = FAKE_W25Q_CAPACITY_CODE;
@@ -137,7 +150,8 @@ class FakeW25Q {
                holds its write enable for all 256 bytes. */
             bool programmed = (cmd_ == W25Q_CMD_PAGE_PROGRAM && phase_ > 4);
             bool erased = (cmd_ == W25Q_CMD_SECTOR_ERASE && phase_ >= 4);
-            if ((programmed || erased) && wel_) {
+            bool status_written = (cmd_ == W25Q_CMD_WRITE_STATUS2 && phase_ > 1);
+            if ((programmed || erased || status_written) && wel_) {
                 wel_ = false;
                 busy_ = busy_reload_;
             }
@@ -179,6 +193,26 @@ class FakeW25Q {
             phase_++;
             return v;
         }
+        case W25Q_CMD_READ_STATUS2:
+            phase_++;
+            return sr2_;
+        case W25Q_CMD_WRITE_STATUS2:
+            phase_++;
+            if (!wel_) {
+                return 0xFF; /* dropped, already counted */
+            }
+            if (in & 0x01) {
+                srl_attempts_++;
+            }
+            if (in & 0x38) {
+                otp_attempts_++;
+            }
+            /* SRL and the LB bits are one-way on real silicon; model that so a
+               test cannot "undo" them and pass by accident. */
+            sr2_ = (uint8_t)((sr2_ & 0x39) | (in & ~0x39));
+            sr2_ |= (uint8_t)(in & 0x39);
+            status_writes_++;
+            return 0xFF;
         case W25Q_CMD_READ_STATUS1: {
             phase_++;
             uint8_t st = 0;
@@ -226,7 +260,8 @@ class FakeW25Q {
 
     void start_command()
     {
-        bool mutating = (cmd_ == W25Q_CMD_PAGE_PROGRAM || cmd_ == W25Q_CMD_SECTOR_ERASE);
+        bool mutating =
+            (cmd_ == W25Q_CMD_PAGE_PROGRAM || cmd_ == W25Q_CMD_SECTOR_ERASE || cmd_ == W25Q_CMD_WRITE_STATUS2);
         if (busy_ > 0 && cmd_ != W25Q_CMD_READ_STATUS1) {
             /* Real silicon ignores everything but a status read while busy. */
             busy_violations_++;
@@ -295,6 +330,10 @@ class FakeW25Q {
     bool present_;
     uint32_t stuck_addr_;
     uint8_t stuck_mask_;
+    uint8_t sr2_;
+    int srl_attempts_;
+    int otp_attempts_;
+    int status_writes_;
     uint8_t id_mfr_;
     uint8_t id_type_;
     uint8_t id_cap_;

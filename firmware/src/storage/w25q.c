@@ -111,6 +111,78 @@ w25q_status_t w25q_probe(w25q_t* f)
     return W25Q_OK;
 }
 
+w25q_status_t w25q_read_status_reg(w25q_t* f, uint8_t which, uint8_t* out)
+{
+    if (f == NULL || out == NULL) {
+        return W25Q_ERR_ARG;
+    }
+    uint8_t op;
+    switch (which) {
+    case 1:
+        op = W25Q_CMD_READ_STATUS1;
+        break;
+    case 2:
+        op = W25Q_CMD_READ_STATUS2;
+        break;
+    case 3:
+        op = W25Q_CMD_READ_STATUS3;
+        break;
+    default:
+        return W25Q_ERR_ARG;
+    }
+
+    cs(f, true);
+    xfer(f, &op, NULL, 1);
+    xfer(f, NULL, out, 1);
+    cs(f, false);
+    return W25Q_OK;
+}
+
+w25q_status_t w25q_write_enable(w25q_t* f)
+{
+    if (f == NULL) {
+        return W25Q_ERR_ARG;
+    }
+    cmd_only(f, W25Q_CMD_WRITE_ENABLE);
+    return W25Q_OK;
+}
+
+w25q_status_t w25q_set_quad_enable(w25q_t* f)
+{
+    if (f == NULL) {
+        return W25Q_ERR_ARG;
+    }
+    if (!f->present) {
+        return W25Q_ERR_STATE;
+    }
+
+    uint8_t sr2 = 0;
+    w25q_status_t st = w25q_read_status_reg(f, 2, &sr2);
+    if (st != W25Q_OK) {
+        return st;
+    }
+    if (sr2 & W25Q_SR2_SRL) {
+        return W25Q_ERR_LOCKED;
+    }
+    if (sr2 & W25Q_SR2_QE) {
+        return W25Q_OK; /* nothing to do; do not burn a write cycle */
+    }
+
+    /* Keep every bit we do not own (CMP in particular changes what the
+       block-protect bits mean), and force the one-way bits clear so a garbled
+       read cannot talk us into burning them permanently. */
+    uint8_t want = (uint8_t)((sr2 | W25Q_SR2_QE) & ~(W25Q_SR2_SRL | W25Q_SR2_LB_MASK));
+
+    cmd_only(f, W25Q_CMD_WRITE_ENABLE);
+
+    uint8_t tx[2] = {W25Q_CMD_WRITE_STATUS2, want};
+    cs(f, true);
+    xfer(f, tx, NULL, sizeof(tx));
+    cs(f, false);
+
+    return wait_ready(f);
+}
+
 uint8_t w25q_manufacturer(const w25q_t* f)
 {
     return f == NULL ? 0 : f->manufacturer;
@@ -288,6 +360,8 @@ const char* w25q_strerror(w25q_status_t st)
         return "read-back did not match";
     case W25Q_ERR_ARG:
         return "bad argument";
+    case W25Q_ERR_LOCKED:
+        return "status register locked (SRL set)";
     }
     return "unknown";
 }
