@@ -95,6 +95,9 @@ void bsp_gpio_init(void)
     HAL_GPIO_Init(CC1101_MOSI_PORT, &gpio);
 
     /* --- USART2 pins: PD5 TX, PD6 RX (AF7) --- */
+    gpio.Mode = GPIO_MODE_AF_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     gpio.Alternate = GPIO_AF7_USART2;
 
     gpio.Pin = NRF_TX_PIN;

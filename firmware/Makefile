@@ -6,7 +6,7 @@ PROJECT   := nucleo-firmware
 APP_SOURCES := $(shell find src -name '*.c' -o -name '*.cpp' -o -name '*.h')
 INCLUDE_DIRS := -I include -I src -I src/bsp -I src/cca -I src/ccx -I src/net -I src/shell -I src/storage
 
-.PHONY: build clean flash monitor reset test format format-check lint build-check
+.PHONY: build clean flash flash-all monitor reset test format format-check lint build-check
 
 build:
 	@mkdir -p $(BUILD_DIR)
@@ -21,6 +21,14 @@ clean:
 
 flash: build
 	openocd -f openocd.cfg -c "program $(BUILD_DIR)/$(PROJECT).elf verify reset exit"
+
+# Bootloader + application in one pass. Use this whenever the bootloader or the
+# flash layout changed, so the board is never left with a vector table at
+# 0x08000000 pointing at nothing.
+flash-all: build
+	openocd -f openocd.cfg \
+	    -c "program $(BUILD_DIR)/nucleo-bootloader.elf verify" \
+	    -c "program $(BUILD_DIR)/$(PROJECT).elf verify reset exit"
 
 reset:
 	openocd -f openocd.cfg -c "init; reset run; shutdown"
@@ -41,7 +49,8 @@ test:
 	    -I src/cca -I src/ccx -I tests/stubs -I src/net -I src/storage -I src/swd -I tests \
 	    tests/test_main.cpp tests/test_crc.cpp tests/test_n81.cpp \
 	    tests/test_swd.cpp tests/test_swd_mem.cpp tests/test_nrf_swd.cpp \
-	    tests/test_ihex.cpp tests/test_ncp_watchdog.cpp \
+	    tests/test_ihex.cpp tests/test_nrf_flash.cpp tests/test_w25q.cpp \
+	    tests/test_ncp_watchdog.cpp \
 	    tests/test_flash_crc32.cpp \
 	    tests/test_decoder.cpp tests/test_cbor.cpp \
 	    tests/test_tdma.cpp tests/test_encoder.cpp \
@@ -50,12 +59,15 @@ test:
 	    tests/test_spinel.cpp tests/test_ccx_coap.cpp \
 	    tests/test_smp_dfu.cpp tests/test_ota_tx.cpp \
 	    tests/test_ota_session.cpp tests/test_ota_full_tx.cpp \
-	    tests/test_stream_frame.cpp \
+	    tests/test_stream_frame.cpp tests/test_ota_image.cpp \
+	    tests/test_boot_policy.cpp tests/test_boot_request.cpp \
 	    src/cca/cca_commands.cpp src/cca/cca_ota_session.cpp \
 	    src/net/stream_frame.c \
 	    src/swd/swd.c src/swd/swd_mem.c src/swd/nrf_swd.c src/swd/ihex.c \
+	    src/swd/nrf_flash.c \
 	    src/ccx/ncp_watchdog.c \
-	    src/storage/crc32.c \
+	    src/storage/crc32.c src/storage/ota_image.c src/storage/w25q.c \
+	    src/storage/boot_policy.c src/storage/boot_request.c \
 	    src/ccx/ccx_cbor.c src/ccx/ccx_msg.c \
 	    src/ccx/hdlc.c src/ccx/spinel_frame.c \
 	    src/ccx/coap.c src/ccx/smp_serial.c \

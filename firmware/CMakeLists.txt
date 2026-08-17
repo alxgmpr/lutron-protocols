@@ -190,11 +190,19 @@ set(APP_SOURCES
     src/shell/shell.cpp
     src/storage/flash_store.cpp
     src/storage/crc32.c
+    src/storage/w25q.c
+    src/storage/w25q_spi.c
+    src/storage/ota_image.c
+    src/storage/ota_flash.c
+    src/storage/ota_service.c
+    src/storage/boot_request.c
     src/swd/swd.c
     src/swd/swd_mem.c
     src/swd/nrf_swd.c
     src/swd/ihex.c
+    src/swd/nrf_flash.c
     src/swd/swd_gpio.c
+    src/swd/swd_lock.c
 )
 
 # ------------------------------------------------------------------
@@ -268,4 +276,85 @@ add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${PROJECT_NAME}.elf> ${PROJECT_NAME}.hex
     COMMAND ${CMAKE_SIZE} $<TARGET_FILE:${PROJECT_NAME}.elf>
     COMMENT "Generating .bin and .hex, printing size"
+)
+
+# ------------------------------------------------------------------
+# Bootloader (GLAB-106)
+#
+# Separate image in flash sector 0. Deliberately shares nothing with the
+# application build except the CMSIS startup, SystemInit and the HAL pieces it
+# needs — no FreeRTOS, no lwIP, no heap.
+# ------------------------------------------------------------------
+set(BOOTLOADER_NAME nucleo-bootloader)
+
+set(BOOTLOADER_HAL_SOURCES
+    ${HAL_DIR}/Src/stm32h7xx_hal.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_cortex.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_rcc.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_rcc_ex.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_pwr.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_pwr_ex.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_flash.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_flash_ex.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_gpio.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_spi.c
+    ${HAL_DIR}/Src/stm32h7xx_hal_spi_ex.c
+)
+
+add_executable(${BOOTLOADER_NAME}.elf
+    ${STARTUP_ASM}
+    ${BOOTLOADER_HAL_SOURCES}
+    src/system_stm32h7xx.c
+    src/boot/boot_main.c
+    src/boot/boot_syscalls.c
+    src/storage/boot_policy.c
+    src/storage/boot_request.c
+    src/storage/crc32.c
+    src/storage/ota_flash.c
+    src/storage/w25q.c
+    src/storage/w25q_spi.c
+)
+
+target_include_directories(${BOOTLOADER_NAME}.elf PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/boot
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bsp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/storage
+    ${HAL_DIR}/Inc
+    ${CMSIS_DIR}/Include
+    ${CMSIS_DIR}/Device/ST/STM32H7xx/Include
+)
+
+target_compile_definitions(${BOOTLOADER_NAME}.elf PRIVATE
+    STM32H723xx
+    USE_HAL_DRIVER
+)
+
+set(BOOTLOADER_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/linker/bootloader.ld)
+
+target_link_options(${BOOTLOADER_NAME}.elf PRIVATE
+    -T${BOOTLOADER_LINKER_SCRIPT}
+    -mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard
+    -Wl,--gc-sections
+    -Wl,--print-memory-usage
+    -Wl,--no-warn-rwx-segments
+    --specs=nano.specs
+    # No --specs=nosys.specs here, unlike the application. It force-links
+    # libnosys, whose stubs carry .gnu.warning sections ("_write is not
+    # implemented and will always fail") that check-build-warnings.sh treats as
+    # errors. boot_syscalls.c supplies the same stubs, so libnosys is not
+    # needed and its definitions would collide with ours.
+    -lc -lm
+)
+
+set_target_properties(${BOOTLOADER_NAME}.elf PROPERTIES
+    LINK_DEPENDS ${BOOTLOADER_LINKER_SCRIPT}
+)
+
+add_custom_command(TARGET ${BOOTLOADER_NAME}.elf POST_BUILD
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${BOOTLOADER_NAME}.elf> ${BOOTLOADER_NAME}.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex   $<TARGET_FILE:${BOOTLOADER_NAME}.elf> ${BOOTLOADER_NAME}.hex
+    COMMAND ${CMAKE_SIZE} $<TARGET_FILE:${BOOTLOADER_NAME}.elf>
+    COMMENT "Bootloader: generating .bin and .hex, printing size"
 )

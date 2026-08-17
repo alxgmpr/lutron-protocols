@@ -145,6 +145,33 @@ swd_status_t nrf_swd_pin_reset(nrf_swd_t* n)
     return swd_ap_write(n->swd, SWD_CTRL_AP, NRF_CTRLAP_RESET, 0u);
 }
 
+swd_status_t nrf_swd_wait_ap_ready(nrf_swd_t* n, swd_delay_fn delay, void* ctx, uint32_t attempts, uint32_t interval_ms)
+{
+    if (n == NULL || attempts == 0) {
+        return SWD_ERR_ARG;
+    }
+
+    for (uint32_t i = 0;; i++) {
+        /* Full bring-up every time rather than a bare AP re-read: the part is
+           coming out of a reset and the state of the link across it is not
+           worth reasoning about for the cost of one line reset. */
+        if (nrf_swd_connect(n) == SWD_OK) {
+            return SWD_OK;
+        }
+        if (i + 1 >= attempts) {
+            /* One delay per attempt, including the last, so the caller's budget
+               is a wall-clock budget rather than one interval short of it. */
+            if (delay != NULL) {
+                delay(ctx, interval_ms);
+            }
+            return SWD_ERR_LOCKED;
+        }
+        if (delay != NULL) {
+            delay(ctx, interval_ms);
+        }
+    }
+}
+
 swd_status_t nrf_swd_halt(nrf_swd_t* n)
 {
     return n == NULL ? SWD_ERR_ARG : swd_core_halt(&n->mem);

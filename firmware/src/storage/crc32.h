@@ -33,6 +33,16 @@ extern "C" {
  */
 uint32_t crc32_compute(const void* data, size_t len);
 
+/**
+ * Streaming form, for data that arrives in pieces — an OTA image landing a
+ * chunk at a time, say. Seed with CRC32_INIT, feed with crc32_update(), and
+ * finish with crc32_final(); the result equals crc32_compute() over the
+ * concatenation, which tests/test_ota_image.cpp checks directly.
+ */
+#define CRC32_INIT 0xFFFFFFFFu
+uint32_t crc32_update(uint32_t crc, const void* data, size_t len);
+uint32_t crc32_final(uint32_t crc);
+
 #ifdef __cplusplus
 }
 #endif

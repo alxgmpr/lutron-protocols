@@ -18,6 +18,7 @@
 #include "ccx_task.h"
 #include "stream.h"
 #include "shell.h"
+#include "swd_lock.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -44,6 +45,10 @@ int main(void)
 
     /* Start IWDG (~10s timeout) */
     watchdog_init();
+
+    /* The shell and ccx_task both bit-bang the SWD pins; create the lock that
+       keeps them apart before either task can reach for it. */
+    swd_lock_init();
 
     /* Create application tasks */
     cca_task_start();    /* CC1101 RX/TX (priority 3) */

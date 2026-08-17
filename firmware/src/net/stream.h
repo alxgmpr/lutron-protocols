@@ -18,6 +18,11 @@ extern "C" {
 /** Heartbeat interval (ms) */
 #define STREAM_HEARTBEAT_MS 5000
 
+/** Datagrams the stream task will drain in one pass before getting on with the
+ *  rest of its loop. High enough that a chunked upload keeps up, bounded so a
+ *  flood cannot starve the heartbeat and client expiry. */
+#define STREAM_RX_DRAIN_MAX 64
+
 /**
  * Stream command opcodes (host → STM32):
  */
@@ -49,6 +54,13 @@ extern "C" {
 #define STREAM_CMD_OTA_UPLOAD_START 0x18 /* [u32 body_len LE] */
 #define STREAM_CMD_OTA_UPLOAD_CHUNK 0x19 /* [u16 chunk_idx BE][bytes...] (chunk = idx * 240) */
 #define STREAM_CMD_OTA_UPLOAD_END 0x1A   /* [] — verify expected/body match, log */
+/* STM32 self-update staging (GLAB-106). Distinct from the CCA OTA commands
+ * above, which stage an LDF body for on-air TX and never touch our own flash.
+ * Each is acked with STREAM_RESP_FW_OTA so the host can resume after loss. */
+#define STREAM_CMD_FW_OTA_START 0x1B /* [len:4 LE][crc32:4 LE][version:4 LE] */
+#define STREAM_CMD_FW_OTA_CHUNK 0x1C /* [offset:4 LE][bytes...] */
+#define STREAM_CMD_FW_OTA_END 0x1D   /* [] — verify and commit header */
+#define STREAM_CMD_FW_OTA_INFO 0x1E  /* [] — query without changing anything */
 #define STREAM_CMD_TEXT 0x20
 
 /**
@@ -56,6 +68,10 @@ extern "C" {
  */
 #define STREAM_RESP_TEXT 0xFD
 #define STREAM_RESP_STATUS 0xFE
+/* [0xFC][len][status:1 int8][written:4 LE][capacity:4 LE]
+ *              [staged_valid:1][staged_len:4 LE][staged_version:4 LE] */
+#define STREAM_RESP_FW_OTA 0xFC
+#define STREAM_RESP_FW_OTA_LEN 18
 
 /** Maximum concurrent UDP stream clients */
 #define MAX_STREAM_CLIENTS 4
