@@ -769,6 +769,9 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
         size_t captured = printf_capture_stop();
 
         send_to_client(text_resp, (uint16_t)(1 + captured), src_addr, src_port);
+        /* Only now, with the reply out: `reboot` and `ota install` defer their
+         * reset to here precisely so the client gets an answer. */
+        shell_reset_if_requested();
         break;
     }
 

@@ -71,12 +71,21 @@ typedef enum {
     W25Q_ERR_TIMEOUT = -4,   /* BUSY never cleared */
     W25Q_ERR_VERIFY = -5,    /* read-back did not match */
     W25Q_ERR_ARG = -6,
-    W25Q_ERR_LOCKED = -7 /* status register is locked (SRL set) */
+    W25Q_ERR_LOCKED = -7, /* status register is locked (SRL set) */
+    W25Q_ERR_IO = -8      /* the transport did not move the bytes */
 } w25q_status_t;
 
 typedef struct {
-    /** Full-duplex transfer of @p len bytes. @p tx or @p rx may be NULL. */
-    void (*xfer)(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len);
+    /**
+     * Full-duplex transfer of @p len bytes. @p tx or @p rx may be NULL.
+     *
+     * Returns false if any byte did not move. This matters more than it looks:
+     * a transport that silently gives up leaves the caller's rx buffer holding
+     * whatever was in it, and a read of stale bytes reported as success is
+     * indistinguishable from a real one. A status poll is the worst case — it
+     * can read BUSY clear when nothing was ever clocked.
+     */
+    bool (*xfer)(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len);
     /** Assert (true) or release (false) chip select. */
     void (*cs)(void* ctx, bool assert);
     void* ctx;
@@ -89,6 +98,9 @@ typedef struct {
     uint8_t capacity_code;
     uint32_t capacity;
     bool present;
+    /** Latched by any failed transfer; every entry point clears it and then
+     *  refuses to report success while it is set. */
+    bool io_error;
 } w25q_t;
 
 /** Bind to a transport. Does not touch the wire. */

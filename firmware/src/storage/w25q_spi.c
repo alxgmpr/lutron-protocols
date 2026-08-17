@@ -73,23 +73,32 @@ static void spi_cs(void* ctx, bool assert)
  * window shrinks to one chunk instead of a whole 256-byte page, at the cost of
  * a few more HAL calls.
  */
-static void spi_xfer(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len)
+static bool spi_xfer(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len)
 {
     (void)ctx;
 
     while (len > 0) {
         uint16_t n = (uint16_t)(len > W25Q_XFER_CHUNK ? W25Q_XFER_CHUNK : len);
+        HAL_StatusTypeDef hs;
 
         if (tx != NULL && rx != NULL) {
-            HAL_SPI_TransmitReceive(&s_spi, (uint8_t*)tx, rx, n, W25Q_XFER_TIMEOUT_MS);
+            hs = HAL_SPI_TransmitReceive(&s_spi, (uint8_t*)tx, rx, n, W25Q_XFER_TIMEOUT_MS);
         }
         else if (tx != NULL) {
-            HAL_SPI_Transmit(&s_spi, (uint8_t*)tx, n, W25Q_XFER_TIMEOUT_MS);
+            hs = HAL_SPI_Transmit(&s_spi, (uint8_t*)tx, n, W25Q_XFER_TIMEOUT_MS);
         }
         else {
             /* Receive-only still clocks something out on MOSI; a NOR flash
                ignores it during a read data phase. */
-            HAL_SPI_Receive(&s_spi, rx, n, W25Q_XFER_TIMEOUT_MS);
+            hs = HAL_SPI_Receive(&s_spi, rx, n, W25Q_XFER_TIMEOUT_MS);
+        }
+
+        /* Stop at the first failure rather than clocking the rest of a
+           transaction the part is no longer in step with. A timeout or an
+           overrun means these bytes did not move, and rx still holds whatever
+           it held before — which the driver above must not read as data. */
+        if (hs != HAL_OK) {
+            return false;
         }
 
         if (tx != NULL) {
@@ -100,6 +109,7 @@ static void spi_xfer(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len)
         }
         len -= n;
     }
+    return true;
 }
 
 /**
@@ -210,8 +220,25 @@ w25q_t* w25q_device(void)
     return &s_flash;
 }
 
+/**
+ * Bring the link up once and keep the result.
+ *
+ * The probe used to run on every call, and w25q_init() memsets the device — so
+ * a caller asking a question as harmless as "how big is the slot?" tore down
+ * and rebuilt the state an upload in flight was using. ota_flash_ops() is on
+ * that path twice per chunk ack, which made a single misread JEDEC ID (the
+ * documented failure mode of this flying-lead harness) fail the *next* write
+ * with W25Q_ERR_STATE and abort a transfer that was otherwise fine.
+ *
+ * A failed probe is not cached: the part may simply not be plugged in yet, and
+ * the next caller should get a fresh look.
+ */
 w25q_status_t w25q_spi_start(void)
 {
+    if (w25q_capacity(&s_flash) > 0) {
+        return W25Q_OK;
+    }
+
     if (!s_started) {
         spi_hw_init();
         s_started = true;

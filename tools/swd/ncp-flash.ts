@@ -50,6 +50,9 @@ const BATCH_PAUSE_MS = 2;
 /** Default window: comfortably inside the firmware's 110 KB upload buffer. */
 const DEFAULT_WINDOW = 60 * 1024;
 
+/** nRF52840 has 1 MB of flash. UICR lives at 0x10001000, well past it. */
+const NRF52840_FLASH_END = 0x100000;
+
 /** `swd flash begin` can spend 10 s waiting for AP0 after a CTRL-AP reset, and
  *  a window's worth of erase/program/verify is seconds of bit-banging. */
 const CMD_TIMEOUT_MS = 45_000;
@@ -235,6 +238,18 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
+  if (info.max > NRF52840_FLASH_END) {
+    // A type-04 record pointing at UICR (0x10001000) is the usual way this
+    // happens — nrfutil-produced hex files carry one. The firmware rejects it
+    // too, but only when the record arrives, by which time earlier windows
+    // have already erased and programmed real pages.
+    console.error(
+      `[ncp-flash] image ends at 0x${hex(info.max)}, past the end of flash at ` +
+        `0x${hex(NRF52840_FLASH_END)}.\n` +
+        "            Records outside the application region (UICR?) cannot be written here.",
+    );
+    process.exit(1);
+  }
 
   if (dryRun) {
     for (const [i, w] of windows.entries()) {
@@ -264,6 +279,26 @@ async function main(): Promise<void> {
       throw new Error("could not open a flash session");
     }
     opened = true;
+
+    // The real ceiling is the bootloader base, which the firmware reads out of
+    // UICR and only knows once it is connected. Check it here, while the part
+    // is still untouched — sink_record() would catch the same thing, but not
+    // until mid-stream with earlier pages already erased and programmed.
+    const region = begin.match(/region ([0-9a-fA-F]{8})\.\.([0-9a-fA-F]{8})/);
+    if (region) {
+      const regionEnd = parseInt(region[2], 16);
+      if (info.max > regionEnd) {
+        throw new Error(
+          `image ends at 0x${hex(info.max)}, past the writable region ceiling ` +
+            `0x${hex(regionEnd)} (the bootloader starts there) — refusing before anything is erased`,
+        );
+      }
+    } else {
+      console.warn(
+        "[ncp-flash] could not parse the region from 'flash session open'; " +
+          "relying on the firmware to reject out-of-range records mid-stream",
+      );
+    }
 
     for (const [i, w] of windows.entries()) {
       const want = hex(crc32(w));

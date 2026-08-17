@@ -34,6 +34,8 @@
 _Static_assert(APP_BASE == 0x08000000u + APP_FIRST_SECTOR * 128u * 1024u, "app base/sector mismatch");
 _Static_assert(APP_SIZE == APP_NUM_SECTORS * 128u * 1024u, "app size/sector mismatch");
 _Static_assert(APP_BASE + APP_SIZE == 0x080E0000u, "app region must end where flash storage begins");
+/* The staging side refuses anything this side would reject — see ota_flash.h. */
+_Static_assert(APP_SIZE == OTA_APP_REGION_SIZE, "app size must match the ceiling the uploader enforces");
 
 /* The staging slot is on the external SPI NOR, so it cannot be dereferenced —
  * every read of it is a transaction that can fail. `ops` is NULL when the part
@@ -44,6 +46,16 @@ static const ota_flash_ops_t* g_slot;
 static bool slot_read(uint32_t offset, uint8_t* out, uint32_t len)
 {
     return g_slot != NULL && g_slot->read(g_slot->ctx, offset, out, len) == 0;
+}
+
+/** Refresh the watchdog the application left running, if any. Every loop here
+ *  that can run for more than a fraction of the ~10 s IWDG period must call
+ *  this; the bootloader has no task loop feeding it. */
+static void kick_watchdog(void)
+{
+    if ((IWDG1->SR & 0x7u) == 0) {
+        IWDG1->KR = 0xAAAAu;
+    }
 }
 
 /* -----------------------------------------------------------------------
@@ -111,7 +123,7 @@ static bool staged_image_valid(uint32_t* out_len, uint32_t* out_crc)
         if (n > sizeof(buf)) n = sizeof(buf);
         if (!slot_read(off, buf, n)) return false;
         crc = crc32_update(crc, buf, n);
-        if ((IWDG1->SR & 0x7u) == 0) IWDG1->KR = 0xAAAAu;
+        kick_watchdog();
     }
     if (crc32_final(crc) != hdr.image_crc32) return false;
 
@@ -135,18 +147,27 @@ static bool install_staged(uint32_t image_len, uint32_t image_crc)
 {
     HAL_FLASH_Unlock();
 
-    FLASH_EraseInitTypeDef erase;
-    erase.TypeErase = FLASH_TYPEERASE_SECTORS;
-    erase.Banks = FLASH_BANK_1;
-    erase.Sector = APP_FIRST_SECTOR;
-    erase.NbSectors = APP_NUM_SECTORS;
-    erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+    /* One sector per call, not all six in one. HAL_FLASHEx_Erase blocks until
+     * the whole request finishes, and a 128 KB sector erase is ~1 s typical and
+     * several seconds worst case — six of them can outlast the ~10 s IWDG the
+     * application left running, and a watchdog reset here lands mid-erase. */
+    for (uint32_t i = 0; i < APP_NUM_SECTORS; i++) {
+        kick_watchdog();
 
-    uint32_t sector_error = 0;
-    if (HAL_FLASHEx_Erase(&erase, &sector_error) != HAL_OK) {
-        HAL_FLASH_Lock();
-        return false;
+        FLASH_EraseInitTypeDef erase;
+        erase.TypeErase = FLASH_TYPEERASE_SECTORS;
+        erase.Banks = FLASH_BANK_1;
+        erase.Sector = APP_FIRST_SECTOR + i;
+        erase.NbSectors = 1;
+        erase.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+
+        uint32_t sector_error = 0;
+        if (HAL_FLASHEx_Erase(&erase, &sector_error) != HAL_OK) {
+            HAL_FLASH_Lock();
+            return false;
+        }
     }
+    kick_watchdog();
     SCB_InvalidateDCache_by_Addr((uint32_t*)(uintptr_t)APP_BASE, (int32_t)APP_SIZE);
 
     /* Copy whole flash words. The final partial word is padded with erase-state
@@ -165,8 +186,7 @@ static bool install_staged(uint32_t image_len, uint32_t image_crc)
             HAL_FLASH_Lock();
             return false;
         }
-        /* Refresh the watchdog the application left running, if any. */
-        if ((IWDG1->SR & 0x7u) == 0) IWDG1->KR = 0xAAAAu;
+        kick_watchdog();
     }
 
     HAL_FLASH_Lock();

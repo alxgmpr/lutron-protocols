@@ -507,3 +507,101 @@ TEST(w25q_verify_accepts_a_matching_image)
     ASSERT_EQ(w25q_program(&r.f, 0xA000, data.data(), data.size()), W25Q_OK);
     ASSERT_EQ(w25q_verify(&r.f, 0xA000, data.data(), data.size()), W25Q_OK);
 }
+
+/* -----------------------------------------------------------------------
+ * Transport failures
+ *
+ * The transport used to return void, so a timed-out or overrun transfer was
+ * indistinguishable from a good one. That is the worst possible direction for
+ * this driver to fail in: a read hands back whatever was already in the
+ * caller's buffer, and a status poll can read BUSY clear when nothing was ever
+ * clocked — which ends an erase early and reports success.
+ * ----------------------------------------------------------------------- */
+
+TEST(w25q_read_reports_a_failure_in_the_address_phase)
+{
+    /* The opcode and address never reach the part, so the data phase that
+       follows is reading from nowhere in particular. It must not come back
+       W25Q_OK — which is what a driver that ignores the transport does, since
+       the bytes it collects look like a perfectly ordinary erased-flash read. */
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    std::vector<uint8_t> data = pattern(64, 3);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x2000), W25Q_OK);
+    ASSERT_EQ(w25q_program(&r.f, 0x2000, data.data(), data.size()), W25Q_OK);
+
+    uint8_t out[64];
+    memset(out, 0x5A, sizeof(out));
+
+    r.part.fail_next_xfers(1);
+    ASSERT_EQ(w25q_read(&r.f, 0x2000, out, sizeof(out)), W25Q_ERR_IO);
+    /* And specifically not the data that is genuinely at 0x2000. */
+    ASSERT_EQ(out[0] == data[0], false);
+}
+
+TEST(w25q_read_reports_a_failure_in_the_data_phase)
+{
+    /* The address goes out fine and the payload is what gets starved — the
+       shape an RX overrun actually takes, and the one a driver watching only
+       the first transfer would miss. A read is two transfers: the 03h plus
+       address, then the data. */
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    std::vector<uint8_t> data = pattern(16, 4);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x2000), W25Q_OK);
+    ASSERT_EQ(w25q_program(&r.f, 0x2000, data.data(), data.size()), W25Q_OK);
+
+    uint8_t out[16];
+    memset(out, 0x5A, sizeof(out));
+
+    r.part.fail_xfers_after(1, 1);
+    ASSERT_EQ(w25q_read(&r.f, 0x2000, out, sizeof(out)), W25Q_ERR_IO);
+    ASSERT_EQ(out[0], 0x5A);
+}
+
+TEST(w25q_probe_separates_a_dead_link_from_an_absent_part)
+{
+    /* "No device" sends someone to check the part; "IO" sends them to check
+       the wiring and the peripheral. Reporting the first for the second wastes
+       the trip. */
+    Rig r;
+    r.part.fail_next_xfers(1);
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_ERR_IO);
+    ASSERT_EQ(w25q_capacity(&r.f), 0u);
+}
+
+TEST(w25q_erase_does_not_spin_on_a_dead_link)
+{
+    /* wait_ready() polls a million times before giving up. If a failed poll
+       reads back as 0xFF the BUSY bit is set, so a dead link used to cost the
+       full budget and then report a timeout rather than a link fault. */
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    r.part.fail_next_xfers(1);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x3000), W25Q_ERR_IO);
+}
+
+TEST(w25q_program_reports_a_failed_transfer)
+{
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    std::vector<uint8_t> data = pattern(32, 1);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x4000), W25Q_OK);
+    r.part.fail_next_xfers(1);
+    ASSERT_EQ(w25q_program(&r.f, 0x4000, data.data(), data.size()), W25Q_ERR_IO);
+}
+
+TEST(w25q_recovers_once_the_link_comes_back)
+{
+    /* The flag is per operation, not sticky for the life of the device — a
+       transient overrun must not condemn the part. */
+    Rig r;
+    ASSERT_EQ(w25q_probe(&r.f), W25Q_OK);
+    r.part.fail_next_xfers(1);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x5000), W25Q_ERR_IO);
+
+    std::vector<uint8_t> data = pattern(48, 9);
+    ASSERT_EQ(w25q_erase_sector(&r.f, 0x5000), W25Q_OK);
+    ASSERT_EQ(w25q_program(&r.f, 0x5000, data.data(), data.size()), W25Q_OK);
+    ASSERT_EQ(w25q_verify(&r.f, 0x5000, data.data(), data.size()), W25Q_OK);
+}

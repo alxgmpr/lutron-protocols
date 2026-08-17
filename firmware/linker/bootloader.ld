@@ -2,9 +2,11 @@
  *
  * Occupies flash sector 0 only. See STM32H723ZGTx_FLASH.ld for the full map.
  *   0    0x08000000  128K  this bootloader
- *   1-3  0x08020000  384K  application
- *   4-6  0x08080000  384K  OTA staging slot
+ *   1-6  0x08020000  768K  application
  *   7    0x080E0000  128K  settings
+ *
+ * The OTA staging slot is not in this map at all — it lives on the external
+ * SPI NOR (ota_flash.h), which is what freed sectors 4-6 for the application.
  *
  * The bootloader runs before the application and hands over by resetting the
  * stack pointer, so it may use any RAM — except the first 32 bytes of AXI SRAM,

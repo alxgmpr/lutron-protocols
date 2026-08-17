@@ -15,9 +15,29 @@ static void cs(w25q_t* f, bool assert)
     f->io.cs(f->io.ctx, assert);
 }
 
+/**
+ * One transfer, with any failure latched rather than returned.
+ *
+ * A command here is a sequence of these bracketed by chip select, and handing
+ * a status back from each one would bury the sequences in error plumbing. So
+ * the flag rides on the device instead: io_begin() clears it, io_failed()
+ * asks, and no entry point below reports success without asking.
+ */
 static void xfer(w25q_t* f, const uint8_t* tx, uint8_t* rx, size_t len)
 {
-    f->io.xfer(f->io.ctx, tx, rx, len);
+    if (!f->io.xfer(f->io.ctx, tx, rx, len)) {
+        f->io_error = true;
+    }
+}
+
+static void io_begin(w25q_t* f)
+{
+    f->io_error = false;
+}
+
+static bool io_failed(const w25q_t* f)
+{
+    return f->io_error;
 }
 
 /** A command with no address and no data — 06h, 04h. */
@@ -51,7 +71,13 @@ static uint8_t read_status(w25q_t* f)
 static w25q_status_t wait_ready(w25q_t* f)
 {
     for (uint32_t i = 0; i < W25Q_POLL_LIMIT; i++) {
-        if ((read_status(f) & W25Q_STATUS_BUSY) == 0) {
+        uint8_t st = read_status(f);
+        /* A poll that never reached the wire says nothing about BUSY. Bail
+           rather than spend a million iterations asking a dead link. */
+        if (io_failed(f)) {
+            return W25Q_ERR_IO;
+        }
+        if ((st & W25Q_STATUS_BUSY) == 0) {
             return W25Q_OK;
         }
     }
@@ -77,12 +103,21 @@ w25q_status_t w25q_probe(w25q_t* f)
         return W25Q_ERR_ARG;
     }
 
+    io_begin(f);
+
     uint8_t op = W25Q_CMD_JEDEC_ID;
     uint8_t id[3] = {0, 0, 0};
     cs(f, true);
     xfer(f, &op, NULL, 1);
     xfer(f, NULL, id, sizeof(id));
     cs(f, false);
+
+    /* Before the ID checks, so a link that moved nothing is reported as a link
+       fault and not as "no such part" — the two call for different repairs. */
+    if (io_failed(f)) {
+        f->present = false;
+        return W25Q_ERR_IO;
+    }
 
     /* Two independent sanity checks, because a miswired part fails in two
        different ways. An absent or unpowered device gives all 0xFF (MISO on
@@ -131,11 +166,12 @@ w25q_status_t w25q_read_status_reg(w25q_t* f, uint8_t which, uint8_t* out)
         return W25Q_ERR_ARG;
     }
 
+    io_begin(f);
     cs(f, true);
     xfer(f, &op, NULL, 1);
     xfer(f, NULL, out, 1);
     cs(f, false);
-    return W25Q_OK;
+    return io_failed(f) ? W25Q_ERR_IO : W25Q_OK;
 }
 
 w25q_status_t w25q_write_enable(w25q_t* f)
@@ -143,8 +179,9 @@ w25q_status_t w25q_write_enable(w25q_t* f)
     if (f == NULL) {
         return W25Q_ERR_ARG;
     }
+    io_begin(f);
     cmd_only(f, W25Q_CMD_WRITE_ENABLE);
-    return W25Q_OK;
+    return io_failed(f) ? W25Q_ERR_IO : W25Q_OK;
 }
 
 w25q_status_t w25q_set_quad_enable(w25q_t* f)
@@ -173,6 +210,8 @@ w25q_status_t w25q_set_quad_enable(w25q_t* f)
        read cannot talk us into burning them permanently. */
     uint8_t want = (uint8_t)((sr2 | W25Q_SR2_QE) & ~(W25Q_SR2_SRL | W25Q_SR2_LB_MASK));
 
+    /* Fresh: w25q_read_status_reg() above already consumed the previous flag. */
+    io_begin(f);
     cmd_only(f, W25Q_CMD_WRITE_ENABLE);
 
     uint8_t tx[2] = {W25Q_CMD_WRITE_STATUS2, want};
@@ -223,10 +262,13 @@ w25q_status_t w25q_read(w25q_t* f, uint32_t addr, uint8_t* out, size_t len)
 
     /* 03h streams continuously; the part's own address counter runs across
        page and sector boundaries, so this needs no splitting. */
+    io_begin(f);
     begin_addressed(f, W25Q_CMD_READ_DATA, addr);
     xfer(f, NULL, out, len);
     cs(f, false);
-    return W25Q_OK;
+    /* Without this a starved transfer returns whatever the caller's buffer
+       already held, stamped W25Q_OK. */
+    return io_failed(f) ? W25Q_ERR_IO : W25Q_OK;
 }
 
 /* -----------------------------------------------------------------------
@@ -236,6 +278,8 @@ w25q_status_t w25q_read(w25q_t* f, uint32_t addr, uint8_t* out, size_t len)
 /** One page-bounded program. @p len must not cross a page boundary. */
 static w25q_status_t program_page(w25q_t* f, uint32_t addr, const uint8_t* data, size_t len)
 {
+    io_begin(f);
+
     /* Per operation, not per call: the part clears WEL itself when this
        finishes, so the next page needs its own. */
     cmd_only(f, W25Q_CMD_WRITE_ENABLE);
@@ -297,6 +341,7 @@ w25q_status_t w25q_erase_sector(w25q_t* f, uint32_t addr)
         return W25Q_ERR_RANGE;
     }
 
+    io_begin(f);
     cmd_only(f, W25Q_CMD_WRITE_ENABLE);
 
     /* The part masks the address to the sector itself, but sending the base is
@@ -319,6 +364,7 @@ w25q_status_t w25q_erase_block(w25q_t* f, uint32_t addr)
         return W25Q_ERR_RANGE;
     }
 
+    io_begin(f);
     cmd_only(f, W25Q_CMD_WRITE_ENABLE);
     begin_addressed(f, W25Q_CMD_BLOCK_ERASE_64K, addr & ~(W25Q_BLOCK_SIZE - 1u));
     cs(f, false);
@@ -379,6 +425,8 @@ const char* w25q_strerror(w25q_status_t st)
         return "read-back did not match";
     case W25Q_ERR_ARG:
         return "bad argument";
+    case W25Q_ERR_IO:
+        return "SPI transfer failed";
     case W25Q_ERR_LOCKED:
         return "status register locked (SRL set)";
     }

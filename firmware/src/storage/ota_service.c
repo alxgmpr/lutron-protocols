@@ -13,16 +13,34 @@ static bool session_active = false;
 static uint32_t session_crc32 = 0;
 static uint32_t session_version = 0;
 static ota_status_t last_status = OTA_OK;
+/** Set when an END committed a header; lets a retried END answer OK. */
+static bool session_committed = false;
 
+/**
+ * What the host may actually send: the smaller of what the slot holds and what
+ * the bootloader will install. The slot is the larger of the two, so reporting
+ * it alone would invite an image that stages perfectly and then never boots.
+ */
 uint32_t ota_service_capacity(void)
 {
-    return ota_stage_max_image(ota_flash_ops());
+    uint32_t slot = ota_stage_max_image(ota_flash_ops());
+    return slot < OTA_APP_REGION_SIZE ? slot : OTA_APP_REGION_SIZE;
 }
 
 ota_status_t ota_service_start(uint32_t image_len, uint32_t crc32, uint32_t version)
 {
     printf("[ota] Start: %lu bytes crc=0x%08lX version=%lu (erasing slot...)\r\n", (unsigned long)image_len,
            (unsigned long)crc32, (unsigned long)version);
+
+    /* Before the erase, not after: refusing here costs the host a round trip,
+     * refusing at install time costs it the whole upload and says nothing. */
+    if (image_len > OTA_APP_REGION_SIZE) {
+        last_status = OTA_ERR_CAPACITY;
+        session_active = false;
+        printf("[ota] Start rejected: %lu bytes exceeds the %lu byte application region\r\n", (unsigned long)image_len,
+               (unsigned long)OTA_APP_REGION_SIZE);
+        return OTA_ERR_CAPACITY;
+    }
 
     ota_status_t st = ota_stage_begin(&stage, ota_flash_ops(), image_len);
     last_status = st;
@@ -35,6 +53,7 @@ ota_status_t ota_service_start(uint32_t image_len, uint32_t crc32, uint32_t vers
     session_crc32 = crc32;
     session_version = version;
     session_active = true;
+    session_committed = false;
     printf("[ota] Slot erased, ready\r\n");
     return OTA_OK;
 }
@@ -57,15 +76,37 @@ ota_status_t ota_service_chunk(uint32_t offset, const uint8_t* data, uint32_t le
     return st;
 }
 
+/**
+ * Did the slot already commit the image this session was staging?
+ *
+ * END reads the whole slot back over a 1 MHz link, so it is the command most
+ * likely to outrun the host's timeout — and the host retries it. Without this
+ * the retry lands on a closed session and reports failure for an upload that
+ * succeeded. A committed header carrying this session's CRC is proof it did.
+ */
+static bool staged_matches_session(void)
+{
+    ota_image_header_t hdr;
+    if (ota_image_read_header(ota_flash_ops(), &hdr) != OTA_OK) return false;
+    return hdr.image_crc32 == session_crc32 && hdr.image_len == stage.expected_len;
+}
+
 ota_status_t ota_service_end(void)
 {
     if (!session_active) {
+        /* A repeat of an END that already worked, not a stray one. */
+        if (session_committed && staged_matches_session()) {
+            last_status = OTA_OK;
+            printf("[ota] Finish repeated; image already staged\r\n");
+            return OTA_OK;
+        }
         last_status = OTA_ERR_STATE;
         return OTA_ERR_STATE;
     }
     ota_status_t st = ota_stage_finish(&stage, session_crc32, session_version);
     last_status = st;
     session_active = false;
+    session_committed = (st == OTA_OK);
 
     if (st == OTA_OK) {
         printf("[ota] Image staged and verified (%lu bytes, version %lu)\r\n", (unsigned long)stage.expected_len,
@@ -81,6 +122,7 @@ void ota_service_abort(void)
 {
     if (session_active) printf("[ota] Session aborted\r\n");
     session_active = false;
+    session_committed = false;
     memset(&stage, 0, sizeof(stage));
 }
 

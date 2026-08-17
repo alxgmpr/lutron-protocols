@@ -34,6 +34,19 @@ extern "C" {
 #define OTA_SLOT_ERASE_BLOCK (64u * 1024u)
 
 /**
+ * The application region the bootloader installs into — the real ceiling on a
+ * staged image, and smaller than the slot that holds it.
+ *
+ * Without this the two limits disagree: the slot would accept just under a
+ * megabyte, stage it, and verify its CRC, and then the bootloader would reject
+ * anything over 768 KB and quietly boot the old application instead. The upload
+ * has to fail at `ota_service_start()`, where there is still a reply to fail in.
+ *
+ * boot_main.c asserts its own APP_SIZE against this.
+ */
+#define OTA_APP_REGION_SIZE (768u * 1024u)
+
+/**
  * Flash ops bound to the staging slot, or NULL if the part did not answer.
  * Brings SPI1 up on first call.
  */

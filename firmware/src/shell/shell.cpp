@@ -2633,6 +2633,15 @@ static void cmd_swd_recover(const char* args)
         return;
     }
 
+    /* Same guard the rest of `swd` gets. cmd_swd() dispatches recover before
+       reaching its own check, and swd_lock is not recursive — so with a session
+       open this task would block five seconds on a mutex it already holds and
+       then blame "another task" for a lock that is its own. */
+    if (s_ncp_flash.open) {
+        printf("a flash session holds the SWD pins — 'swd flash abort' first\r\n");
+        return;
+    }
+
     if (!swd_lock_take(5000)) {
         printf("SWD pins are held by another task\r\n");
         return;
@@ -4258,6 +4267,28 @@ static void cmd_help(void)
 }
 
 /* -----------------------------------------------------------------------
+ * Deferred reset
+ *
+ * `reboot` and `ota install` both end in NVIC_SystemReset(), and both used to
+ * call it from inside the command with a HAL_Delay() in front to "let the reply
+ * get out". That works for the UART console, whose bytes are already on their
+ * way out of the FIFO, and not at all for the UDP path — stream.cpp does not
+ * assemble the datagram until shell_execute() has returned, so the reset always
+ * beat the reply and network callers saw a timeout for a command that worked.
+ * ----------------------------------------------------------------------- */
+static bool s_reset_requested = false;
+
+void shell_reset_if_requested(void)
+{
+    if (!s_reset_requested) {
+        return;
+    }
+    s_reset_requested = false;
+    HAL_Delay(50); /* drain the UART FIFO / let the datagram leave the MAC */
+    NVIC_SystemReset();
+}
+
+/* -----------------------------------------------------------------------
  * Execute a single shell command line.
  * Called from the UART shell task and from UDP text passthrough.
  * ----------------------------------------------------------------------- */
@@ -4312,8 +4343,7 @@ void shell_execute(const char* line)
             printf("Installing staged image (%lu bytes, version %lu) on reboot...\r\n", (unsigned long)info.staged_len,
                    (unsigned long)info.staged_version);
             boot_request_set(boot_request_area());
-            HAL_Delay(50); /* let the reply reach the client before we go */
-            NVIC_SystemReset();
+            s_reset_requested = true;
         }
     }
     else if (strcmp(line, "save") == 0) {
@@ -4326,8 +4356,7 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "reboot") == 0) {
         printf("Rebooting...\r\n");
-        HAL_Delay(100);
-        NVIC_SystemReset();
+        s_reset_requested = true;
     }
     else if (strncmp(line, "tx ", 3) == 0) {
         cmd_tx(line + 3);
@@ -4416,6 +4445,7 @@ static void shell_task_func(void* param)
 
         /* Parse and execute command */
         shell_execute(cmd_buf);
+        shell_reset_if_requested();
     }
 }
 

@@ -16,6 +16,17 @@ void shell_task_start(void);
 /** Execute a shell command line (used by UART shell and UDP text passthrough) */
 void shell_execute(const char* line);
 
+/**
+ * Reset the board if the command just executed asked for one.
+ *
+ * Commands that reboot cannot do it themselves. shell_execute() returns before
+ * its caller has sent anything: the UART console still has bytes in the FIFO,
+ * and the UDP path does not build its datagram until afterwards — so resetting
+ * inside the command meant the client never saw the reply. Every caller must
+ * invoke this once its output is on the wire.
+ */
+void shell_reset_if_requested(void);
+
 /** Capture printf output into a buffer (for UDP text response) */
 void printf_capture_start(uint8_t* buf, size_t buf_size);
 size_t printf_capture_stop(void);

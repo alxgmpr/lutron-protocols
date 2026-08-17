@@ -100,8 +100,23 @@ class FakeW25Q {
     }
     void poke(uint32_t addr, uint8_t v) { mem_[addr] = v; }
 
+    /** Make the next @p n transfers fail outright, moving no bytes — a timeout
+     *  or an RX overrun on the real link. */
+    void fail_next_xfers(int n) { failing_xfers_ = n; }
+
+    /** As above, but let @p skip transfers through first. A command is several
+     *  transfers, so this is how a test picks the address phase or the data
+     *  phase specifically. */
+    void fail_xfers_after(int skip, int n)
+    {
+        healthy_xfers_ = skip;
+        failing_xfers_ = n;
+    }
+
     void reset_all()
     {
+        failing_xfers_ = 0;
+        healthy_xfers_ = 0;
         mem_.clear();
         cs_ = false;
         phase_ = 0;
@@ -130,9 +145,9 @@ class FakeW25Q {
     }
 
   private:
-    static void s_xfer(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len)
+    static bool s_xfer(void* ctx, const uint8_t* tx, uint8_t* rx, size_t len)
     {
-        static_cast<FakeW25Q*>(ctx)->xfer(tx, rx, len);
+        return static_cast<FakeW25Q*>(ctx)->xfer(tx, rx, len);
     }
     static void s_cs(void* ctx, bool assert) { static_cast<FakeW25Q*>(ctx)->cs(assert); }
 
@@ -159,8 +174,18 @@ class FakeW25Q {
         cs_ = assert;
     }
 
-    void xfer(const uint8_t* tx, uint8_t* rx, size_t len)
+    bool xfer(const uint8_t* tx, uint8_t* rx, size_t len)
     {
+        /* A starved or timed-out transfer moves nothing and leaves rx alone —
+           the case that used to be reported as a successful read. */
+        if (healthy_xfers_ > 0) {
+            healthy_xfers_--;
+        }
+        else if (failing_xfers_ > 0) {
+            failing_xfers_--;
+            return false;
+        }
+
         for (size_t i = 0; i < len; i++) {
             uint8_t out = 0xFF;
             uint8_t in = tx ? tx[i] : 0xFF;
@@ -174,6 +199,7 @@ class FakeW25Q {
                 rx[i] = out;
             }
         }
+        return true;
     }
 
     /** One byte of a command. Returns what the part drives on MISO. */
@@ -338,6 +364,8 @@ class FakeW25Q {
     uint8_t id_mfr_;
     uint8_t id_type_;
     uint8_t id_cap_;
+    int failing_xfers_ = 0;
+    int healthy_xfers_ = 0;
 };
 
 #endif /* FAKE_W25Q_H */
