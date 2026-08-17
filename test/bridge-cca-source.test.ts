@@ -157,6 +157,67 @@ describe("cca source", () => {
     assert.equal(model.intents.length, 0);
   });
 
+  // ── Dedup, against frames off the air ───────────────────
+
+  /**
+   * Two frames of one SCENE4 tap burst, captured on the bench rig at
+   * 17:08:19.630 and 17:08:19.705. Byte 1 is the sequence; the last two bytes
+   * are the CRC-16, which covers the sequence byte and therefore differs too.
+   *
+   * Synthetic frames with a zero CRC hide exactly this, which is why these are
+   * real bytes: `crc16(f.subarray(0, 22))` reproduces both trailers.
+   */
+  const BENCH_TAP_SEQ_06 = `8b0608692d70210403000800${"cc".repeat(10)}b537`;
+  const BENCH_TAP_SEQ_0C = `8b0c08692d70210403000800${"cc".repeat(10)}0ea3`;
+
+  it("gives one dedup key to two real retransmits of one tap", () => {
+    const { model, source } = sourceWith();
+
+    source.handleFrame(frameOf(Buffer.from(BENCH_TAP_SEQ_06, "hex")));
+    source.handleFrame(frameOf(Buffer.from(BENCH_TAP_SEQ_0C, "hex")));
+
+    const [a, b] = model.intents;
+    if (a?.kind !== "deviceEvent" || b?.kind !== "deviceEvent") {
+      throw new Error("expected two device events");
+    }
+    assert.equal(
+      a.dedupKey,
+      b.dedupKey,
+      "the CRC changes with the sequence, so masking the sequence alone is not enough",
+    );
+  });
+
+  it("marks a burst's first frame as a new wire event, and the rest not", () => {
+    const { model, source } = sourceWith();
+
+    // Every CCA burst observed on the bench starts at sequence 0 and steps by a
+    // fixed stride. That makes the fresh press identifiable without a timer.
+    source.handleFrame(frameOf(buttonPacket({ seq: 0 })));
+    source.handleFrame(frameOf(Buffer.from(BENCH_TAP_SEQ_06, "hex")));
+
+    const [first, second] = model.intents;
+    if (first?.kind !== "deviceEvent" || second?.kind !== "deviceEvent") {
+      throw new Error("expected two device events");
+    }
+    assert.equal(first.isNewWireEvent, true);
+    assert.equal(second.isNewWireEvent, false);
+  });
+
+  it("covers a full retransmit burst with the dedup window", () => {
+    const { model, source } = sourceWith();
+
+    source.handleFrame(frameOf(buttonPacket({})));
+
+    const intent = model.intents[0];
+    if (intent.kind !== "deviceEvent") throw new Error("wrong intent kind");
+    // The bench rig showed one release burst spanning sequence 0 → 36, 457 ms
+    // end to end. A window shorter than the burst reports one release twice.
+    assert.ok(
+      intent.dedupWindowMs !== undefined && intent.dedupWindowMs >= 825,
+      `window ${intent.dedupWindowMs}ms is shorter than an 11-frame burst`,
+    );
+  });
+
   // ── Dedup ───────────────────────────────────────────────
 
   it("gives one wire event one dedup key however the sequence advances", () => {
@@ -188,22 +249,31 @@ describe("cca source", () => {
     assert.notEqual(a.dedupKey, b.dedupKey);
   });
 
-  it("asks for a window sized to the burst, not the CCX default", () => {
+  it("asks for a window sized to the retransmit burst", () => {
     const { model, source } = sourceWith();
 
     source.handleFrame(frameOf(buttonPacket({})));
 
     const intent = model.intents[0];
     if (intent.kind !== "deviceEvent") throw new Error("wrong intent kind");
-    // A tap burst is 2 frames at one-frame spacing (~75 ms). The window has to
-    // cover that and no more: every millisecond past it is a double press this
-    // transport would swallow.
     assert.equal(intent.dedupWindowMs, CCA_BURST_DEDUP_MS);
-    assert.ok(
-      CCA_BURST_DEDUP_MS < 500,
-      "a CCA window at or past the CCX default would eat real double presses",
+  });
+
+  it("lets a second press through inside the window, on its own sequence 0", () => {
+    const { model, source } = sourceWith();
+
+    // The window is long — it has to cover an 11-frame burst — so on its own it
+    // would swallow a double tap. Sequence 0 is what keeps that from happening.
+    source.handleFrame(frameOf(buttonPacket({ seq: 0 })));
+    source.handleFrame(frameOf(buttonPacket({ seq: 6 })));
+    source.handleFrame(frameOf(buttonPacket({ seq: 0 })));
+
+    const events = model.intents.filter((i) => i.kind === "deviceEvent");
+    assert.equal(events.length, 3, "source should not dedup itself");
+    const fresh = events.filter(
+      (i) => i.kind === "deviceEvent" && i.isNewWireEvent,
     );
-    assert.ok(CCA_BURST_DEDUP_MS >= 150, "must cover a 2-frame burst at 75 ms");
+    assert.equal(fresh.length, 2, "both real presses must be marked fresh");
   });
 
   // ── What CCA does not carry ─────────────────────────────

@@ -232,20 +232,48 @@ Every CCA frame carries a sequence at offset 1, but per
 carry two *different* sequence values for one press. Keying on it would let
 every retransmit through as its own event.
 
-A CCA key is instead the **payload with that byte masked out**: frames identical
-apart from the sequence are one wire event, and anything else is not. The
-residual limit is real and stated rather than hidden — two byte-identical
-presses of one button inside the window cannot be told apart on this transport.
+A CCA key is instead the **payload with the sequence byte *and the CRC* masked
+out**. Both, because CRC-16 is computed over the whole frame including the
+sequence, so two retransmissions of one payload differ in two places. From the
+bench rig, two frames of one SCENE4 tap 75 ms apart:
 
-That is why an intent may declare its own `dedupWindowMs`. CCA asks for
-**250 ms**, sized to its 2-frame ~75 ms tap burst plus observed jitter, instead
-of inheriting the model's default: every millisecond past the burst is a double
-press this transport would swallow, so the window is as short as the protocol
-allows.
+```
+8b 06 08 69 2d 70 21 04 03 00 08 00 cc×10 b5 37
+8b 0c 08 69 2d 70 21 04 03 00 08 00 cc×10 0e a3
+   ^^ sequence                            ^^^^^ crc16(bytes 0..21)
+```
 
-So CCA dedupes *less* than CCX, deliberately: under-deduping shows up as a
-duplicate event, over-deduping shows up as a press that did nothing. Neither
-transport keys on `(device, button)`, which would swallow all of them.
+Masking the sequence alone leaves the CRC differing, so the key matches nothing
+and dedup silently does nothing at all. Synthetic test frames with a zero CRC
+hide this completely — `test/bridge-cca-source.test.ts` uses those exact bytes.
+
+### The sequence byte still earns its keep: it marks the burst
+
+Every CCA burst observed on the bench starts at **sequence 0** and steps by a
+fixed stride — `0, 6, 12` for a tap, `0 … 36` for a release — matching the
+"First=0x00, retx increments" note in [CCA pairing](../protocols/cca/pairing.md).
+
+So sequence 0 is a *fresh user action* and anything else is a retransmission of
+the burst in progress. An intent can say so with `isNewWireEvent`, which dedup
+honours over its own timer. That is strictly better than a window on both
+counts:
+
+- **Two taps 100 ms apart both fire.** The second starts its own burst at 0.
+  A timer could not tell them from a retransmit at any window long enough to be
+  useful.
+- **A whole burst collapses to one event**, however long it runs. `dedupWindowMs`
+  is therefore sized *up* to the longest burst — CCA asks for **1200 ms**, since
+  `CCA_TX_COUNT_NORMAL` is 11 frames at one-frame spacing (~825 ms) and a
+  measured release burst ran sequence 0 → 36 over 457 ms. A window shorter than
+  the burst reports one release twice.
+
+The window remains as the fallback for a device that starts a burst somewhere
+other than 0.
+
+So CCA dedupes *differently* from CCX rather than merely less, and neither
+transport keys on `(device, button)` — which would swallow every double press.
+Under-deduping shows up as a duplicate event; over-deduping shows up as a press
+that did nothing.
 
 ### 5.1 Device events
 

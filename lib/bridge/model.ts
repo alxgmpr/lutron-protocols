@@ -173,7 +173,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "deviceEvent" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -197,7 +203,13 @@ export class DeviceModel extends EventEmitter {
     // Watch filter runs before dedup so unwatched traffic never occupies the
     // dedup table.
     if (!this.isWatched(intent.zoneId)) return { accepted: false, applied: 0 };
-    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -218,7 +230,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "preset" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -250,7 +268,13 @@ export class DeviceModel extends EventEmitter {
     intent: Extract<SourceIntent, { kind: "ramp" }>,
     onAccepted?: () => void,
   ): ApplyResult {
-    if (this.isDuplicate(intent.dedupKey, intent.dedupWindowMs))
+    if (
+      this.isDuplicate(
+        intent.dedupKey,
+        intent.dedupWindowMs,
+        intent.isNewWireEvent,
+      )
+    )
       return { accepted: false, applied: 0 };
 
     onAccepted?.();
@@ -527,11 +551,23 @@ export class DeviceModel extends EventEmitter {
    * transport that cannot key on a sequence dedupes less; the asymmetry is
    * deliberate.
    */
-  private isDuplicate(key: string | undefined, windowMs?: number): boolean {
+  private isDuplicate(
+    key: string | undefined,
+    windowMs?: number,
+    isNewWireEvent?: boolean,
+  ): boolean {
     if (key === undefined) return false;
     const window = windowMs ?? DEDUP_WINDOW_MS;
     const now = this.now();
     const prev = this.dedup.get(key);
+    // A source that can prove the wire started a new event overrides the timer
+    // outright. CCA can: every burst starts at sequence 0, so a second tap
+    // 100 ms after the first is still two events. Without this, a window long
+    // enough to cover an 11-frame retransmit burst would eat the double tap.
+    if (isNewWireEvent) {
+      this.dedup.set(key, now);
+      return false;
+    }
     if (prev !== undefined && now - prev < window) return true;
     this.dedup.set(key, now);
 

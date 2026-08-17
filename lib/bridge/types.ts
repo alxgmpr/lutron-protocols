@@ -102,6 +102,11 @@ export type SourceIntent =
       dedupKey?: string;
       /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
       dedupWindowMs?: number;
+      /**
+       * The wire says this is a fresh event, not a retransmission, so dedup
+       * records its key but never suppresses it. See CcaSource.
+       */
+      isNewWireEvent?: boolean;
     }
   | {
       kind: "preset";
@@ -110,6 +115,11 @@ export type SourceIntent =
       dedupKey?: string;
       /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
       dedupWindowMs?: number;
+      /**
+       * The wire says this is a fresh event, not a retransmission, so dedup
+       * records its key but never suppresses it. See CcaSource.
+       */
+      isNewWireEvent?: boolean;
     }
   | {
       kind: "ramp";
@@ -123,6 +133,11 @@ export type SourceIntent =
       dedupKey?: string;
       /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
       dedupWindowMs?: number;
+      /**
+       * The wire says this is a fresh event, not a retransmission, so dedup
+       * records its key but never suppresses it. See CcaSource.
+       */
+      isNewWireEvent?: boolean;
     }
   | {
       kind: "deviceEvent";
@@ -141,6 +156,11 @@ export type SourceIntent =
       dedupKey?: string;
       /** Window this key is suppressed for; defaults to DEDUP_WINDOW_MS. */
       dedupWindowMs?: number;
+      /**
+       * The wire says this is a fresh event, not a retransmission, so dedup
+       * records its key but never suppresses it. See CcaSource.
+       */
+      isNewWireEvent?: boolean;
     };
 
 /**

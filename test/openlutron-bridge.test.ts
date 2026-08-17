@@ -320,22 +320,39 @@ describe("openlutron bridge", () => {
   it("fires twice for two presses of the same CCA button", async (t) => {
     const { socket, timers, broker } = await makeBridge(t);
 
-    // Two real presses, past the CCA burst window. Both are user actions.
-    socket.deliver(ccaTapDatagram(6));
+    // Two real presses. Each starts its own burst at sequence 0, which is how
+    // they stay distinguishable inside a window long enough to cover a full
+    // retransmit burst.
+    socket.deliver(ccaTapDatagram(0));
     timers.advance(400);
-    socket.deliver(ccaTapDatagram(14));
+    socket.deliver(ccaTapDatagram(0));
 
     assert.equal(broker.count("lutron/device/cca_deadbeef/event"), 2);
   });
 
-  it("fires once for the retransmit of one CCA press", async (t) => {
+  it("fires twice even for a double tap inside the burst window", async (t) => {
     const { socket, timers, broker } = await makeBridge(t);
 
-    // The two frames of one tap burst: identical payload, sequence +8, one
-    // frame apart. This is one wire event.
-    socket.deliver(ccaTapDatagram(6));
-    timers.advance(75);
-    socket.deliver(ccaTapDatagram(14));
+    // 120 ms apart — well inside the 1200 ms window. A timer alone would eat
+    // the second press; the wire's own burst-start marker is what saves it.
+    socket.deliver(ccaTapDatagram(0));
+    timers.advance(120);
+    socket.deliver(ccaTapDatagram(0));
+
+    assert.equal(broker.count("lutron/device/cca_deadbeef/event"), 2);
+  });
+
+  it("fires once for a retransmit burst of one CCA press", async (t) => {
+    const { socket, timers, broker } = await makeBridge(t);
+
+    // One tap as the bench rig showed it: sequence 0, then retransmits at a
+    // fixed stride, one frame apart. Five more frames of the same burst arrive
+    // over the next 450 ms — one wire event, one HA event.
+    socket.deliver(ccaTapDatagram(0));
+    for (const seq of [6, 12, 18, 24, 30, 36]) {
+      timers.advance(76);
+      socket.deliver(ccaTapDatagram(seq));
+    }
 
     assert.equal(broker.count("lutron/device/cca_deadbeef/event"), 1);
   });

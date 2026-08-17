@@ -44,19 +44,35 @@ import type { IntentTarget } from "./ccx";
 /**
  * How long one CCA wire event owns its dedup key.
  *
- * A button tap is `CCA_TX_COUNT_BURST = 2` frames at one-frame spacing, so the
- * burst spans ~75 ms, and observed inter-frame jitter runs 60-75 ms against the
- * canonical period. 250 ms covers that with margin.
+ * Sized to the longest retransmit burst, not to a guess about how fast someone
+ * can press twice. `CCA_TX_COUNT_NORMAL` is 11 frames at one-frame spacing —
+ * ~825 ms — and a release burst measured on the bench rig ran sequence 0 → 36
+ * over 457 ms. A window shorter than the burst reports one release twice.
  *
- * It is deliberately far below the model's 500 ms default. This window is the
- * span in which CCA cannot distinguish a second press from a retransmit, so
- * every millisecond of it is a real double press the transport may swallow —
- * the shorter the better, down to the burst it has to cover.
+ * A window this long would swallow a double tap on its own. What stops it is
+ * `isNewWireEvent` below: the window only ever suppresses frames that identify
+ * themselves as retransmissions.
  */
-export const CCA_BURST_DEDUP_MS = 250;
+export const CCA_BURST_DEDUP_MS = 1200;
 
 /** Offset of the sequence byte, masked out of every dedup key. */
 const SEQ_OFFSET = 1;
+
+/**
+ * Sequence value that starts a burst.
+ *
+ * Every burst observed on the bench rig starts here and steps by a fixed
+ * stride — `0, 6, 12` for a tap, `0 … 36` for a release — matching the
+ * "First=0x00, retx increments" note in docs/protocols/cca/pairing.md. So a
+ * frame at sequence 0 is a fresh user action and anything else is a
+ * retransmission of the burst in progress. That is a stronger signal than a
+ * timer: two taps 100 ms apart are still two events, because the second one
+ * starts its own burst at 0.
+ *
+ * A device that started a burst somewhere other than 0 would fall back to the
+ * window, which is why the window is still there.
+ */
+const SEQ_BURST_START = 0;
 
 /** Wire action codes → the model's vocabulary. Anything absent is not an event. */
 const ACTIONS: Record<string, DeviceAction> = {
@@ -117,8 +133,9 @@ export class CcaSource {
       // The wire byte, reported as-is for diagnostics. It is NOT what the key
       // is built from — see the header.
       sequence: data[SEQ_OFFSET],
-      dedupKey: `4:${deviceId}:${mapped}:${payloadKey(data)}`,
+      dedupKey: `4:${deviceId}:${mapped}:${payloadKey(info, data)}`,
       dedupWindowMs: CCA_BURST_DEDUP_MS,
+      isNewWireEvent: data[SEQ_OFFSET] === SEQ_BURST_START,
     };
   }
 
@@ -167,13 +184,39 @@ export class CcaSource {
 }
 
 /**
- * The frame's bytes with the sequence masked out — one wire event's identity.
+ * The frame's bytes with the sequence *and the CRC* masked out — one wire
+ * event's identity.
  *
- * Retransmissions of one payload differ only in that byte, so masking it makes
- * them one key. Everything else about the frame still separates events.
+ * The CRC has to go too, and missing that made this key match nothing at all.
+ * CRC-16 is computed over the whole frame including the sequence byte, so two
+ * retransmissions of one payload differ in two places, not one. Off the bench
+ * rig:
+ *
+ *   8b 06 08 69 2d 70 21 04 03 00 08 00 cc×10 b5 37
+ *   8b 0c 08 69 2d 70 21 04 03 00 08 00 cc×10 0e a3
+ *                                       ^^^^^ crc16(bytes 0..21)
+ *
+ * Synthetic test frames with a zero CRC hide this completely, which is why
+ * test/bridge-cca-source.test.ts uses those exact bytes.
+ *
+ * The CRC's offset comes from the protocol definition rather than a constant,
+ * so the 53-byte packet types are covered by the same code.
  */
-function payloadKey(data: Buffer): string {
+function payloadKey(
+  info: ReturnType<typeof identifyPacket>,
+  data: Buffer,
+): string {
   const copy = Buffer.from(data);
   copy[SEQ_OFFSET] = 0;
+  const crc = info.fields.find((f) => f.name === "crc");
+  if (crc) {
+    for (
+      let i = crc.offset;
+      i < crc.offset + crc.size && i < copy.length;
+      i++
+    ) {
+      copy[i] = 0;
+    }
+  }
   return copy.toString("hex");
 }
