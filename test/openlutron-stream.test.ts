@@ -270,6 +270,37 @@ describe("openlutron stream client", () => {
     stream.close();
   });
 
+  it("reports down when the board never answers at all", async () => {
+    const { stream, timers } = makeStream({ keepaliveMs: 5000 });
+    const seen: string[] = [];
+    stream.on("up", () => seen.push("up"));
+    stream.on("down", () => seen.push("down"));
+    await stream.connect();
+
+    // Nothing delivered — the board is off, or unreachable. Reporting only
+    // after a first success would leave an add-on that never reached its board
+    // completely silent, which reads exactly like working-but-quiet.
+    timers.advance(20_000);
+
+    assert.deepEqual(seen, ["down"]);
+    assert.equal(stream.connected, false);
+
+    stream.close();
+  });
+
+  it("reports down once, not once per keepalive, while never reachable", async () => {
+    const { stream, timers } = makeStream({ keepaliveMs: 5000 });
+    let downs = 0;
+    stream.on("down", () => downs++);
+    await stream.connect();
+
+    timers.advance(120_000);
+
+    assert.equal(downs, 1);
+
+    stream.close();
+  });
+
   it("reports down only once per outage", async () => {
     const { stream, socket, timers } = makeStream({ keepaliveMs: 5000 });
     let downs = 0;

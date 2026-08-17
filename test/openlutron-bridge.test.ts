@@ -184,6 +184,7 @@ async function makeBridge(t: TestContext) {
   const socket = new FakeSocket();
   const timers = fakeTimers();
   const broker = new FakeBroker();
+  const logs: string[] = [];
   const stream = new OpenlutronStream({
     host: "10.0.0.9",
     timers: timers.api,
@@ -192,6 +193,9 @@ async function makeBridge(t: TestContext) {
   const bridge = new OpenlutronBridge({
     host: "10.0.0.9",
     stream,
+    log: (m) => logs.push(m),
+    statusEveryMs: 60_000,
+    timers: timers.api,
     pairings: [],
     presetZones: new Map(),
     watchedZones: new Set(),
@@ -205,7 +209,7 @@ async function makeBridge(t: TestContext) {
   t.after(() => bridge.close());
   broker.goOnline();
   await bridge.start();
-  return { bridge, socket, timers, broker };
+  return { bridge, socket, timers, broker, logs };
 }
 
 describe("openlutron bridge", () => {
@@ -246,6 +250,41 @@ describe("openlutron bridge", () => {
     socket.deliver(heartbeat());
 
     assert.equal(broker.last(AVAILABILITY)?.payload, "online");
+  });
+
+  // ── Saying what it is doing ─────────────────────────────
+
+  it("says it is waiting before the board has answered", async (t) => {
+    const { logs } = await makeBridge(t);
+
+    // The first thing an operator asks is "is it working". Starting silently
+    // and staying silent is the same output as a bridge that never reached its
+    // board, so it says which one it is.
+    assert.match(logs.join("\n"), /waiting for .*10\.0\.0\.9/i);
+  });
+
+  it("reports the board unreachable rather than staying quiet", async (t) => {
+    const { logs, timers } = await makeBridge(t);
+
+    timers.advance(20_000);
+
+    assert.match(logs.join("\n"), /no datagrams|unreachable/i);
+  });
+
+  it("logs what it has heard, periodically", async (t) => {
+    const { socket, timers, logs } = await makeBridge(t);
+    socket.deliver(heartbeat());
+    socket.deliver(ccaTapDatagram());
+    socket.deliver(ccxPressDatagram());
+
+    logs.length = 0;
+    timers.advance(60_000);
+
+    const line = logs.find((l) => /cca=/.test(l));
+    assert.ok(line, `no periodic status line in:\n${logs.join("\n")}`);
+    assert.match(line, /cca=1/);
+    assert.match(line, /ccx=1/);
+    assert.match(line, /events=2/);
   });
 
   // ── Survival ────────────────────────────────────────────

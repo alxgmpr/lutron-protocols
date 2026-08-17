@@ -43,7 +43,11 @@ import { NucleoReportSink } from "./bridge/sinks/nucleo-report";
 import { type WizPairing, WizSink } from "./bridge/sinks/wiz";
 import { OpenlutronSource } from "./bridge/sources/openlutron";
 import type { BridgeSink, PresetZoneEntry } from "./bridge/types";
-import { OpenlutronStream } from "./openlutron-stream";
+import {
+  OPENLUTRON_UDP_PORT,
+  OpenlutronStream,
+  type StreamTimers,
+} from "./openlutron-stream";
 
 /**
  * The name this transport publishes its health under.
@@ -53,6 +57,17 @@ import { OpenlutronStream } from "./openlutron-stream";
  * liveness, and a quiet CC1101 is indistinguishable from a quiet room.
  */
 export const OPENLUTRON_SOURCE_NAME = "openlutron";
+
+/** Default gap between liveness lines. Quiet enough for a log, often enough to answer "is it working". */
+const DEFAULT_STATUS_EVERY_MS = 300_000;
+
+const realTimers: StreamTimers = {
+  now: () => Date.now(),
+  setInterval: (fn, ms) => setInterval(fn, ms),
+  clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+};
 
 export interface OpenlutronBridgeOptions {
   /** Board address. */
@@ -74,6 +89,16 @@ export interface OpenlutronBridgeOptions {
     discoveryPrefix?: string;
   };
   log?: (msg: string) => void;
+  /**
+   * How often to log what has been heard. Default 5 minutes; 0 disables it.
+   *
+   * A bridge that only logs on activity cannot be told apart from one that is
+   * not receiving at all, and "is it working?" is the first question anyone
+   * asks of an add-on.
+   */
+  statusEveryMs?: number;
+  /** Clock and timers for the status line, injected alongside `now`. */
+  timers?: StreamTimers;
   /** Injected in tests; the add-on lets the bridge build its own. */
   stream?: OpenlutronStream;
   /**
@@ -93,9 +118,18 @@ export class OpenlutronBridge {
 
   private readonly mqtt: MqttSink | null = null;
   private readonly log: (msg: string) => void;
+  private readonly host: string;
+  private readonly statusEveryMs: number;
+  private readonly timers: StreamTimers;
+  private statusTimer: unknown = null;
+  /** Device events published since start — the number an operator asks for. */
+  private eventCount = 0;
 
   constructor(opts: OpenlutronBridgeOptions) {
     this.log = opts.log ?? (() => {});
+    this.host = opts.host;
+    this.statusEveryMs = opts.statusEveryMs ?? DEFAULT_STATUS_EVERY_MS;
+    this.timers = opts.timers ?? realTimers;
 
     // Warm dim is a property of the zone, not of the WiZ pairing that happens
     // to carry it in config — the model applies it so every sink benefits.
@@ -146,6 +180,10 @@ export class OpenlutronBridge {
       );
     }
 
+    this.model.on("device:event", () => {
+      this.eventCount++;
+    });
+
     this.stream.on("up", () => {
       this.log(`  [openlutron] board reachable at ${opts.host}`);
       this.mqtt?.setSourceAvailable(OPENLUTRON_SOURCE_NAME, true);
@@ -176,7 +214,31 @@ export class OpenlutronBridge {
    */
   async start(): Promise<void> {
     this.mqtt?.setSourceAvailable(OPENLUTRON_SOURCE_NAME, false);
+    this.log(
+      `  [openlutron] waiting for the board at ${this.host}:${OPENLUTRON_UDP_PORT} — nothing is published until it answers`,
+    );
     await this.stream.connect();
+
+    if (this.statusEveryMs > 0) {
+      this.statusTimer = this.timers.setInterval(
+        () => this.logStatus(),
+        this.statusEveryMs,
+      );
+    }
+  }
+
+  /**
+   * One line saying what has actually been heard.
+   *
+   * Counts, not rates: an operator reading this after the fact wants to know
+   * whether anything at all has arrived since start, and from which radio.
+   */
+  private logStatus(): void {
+    this.log(
+      `  [openlutron] ${this.stream.connected ? "board up" : "BOARD DOWN"}` +
+        ` — cca=${this.source.ccaPacketCount} ccx=${this.source.ccxPacketCount}` +
+        ` events=${this.eventCount} zones=${this.model.appliedCount}`,
+    );
   }
 
   addSink(sink: BridgeSink): void {
@@ -184,6 +246,10 @@ export class OpenlutronBridge {
   }
 
   close(): void {
+    if (this.statusTimer !== null) {
+      this.timers.clearInterval(this.statusTimer);
+      this.statusTimer = null;
+    }
     this.stream.close();
     this.model.destroy();
   }

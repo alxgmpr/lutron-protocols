@@ -5,7 +5,7 @@
 # against the same broker, or their entities compete.
 name: openlutron Bridge
 description: Lutron CCA + CCX from an openlutron board → MQTT / Home Assistant discovery
-version: 0.2.0
+version: 0.3.0
 slug: openlutron-bridge
 # Ask the Supervisor for the broker instead of being told. `want` rather than
 # `need`: with no MQTT service the bridge still decodes and still drives WiZ.

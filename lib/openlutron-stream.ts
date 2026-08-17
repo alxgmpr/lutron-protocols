@@ -122,7 +122,10 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
   private keepaliveTimer: unknown = null;
   private rebindTimer: unknown = null;
   private lastDatagramAt = 0;
+  private connectedAt = 0;
   private up = false;
+  /** Suppresses a `down` per keepalive while the board stays unreachable. */
+  private reportedDown = false;
   private closed = false;
   private datagramWaiters: Array<() => void> = [];
   private statusWaiters: Array<(blob: Buffer) => void> = [];
@@ -156,6 +159,8 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
    */
   async connect(): Promise<void> {
     this.closed = false;
+    this.connectedAt = this.timers.now();
+    this.reportedDown = false;
     await this.bindSocket();
     this.keepaliveTimer = this.timers.setInterval(
       () => this.onKeepaliveTick(),
@@ -255,13 +260,25 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
 
   // ── Liveness ────────────────────────────────────────────
 
+  /**
+   * Re-register, then judge whether the board is still there.
+   *
+   * Silence is measured from the last datagram, or from `connect()` when there
+   * has never been one. A board that was never reachable has to report `down`
+   * too: an unattended bridge that only ever speaks up after a first success
+   * stays completely silent when its hardware is missing, which reads exactly
+   * like working-but-quiet.
+   */
   private onKeepaliveTick(): void {
     this.sendCommand(CMD_KEEPALIVE);
-    if (!this.up) return;
-    if (this.timers.now() - this.lastDatagramAt > this.connectionTimeoutMs) {
-      this.up = false;
-      this.emit("down");
-    }
+    if (this.reportedDown) return;
+
+    const since = this.lastDatagramAt || this.connectedAt;
+    if (this.timers.now() - since <= this.connectionTimeoutMs) return;
+
+    this.up = false;
+    this.reportedDown = true;
+    this.emit("down");
   }
 
   /**
@@ -275,6 +292,7 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
     this.lastDatagramAt = this.timers.now();
     if (!this.up) {
       this.up = true;
+      this.reportedDown = false;
       this.emit("up");
     }
     if (this.datagramWaiters.length > 0) {
