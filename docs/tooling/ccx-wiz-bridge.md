@@ -720,6 +720,14 @@ Source in `bridge/openlutron-addon/`, entry point `bridge/openlutron-main.ts`.
 - **Options:** `openlutron_host`, `report_state`, the MQTT block from GLAB-92,
   `device_serials`, and optional `pairings`. With no pairings it observes and
   publishes, driving nothing.
+- **The broker configures itself.** The add-on declares `services: [mqtt:want]`
+  and asks the Supervisor for host, port and generated credentials, like every
+  other HA add-on — so nothing is copied into a second place to drift. An
+  explicit `mqtt_url` overrides it, for a broker HA does not know about. `want`
+  rather than `need`: with no MQTT service the bridge still decodes and drives
+  WiZ. Discovery fails soft in every direction (no token, no service,
+  unreachable Supervisor) because it is a convenience, not a dependency.
+  `lib/ha-supervisor.ts`.
 - **Health:** `lutron/bridge/source/openlutron/availability`.
 
 ### CCX-WiZ Bridge (`ccx-bridge`) — superseded

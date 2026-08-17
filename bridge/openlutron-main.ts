@@ -105,20 +105,38 @@ async function main() {
 
   // ── MQTT ────────────────────────────────────────────────
 
-  const mqttUrl = process.env.MQTT_URL ?? haOptions?.mqtt_url ?? "";
   const mqttBaseTopic =
     process.env.MQTT_BASE_TOPIC ?? haOptions?.mqtt_base_topic ?? "lutron";
   const discoveryPrefix =
     process.env.MQTT_DISCOVERY_PREFIX ?? haOptions?.mqtt_discovery_prefix;
 
+  // Configured broker wins; otherwise ask the Supervisor, the way every other
+  // add-on gets its broker. Only if both come up empty does MQTT stay off.
+  const configuredUrl = process.env.MQTT_URL ?? haOptions?.mqtt_url ?? "";
+  let broker: { url: string; username?: string; password?: string } | null =
+    configuredUrl
+      ? {
+          url: configuredUrl,
+          username: process.env.MQTT_USERNAME ?? haOptions?.mqtt_username,
+          password: process.env.MQTT_PASSWORD ?? haOptions?.mqtt_password,
+        }
+      : null;
+  let brokerSource = broker ? "configured" : "none";
+
+  if (!broker) {
+    const { discoverMqttService } = await import("../lib/ha-supervisor");
+    broker = await discoverMqttService({ log: (m) => console.log(m) });
+    if (broker) brokerSource = "supervisor";
+  }
+
   let mqtt: ConstructorParameters<typeof OpenlutronBridge>[0]["mqtt"];
-  if (mqttUrl) {
+  if (broker) {
     const { connectMqttClient } = await import("../lib/bridge/sinks/mqtt");
     try {
       const client = await connectMqttClient({
-        url: mqttUrl,
-        username: process.env.MQTT_USERNAME ?? haOptions?.mqtt_username,
-        password: process.env.MQTT_PASSWORD ?? haOptions?.mqtt_password,
+        url: broker.url,
+        username: broker.username,
+        password: broker.password,
         clientId: "openlutron-bridge",
         baseTopic: mqttBaseTopic,
       });
@@ -150,7 +168,7 @@ async function main() {
   console.log("=====================================");
   console.log(`Board:   ${host}:9433 (CCA + CCX over one stream)`);
   console.log(
-    `MQTT:    ${mqtt ? `${mqttUrl} (topics under ${mqttBaseTopic}/)` : "disabled"}`,
+    `MQTT:    ${mqtt ? `${broker?.url} [${brokerSource}] (topics under ${mqttBaseTopic}/)` : "disabled"}`,
   );
   if (mqtt) {
     console.log(

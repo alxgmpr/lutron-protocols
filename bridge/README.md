@@ -38,12 +38,24 @@ before and never even imports `mqtt`.
 
 ### Configure
 
-HA add-on → Configuration:
+**openlutron-bridge: nothing to configure.** It declares `services: [mqtt:want]`
+and asks the Supervisor for the broker — host, port and the credentials
+Mosquitto generated — exactly like the other add-ons. Leave `mqtt_url` empty.
+The startup banner says where the broker came from:
+
+```
+MQTT:    mqtt://core-mosquitto:1883 [supervisor] (topics under lutron/)
+```
+
+Set `mqtt_url` only to override that, e.g. a broker Home Assistant does not know
+about. An explicit URL always wins over discovery.
+
+`ccx-bridge` has no discovery and still needs the URL spelled out.
 
 | Option | Value |
 |---|---|
-| `mqtt_url` | `mqtt://<broker-host>:1883` |
-| `mqtt_username` / `mqtt_password` | broker credentials, if any |
+| `mqtt_url` | empty on openlutron-bridge; `mqtt://<broker-host>:1883` to override |
+| `mqtt_username` / `mqtt_password` | only with an explicit `mqtt_url` |
 | `mqtt_base_topic` | `lutron` (default) |
 | `mqtt_discovery_prefix` | `homeassistant` (default) |
 
