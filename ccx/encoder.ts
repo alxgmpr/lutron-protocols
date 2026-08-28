@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { percentToLevel16 } from "../protocol/shared";
 import { BodyKey, CCXMessageType, Level } from "./constants";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
@@ -224,7 +225,7 @@ export function encodeDeviceReport(opts: DeviceReportOpts): Buffer {
 export function percentToLevel(percent: number): number {
   if (percent <= 0) return Level.OFF;
   if (percent >= 100) return Level.FULL_ON;
-  return Math.round((percent * Level.FULL_ON) / 100);
+  return percentToLevel16(percent);
 }
 
 /** Get next sequence number (file-backed 8-bit counter) */

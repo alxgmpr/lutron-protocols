@@ -10,7 +10,7 @@
  */
 
 import { type CCXProtocolDef, constantGroup, messageType } from "./dsl";
-import { LEVEL_MAX_16 } from "./shared";
+import { level16ToPercent, percentToLevel16 } from "./shared";
 
 // ============================================================================
 // BODY KEYS
@@ -468,12 +468,12 @@ export const Level = {
 
 /** Convert level (0-0xFEFF) to percentage (0-100) — uses correct FULL_ON divisor */
 export function levelToPercent(level: number): number {
-  return (level / LEVEL_MAX_16) * 100;
+  return level16ToPercent(level);
 }
 
 /** Convert percentage (0-100) to level (0-0xFEFF) */
 export function percentToLevel(percent: number): number {
-  return Math.round((percent * LEVEL_MAX_16) / 100);
+  return percentToLevel16(percent);
 }
 
 /** Lutron CCX UDP port */

@@ -77,11 +77,11 @@ export interface PacketRow {
 // ============================================================================
 // Cell utilities
 // ============================================================================
-export function stripAnsi(text: string): string {
+function stripAnsi(text: string): string {
   return stripVTControlCharacters(text);
 }
 
-export function clipCell(
+function clipCell(
   text: string,
   width: number,
   align: "left" | "right" | "center" = "left",
@@ -104,7 +104,7 @@ export function clipCell(
   return clipped.padEnd(width);
 }
 
-export function colorCell(text: string, color: string, bold = false): string {
+function colorCell(text: string, color: string, bold = false): string {
   if (!color) return text;
   return `${bold ? BOLD : ""}${color}${text}${RESET}`;
 }
@@ -222,7 +222,7 @@ export function getPacketLayout(
   return layout;
 }
 
-export function getDetailIndent(layout: PacketLayout): number {
+function getDetailIndent(layout: PacketLayout): number {
   return (
     layout.time +
     layout.proto +

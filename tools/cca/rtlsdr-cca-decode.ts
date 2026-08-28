@@ -34,6 +34,7 @@
 
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
+import { instantaneousFrequency } from "../../lib/cca-ota-demod";
 
 // --- RF Constants ---
 let SAMPLE_RATE = 2_000_000; // 2 MHz default (32 samples/bit for better clock recovery)
@@ -155,20 +156,16 @@ function fmDiscriminateBurst(
   const e = Math.min(Math.floor(iq.length / 2), end + margin);
   const len = e - s;
 
-  const freq = new Float32Array(len - 1);
-  let prevI = (iq[s * 2] - 127.5) / 127.5;
-  let prevQ = (iq[s * 2 + 1] - 127.5) / 127.5;
-
-  for (let n = 1; n < len; n++) {
+  // Normalize raw 8-bit IQ samples into [-1, 1] for the shared discriminator.
+  const normalized = new Float32Array(len * 2);
+  for (let n = 0; n < len; n++) {
     const idx = (s + n) * 2;
-    const curI = (iq[idx] - 127.5) / 127.5;
-    const curQ = (iq[idx + 1] - 127.5) / 127.5;
-    const prodI = curI * prevI + curQ * prevQ;
-    const prodQ = curQ * prevI - curI * prevQ;
-    freq[n - 1] = Math.atan2(prodQ, prodI);
-    prevI = curI;
-    prevQ = curQ;
+    normalized[2 * n] = (iq[idx] - 127.5) / 127.5;
+    normalized[2 * n + 1] = (iq[idx + 1] - 127.5) / 127.5;
   }
+  // Pass 2π as the "sample rate" so output stays in unscaled radians —
+  // findPreamble/findAllPreambles below use small radian epsilons (±0.01).
+  const freq = instantaneousFrequency(normalized, 2 * Math.PI);
 
   // Low-pass filter (moving average, ~0.5 bit width)
   const taps = Math.max(3, Math.round(SAMPLES_PER_BIT * 0.5));

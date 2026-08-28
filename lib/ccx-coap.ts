@@ -10,6 +10,11 @@
 
 import { createSocket, type Socket } from "node:dgram";
 import { EventEmitter } from "node:events";
+import {
+  LEVEL_MAX_16,
+  level16ToPercent as sharedLevel16ToPercent,
+  percentToLevel16 as sharedPercentToLevel16,
+} from "../protocol/shared";
 
 // ── Stream protocol constants ────────────────────────────
 
@@ -22,7 +27,7 @@ const DEFAULT_STREAM_PORT = 9433;
 // ── Trim / level encoding ────────────────────────────────
 
 /** Maximum raw 16-bit level used by CCA/CCX level and trim encoding. */
-export const TRIM_MAX = 0xfeff;
+export const TRIM_MAX = LEVEL_MAX_16;
 
 /**
  * Convert a percentage (0..100) to the 16-bit raw value per the documented
@@ -32,12 +37,12 @@ export function percentToLevel16(percent: number): number {
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
     throw new RangeError(`percent must be 0..100, got ${percent}`);
   }
-  return Math.round((percent * TRIM_MAX) / 100);
+  return sharedPercentToLevel16(percent);
 }
 
 /** Inverse of {@link percentToLevel16}. */
 export function level16ToPercent(raw: number): number {
-  return (raw / TRIM_MAX) * 100;
+  return sharedLevel16ToPercent(raw);
 }
 
 // ── CoAP response codes ──────────────────────────────────

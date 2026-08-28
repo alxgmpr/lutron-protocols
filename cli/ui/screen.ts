@@ -25,13 +25,9 @@ export interface InkScreen {
   setHeader(left: string, right?: string): void;
   setColumnHeaders(labels: string, separator: string): void;
   appendLine(text: string): void;
-  redrawTable(lines: string[]): void;
   setStatusBar(text: string): void;
-  setInputLine(text: string): void;
-  setCursorToInput(col: number): void;
   showOverlay(lines: string[]): void;
   clearOverlay(): void;
-  handleResize(onResize: () => void): void;
   setCompletions(list: string[]): void;
   setPrompt(prompt: string): void;
   start(onSubmit: (line: string) => void): void;
@@ -65,15 +61,11 @@ class PassthroughScreen implements InkScreen {
   appendLine(text: string): void {
     console.log(text);
   }
-  redrawTable(_lines: string[]): void {}
   setStatusBar(_text: string): void {}
-  setInputLine(_text: string): void {}
-  setCursorToInput(_col: number): void {}
   showOverlay(lines: string[]): void {
     for (const line of lines) console.log(line);
   }
   clearOverlay(): void {}
-  handleResize(_onResize: () => void): void {}
   setCompletions(_list: string[]): void {}
   setPrompt(_prompt: string): void {}
   start(_onSubmit: (line: string) => void): void {
@@ -133,15 +125,9 @@ class InkScreenImpl implements InkScreen {
     store.appendLines([text]);
   }
 
-  redrawTable(_lines: string[]): void {}
-
   setStatusBar(text: string): void {
     store.setStatusText(text);
   }
-
-  setInputLine(_text: string): void {}
-
-  setCursorToInput(_col: number): void {}
 
   showOverlay(lines: string[]): void {
     store.showOverlay(lines);
@@ -149,10 +135,6 @@ class InkScreenImpl implements InkScreen {
 
   clearOverlay(): void {
     store.clearOverlay();
-  }
-
-  handleResize(_onResize: () => void): void {
-    // Ink reflows automatically on SIGWINCH. Nothing to wire up.
   }
 
   setCompletions(list: string[]): void {

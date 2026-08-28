@@ -8,6 +8,7 @@ import {
   LeapConnection,
   type LeapDumpData,
 } from "../lib/leap-client";
+import { MockLeap } from "./fixtures/mock-leap";
 
 // LeapConnection internals are private; tests reach them with a narrow cast.
 type ConnInternals = {
@@ -23,22 +24,6 @@ type ConnInternals = {
 };
 const internals = (conn: LeapConnection): ConnInternals =>
   conn as unknown as ConnInternals;
-
-// ── MockLeap — duck-typed stand-in for LeapConnection ────────────
-
-class MockLeap {
-  private responses: Record<string, unknown>;
-  readonly readCalls: string[] = [];
-
-  constructor(responses: Record<string, unknown>) {
-    this.responses = responses;
-  }
-
-  async readBody(url: string): Promise<unknown> {
-    this.readCalls.push(url);
-    return url in this.responses ? this.responses[url] : null;
-  }
-}
 
 // ── hrefId ────────────────────────────────────────────────────────
 

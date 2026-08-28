@@ -36,8 +36,6 @@ export interface AppState {
   palette: { matches: string[]; index: number } | null;
   /** Modal overlay. null = none. */
   overlay: OverlayState | null;
-  /** Version counter that increments on any terminal-relevant redraw request. */
-  redrawGen: number;
 }
 
 export type Listener = () => void;
@@ -56,7 +54,6 @@ export class Store {
     prompt: "nucleo> ",
     palette: null,
     overlay: null,
-    redrawGen: 0,
   };
   private listeners = new Set<Listener>();
 
@@ -170,7 +167,7 @@ export class Store {
   }
 
   requestRedraw(): void {
-    this.state = { ...this.state, redrawGen: this.state.redrawGen + 1 };
+    this.state = { ...this.state };
     this.emit();
   }
 }

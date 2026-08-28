@@ -1,19 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { LEAP_REGISTRY, walkEndpoints } from "../lib/leap-client";
-
-// Mock LeapConnection that returns canned responses
-class MockLeap {
-  private responses: Record<string, any>;
-
-  constructor(responses: Record<string, any>) {
-    this.responses = responses;
-  }
-
-  async readBody(url: string): Promise<any | null> {
-    return this.responses[url] ?? null;
-  }
-}
+import { MockLeap } from "./fixtures/mock-leap";
 
 test("walkEndpoints fetches top-level collection", async () => {
   const mock = new MockLeap({

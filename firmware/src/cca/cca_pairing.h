@@ -12,9 +12,6 @@ extern "C" {
 struct CcaCmdItem;
 struct DecodedPacket;
 
-/* RX hook callback type — installed during bridge pairing handshake */
-typedef void (*cca_rx_hook_t)(const DecodedPacket* pkt);
-
 /* Execute a pairing command (CCA_CMD_PICO_PAIR, CCA_CMD_BRIDGE_PAIR,
  * CCA_CMD_VIVE_PAIR, or CCA_CMD_ANNOUNCE). Called from cca_cmd_execute()
  * in CCA task context. */

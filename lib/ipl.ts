@@ -21,6 +21,11 @@
  */
 
 import { deflateSync as zlibDeflateSync } from "zlib";
+import {
+  LEVEL_MAX_16,
+  level16ToPercent,
+  percentToLevel16,
+} from "../protocol/shared";
 
 export enum MsgType {
   Command = 0,
@@ -403,13 +408,12 @@ export const RuntimePropertyByName: Record<string, number> = Object.fromEntries(
 
 /** level16 = percent * 0xFEFF / 100, clamped [0, 0xFEFF]. */
 export function pctToLevel16(pct: number): number {
-  const v = Math.round((pct * 0xfeff) / 100);
-  return Math.max(0, Math.min(0xfeff, v));
+  return Math.max(0, Math.min(LEVEL_MAX_16, percentToLevel16(pct)));
 }
 
 /** Inverse — level16 back to percent (rounded). */
 export function level16ToPct(level: number): number {
-  return Math.round((level * 100) / 0xfeff);
+  return Math.round(level16ToPercent(level));
 }
 
 /** Seconds → quarter-second ticks used by fade/delay fields. */

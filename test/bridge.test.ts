@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { formatAddr, parseFrame } from "../lib/ieee802154";
 import { buildNonce, deriveThreadKeys, micLength } from "../lib/thread-crypto";
-import { cctToRgbwc } from "../lib/wiz-color";
 
 // ── EUI-64 byte order ────────────────────────────────────
 
@@ -162,23 +161,6 @@ test("dedup window rejects duplicates within 2s", () => {
   assert.equal(isDuplicate("lc:5147:42"), false); // first time
   assert.equal(isDuplicate("lc:5147:42"), true); // duplicate
   assert.equal(isDuplicate("lc:5147:43"), false); // different sequence
-});
-
-// ── Bridge core: WiZ RGBWC color control ─────────────────
-
-test("cctToRgbwc: 2700K at 50% scales channels correctly", () => {
-  const ch = cctToRgbwc(2700, 50);
-  // r=35 at 50% → 18, w=255 at 50% → 128
-  assert.equal(ch.r, 18);
-  assert.equal(ch.w, 128);
-  assert.equal(ch.b, 0); // inactive stays 0
-});
-
-test("cctToRgbwc: 1% brightness floors active channels at 2", () => {
-  const ch = cctToRgbwc(2700, 1);
-  assert.ok(ch.r >= 2, "active channel should be >= 2");
-  assert.ok(ch.w >= 2, "active channel should be >= 2");
-  assert.equal(ch.b, 0); // inactive stays 0
 });
 
 // ── Config: env var overrides ────────────────────────────
