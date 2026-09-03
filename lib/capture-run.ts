@@ -15,6 +15,7 @@
 
 import { median } from "./bench";
 import { analyzeSequence, type SequenceAnalysis } from "./capture-metrics";
+import type { NumberLookup } from "./data-values";
 import type { NucleoStatus } from "./nucleo-status";
 
 /**
@@ -79,10 +80,12 @@ function inferStep(bursts: number[][]): number | undefined {
 }
 
 /** Pool the gaps found inside each burst into one figure for the sender. */
-function analyzeBursts(seqs: number[]): {
+interface BurstAnalysis {
   sequence: SequenceAnalysis;
   burstSlots: number[][];
-} {
+}
+
+function analyzeBursts(seqs: number[]): BurstAnalysis {
   const bursts = segmentBursts(seqs);
   const step = inferStep(bursts);
 
@@ -333,6 +336,40 @@ const LOSS_IMPLICATING_COUNTERS = [
   "rxRestartTimeout",
 ] as const;
 
+const CORE_STATUS_COUNTERS = [
+  "ccaRx",
+  "ccaTx",
+  "ccaDrop",
+  "ccaCrcFail",
+  "ccaN81Err",
+  "cc1101Overflow",
+  "cc1101Runt",
+  "ccxRx",
+  "ccxTx",
+  "ccxThreadRole",
+  "numClients",
+  "heapFree",
+] as const satisfies readonly (keyof NucleoStatus)[];
+
+const RADIO_STATUS_COUNTERS = [
+  "rxRestartTimeout",
+  "rxRestartOverflow",
+  "rxRestartManual",
+  "rxRestartPacket",
+  "syncHit",
+  "syncMiss",
+  "ringMaxOccupancy",
+  "ringBytesIn",
+  "ringBytesDropped",
+  "ccaAck",
+  "ccaCrcOptional",
+  "ccaIrq",
+  "isrLatencyMinUs",
+  "isrLatencyP95Us",
+  "isrLatencyMaxUs",
+  "isrLatencySamples",
+] as const;
+
 export function diffStatus(
   before: NucleoStatus,
   after: NucleoStatus,
@@ -349,15 +386,12 @@ export function diffStatus(
   }
 
   const counters: StatusCounters = {};
-  const priorCore = before as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(after)) {
-    if (typeof value !== "number" || key === "uptimeMs") continue;
-    counters[key] = value - (priorCore[key] as number);
+  for (const key of CORE_STATUS_COUNTERS) {
+    counters[key] = after[key] - before[key];
   }
   if (before.radio && after.radio) {
-    const priorRadio = before.radio as unknown as Record<string, number>;
-    for (const [key, value] of Object.entries(after.radio)) {
-      counters[key] = value - priorRadio[key];
+    for (const key of RADIO_STATUS_COUNTERS) {
+      counters[key] = after.radio[key] - before.radio[key];
     }
   }
 
@@ -745,7 +779,7 @@ const MIN_EXPECTED_PER_POSITION = 5;
  * A table rather than an incomplete-gamma implementation — burst lengths here
  * are small and fixed, and a table is checkable by eye.
  */
-const CHI2_CRITICAL_P05: Record<number, number> = {
+const CHI2_CRITICAL_P05: NumberLookup<number> = {
   1: 3.84,
   2: 5.99,
   3: 7.81,
@@ -909,7 +943,8 @@ export function slotDispersion(inputs: DispersionInput[]): SlotDispersion {
  * are the whole stream and a position within one means nothing.
  */
 export function dispersionInputs(analysis: CaptureAnalysis): DispersionInput[] {
-  return analysis.runs
-    .filter((r) => r.band === "cca" && r.sequence.step !== null)
-    .map((r) => ({ step: r.sequence.step as number, bursts: r.burstSlots }));
+  return analysis.runs.flatMap((run) => {
+    if (run.band !== "cca" || run.sequence.step === null) return [];
+    return [{ step: run.sequence.step, bursts: run.burstSlots }];
+  });
 }

@@ -42,6 +42,7 @@ import {
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { processorIPs } from "../../lib/config";
+import type { JsonValue } from "../../lib/data-values";
 import { assertVerbAllowed } from "../../lib/echo-guard";
 import { harvestIds, type IdIndex } from "../../lib/id-harvest";
 import { LeapConnection } from "../../lib/leap-client";
@@ -80,7 +81,7 @@ const FIXTURES = [
   "/Users/alex/leap-api/fixtures/caseta.json",
 ];
 
-type CaptureEntry = { status: string; body?: unknown };
+type CaptureEntry = { status: string; body?: JsonValue };
 type Capture = Record<string, CaptureEntry>;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -133,15 +134,21 @@ async function probe(
       body: resp?.Body,
     };
   } catch (err) {
-    entry = { status: `(error) ${(err as Error).message}` };
+    entry = {
+      status: `(error) ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   capture[url] = entry;
   return entry;
 }
 
 /** `{ "200": 41, "404": 3 }`, keyed by the leading status token. */
-function statusDistribution(statuses: string[]): Record<string, number> {
-  const out: Record<string, number> = {};
+interface StatusCounts {
+  [status: string]: number;
+}
+
+function statusDistribution(statuses: string[]): StatusCounts {
+  const out: StatusCounts = {};
   for (const status of statuses) {
     const key = status.split(" ")[0] || "(none)";
     out[key] = (out[key] ?? 0) + 1;

@@ -6,6 +6,15 @@
  */
 
 import { Decoder } from "cbor-x";
+import {
+  type CborValue,
+  isBigInt,
+  isCborMap,
+  isNumber,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../lib/data-values";
 
 const decoder = new Decoder({ mapsAsObjects: false });
 
@@ -57,7 +66,12 @@ export function coapCodeFromName(name: string): number {
 
 // --- CoAP option encoding ---
 
-function encodeOptNibble(v: number): { nibble: number; ext: number[] } {
+interface EncodedOptionNibble {
+  nibble: number;
+  ext: number[];
+}
+
+function encodeOptNibble(v: number): EncodedOptionNibble {
   if (v < 13) return { nibble: v, ext: [] };
   if (v < 269) return { nibble: 13, ext: [v - 13] };
   if (v < 65805) {
@@ -293,12 +307,12 @@ function encodeCborTypeAndLength(major: number, len: number): Buffer {
   throw new Error(`CBOR length too large: ${len}`);
 }
 
-export function encodeCborValue(value: unknown): Buffer {
+export function encodeCborValue(value: CborValue): Buffer {
   if (value == null) return Buffer.from([0xf6]); // null
   if (value === false) return Buffer.from([0xf4]);
   if (value === true) return Buffer.from([0xf5]);
 
-  if (typeof value === "number") {
+  if (isNumber(value)) {
     if (!Number.isFinite(value)) {
       throw new Error(`Unsupported CBOR number: ${value}`);
     }
@@ -312,7 +326,7 @@ export function encodeCborValue(value: unknown): Buffer {
     return out;
   }
 
-  if (typeof value === "string") {
+  if (isString(value)) {
     const text = Buffer.from(value, "utf8");
     return Buffer.concat([encodeCborTypeAndLength(3, text.length), text]);
   }
@@ -335,8 +349,8 @@ export function encodeCborValue(value: unknown): Buffer {
     return Buffer.concat(parts);
   }
 
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
+  if (isCborMap(value)) {
+    const entries = Object.entries(value);
     const parts: Buffer[] = [encodeCborTypeAndLength(5, entries.length)];
     for (const [k, v] of entries) {
       const key: string | number = /^-?\d+$/.test(k)
@@ -347,22 +361,27 @@ export function encodeCborValue(value: unknown): Buffer {
     return Buffer.concat(parts);
   }
 
-  throw new Error(`Unsupported CBOR value type: ${typeof value}`);
+  throw new Error("Unsupported CBOR value");
 }
 
-export function decodeMaybeCbor(buf: Buffer): unknown | null {
+export function decodeMaybeCbor(buf: Buffer): JsonValue {
   if (!buf.length) return null;
   try {
-    const v = decoder.decode(buf);
-    const norm = (x: unknown): unknown => {
+    const v: CborValue = decoder.decode(buf);
+    const norm = (x: CborValue): JsonValue => {
       if (x instanceof Map) {
-        const out: Record<string, unknown> = {};
+        const out: JsonObject = {};
         for (const [k, vv] of x.entries()) out[String(k)] = norm(vv);
         return out;
       }
       if (Array.isArray(x)) return x.map(norm);
       if (x instanceof Uint8Array) return Buffer.from(x).toString("hex");
-      return x;
+      if (isCborMap(x)) {
+        const out: JsonObject = {};
+        for (const [key, value] of Object.entries(x)) out[key] = norm(value);
+        return out;
+      }
+      return isBigInt(x) ? x.toString() : x;
     };
     return norm(v);
   } catch {

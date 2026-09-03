@@ -33,7 +33,16 @@
 import fs from "fs";
 import path from "path";
 import { parseArgs } from "util";
-import { hrefId, LeapConnection } from "../../lib/leap-client";
+import {
+  isNumber,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
+import {
+  hrefId,
+  LeapConnection,
+  type LeapWireFrame,
+} from "../../lib/leap-client";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -114,9 +123,42 @@ type FrameRecord = {
   /** Did LeapConnection itself treat this as unsolicited (onEvent)? */
   deliveredToOnEvent: boolean;
   communiqueType: string | null;
-  header: Record<string, unknown>;
-  body: unknown;
+  header: JsonObject;
+  body: JsonValue;
 };
+
+interface CaptureRecord {
+  host: string;
+  zone: number;
+  pad: number;
+  padUrl: string | null;
+  startedAt: string;
+  note: string;
+  zoneName?: string;
+  originalLevel?: number;
+  targetLevel?: number;
+  areaId?: number | null;
+  padTags?: string[];
+  subscriptions?: Array<{
+    url: string;
+    tag: string;
+    status: string;
+    communiqueType: string;
+  }>;
+  commandTag?: string;
+  commandStatus?: string;
+  levelChangeSentAtMs?: number | null;
+  frames?: FrameRecord[];
+  restore?: RestoreResult & { originalLevel: number | null };
+  finishedAt?: string;
+  sentRequests?: SentRequest[];
+}
+
+interface RestoreResult {
+  attempted: boolean;
+  verifiedLevel: number | null;
+  ok: boolean;
+}
 
 async function main() {
   if (!values.zone) {
@@ -140,11 +182,11 @@ async function main() {
   const sent = new Map<string, SentRequest>();
   const frames: FrameRecord[] = [];
   /** Raw frame objects, index-aligned with `frames`, for identity matching. */
-  const raws: unknown[] = [];
+  const raws: LeapWireFrame[] = [];
   let t0 = 0;
   let levelChangeSentAtMs: number | null = null;
   let lastRecord: FrameRecord | null = null;
-  let lastRaw: unknown = null;
+  let lastRaw: LeapWireFrame | null = null;
 
   const now = () => Date.now() - t0;
 
@@ -232,7 +274,7 @@ async function main() {
     return { tag, response };
   }
 
-  const capture: Record<string, unknown> = {
+  const capture: CaptureRecord = {
     host: HOST,
     zone: zoneId,
     pad,
@@ -242,11 +284,11 @@ async function main() {
   };
 
   let originalLevel: number | null = null;
-  const restored: {
-    attempted: boolean;
-    verifiedLevel: number | null;
-    ok: boolean;
-  } = { attempted: false, verifiedLevel: null, ok: false };
+  const restored: RestoreResult = {
+    attempted: false,
+    verifiedLevel: null,
+    ok: false,
+  };
 
   await conn.connect();
   t0 = Date.now();
@@ -267,7 +309,7 @@ async function main() {
 
     const statusResp = await tracked("ReadRequest", `/zone/${zoneId}/status`);
     originalLevel = statusResp.response?.Body?.ZoneStatus?.Level ?? null;
-    if (typeof originalLevel !== "number") {
+    if (!isNumber(originalLevel)) {
       throw new Error(`could not read a numeric starting Level for ${zoneId}`);
     }
     console.log(`original level: ${originalLevel}%`);

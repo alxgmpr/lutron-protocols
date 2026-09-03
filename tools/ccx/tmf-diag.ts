@@ -188,7 +188,7 @@ async function main(): Promise<void> {
         );
         setTimeout(() => done(), waitMs);
       } catch (err) {
-        done(err as Error);
+        done(err instanceof Error ? err : new Error(String(err)));
       }
     });
   });
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
       decoded = decodeDiagResponse(hit.payload);
     } catch (err) {
       console.error(
-        `# skip src=${hit.srcAddr}: decode failed (${(err as Error).message})`,
+        `# skip src=${hit.srcAddr}: decode failed (${err instanceof Error ? err.message : String(err)})`,
       );
       continue;
     }
@@ -260,6 +260,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(`Error: ${(err as Error).message}`);
+  console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

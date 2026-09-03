@@ -32,6 +32,7 @@ import { createInterface } from "readline";
 import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { config, defaultHost } from "../../lib/config";
+import type { JsonObject } from "../../lib/data-values";
 import {
   MsgTypeName,
   type ParsedFrame,
@@ -66,7 +67,7 @@ const NO_LEAP = hasFlag("--no-leap");
 const outStream = OUT_PATH ? createWriteStream(OUT_PATH, { flags: "a" }) : null;
 const startNs = process.hrtime.bigint();
 
-function emit(obj: Record<string, unknown>): void {
+function emit(obj: JsonObject): void {
   const ts = Date.now();
   const mono_ns = (process.hrtime.bigint() - startNs).toString();
   const line = `${JSON.stringify({ ts, mono_ns, ...obj })}\n`;
@@ -121,12 +122,10 @@ function startIpl(): void {
 function emitIpl(f: ParsedFrame): void {
   counts.ipl++;
   const op = f.operationId;
-  emit({
+  const event: JsonObject = {
     src: "ipl",
     msgType: MsgTypeName[f.msgType],
     msgTypeId: f.msgType,
-    op,
-    opName: op !== undefined ? resolveOpName(f.msgType, op) : undefined,
     systemId: f.systemId,
     senderId: f.senderId,
     receiverId: f.receiverId,
@@ -134,7 +133,12 @@ function emitIpl(f: ParsedFrame): void {
     messageId: f.messageId,
     body_hex: f.body.toString("hex"),
     body_len: f.body.length,
-  });
+  };
+  if (op !== undefined) {
+    event.op = op;
+    event.opName = resolveOpName(f.msgType, op);
+  }
+  emit(event);
 }
 
 // ---------- Nucleo UDP stream ----------
@@ -174,16 +178,17 @@ function startNucleo(): void {
     else if (src === "ccx") counts.ccx++;
     else counts.ccx_raw++;
 
-    emit({
+    const event: JsonObject = {
       src,
       tx: isTx,
-      rssi: isCcx ? undefined : rssi,
       flags,
       radioTs,
       radioCyc,
       data_hex: data.toString("hex"),
       data_len: data.length,
-    });
+    };
+    if (!isCcx) event.rssi = rssi;
+    emit(event);
   });
 
   sock.on("error", (err) => {
@@ -257,7 +262,9 @@ async function startLeap(): Promise<void> {
     await conn.connect();
     process.stderr.write(`[leap] connected to ${LEAP_HOST}\n`);
   } catch (err) {
-    process.stderr.write(`[leap] connect failed: ${(err as Error).message}\n`);
+    process.stderr.write(
+      `[leap] connect failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
     return;
   }
 
@@ -305,7 +312,7 @@ async function startLeap(): Promise<void> {
       }
     } catch (err) {
       process.stderr.write(
-        `[leap] sub ${url} failed: ${(err as Error).message}\n`,
+        `[leap] sub ${url} failed: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
   }

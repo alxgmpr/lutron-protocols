@@ -26,6 +26,7 @@ import { join } from "node:path";
 import { summarizeDecode } from "../../lib/capture-metrics";
 import { harvestDeviceIds, redactCcaFrame } from "../../lib/capture-redact";
 import { decodeCcaFrame } from "../../lib/cca-decode-adapter";
+import { isJsonObject, isNumber, type JsonValue } from "../../lib/data-values";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const CORPUS = join(ROOT, "test/fixtures/cca-corpus.jsonl");
@@ -67,8 +68,13 @@ function knownSerials(): number[] {
 
   const ccx = join(dataDir, "designer-ccx-devices.json");
   if (existsSync(ccx)) {
-    for (const d of JSON.parse(readFileSync(ccx, "utf8"))) {
-      if (typeof d.serial === "number") serials.add(d.serial);
+    const devices: JsonValue = JSON.parse(readFileSync(ccx, "utf8"));
+    if (Array.isArray(devices)) {
+      for (const device of devices) {
+        if (isJsonObject(device) && isNumber(device.serial)) {
+          serials.add(device.serial);
+        }
+      }
     }
   }
   return [...serials];

@@ -17,6 +17,16 @@ export interface RgbwcChannels {
   c: number;
 }
 
+export interface WizPilotParams {
+  state: boolean;
+  r?: number;
+  g?: number;
+  b?: number;
+  w?: number;
+  c?: number;
+  dimming?: number;
+}
+
 /** CCT table point: [kelvin, R, G, B, W, C] */
 export type CctPoint = [number, number, number, number, number, number];
 
@@ -155,9 +165,7 @@ function scaleChannel(fullValue: number, scale: number): number {
  * Build setPilot params from RGBWC channels.
  * Returns {state, r, g, b, w, c} — no dimming or temp params.
  */
-export function rgbwcToPilotParams(
-  channels: RgbwcChannels,
-): Record<string, number | boolean> {
+export function rgbwcToPilotParams(channels: RgbwcChannels): WizPilotParams {
   const allZero =
     channels.r === 0 &&
     channels.g === 0 &&
@@ -193,13 +201,12 @@ export function xyToCct(x: number, y: number): number {
  * (which white to use for blending). This is more stable than McCamy's for
  * chromaticities far from the locus, where McCamy's extrapolation breaks down.
  */
-export function nearestPlanckian(
-  x: number,
-  y: number,
-): {
+export interface PlanckianMatch {
   distance: number;
   cct: number;
-} {
+}
+
+export function nearestPlanckian(x: number, y: number): PlanckianMatch {
   let minDist = Infinity;
   let bestCct = 4000;
   for (let i = 0; i < PLANCKIAN_LOCUS.length - 1; i++) {
@@ -317,6 +324,6 @@ function xyToRgb(
 export function cctToPilotParams(
   cct: number,
   brightnessPercent: number,
-): Record<string, number | boolean> {
+): WizPilotParams {
   return rgbwcToPilotParams(cctToRgbwc(cct, brightnessPercent));
 }

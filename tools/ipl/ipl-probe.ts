@@ -43,6 +43,7 @@ import { dirname, join } from "path";
 import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { defaultHost } from "../../lib/config";
+import type { JsonValue } from "../../lib/data-values";
 import {
   bodyNamedRPC,
   buildCommandFrame,
@@ -102,7 +103,7 @@ const mode = pos[0];
 const jobs: Job[] = [];
 let listenSec = LISTEN;
 
-const rpcJob = (name: string, args: unknown, note?: string): Job => ({
+const rpcJob = (name: string, args: JsonValue, note?: string): Job => ({
   op: 349,
   hex: bodyNamedRPC(name, args).toString("hex"),
   note: note ?? `${name} ${JSON.stringify(args)}`,
@@ -124,9 +125,9 @@ switch (mode) {
       jobs.push(rpcJob(pos[i], JSON.parse(pos[i + 1] ?? "{}")));
     break;
   case "file": {
-    const raw = JSON.parse(readFileSync(pos[1], "utf8")) as Array<
-      Job & { rpc?: string; args?: unknown }
-    >;
+    const raw: Array<Job & { rpc?: string; args?: JsonValue }> = JSON.parse(
+      readFileSync(pos[1], "utf8"),
+    );
     for (const j of raw) {
       if (j.rpc) jobs.push(rpcJob(j.rpc, j.args ?? {}, j.note));
       else jobs.push({ ...j, hex: j.hex.replace(/\s/g, "") });

@@ -15,6 +15,8 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
+type JsonObject = { [key: string]: JsonValue };
+
 /**
  * Throw unless the verb is one this harness is permitted to issue.
  *
@@ -69,6 +71,23 @@ function isObjectLike(
   return typeof v === "object" && v !== null;
 }
 
+function isBoolean(v: JsonValue): v is boolean {
+  return typeof v === "boolean";
+}
+
+function isNumber(v: JsonValue): v is number {
+  return typeof v === "number";
+}
+
+function jsonKind(v: JsonValue): string {
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  if (isObjectLike(v)) return "object";
+  if (isBoolean(v)) return "boolean";
+  if (isNumber(v)) return "number";
+  return "string";
+}
+
 /**
  * True for the only object shapes JSON.parse ever produces: an object literal
  * (prototype === Object.prototype) or one built with Object.create(null).
@@ -77,15 +96,13 @@ function isObjectLike(
  * genuinely differing (a Date's value lives in an internal slot, a Map/Set's
  * entries aren't own enumerable properties at all).
  */
-function isPlainObject(v: object): boolean {
+function isPlainObject(v: JsonValue[] | JsonObject): v is JsonObject {
   const proto = Object.getPrototypeOf(v);
   return proto === Object.prototype || proto === null;
 }
 
-function describeType(v: object): string {
-  const proto = Object.getPrototypeOf(v) as {
-    constructor?: { name?: string };
-  } | null;
+function describeType(v: JsonValue[] | JsonObject): string {
+  const proto = Object.getPrototypeOf(v);
   return proto?.constructor?.name || "object";
 }
 
@@ -100,6 +117,13 @@ function extraArrayPropertyNames(arr: JsonValue[]): string[] {
   return Object.getOwnPropertyNames(arr).filter(
     (name) => name !== "length" && !indexNames.has(name),
   );
+}
+
+function ownJsonValue(value: JsonValue[] | JsonObject, key: string): JsonValue {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor) throw new Error(`missing own property ${key}`);
+  if ("value" in descriptor) return descriptor.value;
+  return descriptor.get ? descriptor.get.call(value) : null;
 }
 
 /** Bracket-quote a key containing a literal dot so it can't be confused with nesting. */
@@ -135,8 +159,8 @@ function firstDifference(
     return `${here}: ${describe(a)} became ${describe(b)}`;
   }
 
-  if (typeof a !== typeof b) {
-    return `${here}: type changed from ${typeof a} to ${typeof b}`;
+  if (jsonKind(a) !== jsonKind(b)) {
+    return `${here}: type changed from ${jsonKind(a)} to ${jsonKind(b)}`;
   }
 
   if (Array.isArray(a) || Array.isArray(b)) {
@@ -175,8 +199,8 @@ function firstDifference(
         if (!inA) return `${childPath}: appeared`;
         if (!inB) return `${childPath}: disappeared`;
         const d = firstDifference(
-          (a as unknown as Record<string, JsonValue>)[k],
-          (b as unknown as Record<string, JsonValue>)[k],
+          ownJsonValue(a, k),
+          ownJsonValue(b, k),
           childPath,
           ancestorsA,
           ancestorsB,
@@ -191,7 +215,7 @@ function firstDifference(
     }
   }
 
-  if (typeof a === "object" && typeof b === "object") {
+  if (isObjectLike(a) && isObjectLike(b)) {
     if (!isPlainObject(a) || !isPlainObject(b)) {
       const culprit = !isPlainObject(a) ? a : b;
       return `${here}: ${describeType(culprit)} is not a plain JSON object — refusing to compare, reporting movement`;
@@ -214,8 +238,8 @@ function firstDifference(
         if (!inA) return `${childPath}: appeared`;
         if (!inB) return `${childPath}: disappeared`;
         const d = firstDifference(
-          (a as Record<string, JsonValue>)[k],
-          (b as Record<string, JsonValue>)[k],
+          a[k],
+          b[k],
           childPath,
           ancestorsA,
           ancestorsB,
@@ -232,8 +256,7 @@ function firstDifference(
   return `${here}: ${describe(a)} became ${describe(b)}`;
 }
 
-function describe(v: unknown): string {
-  if (v === undefined) return "undefined";
+function describe(v: JsonValue): string {
   if (v === null) return "null";
   return JSON.stringify(v);
 }

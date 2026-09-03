@@ -44,6 +44,7 @@ import {
   instantaneousFrequency,
   mix,
 } from "../../lib/cca-ota-demod";
+import type { NumberLookup } from "../../lib/data-values";
 
 const DATA_RATE_HZ = 62_500;
 const DEVIATION_HZ = 38_000;
@@ -175,7 +176,7 @@ interface DecodeStats {
   op32Body0: Map<number, number>;
 }
 
-const OPCODE_NAMES: Record<number, string> = {
+const OPCODE_NAMES: NumberLookup<string> = {
   0x2a: "BeginTransfer",
   0x32: "Control",
   0x36: "CodeRevision",

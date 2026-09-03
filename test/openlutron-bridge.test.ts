@@ -18,10 +18,15 @@ import { OpenlutronBridge } from "../lib/openlutron-bridge";
 import {
   OpenlutronStream,
   type StreamDatagramSocket,
+  type StreamTimerHandle,
 } from "../lib/openlutron-stream";
 import { FLAG_CCX, FLAG_SRC, FRAME_HEADER_LEN } from "../lib/stream-frame";
 
 const AVAILABILITY = "lutron/bridge/source/openlutron/availability";
+
+function isTimerId(handle: StreamTimerHandle): handle is number {
+  return typeof handle === "number";
+}
 
 /** BUTTON_PRESS, device 1234ef20, from the committed CCX corpus. */
 const CCX_PRESS = "8201a200a200441234ef20018301020305182a";
@@ -33,10 +38,9 @@ class FakeSocket implements StreamDatagramSocket {
   private messageListeners: Array<(msg: Buffer) => void> = [];
   private errorListeners: Array<(err: Error) => void> = [];
 
-  on(event: "message" | "error", listener: (arg: any) => void): unknown {
+  on(event: "message" | "error", listener: (arg: any) => void): void {
     if (event === "message") this.messageListeners.push(listener);
     else this.errorListeners.push(listener);
-    return this;
   }
   bind(cb?: () => void): void {
     cb?.();
@@ -73,9 +77,8 @@ class FakeBroker implements MqttClientLike {
     this.published.push({ topic, payload, retain: opts.retain ?? false });
     cb?.();
   }
-  on(event: string, listener: (...args: any[]) => void): unknown {
-    if (event === "connect") this.connectListeners.push(listener as () => void);
-    return this;
+  on(event: string, listener: (...args: any[]) => void): void {
+    if (event === "connect") this.connectListeners.push(() => listener());
   }
   end(): void {}
 
@@ -100,21 +103,21 @@ function fakeTimers() {
   return {
     api: {
       now: () => now,
-      setInterval(fn: () => void, ms: number): unknown {
+      setInterval(fn: () => void, ms: number): number {
         const id = nextId++;
         pending.set(id, { fn, due: now + ms, every: ms });
         return id;
       },
-      setTimeout(fn: () => void, ms: number): unknown {
+      setTimeout(fn: () => void, ms: number): number {
         const id = nextId++;
         pending.set(id, { fn, due: now + ms, every: null });
         return id;
       },
-      clearInterval(h: unknown): void {
-        pending.delete(h as number);
+      clearInterval(h: StreamTimerHandle): void {
+        if (isTimerId(h)) pending.delete(h);
       },
-      clearTimeout(h: unknown): void {
-        pending.delete(h as number);
+      clearTimeout(h: StreamTimerHandle): void {
+        if (isTimerId(h)) pending.delete(h);
       },
     },
     advance(ms: number): void {

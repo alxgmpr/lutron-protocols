@@ -39,6 +39,7 @@ import {
   nextSequence,
   percentToLevel,
 } from "../../ccx/encoder";
+import { type CborValue, isCborMap, isNumber } from "../../lib/data-values";
 
 // --- CLI argument parsing (same pattern as ccx-sniffer.ts) ---
 
@@ -100,7 +101,7 @@ function sendPackets(
         sock.close();
         reject(
           new Error(
-            `Failed to set multicast interface ${iface}: ${(err as Error).message}`,
+            `Failed to set multicast interface ${iface}: ${err instanceof Error ? err.message : String(err)}`,
           ),
         );
         return;
@@ -292,10 +293,11 @@ function cmdListen() {
 
     try {
       const parsed = decodeBytes(msg);
-      const typeName = getMessageTypeName(
-        (cborDecode(msg) as unknown[])[0] as number,
-      ).padEnd(14);
+      const raw: CborValue = cborDecode(msg);
+      const messageType = Array.isArray(raw) && isNumber(raw[0]) ? raw[0] : -1;
+      const typeName = getMessageTypeName(messageType).padEnd(14);
       const formatted = formatMessage(parsed);
+      const rawBody = Array.isArray(raw) ? raw[1] : null;
 
       // Annotate with zone name
       let annotation = "";
@@ -306,14 +308,13 @@ function cmdListen() {
 
       if (jsonOutput) {
         // Include raw CBOR body for field exploration
-        const raw = cborDecode(msg) as unknown[];
         console.log(
           JSON.stringify({
             time,
             src: rinfo.address,
             type: typeName.trim(),
             parsed,
-            rawBody: raw[1],
+            rawBody,
             hex,
           }),
         );
@@ -323,10 +324,9 @@ function cmdListen() {
 
         // Show raw inner command keys for exploration
         if (showRaw) {
-          const raw = cborDecode(msg) as unknown[];
-          const body = raw[1] as Record<number, unknown> | undefined;
-          if (body && body[0] !== undefined) {
-            const inner = body[0] as Record<number, unknown>;
+          const body = Array.isArray(raw) && isCborMap(raw[1]) ? raw[1] : null;
+          if (body && isCborMap(body[0])) {
+            const inner = body[0];
             const keys = Object.entries(inner)
               .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
               .join(", ");
@@ -335,7 +335,8 @@ function cmdListen() {
         }
       }
     } catch (err) {
-      console.log(`${time} [decode error] ${(err as Error).message}: ${hex}`);
+      const message = err instanceof Error ? err.message : String(err);
+      console.log(`${time} [decode error] ${message}: ${hex}`);
     }
   });
 

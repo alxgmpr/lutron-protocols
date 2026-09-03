@@ -36,12 +36,12 @@ function loadLeapFromDisk(): LeapDumpData | null {
     .sort();
   if (files.length === 0) return null;
 
-  const merged: Pick<
-    LeapDumpData,
-    "zones" | "devices" | "serials" | "presets"
-  > & {
-    link?: LeapDumpData["link"];
-  } = {
+  const merged: LeapDumpData = {
+    timestamp: "",
+    host: "",
+    leapVersion: "",
+    productType: "",
+    link: {},
     zones: {},
     devices: {},
     serials: {},
@@ -53,21 +53,24 @@ function loadLeapFromDisk(): LeapDumpData | null {
       const data: LeapDumpData = JSON.parse(
         readFileSync(join(dataDir, file), "utf-8"),
       );
+      merged.timestamp = data.timestamp || merged.timestamp;
+      merged.host = data.host || merged.host;
+      merged.leapVersion = data.leapVersion || merged.leapVersion;
+      merged.productType = data.productType || merged.productType;
       Object.assign(merged.zones, data.zones ?? {});
       Object.assign(merged.devices, data.devices ?? {});
       Object.assign(merged.serials, data.serials ?? {});
       Object.assign(merged.presets, data.presets ?? {});
       if (data.link) {
-        if (!merged.link) merged.link = {} as LeapDumpData["link"];
-        if (data.link.rf) merged.link!.rf = data.link.rf;
-        if (data.link.ccx) merged.link!.ccx = data.link.ccx;
+        if (data.link.rf) merged.link.rf = data.link.rf;
+        if (data.link.ccx) merged.link.ccx = data.link.ccx;
       }
     } catch {
       // Skip malformed files
     }
   }
 
-  return merged as LeapDumpData;
+  return merged;
 }
 
 // ---------------------------------------------------------------------------

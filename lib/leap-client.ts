@@ -18,6 +18,7 @@ import * as path from "path";
 import * as tls from "tls";
 import { fileURLToPath } from "url";
 import { certsForHost } from "../lib/config";
+import { isJsonObject, type JsonObject, type JsonValue } from "./data-values";
 
 // --- Types ---
 
@@ -110,7 +111,13 @@ export interface LeapConnectionOptions {
   port?: number;
 }
 
-export type LeapEventHandler = (msg: any) => void;
+export interface LeapWireFrame {
+  CommuniqueType?: string;
+  Header?: JsonObject;
+  Body?: JsonValue;
+}
+
+export type LeapEventHandler = (msg: LeapWireFrame) => void;
 
 // --- Subscriptions ---
 
@@ -137,8 +144,8 @@ export interface LeapPush {
   communiqueType: string;
   /** e.g. `MultipleZoneStatus`, `OneAreaStatus`. */
   messageBodyType: string;
-  header: Record<string, unknown>;
-  body: any;
+  header: JsonObject;
+  body: JsonValue;
 }
 
 export type LeapPushHandler = (push: LeapPush) => void;
@@ -160,7 +167,7 @@ export interface LeapSubscription {
   /** `Header.MessageBodyType` of the SubscribeResponse. */
   readonly messageBodyType: string;
   /** The SubscribeResponse body — the full set, against which pushes are deltas. */
-  readonly snapshot: any;
+  readonly snapshot: JsonValue;
   /** False once unsubscribed, or once the connection was closed or reconnected. */
   readonly active: boolean;
   /**
@@ -180,7 +187,7 @@ interface SubscriptionState {
   tag: string;
   status: string;
   messageBodyType: string;
-  snapshot: any;
+  snapshot: JsonValue;
   active: boolean;
   onPush: LeapPushHandler;
 }
@@ -198,19 +205,17 @@ interface SubscriptionState {
  * with exactly one key. `One*` bodies hold an object, `Multiple*` an array;
  * both are flattened to a list.
  */
-export function pushItems(
-  source: { body?: unknown } | { snapshot?: unknown },
-): unknown[] {
-  const body =
-    "body" in source
-      ? source.body
-      : (source as { snapshot?: unknown }).snapshot;
-  if (!body || typeof body !== "object") return [];
-  const values = Object.values(body as Record<string, unknown>);
-  const items: unknown[] = [];
+export function pushItems(source: {
+  body?: JsonValue;
+  snapshot?: JsonValue;
+}): JsonValue[] {
+  const body = source.snapshot ?? source.body;
+  if (!body || !isJsonObject(body)) return [];
+  const values = Object.values(body);
+  const items: JsonValue[] = [];
   for (const v of values) {
     if (Array.isArray(v)) items.push(...v);
-    else if (v && typeof v === "object") items.push(v);
+    else if (isJsonObject(v)) items.push(v);
   }
   return items;
 }
@@ -486,7 +491,7 @@ export class LeapConnection {
    * is handed to `onPush` as a {@link LeapPush} and does *not* reach `onEvent`.
    *
    *   const sub = await conn.subscribe("/zone/status", (push) => {
-   *     for (const z of pushItems(push) as any[]) {
+   *     for (const z of pushItems(push)) {
    *       console.log(z.Zone.href, z.Level);
    *     }
    *   });
@@ -595,7 +600,7 @@ export class LeapConnection {
           return {
             status: "(error)",
             communiqueType: "",
-            error: (err as Error).message,
+            error: err instanceof Error ? err.message : String(err),
           };
         }
       },
@@ -1216,11 +1221,11 @@ export const LEAP_REGISTRY: EndpointDef[] = [
  * @param opts.log - Progress logging function
  */
 export async function walkEndpoints(
-  leap: { readBody(url: string): Promise<any | null> },
+  leap: { readBody(url: string): Promise<JsonValue> },
   registry: EndpointDef[],
   opts: { full: boolean; log: (msg: string) => void },
-): Promise<Record<string, any>> {
-  const result: Record<string, any> = {};
+): Promise<JsonObject> {
+  const result: JsonObject = {};
   const entries = opts.full ? registry : registry.filter((e) => e.core);
 
   for (const entry of entries) {
@@ -1239,7 +1244,14 @@ export async function walkEndpoints(
     }
 
     // Collection endpoint
-    const items: any[] = body[entry.itemsField] ?? [];
+    if (!isJsonObject(body)) {
+      opts.log(`  (skipped — response body is not an object)`);
+      continue;
+    }
+    const collection = body[entry.itemsField];
+    const items = Array.isArray(collection)
+      ? collection.filter(isJsonObject)
+      : [];
     if (items.length === 0) {
       opts.log(`  0 items`);
       continue;
@@ -1256,7 +1268,7 @@ export async function walkEndpoints(
         if (entry.children) {
           for (const child of entry.children) {
             const childBody = await leap.readBody(`${href}${child.path}`);
-            if (childBody !== null) {
+            if (isJsonObject(childBody)) {
               const childItems = childBody[child.itemsField];
               if (childItems !== undefined) {
                 item[child.key] = childItems;

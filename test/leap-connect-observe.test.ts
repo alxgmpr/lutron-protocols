@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import type { JsonObject, JsonValue } from "../lib/data-values";
 import {
   attributeResponseFrames,
   type FrameRecord,
@@ -8,8 +9,8 @@ import {
 
 type Frame = {
   CommuniqueType: string;
-  Header: Record<string, unknown>;
-  Body?: unknown;
+  Header: JsonObject;
+  Body?: JsonValue;
 };
 
 /**

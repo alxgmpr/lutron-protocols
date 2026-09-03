@@ -79,7 +79,7 @@ function parse(path: string, withChi: boolean): ParseResult {
   };
 
   if (withChi) {
-    const hist = new Array(256).fill(0);
+    const hist = Array<number>(256).fill(0);
     for (const b of body) hist[b]++;
     const expected = body.length / 256;
     let chi2 = 0;

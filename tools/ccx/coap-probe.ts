@@ -298,7 +298,8 @@ async function safeGet(
     const resp = await client.get(target, path);
     return { code: resp.code, resp };
   } catch (err) {
-    if (/timeout/i.test((err as Error).message)) return { code: "timeout" };
+    const message = err instanceof Error ? err.message : String(err);
+    if (/timeout/i.test(message)) return { code: "timeout" };
     throw err;
   }
 }

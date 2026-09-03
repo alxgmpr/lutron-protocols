@@ -29,7 +29,7 @@ import { CcxSource, type IntentTarget } from "./ccx";
 
 /** The slice of OpenlutronStream this source consumes. */
 export interface FrameSource {
-  on(event: "frame", listener: (frame: StreamPacketFrame) => void): unknown;
+  on(event: "frame", listener: (frame: StreamPacketFrame) => void): void;
 }
 
 export interface OpenlutronSourceOptions {

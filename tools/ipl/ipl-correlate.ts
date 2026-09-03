@@ -23,6 +23,13 @@
  */
 
 import { readFileSync } from "fs";
+import {
+  isJsonObject,
+  isNumber,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 
 const args = process.argv.slice(2);
 const getArg = (n: string) => {
@@ -59,7 +66,7 @@ type Ev = {
   t: bigint; // wall-clock ns on unified axis
   ts: number; // wall-clock epoch ms (for display)
   src: string;
-  raw: Record<string, unknown>;
+  raw: JsonObject;
   precision: "hw" | "mono" | "ms"; // hw = pcap hardware timestamp, mono = hrtime, ms = fallback
 };
 
@@ -75,7 +82,7 @@ type Ev = {
 
 const lines = readFileSync(FILE, "utf8").split("\n");
 const parsed: Array<{
-  o: any;
+  o: JsonObject;
   ts: number;
   src: string;
   monoNs?: bigint;
@@ -85,16 +92,16 @@ let wallOffsetNs: bigint | null = null; // wall_ns = mono_ns + wallOffsetNs
 
 for (const l of lines) {
   if (!l) continue;
-  let o: any;
+  let o: JsonValue;
   try {
     o = JSON.parse(l);
   } catch {
     continue;
   }
-  if (typeof o.ts !== "number" || typeof o.src !== "string") continue;
+  if (!isJsonObject(o) || !isNumber(o.ts) || !isString(o.src)) continue;
   const entry: (typeof parsed)[number] = { o, ts: o.ts, src: o.src };
-  if (typeof o.mono_ns === "string") entry.monoNs = BigInt(o.mono_ns);
-  if (typeof o.epoch_ns === "string") entry.epochNs = BigInt(o.epoch_ns);
+  if (isString(o.mono_ns)) entry.monoNs = BigInt(o.mono_ns);
+  if (isString(o.epoch_ns)) entry.epochNs = BigInt(o.epoch_ns);
   if (wallOffsetNs === null && entry.monoNs !== undefined) {
     wallOffsetNs = BigInt(entry.ts) * MS_NS - entry.monoNs;
   }
@@ -181,22 +188,24 @@ function worstPrecision(
 }
 
 function fmtIpl(e: Ev): string {
-  const r = e.raw as any;
+  const r = e.raw;
   const op = r.op !== undefined ? `${r.opName}(${r.op})` : "";
-  const body = r.body_len > 0 ? ` body[${r.body_len}]=${r.body_hex}` : "";
+  const bodyLength = isNumber(r.body_len) ? r.body_len : 0;
+  const body = bodyLength > 0 ? ` body[${bodyLength}]=${r.body_hex}` : "";
   return `${r.msgType}/${r.receiverProcessing} sys=${r.systemId} s=${r.senderId}→${r.receiverId} seq=${r.messageId} ${op}${body}`;
 }
 
 function fmtRaw(e: Ev, dt: string): string {
-  const r = e.raw as any;
+  const r = e.raw;
   if (e.src === "sniff") {
     const kind = r.type ?? "?";
     const src = r.srcAddr ? ` ${r.srcAddr}` : "";
     const dst = r.dstAddr ? `→${r.dstAddr}` : "";
     const path = r.path ? ` ${r.path}` : "";
     const code = r.code ? ` ${r.code}` : "";
-    const pay = r.payload
-      ? ` payload=${r.payload.slice(0, 60)}${r.payload.length > 60 ? "…" : ""}`
+    const payload = String(r.payload ?? "");
+    const pay = payload
+      ? ` payload=${payload.slice(0, 60)}${payload.length > 60 ? "…" : ""}`
       : "";
     const cbor = r.decoded
       ? ` cbor=${JSON.stringify(r.decoded).slice(0, 120)}`

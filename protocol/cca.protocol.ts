@@ -8,6 +8,7 @@
  * Consumed by: TS code (direct import), C firmware (via codegen → cca_generated.h)
  */
 
+import type { NumberLookup, StringLookup } from "../lib/data-values";
 import {
   type CCAProtocolDef,
   constantGroup,
@@ -558,7 +559,7 @@ const pairRespFields: FieldDef[] = [
 
 /** Format discrimination for short packet types (0x80-0x83).
  *  Formats 0x09 and 0x0C are multi-purpose — predicates disambiguate. */
-const stateFormatDisc: Record<number, FormatRule> = {
+const stateFormatDisc: NumberLookup<FormatRule> = {
   0x09: [
     // Unpair prep: broadcast at bytes 9-13
     {
@@ -589,7 +590,7 @@ const stateFormatDisc: Record<number, FormatRule> = {
 
 /** Format discrimination for button packet types (0x88-0x8B).
  *  Sensors, pico resets, dim holds, and extended commands share these type bytes. */
-const buttonFormatDisc: Record<number, FormatRule> = {
+const buttonFormatDisc: NumberLookup<FormatRule> = {
   0x09: [
     // Sensor test: sensor component 0xD5 at byte 14
     { name: "SENSOR_TEST", match: { 14: 0xd5 } },
@@ -617,7 +618,7 @@ const buttonFormatDisc: Record<number, FormatRule> = {
 };
 
 /** Format discrimination for long packet types (0xA1-0xA3) */
-const longFormatDisc: Record<number, FormatRule> = {
+const longFormatDisc: NumberLookup<FormatRule> = {
   0x11: "LED_CONFIG",
   0x12: "ZONE_BIND",
   0x13: "DIM_CONFIG",
@@ -1304,7 +1305,7 @@ const PICO_EXTENDED = packetType(
 // SEQUENCES
 // ============================================================================
 
-const sequences: Record<string, Sequence> = {
+const sequences: StringLookup<Sequence> = {
   button_press: {
     name: "button_press",
     description: "Standard 5-button Pico press",
@@ -1358,7 +1359,7 @@ const sequences: Record<string, Sequence> = {
 // PAIRING PRESETS
 // ============================================================================
 
-const pairingPresets: Record<string, PairingPreset> = {
+const pairingPresets: StringLookup<PairingPreset> = {
   "5btn": {
     description: "5-button Pico (ON/FAV/OFF/RAISE/LOWER)",
     packet: "PAIR_B9",
@@ -1423,7 +1424,7 @@ const pairingPresets: Record<string, PairingPreset> = {
 //   30 = button group type   38 = engraving discriminator (picos)
 // ============================================================================
 
-const deviceFingerprints: Record<string, DeviceFingerprint> = {
+const deviceFingerprints: StringLookup<DeviceFingerprint> = {
   // --- PICOS (B8/B9/BA/BB) ---
   // Byte patterns from validated pairingPresets (real captures).
   // Key discriminators: byte 30 (button group), byte 38 (engraving).
@@ -1624,6 +1625,7 @@ export const CCA: CCAProtocolDef = {
 // ============================================================================
 
 /** Button code values */
+// SAFETY: fromEntries preserves the exact keys of buttonEnum.values and maps every entry to its numeric value.
 export const Button = Object.fromEntries(
   Object.entries(buttonEnum.values).map(([k, v]) => [k, v.value]),
 ) as { readonly [K in keyof typeof buttonEnum.values]: number };
@@ -1636,6 +1638,7 @@ export const ButtonNames: Record<number, string> = Object.fromEntries(
 );
 
 /** Action code values */
+// SAFETY: fromEntries preserves the exact keys of actionEnum.values and maps every entry to its numeric value.
 export const Action = Object.fromEntries(
   Object.entries(actionEnum.values).map(([k, v]) => [k, v.value]),
 ) as { readonly [K in keyof typeof actionEnum.values]: number };
@@ -1648,6 +1651,7 @@ export const ActionNames: Record<number, string> = Object.fromEntries(
 );
 
 /** Device class code values */
+// SAFETY: fromEntries preserves the exact keys of deviceClassEnum.values and maps every entry to its numeric value.
 export const DeviceClass = Object.fromEntries(
   Object.entries(deviceClassEnum.values).map(([k, v]) => [k, v.value]),
 ) as { readonly [K in keyof typeof deviceClassEnum.values]: number };
@@ -1660,6 +1664,7 @@ export const DeviceClassNames: Record<number, string> = Object.fromEntries(
 );
 
 /** Packet type code values */
+// SAFETY: fromEntries preserves the exact packet-type keys and maps every entry to its numeric value.
 export const PacketType = Object.fromEntries(
   Object.entries(CCA.packetTypes).map(([k, v]) => [k, v.value]),
 ) as { readonly [K in keyof typeof CCA.packetTypes]: number };
@@ -1696,7 +1701,7 @@ export const PacketTypeInfo: Record<number, PacketTypeInfoEntry> =
 /** Field definitions by packet type name */
 export const PacketFields: Record<string, FieldDef[]> = Object.fromEntries(
   Object.entries(CCA.packetTypes)
-    .filter(([_, v]) => v.fields.length > 0)
+    .filter(([, v]) => v.fields.length > 0)
     .map(([k, v]) => [k, v.fields]),
 );
 
@@ -1977,7 +1982,7 @@ export interface QSDeviceClassEntry {
  *
  * Source: Designer DB SQLMODELINFO.MDF, validated against LEAP API + CCA packet captures.
  */
-export const QSDeviceClassTypes: Record<number, QSDeviceClassEntry> = {
+export const QSDeviceClassTypes: NumberLookup<QSDeviceClassEntry> = {
   // --- DIMMERS (CCA 0x04) ---
   0x04010101: {
     id: 0x04010101,

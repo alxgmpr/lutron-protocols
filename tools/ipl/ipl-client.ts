@@ -22,6 +22,7 @@ import { dirname, join } from "path";
 import { connect, type TLSSocket } from "tls";
 import { fileURLToPath } from "url";
 import { inflateSync } from "zlib";
+import type { NumberLookup } from "../../lib/data-values";
 
 const args = process.argv.slice(2);
 function getArg(name: string): string | undefined {
@@ -50,7 +51,7 @@ const caCert = readFileSync(join(CERT_DIR, "radioRa3_products.crt"));
 // --- IPL Protocol ---
 
 // Property types observed in LEIE messages
-const PROP_NAMES: Record<number, string> = {
+const PROP_NAMES: NumberLookup<string> = {
   0x000f: "level(dimmer)",
   0x0003: "level(switch)",
   0x0005: "button",
@@ -77,10 +78,12 @@ interface IPLMessage {
  * Header: LEI<type> + 00 01 00 FF + <seq:u16> + <subtype:u16>
  * Body follows the 12-byte header until the next LEI marker.
  */
-function parseMessages(buf: Buffer): {
+interface ParsedMessages {
   messages: IPLMessage[];
   remainder: Buffer;
-} {
+}
+
+function parseMessages(buf: Buffer): ParsedMessages {
   const messages: IPLMessage[] = [];
   let pos = 0;
 

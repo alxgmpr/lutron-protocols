@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import { formatAddr, parseFrame } from "../lib/ieee802154";
 import { buildNonce, deriveThreadKeys, micLength } from "../lib/thread-crypto";
 
@@ -126,9 +127,7 @@ test("micLength: security level 6 = 8 bytes", () => {
 test("serial sniffer: parse received line with ANSI escapes", () => {
   const line =
     "\x1b[Jreceived: 41882e146bffff00000912fcff0000017a37a23d270dad1b0028d296060137a23d270dad1b00006dc17ca4771e00 power: -63 lqi: 120 time: 315639708";
-  const clean = line
-    .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "")
-    .replace(/\r/g, "");
+  const clean = stripVTControlCharacters(line).replace(/\r/g, "");
   const match = clean.match(/received:\s+([0-9a-fA-F]+)\s+power:/);
   assert.ok(match, "should match received pattern");
   assert.ok(match![1].length > 0, "should capture hex payload");

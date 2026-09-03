@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import test, { describe } from "node:test";
 import { fileURLToPath } from "node:url";
 import { processorIPs } from "../lib/config";
+import { isJsonObject, type JsonValue } from "../lib/data-values";
 import {
   LeapConnection,
   type LeapPush,
@@ -18,13 +19,14 @@ type ConnInternals = {
   socket: { write(data: string): void; destroy(): void } | null;
   pendingRequests: Map<
     string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    { resolve: (v: JsonValue) => void; reject: (e: Error) => void }
   >;
-  subscriptions: Map<string, unknown>;
+  subscriptions: Map<string, LeapSubscription>;
   handleData(data: string): void;
 };
 const internals = (conn: LeapConnection): ConnInternals =>
-  conn as unknown as ConnInternals;
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
+  conn as ConnInternals;
 
 const HOST = processorIPs[0];
 
@@ -53,7 +55,7 @@ function harness() {
   const lastRequest = () => JSON.parse(writes[writes.length - 1]);
   const lastTag = (): string => lastRequest().Header.ClientTag;
 
-  const feed = (...frames: unknown[]): void => {
+  const feed = (...frames: JsonValue[]): void => {
     i.handleData(frames.map((f) => `${JSON.stringify(f)}\n`).join(""));
   };
 
@@ -61,7 +63,7 @@ function harness() {
     tag: string,
     url: string,
     messageBodyType: string,
-    body: unknown,
+    body: JsonValue,
     status = "200 OK",
   ) => ({
     CommuniqueType: "SubscribeResponse",
@@ -78,7 +80,7 @@ function harness() {
     tag: string,
     url: string,
     messageBodyType: string,
-    body: unknown,
+    body: JsonValue,
   ) => ({
     CommuniqueType: "ReadResponse",
     Header: {
@@ -109,7 +111,7 @@ async function subscribed(
   url: string,
   onPush: (p: LeapPush) => void,
   messageBodyType = "MultipleZoneStatus",
-  snapshot: unknown = { ZoneStatuses: [] },
+  snapshot: JsonValue = { ZoneStatuses: [] },
 ): Promise<LeapSubscription> {
   const pending = h.conn.subscribe(url, onPush);
   const tag = h.lastTag();
@@ -533,8 +535,8 @@ describe("replay: RA3 push capture (2026-08-14, zone 546)", () => {
     const snapshotItems = pushItems({
       messageBodyType: sub.messageBodyType,
       body: sub.snapshot,
-    }) as Record<string, unknown>[];
-    const deltaItems = pushItems(pushes[0]) as Record<string, unknown>[];
+    }).filter(isJsonObject);
+    const deltaItems = pushItems(pushes[0]).filter(isJsonObject);
 
     assert.ok(
       snapshotItems.length > deltaItems.length,

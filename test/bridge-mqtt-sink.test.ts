@@ -2,10 +2,17 @@ import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import type { CCXPacket } from "../ccx/types";
 import type {
+  CommandEvent,
   DeviceEvent,
-  SinkHost,
   ZoneChangedEvent,
+  ZoneSettledEvent,
 } from "../lib/bridge/types";
+
+type BridgeEventPayload =
+  | CommandEvent
+  | DeviceEvent
+  | ZoneChangedEvent
+  | ZoneSettledEvent;
 
 // ── Fake broker ───────────────────────────────────────────
 
@@ -96,6 +103,7 @@ async function makeSink(
 ) {
   const { MqttSink } = await import("../lib/bridge/sinks/mqtt");
   return new MqttSink({
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     client: client as any,
     sources: opts.sources ?? ["ccx"],
     baseTopic: opts.baseTopic,
@@ -113,7 +121,7 @@ function host() {
       return this;
     },
     isExplicitlyWatched: () => true,
-    fire(event: string, payload: unknown) {
+    fire(event: string, payload: BridgeEventPayload) {
       for (const l of listeners.get(event) ?? []) l(payload);
     },
   };
@@ -177,7 +185,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange());
@@ -198,7 +206,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange({ level: 10 }));
@@ -216,7 +224,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange({ level: 50 }));
@@ -234,7 +242,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange({ level: 0 }));
@@ -246,7 +254,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange({ level: 80, cct: 2700 }));
@@ -260,7 +268,7 @@ describe("MqttSink zone lights", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire(
@@ -282,7 +290,7 @@ describe("MqttSink button events", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("device:event", press());
@@ -300,7 +308,7 @@ describe("MqttSink button events", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("device:event", press());
@@ -316,7 +324,7 @@ describe("MqttSink button events", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("device:event", press());
@@ -332,7 +340,7 @@ describe("MqttSink button events", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("device:event", press({ sequence: 1 }));
@@ -348,7 +356,7 @@ describe("MqttSink availability", () => {
   test("publishes bridge and per-source availability on connect", async () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client, { sources: ["ccx"] });
-    sink.attach(host() as unknown as SinkHost);
+    sink.attach(host());
 
     client.goOnline();
 
@@ -364,7 +372,7 @@ describe("MqttSink availability", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client, { sources: ["ccx"] });
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange());
@@ -380,7 +388,7 @@ describe("MqttSink availability", () => {
   test("a source going down does not take the whole bridge offline", async () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client, { sources: ["ccx", "leap"] });
-    sink.attach(host() as unknown as SinkHost);
+    sink.attach(host());
     client.goOnline();
     client.clear();
 
@@ -405,7 +413,7 @@ describe("MqttSink availability", () => {
   test("detach marks the bridge offline and closes the client", async () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
-    sink.attach(host() as unknown as SinkHost);
+    sink.attach(host());
     client.goOnline();
 
     sink.detach();
@@ -426,7 +434,7 @@ describe("MqttSink never takes the bridge down", () => {
     const client = new FakeMqttClient(); // never goes online
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
 
     assert.doesNotThrow(() => {
       h.fire("zone:changed", zoneChange());
@@ -441,11 +449,12 @@ describe("MqttSink never takes the bridge down", () => {
     const lines: string[] = [];
     const { MqttSink } = await import("../lib/bridge/sinks/mqtt");
     const sink = new MqttSink({
+      // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
       client: client as any,
       log: (m) => lines.push(m),
     });
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
     client.throwOnPublish = true;
 
@@ -461,10 +470,11 @@ describe("MqttSink never takes the bridge down", () => {
     const lines: string[] = [];
     const { MqttSink } = await import("../lib/bridge/sinks/mqtt");
     const sink = new MqttSink({
+      // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
       client: client as any,
       log: (m) => lines.push(m),
     });
-    sink.attach(host() as unknown as SinkHost);
+    sink.attach(host());
 
     assert.doesNotThrow(() => client.emit("error", new Error("ECONNREFUSED")));
     assert.ok(lines.some((l) => /ECONNREFUSED/.test(l)));
@@ -474,7 +484,7 @@ describe("MqttSink never takes the bridge down", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
     h.fire("zone:changed", zoneChange({ level: 20 }));
 
@@ -491,7 +501,7 @@ describe("MqttSink never takes the bridge down", () => {
     const client = new FakeMqttClient();
     const sink = await makeSink(client);
     const h = host();
-    sink.attach(h as unknown as SinkHost);
+    sink.attach(h);
     client.goOnline();
 
     h.fire("zone:changed", zoneChange());
@@ -529,6 +539,7 @@ describe("MqttSink behind the real CCX source and model", () => {
       autoTick: false,
       resolveDeviceName: () => "Kitchen Pico",
     });
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     model.addSink(new MqttSink({ client: client as any, sources: ["ccx"] }));
     client.goOnline();
 

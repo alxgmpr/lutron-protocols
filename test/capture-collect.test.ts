@@ -155,9 +155,9 @@ describe("capture collection", () => {
 
     collector.handleFrame(
       new Proxy(ccaFrame(0x0a), {
-        get(target, prop, receiver) {
+        get(target, prop) {
           if (prop === "data") decodes++;
-          return Reflect.get(target, prop, receiver);
+          return Object.getOwnPropertyDescriptor(target, prop)?.value;
         },
       }),
     );

@@ -45,6 +45,7 @@ export {
   TIMING,
 } from "./cca.protocol";
 
+import type { StringLookup } from "../lib/data-values";
 import {
   ActionNames,
   ButtonNames,
@@ -136,7 +137,7 @@ function resolveFormatRule(
   data: Uint8Array | number[],
 ): string | undefined {
   if (rule === undefined) return undefined;
-  if (typeof rule === "string") return rule;
+  if (!Array.isArray(rule)) return rule;
   // Predicate chain — try each candidate in order
   for (const candidate of rule) {
     if (!candidate.match) return candidate.name; // default fallback
@@ -274,8 +275,7 @@ export function parseLux16bit(bytes: string[]): string {
  */
 export function getButtonName(code: number): string {
   return (
-    (ButtonNames as Record<number, string>)[code] ??
-    `0x${code.toString(16).toUpperCase().padStart(2, "0")}`
+    ButtonNames[code] ?? `0x${code.toString(16).toUpperCase().padStart(2, "0")}`
   );
 }
 
@@ -284,8 +284,7 @@ export function getButtonName(code: number): string {
  */
 export function getActionName(code: number): string {
   return (
-    (ActionNames as Record<number, string>)[code] ??
-    `0x${code.toString(16).toUpperCase().padStart(2, "0")}`
+    ActionNames[code] ?? `0x${code.toString(16).toUpperCase().padStart(2, "0")}`
   );
 }
 
@@ -303,13 +302,18 @@ export function isBroadcast(bytes: string[], offset: number): boolean {
  * When fieldName is provided, hex fields are resolved against known
  * constant groups (cmd_class, cmd_type, addr_mode, etc.).
  */
+export interface ParsedFieldValue {
+  raw: string;
+  decoded: string | null;
+}
+
 export function parseFieldValue(
   bytes: string[],
   offset: number,
   size: number,
   format: FieldFormat,
   fieldName?: string,
-): { raw: string; decoded: string | null } {
+): ParsedFieldValue {
   const fieldBytes = bytes.slice(offset, offset + size);
   const raw = fieldBytes.join(" ");
 
@@ -469,7 +473,7 @@ export function fingerprintDevice(
 
 /** Get category color for display */
 export function getCategoryColor(category: string): string {
-  const colors: Record<string, string> = {
+  const colors: StringLookup<string> = {
     BUTTON: "#4CAF50",
     STATE: "#2196F3",
     BEACON: "#FF9800",

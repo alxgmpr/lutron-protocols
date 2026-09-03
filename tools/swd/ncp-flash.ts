@@ -173,7 +173,13 @@ function splitWindows(text: string, maxBytes: number): Uint8Array[] {
 }
 
 /** What the image covers, so the operator can sanity-check it before it lands. */
-function describe(text: string): { min: number; max: number; bytes: number } {
+interface ImageRange {
+  min: number;
+  max: number;
+  bytes: number;
+}
+
+function describe(text: string): ImageRange {
   let base = 0;
   let min = 0xffffffff;
   let max = 0;

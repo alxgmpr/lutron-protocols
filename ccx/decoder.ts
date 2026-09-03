@@ -12,6 +12,12 @@
 
 import { decode as cborDecode } from "cbor-x";
 import {
+  type CborMap,
+  type CborValue,
+  isCborMap,
+  isNumber,
+} from "../lib/data-values";
+import {
   getDeviceBySerial,
   getPresetInfo,
   getSceneName,
@@ -46,10 +52,10 @@ import type {
 
 /** Collect unknown keys from a CBOR map — anything not in consumed set */
 function collectUnknown(
-  map: Record<number, unknown>,
+  map: CborMap,
   consumed: Set<number>,
-): Record<number, unknown> | undefined {
-  const unknown: Record<number, unknown> = {};
+): CborMap | undefined {
+  const unknown: CborMap = {};
   let hasAny = false;
   for (const k of Object.keys(map)) {
     const key = Number(k);
@@ -71,40 +77,62 @@ function actionToDirection(
 }
 
 /** Known ACK response codes */
-const ACK_LABELS: Record<number, string> = {
-  0x50: "LEVEL_ACK",
-  0x55: "BUTTON_ACK",
-};
+const ACK_LABELS = new Map([
+  [0x50, "LEVEL_ACK"],
+  [0x55, "BUTTON_ACK"],
+]);
+
+interface DecodedCbor {
+  msgType: number;
+  body: CCXBody;
+}
+
+function cborMap(value: CborValue | undefined): CborMap {
+  return value !== undefined && isCborMap(value) ? value : {};
+}
+
+function cborNumber(value: CborValue | undefined, fallback = 0): number {
+  return value !== undefined && isNumber(value) ? value : fallback;
+}
+
+function cborOptionalNumber(value: CborValue | undefined): number | undefined {
+  return value !== undefined && isNumber(value) ? value : undefined;
+}
+
+function cborNumberArray(value: CborValue | undefined): number[] {
+  return Array.isArray(value) ? value.filter(isNumber) : [];
+}
 
 /** Decode raw CBOR bytes into message type + body */
-function decodeCbor(raw: Uint8Array): { msgType: number; body: CCXBody } {
-  const decoded = cborDecode(raw);
+function decodeCbor(raw: Uint8Array): DecodedCbor {
+  const decoded: CborValue = cborDecode(raw);
   if (!Array.isArray(decoded) || decoded.length < 1) {
-    throw new Error(
-      `Invalid CCX message: expected CBOR array, got ${typeof decoded}`,
-    );
+    throw new Error("Invalid CCX message: expected CBOR array");
   }
-  const msgType = decoded[0] as number;
-  const body = (decoded[1] ?? {}) as CCXBody;
+  const msgType = cborOptionalNumber(decoded[0]);
+  if (msgType === undefined) {
+    throw new Error("Invalid CCX message: expected numeric message type");
+  }
+  const body = cborMap(decoded[1]);
   return { msgType, body };
 }
 
 /** Parse Level Control (Type 0) */
 function parseLevelControl(body: CCXBody): CCXLevelControl {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const level = (inner[0] ?? 0) as number;
-  const rawColorXy = inner[1] as number[] | undefined;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const level = cborNumber(inner[0]);
+  const rawColorXy = cborNumberArray(inner[1]);
   const colorXy =
-    Array.isArray(rawColorXy) && rawColorXy.length === 2
-      ? (rawColorXy as [number, number])
+    rawColorXy.length === 2
+      ? ([rawColorXy[0], rawColorXy[1]] satisfies [number, number])
       : undefined;
-  const vibrancy = inner[2] as number | undefined;
-  const fade = (inner[3] ?? 1) as number;
-  const delay = (inner[4] ?? 0) as number;
-  const warmDimMode = inner[5] as number | undefined;
-  const cct = inner[6] as number | undefined;
-  const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const vibrancy = cborOptionalNumber(inner[2]);
+  const fade = cborNumber(inner[3], 1);
+  const delay = cborNumber(inner[4]);
+  const warmDimMode = cborOptionalNumber(inner[5]);
+  const cct = cborOptionalNumber(inner[6]);
+  const zone = cborNumberArray(body[BodyKey.ZONE]);
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
 
   // Collect unknown body keys
   const consumedBody = new Set([
@@ -136,12 +164,12 @@ function parseLevelControl(body: CCXBody): CCXLevelControl {
 
 /** Parse Button Press (Type 1) */
 function parseButtonPress(body: CCXBody): CCXButtonPress {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
   const rawDeviceId = inner[0];
   const deviceId =
     rawDeviceId instanceof Uint8Array ? rawDeviceId : new Uint8Array(0);
-  const counters = (inner[1] ?? []) as number[];
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const counters = cborNumberArray(inner[1]);
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
 
   const consumedBody = new Set([BodyKey.COMMAND, BodyKey.SEQUENCE]);
 
@@ -159,13 +187,13 @@ function parseButtonPress(body: CCXBody): CCXButtonPress {
 
 /** Parse ACK (Type 7) */
 function parseAck(body: CCXBody): CCXAck {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const responseInner = (inner[1] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const responseInner = cborMap(inner[1]);
   const rawResponse = responseInner[0];
   const response =
     rawResponse instanceof Uint8Array ? rawResponse : new Uint8Array(0);
   const responseCode = response.length > 0 ? response[0] : 0;
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
 
   const consumedBody = new Set([BodyKey.COMMAND, BodyKey.SEQUENCE]);
 
@@ -173,7 +201,7 @@ function parseAck(body: CCXBody): CCXAck {
     type: "ACK",
     responseCode,
     response,
-    responseLabel: ACK_LABELS[responseCode],
+    responseLabel: ACK_LABELS.get(responseCode),
     sequence,
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
@@ -182,18 +210,17 @@ function parseAck(body: CCXBody): CCXAck {
 
 /** Parse Status (Type 41) */
 function parseStatus(body: CCXBody): CCXStatus {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
   const rawInnerData = inner[2];
   const innerData =
     rawInnerData instanceof Uint8Array ? rawInnerData : new Uint8Array(0);
-  const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
-  const extraMap = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
-  const sceneFamilyId =
-    typeof extraMap[1] === "number" ? (extraMap[1] as number) : undefined;
+  const deviceInfo = cborNumberArray(body[BodyKey.DEVICE]);
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
+  const extraMap = cborMap(body[BodyKey.EXTRA]);
+  const sceneFamilyId = cborOptionalNumber(extraMap[1]);
 
   // Collect extra fields (everything except command, device, sequence)
-  const extra: Record<number, unknown> = {};
+  const extra: CborMap = {};
   for (const [k, v] of Object.entries(body)) {
     const key = Number(k);
     if (
@@ -222,25 +249,25 @@ function parsePresence(body: CCXBody): CCXPresence {
   const consumedBody = new Set([BodyKey.STATUS, BodyKey.SEQUENCE]);
   return {
     type: "PRESENCE",
-    status: (body[BodyKey.STATUS] ?? 0) as number,
-    sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    status: cborNumber(body[BodyKey.STATUS]),
+    sequence: cborNumber(body[BodyKey.SEQUENCE]),
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
   };
 }
 
 /** Extract device ID bytes from inner command map (shared by button/dim types) */
-function extractDeviceId(inner: Record<number, unknown>): Uint8Array {
+function extractDeviceId(inner: CborMap): Uint8Array {
   const raw = inner[0];
   return raw instanceof Uint8Array ? raw : new Uint8Array(0);
 }
 
 /** Parse Dim Hold (Type 2) — start of raise/lower */
 function parseDimHold(body: CCXBody): CCXDimHold {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
   const deviceId = extractDeviceId(inner);
-  const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
-  const action = inner[1] as number | undefined;
+  const zone = cborNumberArray(body[BodyKey.ZONE]);
+  const action = cborOptionalNumber(inner[1]);
 
   const consumedBody = new Set([
     BodyKey.COMMAND,
@@ -257,7 +284,7 @@ function parseDimHold(body: CCXBody): CCXDimHold {
     direction: actionToDirection(action),
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
-    sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    sequence: cborNumber(body[BodyKey.SEQUENCE]),
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
   };
@@ -265,10 +292,10 @@ function parseDimHold(body: CCXBody): CCXDimHold {
 
 /** Parse Dim Step (Type 3) — release/end of raise/lower */
 function parseDimStep(body: CCXBody): CCXDimStep {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
   const deviceId = extractDeviceId(inner);
-  const zone = (body[BodyKey.ZONE] ?? [0, 0]) as number[];
-  const action = inner[1] as number | undefined;
+  const zone = cborNumberArray(body[BodyKey.ZONE]);
+  const action = cborOptionalNumber(inner[1]);
 
   const consumedBody = new Set([
     BodyKey.COMMAND,
@@ -283,10 +310,10 @@ function parseDimStep(body: CCXBody): CCXDimStep {
     cmdType: deviceId.length >= 1 ? deviceId[0] : 0,
     action,
     direction: actionToDirection(action),
-    stepValue: (inner[2] ?? 0) as number,
+    stepValue: cborNumber(inner[2]),
     zoneType: zone[0] ?? 0,
     zoneId: zone[1] ?? 0,
-    sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    sequence: cborNumber(body[BodyKey.SEQUENCE]),
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
   };
@@ -294,10 +321,10 @@ function parseDimStep(body: CCXBody): CCXDimStep {
 
 /** Parse Device Report (Type 27) — broadcast by devices after commands */
 function parseDeviceReport(body: CCXBody): CCXDeviceReport {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
-  const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const deviceInfo = cborNumberArray(body[BodyKey.DEVICE]);
+  const extra = cborMap(body[BodyKey.EXTRA]);
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
 
   // Extract level from inner command map
   // Format A: inner key 1 is a map with key 0 = 8-bit level
@@ -309,16 +336,10 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
   const innerKey1 = inner[1];
   const innerKey3 = inner[3];
 
-  if (
-    innerKey1 !== null &&
-    innerKey1 !== undefined &&
-    typeof innerKey1 === "object" &&
-    !Array.isArray(innerKey1) &&
-    !(innerKey1 instanceof Uint8Array)
-  ) {
+  if (innerKey1 !== null && innerKey1 !== undefined && isCborMap(innerKey1)) {
     // Format A: inner[1] is a map, inner[1][0] is 8-bit level
-    const rawLevel = (innerKey1 as Record<number, unknown>)[0];
-    if (typeof rawLevel === "number") {
+    const rawLevel = innerKey1[0];
+    if (isNumber(rawLevel)) {
       // Scale 8-bit (0-255) to 16-bit (0-0xFEFF)
       level = Math.round((rawLevel / 255) * 0xfeff);
       levelPercent = levelToPercent(level);
@@ -334,7 +355,7 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
       ) {
         level = (entry[1][0] << 8) | entry[1][1];
         levelPercent = levelToPercent(level);
-        if (typeof entry[2] === "number") {
+        if (isNumber(entry[2])) {
           outputType = entry[2];
         }
         break;
@@ -353,7 +374,7 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
     type: "DEVICE_REPORT",
     deviceType: deviceInfo[0] ?? 0,
     deviceSerial: deviceInfo[1] ?? 0,
-    groupId: (extra[1] ?? 0) as number,
+    groupId: cborNumber(extra[1]),
     innerData: inner,
     level,
     levelPercent,
@@ -366,12 +387,12 @@ function parseDeviceReport(body: CCXBody): CCXDeviceReport {
 
 /** Parse Scene Recall (Type 36) */
 function parseSceneRecall(body: CCXBody): CCXSceneRecall {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const targets = (body[BodyKey.ZONE] ?? []) as number[];
-  const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const targets = cborNumberArray(body[BodyKey.ZONE]);
+  const extra = cborMap(body[BodyKey.EXTRA]);
   const recallRaw = inner[0];
   const recallVector = Array.isArray(recallRaw)
-    ? recallRaw.filter((v): v is number => typeof v === "number")
+    ? recallRaw.filter(isNumber)
     : [];
 
   const consumedBody = new Set([
@@ -386,9 +407,9 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
     command: recallRaw,
     recallVector,
     targets,
-    sceneId: (extra[0] ?? 0) as number,
-    params: (extra[2] ?? []) as number[],
-    sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    sceneId: cborNumber(extra[0]),
+    params: cborNumberArray(extra[2]),
+    sequence: cborNumber(body[BodyKey.SEQUENCE]),
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
   };
@@ -396,9 +417,9 @@ function parseSceneRecall(body: CCXBody): CCXSceneRecall {
 
 /** Parse Component Command (Type 40) — shades, fans, etc. */
 function parseComponentCmd(body: CCXBody): CCXComponentCmd {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const targets = (body[BodyKey.ZONE] ?? []) as number[];
-  const extra = (body[BodyKey.EXTRA] ?? {}) as Record<number, unknown>;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const targets = cborNumberArray(body[BodyKey.ZONE]);
+  const extra = cborMap(body[BodyKey.EXTRA]);
 
   const consumedBody = new Set([
     BodyKey.COMMAND,
@@ -411,9 +432,9 @@ function parseComponentCmd(body: CCXBody): CCXComponentCmd {
     type: "COMPONENT_CMD",
     command: inner[0],
     targets,
-    groupId: (extra[0] ?? 0) as number,
-    params: (extra[2] ?? []) as number[],
-    sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+    groupId: cborNumber(extra[0]),
+    params: cborNumberArray(extra[2]),
+    sequence: cborNumber(body[BodyKey.SEQUENCE]),
     rawBody: body,
     unknownKeys: collectUnknown(body, consumedBody),
   };
@@ -421,9 +442,9 @@ function parseComponentCmd(body: CCXBody): CCXComponentCmd {
 
 /** Parse Device State (Type 34) — component/output state notification */
 function parseDeviceState(body: CCXBody): CCXDeviceState {
-  const inner = (body[BodyKey.COMMAND] ?? {}) as Record<number, unknown>;
-  const deviceInfo = (body[BodyKey.DEVICE] ?? [0, 0]) as number[];
-  const sequence = (body[BodyKey.SEQUENCE] ?? 0) as number;
+  const inner = cborMap(body[BodyKey.COMMAND]);
+  const deviceInfo = cborNumberArray(body[BodyKey.DEVICE]);
+  const sequence = cborNumber(body[BodyKey.SEQUENCE]);
 
   const rawData = inner[2];
   const stateData = rawData instanceof Uint8Array ? rawData : undefined;
@@ -438,8 +459,8 @@ function parseDeviceState(body: CCXBody): CCXDeviceState {
     type: "DEVICE_STATE",
     deviceType: deviceInfo[0] ?? 0,
     deviceSerial: deviceInfo[1] ?? 0,
-    stateType: (inner[0] ?? 0) as number,
-    stateValue: (inner[1] ?? 0) as number,
+    stateType: cborNumber(inner[0]),
+    stateValue: cborNumber(inner[1]),
     stateData,
     sequence,
     rawBody: body,
@@ -477,7 +498,7 @@ export function parseMessage(msgType: number, body: CCXBody): CCXMessage {
         type: "UNKNOWN",
         msgType,
         body,
-        sequence: (body[BodyKey.SEQUENCE] ?? 0) as number,
+        sequence: cborNumber(body[BodyKey.SEQUENCE]),
         rawBody: body,
       } satisfies CCXUnknown;
   }
@@ -545,7 +566,7 @@ export function getMessageTypeName(msgType: number): string {
 // ── Raw body formatting (Phase 3B) ─────────────────────────────────
 
 /** Format a value for raw CBOR display */
-function formatRawValue(v: unknown): string {
+function formatRawValue(v: CborValue): string {
   if (v instanceof Uint8Array) {
     return (
       "h'" +
@@ -555,14 +576,14 @@ function formatRawValue(v: unknown): string {
       "'"
     );
   }
-  if (typeof v === "number") {
+  if (isNumber(v)) {
     return v >= 256 ? `0x${v.toString(16).toUpperCase()}` : String(v);
   }
   if (Array.isArray(v)) {
     return `[${v.map(formatRawValue).join(", ")}]`;
   }
-  if (v !== null && v !== undefined && typeof v === "object") {
-    const entries = Object.entries(v as Record<string, unknown>)
+  if (isCborMap(v)) {
+    const entries = Object.entries(v)
       .map(([k, val]) => `${k}: ${formatRawValue(val)}`)
       .join(", ");
     return `{${entries}}`;

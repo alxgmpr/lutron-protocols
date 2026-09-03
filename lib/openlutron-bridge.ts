@@ -46,6 +46,7 @@ import type { BridgeSink, PresetZoneEntry } from "./bridge/types";
 import {
   OPENLUTRON_UDP_PORT,
   OpenlutronStream,
+  type StreamTimerHandle,
   type StreamTimers,
 } from "./openlutron-stream";
 
@@ -64,9 +65,9 @@ const DEFAULT_STATUS_EVERY_MS = 300_000;
 const realTimers: StreamTimers = {
   now: () => Date.now(),
   setInterval: (fn, ms) => setInterval(fn, ms),
-  clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+  clearInterval,
   setTimeout: (fn, ms) => setTimeout(fn, ms),
-  clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  clearTimeout,
 };
 
 export interface OpenlutronBridgeOptions {
@@ -121,7 +122,7 @@ export class OpenlutronBridge {
   private readonly host: string;
   private readonly statusEveryMs: number;
   private readonly timers: StreamTimers;
-  private statusTimer: unknown = null;
+  private statusTimer: StreamTimerHandle | null = null;
   /** Device events published since start — the number an operator asks for. */
   private eventCount = 0;
 

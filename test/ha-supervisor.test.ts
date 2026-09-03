@@ -11,15 +11,19 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { JsonObject, JsonValue } from "../lib/data-values";
 import { discoverMqttService } from "../lib/ha-supervisor";
 
 /** A Supervisor stub that records what was asked of it. */
 function supervisor(
-  response: unknown,
+  response: JsonValue,
   opts: { status?: number; throws?: Error } = {},
 ) {
   const calls: Array<{ url: string; auth: string | undefined }> = [];
-  const fetchImpl = async (url: string, init?: { headers?: any }) => {
+  const fetchImpl = async (
+    url: string,
+    init?: { headers?: Record<string, string> },
+  ) => {
     calls.push({ url, auth: init?.headers?.Authorization });
     if (opts.throws) throw opts.throws;
     return {
@@ -28,10 +32,10 @@ function supervisor(
       json: async () => response,
     };
   };
-  return { calls, fetchImpl: fetchImpl as any };
+  return { calls, fetchImpl };
 }
 
-const OK = (data: Record<string, unknown>) => ({ result: "ok", data });
+const OK = (data: JsonObject) => ({ result: "ok", data });
 
 /** Stands in for the credential Mosquitto generates for add-ons. */
 const GENERATED_CREDENTIAL = "supervisor-generated-value";

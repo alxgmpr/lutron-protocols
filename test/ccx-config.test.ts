@@ -3,11 +3,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { JsonObject } from "../lib/data-values";
 
 // ccx/config.ts memoizes each disk read on first access, so each test builds a
 // temp data dir, sets the env var, then imports a fresh module instance.
 function withIsolatedConfig<T>(
-  files: Record<string, object>,
+  files: JsonObject,
   body: (mod: typeof import("../ccx/config")) => Promise<T> | T,
 ): Promise<T> {
   const dir = mkdtempSync(join(tmpdir(), "ccx-config-test-"));
@@ -25,7 +26,7 @@ function withIsolatedConfig<T>(
  * empty dir; a lazy one reads on first accessor call and sees the populated dir.
  */
 async function importThenRepoint(
-  files: Record<string, object>,
+  files: JsonObject,
 ): Promise<typeof import("../ccx/config")> {
   const emptyDir = mkdtempSync(join(tmpdir(), "ccx-config-empty-"));
   const populatedDir = mkdtempSync(join(tmpdir(), "ccx-config-lazy-"));
@@ -34,6 +35,7 @@ async function importThenRepoint(
   }
   process.env.CCX_DATA_DIR = emptyDir;
   const cacheBuster = `../ccx/config?lazy-${Date.now()}-${Math.random()}`;
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const mod = (await import(cacheBuster)) as typeof import("../ccx/config");
   process.env.CCX_DATA_DIR = populatedDir;
   return mod;

@@ -11,7 +11,8 @@
       "lib/**/*.ts",
       "test/**/*.ts",
       "!**/._*",
-      "!.claude/worktrees"
+      "!.claude/worktrees",
+      "!tools/oxlint/anti-slop"
     ],
     "ignoreUnknown": true
   },

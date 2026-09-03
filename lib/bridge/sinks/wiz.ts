@@ -7,10 +7,12 @@
  */
 
 import { createSocket, type Socket } from "dgram";
+import { isJsonObject, isNumber, type JsonValue } from "../../data-values";
 import {
   type CctPoint,
   cctToRgbwc,
   rgbwcToPilotParams,
+  type WizPilotParams,
   xyToRgbwc,
 } from "../../wiz-color";
 import type { BridgeSink, SinkHost, ZoneChangedEvent } from "../types";
@@ -32,6 +34,14 @@ export interface WizSinkOptions {
 const WIZ_DISCOVERY_PORT = 38899;
 const CCT_FETCH_TIMEOUT_MS = 2000;
 const DEFAULT_CCT = 2700;
+
+function isCctPoint(value: JsonValue): value is CctPoint {
+  return (
+    Array.isArray(value) &&
+    value.length === 6 &&
+    value.every((component) => isNumber(component))
+  );
+}
 
 export class WizSink implements BridgeSink {
   readonly name = "wiz";
@@ -82,7 +92,7 @@ export class WizSink implements BridgeSink {
     if (!this.socket) return;
     const cctTable = this.getCctTable(pairing);
 
-    let params: Record<string, number | boolean>;
+    let params: WizPilotParams;
     let logStr: string;
 
     if (e.level <= 0) {
@@ -158,8 +168,15 @@ export class WizSink implements BridgeSink {
         clearTimeout(timeout);
         this.socket?.removeListener("message", onMsg);
         try {
-          const data = JSON.parse(msg.toString());
-          const pts = data?.result?.cctPoints as CctPoint[] | undefined;
+          const data: JsonValue = JSON.parse(msg.toString());
+          const result =
+            isJsonObject(data) && isJsonObject(data.result)
+              ? data.result
+              : null;
+          const rawPoints = result?.cctPoints;
+          const pts = Array.isArray(rawPoints)
+            ? rawPoints.filter(isCctPoint)
+            : [];
           resolve(pts && pts.length > 0 ? pts : null);
         } catch {
           resolve(null);

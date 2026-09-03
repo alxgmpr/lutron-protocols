@@ -126,6 +126,7 @@ describe("cctToPilotParams", () => {
     assert.equal(params.w, 255);
     assert.equal(params.dimming, 100);
     // Should NOT have temp
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.equal((params as any).temp, undefined);
   });
 });

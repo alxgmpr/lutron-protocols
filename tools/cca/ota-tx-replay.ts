@@ -109,7 +109,7 @@ function loadJsonlPackets(path: string): CapturedPacket[] {
   for (const line of txt.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
-      const obj = JSON.parse(line) as { tMs: number; hex: string };
+      const obj: { tMs: number; hex: string } = JSON.parse(line);
       out.push({ tMs: obj.tMs, hex: obj.hex, bytes: bytesFromHex(obj.hex) });
     } catch {
       /* skip malformed */
@@ -236,7 +236,7 @@ function diff(original: CapturedPacket[], replay: ReplayEntry[]): DiffRow[] {
   }
 
   const out: DiffRow[] = [];
-  const replayUsed = new Array(replay.length).fill(false);
+  const replayUsed = Array<boolean>(replay.length).fill(false);
   const lblCounter = { i: 0 };
 
   for (let i = 0; i < original.length; i++) {

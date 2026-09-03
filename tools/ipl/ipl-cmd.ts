@@ -410,7 +410,7 @@ async function main() {
 
     case "shadeident": {
       const [proc, link, ifAddr, cmdName] = rest;
-      const code =
+      const code: 0 | 1 | 2 =
         cmdName === "next"
           ? 0
           : cmdName === "prev" || cmdName === "previous"
@@ -421,7 +421,7 @@ async function main() {
         parseNum(proc),
         parseNum(link),
         parseNum(ifAddr),
-        code as 0 | 1 | 2,
+        code,
       );
       break;
     }
@@ -567,7 +567,12 @@ async function main() {
       const btnNum = parseNum(btnStr);
       opId = CommandOp.IntegrationCommand;
       if (actStr !== undefined) {
-        const action = parseNum(actStr) as 3 | 4 | 5 | 6;
+        const parsedAction = parseNum(actStr);
+        if (![3, 4, 5, 6].includes(parsedAction)) {
+          throw new Error(`button action must be 3, 4, 5, or 6; got ${actStr}`);
+        }
+        // SAFETY: The membership check above restricts parsedAction to the four protocol values.
+        const action = parsedAction as 3 | 4 | 5 | 6;
         body = bodyDevicePress(devId, btnNum, action);
         txDescription = `IntegrationCommand #DEVICE,${devId},${btnNum},${action}`;
         break;

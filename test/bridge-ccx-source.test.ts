@@ -17,7 +17,7 @@ function makeLevelControlPacket(opts: {
 }): CCXPacket {
   const level = opts.level ?? 50;
   const levelPresent = opts.levelPresent ?? true;
-  const inner: Record<number, unknown> = { 3: opts.fade ?? 1 };
+  const inner = { 3: opts.fade ?? 1 };
   if (levelPresent) inner[0] = Math.round((level * 0xfeff) / 100);
   if (opts.colorXy) inner[1] = opts.colorXy;
   if (opts.warmDimMode != null) inner[5] = opts.warmDimMode;
@@ -180,6 +180,7 @@ function pick<K extends SourceIntent["kind"]>(
 ): Extract<SourceIntent, { kind: K }> {
   const hits = intents.filter((i) => i.kind === kind);
   assert.equal(hits.length, 1, `expected exactly one ${kind} intent`);
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   return hits[0] as Extract<SourceIntent, { kind: K }>;
 }
 
@@ -421,6 +422,7 @@ describe("CcxSource bookkeeping", () => {
 
     source.handlePacket(makeLevelControlPacket({ zoneId: 100 }));
     const unknown = makeLevelControlPacket({ zoneId: 100, sequence: 1 });
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     (unknown.parsed as { type: string }).type = "UNKNOWN";
 
     source.handlePacket(unknown);

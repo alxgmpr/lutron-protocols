@@ -44,8 +44,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { defaultHost } from "../../lib/config";
+import {
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 import { assertVerbAllowed } from "../../lib/echo-guard";
-import { LeapConnection } from "../../lib/leap-client";
+import { LeapConnection, type LeapWireFrame } from "../../lib/leap-client";
 
 const { values } = parseArgs({
   args: process.argv.slice(2),
@@ -103,8 +108,8 @@ export type FrameRecord = {
   matchedRequest: string | null;
   deliveredToOnEvent: boolean;
   communiqueType: string | null;
-  header: Record<string, unknown>;
-  body: unknown;
+  header: JsonObject;
+  body: JsonValue;
 };
 
 /**
@@ -126,10 +131,10 @@ export type FrameRecord = {
  */
 export function attributeResponseFrames(
   frames: FrameRecord[],
-  raws: unknown[],
+  raws: LeapWireFrame[],
   tag: string,
   label: string,
-  terminal: unknown,
+  terminal: LeapWireFrame,
 ): void {
   const terminalIdx = raws.indexOf(terminal);
   if (terminalIdx === -1) return;
@@ -148,7 +153,7 @@ export type SubscriptionRecord = {
   /** The StatusCode as answered, or `(error) …` if no answer arrived at all. */
   status: string;
   communiqueType: string;
-  body: unknown;
+  body: JsonValue;
 };
 
 /** The slice of LeapConnection that subscribePhase actually uses. */
@@ -156,8 +161,8 @@ type TaggedSender = {
   sendTagged(
     communiqueType: string,
     url: string,
-    body?: unknown,
-  ): Promise<{ tag: string; response: any }>;
+    body?: JsonValue,
+  ): Promise<{ tag: string; response: LeapWireFrame }>;
 };
 
 /**
@@ -179,7 +184,7 @@ export async function subscribePhase(
     /** Called immediately before each write, so the caller can mark the socket dirty. */
     beforeSend?: () => void;
     /** Called with the terminal response, so the caller can attribute frames to the tag. */
-    onAnswered?: (tag: string, url: string, response: unknown) => void;
+    onAnswered?: (tag: string, url: string, response: LeapWireFrame) => void;
     log?: (line: string) => void;
   } = {},
 ): Promise<SubscriptionRecord[]> {
@@ -192,16 +197,18 @@ export async function subscribePhase(
     let tag = "";
     let status = "";
     let communiqueType = "";
-    let body: unknown = null;
+    let body = null;
     try {
       const r = await conn.sendTagged("SubscribeRequest", url);
       tag = r.tag;
-      status = r.response?.Header?.StatusCode ?? "(none)";
-      communiqueType = r.response?.CommuniqueType ?? "";
+      const responseStatus = r.response?.Header?.StatusCode;
+      status = isString(responseStatus) ? responseStatus : "(none)";
+      const responseType = r.response?.CommuniqueType;
+      communiqueType = isString(responseType) ? responseType : "";
       body = r.response?.Body ?? null;
       hooks.onAnswered?.(tag, url, r.response);
     } catch (err) {
-      status = `(error) ${(err as Error).message}`;
+      status = `(error) ${err instanceof Error ? err.message : String(err)}`;
     }
 
     subscriptions.push({ url, tag, status, communiqueType, body });
@@ -229,12 +236,12 @@ async function main(): Promise<void> {
   const sent = new Map<string, SentRequest>();
   const frames: FrameRecord[] = [];
   /** Raw frame objects, index-aligned with `frames`, for identity matching. */
-  const raws: unknown[] = [];
+  const raws: LeapWireFrame[] = [];
   let t0 = 0;
   /** False until the first byte this tool writes. */
   let hasWritten = false;
   let lastRecord: FrameRecord | null = null;
-  let lastRaw: unknown = null;
+  let lastRaw: LeapWireFrame | null = null;
 
   const now = () => Date.now() - t0;
 
@@ -280,7 +287,7 @@ async function main(): Promise<void> {
   const attributeResponse = (
     tag: string,
     label: string,
-    terminal: unknown,
+    terminal: LeapWireFrame,
   ): void => attributeResponseFrames(frames, raws, tag, label, terminal);
 
   const connectStartedAt = new Date().toISOString();
@@ -351,7 +358,7 @@ async function main(): Promise<void> {
       const sentAtMs = now();
       let status = "";
       let communiqueType = "";
-      let body: unknown = null;
+      let body = null;
       let tag = "";
       try {
         const r = await conn.sendTagged("ReadRequest", url);
@@ -370,7 +377,7 @@ async function main(): Promise<void> {
         // its classification now.
         attributeResponse(tag, `ReadRequest ${url}`, r.response);
       } catch (err) {
-        status = `(error) ${(err as Error).message}`;
+        status = `(error) ${err instanceof Error ? err.message : String(err)}`;
       }
       reads.push({ url, tag, status, communiqueType, body });
       console.log(`read ${url} -> ${status}`);

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { isString } from "../lib/data-values";
 import { LEAP_REGISTRY, walkEndpoints } from "../lib/leap-client";
 import { MockLeap } from "./fixtures/mock-leap";
 
@@ -12,6 +13,7 @@ test("walkEndpoints fetches top-level collection", async () => {
     { path: "/server", key: "server", core: true, itemsField: "Servers" },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -33,6 +35,7 @@ test("walkEndpoints skips non-core endpoints when full=false", async () => {
     { path: "/system", key: "system", itemsField: null },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: false,
     log: () => {},
@@ -51,6 +54,7 @@ test("walkEndpoints handles singleton endpoints (itemsField=null)", async () => 
     { path: "/system", key: "system", core: true, itemsField: null },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -71,6 +75,7 @@ test("walkEndpoints silently skips null responses", async () => {
     },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -107,6 +112,7 @@ test("walkEndpoints fetches children per item", async () => {
     },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -139,6 +145,7 @@ test("walkEndpoints fetches perItem sub-resources", async () => {
     },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -171,6 +178,7 @@ test("walkEndpoints handles children returning null gracefully", async () => {
     },
   ];
 
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
   const result = await walkEndpoints(mock as any, registry, {
     full: true,
     log: () => {},
@@ -188,16 +196,10 @@ test("LEAP_REGISTRY is a non-empty array with required fields", () => {
   );
 
   for (const entry of LEAP_REGISTRY) {
+    assert.ok(isString(entry.path), `Missing path: ${JSON.stringify(entry)}`);
+    assert.ok(isString(entry.key), `Missing key: ${JSON.stringify(entry)}`);
     assert.ok(
-      typeof entry.path === "string",
-      `Missing path: ${JSON.stringify(entry)}`,
-    );
-    assert.ok(
-      typeof entry.key === "string",
-      `Missing key: ${JSON.stringify(entry)}`,
-    );
-    assert.ok(
-      entry.itemsField === null || typeof entry.itemsField === "string",
+      entry.itemsField === null || isString(entry.itemsField),
       `Invalid itemsField: ${JSON.stringify(entry)}`,
     );
   }

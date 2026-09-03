@@ -420,6 +420,7 @@ export const CCX: CCXProtocolDef = {
 // ============================================================================
 
 /** Known CCX message type IDs */
+// SAFETY: fromEntries preserves the declared message-type keys and their literal numeric ids.
 export const CCXMessageType = Object.fromEntries(
   Object.entries(CCX.messageTypes).map(([k, v]) => [k, v.id]),
 ) as {
@@ -445,6 +446,7 @@ export const CCXMessageTypeName: Record<number, string> = Object.fromEntries(
 );
 
 /** Top-level body map keys */
+// SAFETY: fromEntries preserves the declared body-key names and their literal numeric keys.
 export const BodyKey = Object.fromEntries(
   Object.entries(CCX.bodyKeys).map(([k, v]) => [k, v.key]),
 ) as {

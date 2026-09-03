@@ -10,6 +10,7 @@
 import { writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import type { StringLookup } from "../lib/data-values";
 import { CCA } from "../protocol/cca.protocol";
 import { CCX } from "../protocol/ccx.protocol";
 import type { ConstantGroup, PacketTypeDef } from "../protocol/dsl";
@@ -35,7 +36,7 @@ function cType(group: ConstantGroup): string {
 // ============================================================================
 
 /** C constant name mapping: TS packet name → C name */
-const CCA_NAME_MAP: Record<string, string> = {
+const CCA_NAME_MAP: StringLookup<string> = {
   BTN_SHORT_A: "PKT_BTN_SHORT_A",
   BTN_LONG_A: "PKT_BTN_LONG_A",
   BTN_SHORT_B: "PKT_BTN_SHORT_B",

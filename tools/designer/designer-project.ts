@@ -38,6 +38,7 @@ import {
 import { tmpdir } from "os";
 import { basename, dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { isNumber, type NumberLookup } from "../../lib/data-values";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dir, "..");
@@ -243,11 +244,13 @@ function ensureContainer(): void {
 
 // ── Project file handling ───────────────────────────────────────────
 
-function extractBak(projectFile: string): {
+interface ExtractedProject {
   bakPath: string;
   lutFilename: string;
   tempDir: string;
-} {
+}
+
+function extractBak(projectFile: string): ExtractedProject {
   const absPath = projectFile.startsWith("/")
     ? projectFile
     : join(process.cwd(), projectFile);
@@ -790,10 +793,12 @@ function cmdRunSql(filePath: string): void {
 
 // Known CCA dimmer models. ModelInfoID comes from Designer's SQLMODELINFO DB.
 // BallastInfoModelInfoID is the fixture lighting reference for that model class.
-const CCA_DIMMER_MODELS: Record<
-  number,
-  { name: string; ballastInfoId: number }
-> = {
+interface CcaDimmerModel {
+  name: string;
+  ballastInfoId: number;
+}
+
+const CCA_DIMMER_MODELS: NumberLookup<CcaDimmerModel> = {
   730: { name: "HQR-3LD", ballastInfoId: 3345 },
   729: { name: "HQR-6LD", ballastInfoId: 3345 },
   1300: { name: "RRD-6NA", ballastInfoId: 3345 },
@@ -803,7 +808,7 @@ const CCA_DIMMER_MODELS: Record<
 
 function sqlVal(v: string | number | null): string {
   if (v === null) return "NULL";
-  if (typeof v === "number") return String(v);
+  if (isNumber(v)) return String(v);
   return `N'${v.replace(/'/g, "''")}'`;
 }
 
@@ -813,7 +818,12 @@ function generateXid(): string {
   return bytes.toString("base64url");
 }
 
-function allocateIds(count: number): { firstId: number; nextId: number } {
+interface AllocatedIds {
+  firstId: number;
+  nextId: number;
+}
+
+function allocateIds(count: number): AllocatedIds {
   const result = sqlcmd(
     `SET NOCOUNT ON; SELECT NextObjectID FROM tblNextObjectID`,
   );
@@ -824,7 +834,12 @@ function allocateIds(count: number): { firstId: number; nextId: number } {
   return { firstId, nextId };
 }
 
-function findCcaLink(): { linkId: number; linkInfoId: number } {
+interface CcaLinkIds {
+  linkId: number;
+  linkInfoId: number;
+}
+
+function findCcaLink(): CcaLinkIds {
   // CCA link has LinkInfoID = 11
   const result = sqlcmd(
     `SET NOCOUNT ON; SELECT LinkID, LinkInfoID FROM tblLink WHERE LinkInfoID = 11`,
@@ -895,7 +910,12 @@ function getSceneAssignmentCount(sceneId: number): number {
   return parseInt(result.trim(), 10);
 }
 
-function resolveArea(nameOrId: string): { areaId: number; areaName: string } {
+interface ResolvedArea {
+  areaId: number;
+  areaName: string;
+}
+
+function resolveArea(nameOrId: string): ResolvedArea {
   // Try as numeric ID first
   const asNum = parseInt(nameOrId, 10);
   if (!Number.isNaN(asNum)) {

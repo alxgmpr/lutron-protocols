@@ -34,6 +34,8 @@ import {
 import { Level } from "../ccx/constants";
 import { decodeBytes } from "../ccx/decoder";
 import type { CCXMessage } from "../ccx/types";
+import { isBigInt, isNumber, type StringLookup } from "../lib/data-values";
+import type { LeapDumpData } from "../lib/leap-client";
 import {
   OPENLUTRON_UDP_PORT,
   OpenlutronStream,
@@ -525,7 +527,7 @@ function displayCcaPacket(
   const ts = new Date().toISOString().slice(11, 23);
 
   // Category color for type name
-  const catColor: Record<string, string> = {
+  const catColor: StringLookup<string> = {
     BUTTON: GREEN,
     STATE: BLUE,
     BEACON: YELLOW,
@@ -602,11 +604,15 @@ function displayCcaPacket(
     fieldValues.delete(fieldName);
     return true;
   };
-  takeDevice("device_id") ||
-    takeDevice("source_id") ||
-    takeDevice("load_id") ||
-    takeDevice("hardware_id") ||
-    takeDevice("target_id");
+  for (const fieldName of [
+    "device_id",
+    "source_id",
+    "load_id",
+    "hardware_id",
+    "target_id",
+  ]) {
+    if (takeDevice(fieldName)) break;
+  }
   // Fallback to raw bytes 2-5 only if packet doesn't have QS address fields
   const hasQsAddress = identified.fields.some((f) => f.name === "subnet");
   if (!deviceText && !hasQsAddress && fallbackDeviceId) {
@@ -816,10 +822,12 @@ function displayCcaPacket(
   }
 }
 
-function formatCcxMessage(msg: CCXMessage): {
+interface FormattedCcxMessage {
   typeName: string;
   parts: string[];
-} {
+}
+
+function formatCcxMessage(msg: CCXMessage): FormattedCcxMessage {
   const parts: string[] = [];
 
   switch (msg.type) {
@@ -1001,22 +1009,19 @@ function displayCcxPacket(
   // mirroring the firmware peer table, then label the source.
   if (msg) {
     ccxSource.observe(frame.srcAddr, {
-      serial:
-        "deviceSerial" in msg
-          ? (msg as { deviceSerial: number }).deviceSerial
-          : undefined,
+      serial: "deviceSerial" in msg ? msg.deviceSerial : undefined,
       deviceId:
-        "deviceId" in msg ? (msg as { deviceId: number }).deviceId : undefined,
+        "deviceId" in msg && isNumber(msg.deviceId) ? msg.deviceId : undefined,
     });
   }
   const src = ccxSource.label(frame);
 
   if (msg) {
     const { typeName, parts } = formatCcxMessage(msg);
-    const seq = "sequence" in msg ? (msg as { sequence: number }).sequence : 0;
+    const seq = msg.sequence;
 
     // Category color
-    const catColor: Record<string, string> = {
+    const catColor: StringLookup<string> = {
       LEVEL_CONTROL: BLUE,
       BUTTON_PRESS: GREEN,
       DIM_HOLD: GREEN,
@@ -1037,11 +1042,11 @@ function displayCcxPacket(
     let deviceText = "";
     if (src.name) {
       deviceText = src.name;
-    } else if ("deviceId" in msg) {
-      const devId = (msg as { deviceId: number }).deviceId;
+    } else if ("deviceId" in msg && isNumber(msg.deviceId)) {
+      const devId = msg.deviceId;
       deviceText = devId.toString(16).toUpperCase().padStart(8, "0");
     } else if ("deviceSerial" in msg) {
-      const serial = (msg as { deviceSerial: number }).deviceSerial;
+      const serial = msg.deviceSerial;
       deviceText = serial.toString(16).toUpperCase().padStart(8, "0");
     } else {
       deviceText = src.text;
@@ -1050,8 +1055,8 @@ function displayCcxPacket(
     // Zone from CCX message
     let zoneText = "";
     let zoneColor = WHITE;
-    if ("zoneId" in msg && (msg as { zoneId: number }).zoneId) {
-      const zId = (msg as { zoneId: number }).zoneId;
+    if ("zoneId" in msg && msg.zoneId) {
+      const zId = msg.zoneId;
       const zoneName = getZoneName(zId);
       zoneText = zoneName ?? `z${zId}`;
       zoneColor = CYAN;
@@ -1413,7 +1418,7 @@ function tryDecodeCbor(hex: string): string | null {
     return JSON.stringify(
       val,
       (_, v) => {
-        if (typeof v === "bigint") return "0x" + v.toString(16);
+        if (isBigInt(v)) return "0x" + v.toString(16);
         if (Buffer.isBuffer(v)) return "h'" + v.toString("hex") + "'";
         return v;
       },
@@ -1794,11 +1799,16 @@ function loadSavedLeapData(): boolean {
   if (files.length === 0) return false;
 
   // Merge all LEAP dump files into one combined dataset
-  const merged = {
-    zones: {} as Record<string, any>,
-    devices: {} as Record<string, any>,
-    serials: {} as Record<string, any>,
-    presets: {} as Record<string, any>,
+  const merged: LeapDumpData = {
+    timestamp: "",
+    host: "",
+    leapVersion: "",
+    productType: "",
+    link: {},
+    zones: {},
+    devices: {},
+    serials: {},
+    presets: {},
   };
 
   for (const file of files) {
@@ -1816,7 +1826,7 @@ function loadSavedLeapData(): boolean {
   const nSerials = Object.keys(merged.serials).length;
   if (nSerials === 0) return false;
 
-  setLeapData(merged as any);
+  setLeapData(merged);
   return true;
 }
 

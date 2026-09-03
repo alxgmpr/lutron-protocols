@@ -43,6 +43,16 @@ import {
   getMessageTypeName,
 } from "../../ccx/decoder";
 import type { CCXPacket } from "../../ccx/types";
+import {
+  type CborValue,
+  isBigInt,
+  isCborMap,
+  isJsonObject,
+  isNumber,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 import { formatAddr, parseFrame } from "../../lib/ieee802154";
 import { decryptMacFrame, deriveThreadKeys } from "../../lib/thread-crypto";
 
@@ -219,22 +229,30 @@ function buildTsharkArgs(): string[] {
 
 const cborDecoder = new Decoder({ mapsAsObjects: false });
 
-function normalizeCbor(x: unknown): unknown {
+function normalizeCbor(x: CborValue): JsonValue {
   if (x instanceof Map) {
-    const out: Record<string, unknown> = {};
+    const out: JsonObject = {};
     for (const [k, v] of x.entries()) out[String(k)] = normalizeCbor(v);
     return out;
   }
   if (Array.isArray(x)) return x.map(normalizeCbor);
   if (x instanceof Uint8Array) return Buffer.from(x).toString("hex");
+  if (isCborMap(x)) {
+    const out: JsonObject = {};
+    for (const [key, value] of Object.entries(x))
+      out[key] = normalizeCbor(value);
+    return out;
+  }
+  if (isBigInt(x)) return x.toString();
   return x;
 }
 
-function decodeCoapCbor(hex: string): unknown | null {
+function decodeCoapCbor(hex: string): JsonValue {
   const clean = hex.replace(/[:\s]/g, "");
   if (!clean) return null;
   try {
-    return normalizeCbor(cborDecoder.decode(Buffer.from(clean, "hex")));
+    const decoded: CborValue = cborDecoder.decode(Buffer.from(clean, "hex"));
+    return normalizeCbor(decoded);
   } catch {
     return null;
   }
@@ -257,7 +275,7 @@ function pctStr(v: number): string {
 function annotateCoapPayload(
   path: string,
   code: number,
-  decoded: unknown,
+  decoded: JsonValue,
   dst: string,
 ): string {
   const devName = getDeviceName(dst);
@@ -269,30 +287,23 @@ function annotateCoapPayload(
   }
 
   // Preset: /cg/db/pr/c/AAI POST
-  if (
-    path === "/cg/db/pr/c/AAI" &&
-    code === 2 &&
-    decoded &&
-    typeof decoded === "object"
-  ) {
-    const m = decoded as Record<string, unknown>;
-    for (const [keyHex, value] of Object.entries(m)) {
-      if (typeof keyHex !== "string" || keyHex.length < 8) continue;
+  if (path === "/cg/db/pr/c/AAI" && code === 2 && isJsonObject(decoded)) {
+    for (const [keyHex, value] of Object.entries(decoded)) {
+      if (keyHex.length < 8) continue;
       const presetId = parseInt(keyHex.slice(0, 4), 16);
       if (!Array.isArray(value) || value[0] !== 72) continue;
-      const body = value[1] as Record<string, unknown> | undefined;
-      const level16 = typeof body?.["0"] === "number" ? body["0"] : undefined;
-      const fadeQs = typeof body?.["3"] === "number" ? body["3"] : undefined;
-      const info = getPresetInfo(presetId) ?? getSceneName(presetId);
-      const name =
-        typeof info === "object"
-          ? `"${info.name}"`
-          : typeof info === "string"
-            ? `"${info}"`
-            : `preset=${presetId}`;
-      const lvl = level16 !== undefined ? ` ${pctStr(level16 as number)}` : "";
-      const fade =
-        fadeQs !== undefined ? ` fade=${(fadeQs as number) / 4}s` : "";
+      const body = isJsonObject(value[1]) ? value[1] : null;
+      const level16 = body && isNumber(body["0"]) ? body["0"] : undefined;
+      const fadeQs = body && isNumber(body["3"]) ? body["3"] : undefined;
+      const presetInfo = getPresetInfo(presetId);
+      const sceneName = getSceneName(presetId);
+      const name = presetInfo
+        ? `"${presetInfo.name}"`
+        : sceneName
+          ? `"${sceneName}"`
+          : `preset=${presetId}`;
+      const lvl = level16 !== undefined ? ` ${pctStr(level16)}` : "";
+      const fade = fadeQs !== undefined ? ` fade=${fadeQs / 4}s` : "";
       return `PRESET ${name}${lvl}${fade}${target}`;
     }
   }
@@ -300,7 +311,7 @@ function annotateCoapPayload(
   // Zone membership: /cg/db/mc/c/AAI POST
   if (path === "/cg/db/mc/c/AAI" && code === 2 && Array.isArray(decoded)) {
     for (const item of decoded) {
-      if (typeof item !== "string" || item.length < 10) continue;
+      if (!isString(item) || item.length < 10) continue;
       const zoneId = parseInt(item.slice(4, 8), 16);
       const zoneName = getZoneName(zoneId);
       return `ZONE_MAP zone=${zoneId}${zoneName ? ` "${zoneName}"` : ""}${target}`;
@@ -316,14 +327,14 @@ function annotateCoapPayload(
   ) {
     const bucket = path.slice("/cg/db/ct/c/".length);
     const op = decoded[0];
-    const body = decoded[1] as Record<string, unknown> | undefined;
-    if (typeof op === "number" && body) {
+    const body = isJsonObject(decoded[1]) ? decoded[1] : null;
+    if (isNumber(op) && body) {
       if (bucket === "AAI" && op === 3) {
-        const hi = typeof body["2"] === "number" ? body["2"] : null;
-        const lo = typeof body["3"] === "number" ? body["3"] : null;
+        const hi = isNumber(body["2"]) ? body["2"] : null;
+        const lo = isNumber(body["3"]) ? body["3"] : null;
         const parts: string[] = [];
-        if (hi != null) parts.push(`high=${pctStr(hi as number)}`);
-        if (lo != null) parts.push(`low=${pctStr(lo as number)}`);
+        if (hi != null) parts.push(`high=${pctStr(hi)}`);
+        if (lo != null) parts.push(`low=${pctStr(lo)}`);
         return `TRIM ${parts.join(", ")}${target}`;
       }
       if (bucket === "AHA" && op === 108) {
@@ -450,12 +461,12 @@ function processLine(line: string): CCXPacket | null {
       payloadHex,
     });
     // Attach ns-precision hardware timestamp from pcap for downstream consumers
-    (pkt as any).epoch_ns = epochStrToNs(epochStr);
+    pkt.epoch_ns = epochStrToNs(epochStr);
     return pkt;
   } catch (err) {
     if (!jsonOutput) {
       console.error(
-        `  [decode error] ${(err as Error).message}: ${payloadHex}`,
+        `  [decode error] ${err instanceof Error ? err.message : String(err)}: ${payloadHex}`,
       );
     }
     return null;
@@ -478,7 +489,7 @@ function formatPacket(pkt: CCXPacket): string {
       pkt.parsed.unknownKeys &&
       Object.keys(pkt.parsed.unknownKeys).length > 0
     ) {
-      line += `\n${"".padEnd(13)}UNKNOWN: ${formatRawBody(pkt.parsed.unknownKeys as Record<number, unknown>)}`;
+      line += `\n${"".padEnd(13)}UNKNOWN: ${formatRawBody(pkt.parsed.unknownKeys)}`;
     }
   }
 
@@ -792,7 +803,7 @@ async function main() {
   });
 
   tshark.on("error", (err) => {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
       console.error("Error: tshark not found. Install Wireshark CLI tools.");
       console.error(
         "  macOS: brew install wireshark (or install Wireshark.app)",

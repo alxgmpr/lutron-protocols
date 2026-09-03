@@ -38,6 +38,7 @@ describe("checkEcho", () => {
   test("a changed scalar is movement", () => {
     const v = checkEcho({ Level: 100 }, { Level: 50 });
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /Level/);
   });
 
@@ -84,6 +85,7 @@ describe("checkEcho", () => {
       { Zone: { Status: { Level: 100 } } },
       { Zone: { Status: { Level: 0 } } },
     );
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /Zone\.Status\.Level/);
   });
 });
@@ -100,32 +102,36 @@ describe("checkEcho — adversarial cases", () => {
     const after = { a: { b: { c: { d: { e: 2 } } } } };
     const v = checkEcho(before, after);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /a\.b\.c\.d\.e/);
   });
 
   test("detects a difference inside an array of objects", () => {
     const v = checkEcho([{ id: 1, level: 10 }], [{ id: 1, level: 20 }]);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /\[0\]\.level/);
   });
 
   test("a circular reference reports movement instead of throwing", () => {
-    const a: Record<string, unknown> = { x: 1 };
+    const a: JsonValue = { x: 1 };
     a.self = a;
-    const b: Record<string, unknown> = { x: 2 };
+    const b: JsonValue = { x: 2 };
     b.self = b;
 
-    const v = checkEcho(a as unknown as JsonValue, b as unknown as JsonValue);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
+    const v = checkEcho(a, b);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /circular/i);
   });
 
   test("a non-plain-object input (Date) is reported as movement, not silently accepted", () => {
-    const v = checkEcho(
-      new Date(2020, 1, 1) as unknown as JsonValue,
-      new Date(2021, 1, 1) as unknown as JsonValue,
-    );
+    const first: JsonValue = Object.setPrototypeOf({}, Date.prototype);
+    const second: JsonValue = Object.setPrototypeOf({}, Date.prototype);
+    const v = checkEcho(first, second);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /Date/);
   });
 
@@ -136,7 +142,9 @@ describe("checkEcho — adversarial cases", () => {
     assert.equal(dotKey.moved, true);
     assert.equal(nested.moved, true);
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const dotReason = (dotKey as { reason: string }).reason;
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const nestedReason = (nested as { reason: string }).reason;
 
     assert.match(dotReason, /\["a\.b"\]/);
@@ -155,6 +163,7 @@ describe("checkEcho — adversarial cases", () => {
 
     const v = checkEcho(a, b);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /hidden/);
   });
 
@@ -171,6 +180,7 @@ describe("checkEcho — adversarial cases", () => {
 
     const v = checkEcho(a, b);
     assert.equal(v.moved, true);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     assert.match((v as { reason: string }).reason, /hidden/);
   });
 });

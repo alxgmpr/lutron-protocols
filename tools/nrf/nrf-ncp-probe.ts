@@ -66,10 +66,12 @@ export function encodePackedUint(value: number): Buffer {
  * Decode a Spinel packed-uint starting at `offset` in `buf`. Returns both the
  * decoded value and how many bytes were consumed so the caller can advance.
  */
-export function decodePackedUint(
-  buf: Buffer,
-  offset: number,
-): { value: number; bytes: number } {
+export interface PackedUint {
+  value: number;
+  bytes: number;
+}
+
+export function decodePackedUint(buf: Buffer, offset: number): PackedUint {
   let value = 0;
   let shift = 0;
   let i = 0;
@@ -340,7 +342,7 @@ async function sendSpinelAndCollect(
         );
         setTimeout(() => done(), windowMs);
       } catch (err) {
-        done(err as Error);
+        done(err instanceof Error ? err : new Error(String(err)));
       }
     });
   });
@@ -574,7 +576,7 @@ const isMain =
   process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });
 }

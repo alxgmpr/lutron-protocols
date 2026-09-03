@@ -117,11 +117,10 @@ export function getPacketLayout(
   termWidth?: number,
   showVerbose?: boolean,
 ): PacketLayout {
+  const terminalColumns = process.stdout.columns;
   const width =
     termWidth ??
-    (typeof process.stdout.columns === "number" && process.stdout.columns > 0
-      ? process.stdout.columns
-      : 120);
+    (terminalColumns && terminalColumns > 0 ? terminalColumns : 120);
 
   const layout: PacketLayout = {
     showRaw,

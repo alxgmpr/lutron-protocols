@@ -14,6 +14,12 @@
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import {
+  type CborMap,
+  type CborValue,
+  isCborMap,
+  isNumber,
+} from "../lib/data-values";
 import { percentToLevel16 } from "../protocol/shared";
 import { BodyKey, CCXMessageType, Level } from "./constants";
 
@@ -38,8 +44,8 @@ function encodeHeader(major: number, value: number): number[] {
 }
 
 /** Encode a single CBOR value (unsigned int, array, or integer-keyed map) */
-function encodeValue(val: unknown): number[] {
-  if (typeof val === "number") {
+function encodeValue(val: CborValue): number[] {
+  if (isNumber(val)) {
     return encodeHeader(0, val); // Major 0: unsigned integer
   }
   if (Array.isArray(val)) {
@@ -47,8 +53,8 @@ function encodeValue(val: unknown): number[] {
     for (const item of val) bytes.push(...encodeValue(item));
     return bytes;
   }
-  if (typeof val === "object" && val !== null) {
-    const entries = Object.entries(val as Record<string, unknown>);
+  if (isCborMap(val)) {
+    const entries = Object.entries(val);
     const bytes = encodeHeader(5, entries.length); // Major 5: map
     for (const [k, v] of entries) {
       bytes.push(...encodeHeader(0, Number(k))); // Integer key
@@ -56,14 +62,11 @@ function encodeValue(val: unknown): number[] {
     }
     return bytes;
   }
-  throw new Error(`Unsupported CBOR value type: ${typeof val}`);
+  throw new Error("Unsupported CBOR value");
 }
 
 /** Encode a full CCX message: CBOR array [msgType, body] */
-export function encodeMessage(
-  msgType: number,
-  body: Record<number, unknown>,
-): Buffer {
+export function encodeMessage(msgType: number, body: CborMap): Buffer {
   const bytes = encodeValue([msgType, body]);
   return Buffer.from(bytes);
 }
@@ -94,15 +97,15 @@ export function encodeLevelControl(opts: LevelControlOpts): Buffer {
     warmDimMode,
   } = opts;
   // Structure: [0, { 0: {0: level, 3: fade, 4?: delay, 5?: warmDimMode, 6?: cct}, 1: [16, zoneId], 5: seq }]
-  const cmd: Record<number, unknown> = { 0: level, 3: fade };
-  if (delay !== undefined) cmd[4] = delay;
-  if (warmDimMode !== undefined) cmd[5] = warmDimMode;
-  if (cct !== undefined) cmd[6] = cct;
-  const body: Record<number, unknown> = {
+  const cmd = { 0: level, 3: fade } satisfies CborMap;
+  if (delay !== undefined) Object.assign(cmd, { 4: delay });
+  if (warmDimMode !== undefined) Object.assign(cmd, { 5: warmDimMode });
+  if (cct !== undefined) Object.assign(cmd, { 6: cct });
+  const body = {
     [BodyKey.COMMAND]: cmd,
     [BodyKey.ZONE]: [zoneType, zoneId],
     [BodyKey.SEQUENCE]: sequence,
-  };
+  } satisfies CborMap;
   return encodeMessage(CCXMessageType.LEVEL_CONTROL, body);
 }
 
@@ -147,12 +150,12 @@ export interface SceneRecallOpts {
 export function encodeSceneRecall(opts: SceneRecallOpts): Buffer {
   const { sceneId, sequence } = opts;
   // Structure: [36, { 0: {0: [4]}, 1: [0], 3: {0: sceneId}, 5: seq }]
-  const body: Record<number, unknown> = {
+  const body = {
     [BodyKey.COMMAND]: { 0: [4] },
     [BodyKey.ZONE]: [0],
     [BodyKey.EXTRA]: { 0: sceneId },
     [BodyKey.SEQUENCE]: sequence,
-  };
+  } satisfies CborMap;
   return encodeMessage(CCXMessageType.SCENE_RECALL, body);
 }
 

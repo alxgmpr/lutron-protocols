@@ -21,7 +21,7 @@ function makeLevelControlPacket(opts: {
   sequence?: number;
 }): CCXPacket {
   const level = opts.level ?? 50;
-  const inner: Record<number, unknown> = {
+  const inner = {
     0: Math.round((level * 0xfeff) / 100),
     3: opts.fade ?? 1,
   };
@@ -35,6 +35,7 @@ function makeLevelControlPacket(opts: {
     body: { 0: inner, 1: [16, opts.zoneId], 5: opts.sequence ?? 0 },
     parsed: {
       type: "LEVEL_CONTROL",
+      // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
       level: inner[0] as number,
       levelPercent: level,
       zoneType: 16,
@@ -53,6 +54,7 @@ async function makeBridge(pairings: Array<{ zoneId: number; name?: string }>) {
   const built = pairings.map((p) => ({
     name: p.name ?? `Zone ${p.zoneId}`,
     zoneId: p.zoneId,
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     wizIps: [] as string[],
     wizPort: 38899,
   }));

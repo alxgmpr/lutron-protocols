@@ -16,7 +16,7 @@ function makeLevelControlPacket(opts: {
 }): CCXPacket {
   const level = opts.level ?? 50;
   const levelPresent = opts.levelPresent ?? true;
-  const inner: Record<number, unknown> = { 3: opts.fade ?? 1 };
+  const inner = { 3: opts.fade ?? 1 };
   if (levelPresent) inner[0] = Math.round((level * 0xfeff) / 100);
   if (opts.colorXy) inner[1] = opts.colorXy;
   if (opts.warmDimMode != null) inner[5] = opts.warmDimMode;
@@ -154,6 +154,7 @@ async function createTestBridge(opts?: {
   const pairings = (opts?.pairings ?? []).map((p) => ({
     name: p.name ?? `Zone ${p.zoneId}`,
     zoneId: p.zoneId,
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     wizIps: [] as string[], // no real sends
     wizPort: 38899,
   }));

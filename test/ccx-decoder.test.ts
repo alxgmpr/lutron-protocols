@@ -82,6 +82,7 @@ const CORPUS_BODY_KEYS = new Set<number>([
 
 describe("decodeAndParse — LEVEL_CONTROL", () => {
   test("basic ON (full_on, fade=1)", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_LEVEL_FULL_ON) as CCXLevelControl;
     assert.equal(msg.type, "LEVEL_CONTROL");
     assert.equal(msg.level, 0xfeff);
@@ -98,6 +99,7 @@ describe("decodeAndParse — LEVEL_CONTROL", () => {
   });
 
   test("with CCT", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_LEVEL_CCT) as CCXLevelControl;
     assert.equal(msg.cct, 3000);
     assert.equal(msg.fade, 8);
@@ -106,6 +108,7 @@ describe("decodeAndParse — LEVEL_CONTROL", () => {
   });
 
   test("with warm-dim and color_xy", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_LEVEL_WARMDIM_XY) as CCXLevelControl;
     assert.equal(msg.level, 0x8000);
     assert.equal(msg.warmDimMode, 5);
@@ -117,6 +120,7 @@ describe("decodeAndParse — LEVEL_CONTROL", () => {
 
 describe("decodeAndParse — BUTTON_PRESS", () => {
   test("decodes device_id, button zone, counters", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_BUTTON_PRESS) as CCXButtonPress;
     assert.equal(msg.type, "BUTTON_PRESS");
     assert.deepEqual(Array.from(msg.deviceId), [0x12, 0x34, 0xef, 0x20]);
@@ -130,6 +134,7 @@ describe("decodeAndParse — BUTTON_PRESS", () => {
 
 describe("decodeAndParse — DIM_HOLD", () => {
   test("RAISE action=3, zone 961", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_DIM_HOLD) as CCXDimHold;
     assert.equal(msg.type, "DIM_HOLD");
     assert.equal(msg.action, 3);
@@ -141,6 +146,7 @@ describe("decodeAndParse — DIM_HOLD", () => {
 
 describe("decodeAndParse — DIM_STEP", () => {
   test("LOWER action=2, stepValue=200", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_DIM_STEP) as CCXDimStep;
     assert.equal(msg.type, "DIM_STEP");
     assert.equal(msg.action, 2);
@@ -153,6 +159,7 @@ describe("decodeAndParse — DIM_STEP", () => {
 
 describe("decodeAndParse — ACK", () => {
   test("LEVEL_ACK (0x50)", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_ACK_LEVEL) as CCXAck;
     assert.equal(msg.type, "ACK");
     assert.equal(msg.responseCode, 0x50);
@@ -161,6 +168,7 @@ describe("decodeAndParse — ACK", () => {
   });
 
   test("BUTTON_ACK (0x55)", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_ACK_BUTTON) as CCXAck;
     assert.equal(msg.responseCode, 0x55);
     assert.equal(msg.responseLabel, "BUTTON_ACK");
@@ -170,6 +178,7 @@ describe("decodeAndParse — ACK", () => {
 
 describe("decodeAndParse — DEVICE_REPORT", () => {
   test("Format B tuple level (16-bit BE)", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_DEVICE_REPORT_B) as CCXDeviceReport;
     assert.equal(msg.type, "DEVICE_REPORT");
     assert.equal(msg.deviceSerial, 12345);
@@ -181,6 +190,7 @@ describe("decodeAndParse — DEVICE_REPORT", () => {
   });
 
   test("Format A map level (8-bit scaled to 16-bit)", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_DEVICE_REPORT_A) as CCXDeviceReport;
     assert.equal(msg.deviceSerial, 999);
     assert.equal(msg.level, 0xfeff); // 255 → 0xFEFF scaled
@@ -192,6 +202,7 @@ describe("decodeAndParse — DEVICE_REPORT", () => {
 
 describe("decodeAndParse — DEVICE_STATE", () => {
   test("state_type/state_value/state_data", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_DEVICE_STATE) as CCXDeviceState;
     assert.equal(msg.type, "DEVICE_STATE");
     assert.equal(msg.stateType, 5);
@@ -205,6 +216,7 @@ describe("decodeAndParse — DEVICE_STATE", () => {
 
 describe("decodeAndParse — SCENE_RECALL", () => {
   test("multi-byte recall vector, scene=7", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_SCENE_RECALL) as CCXSceneRecall;
     assert.equal(msg.type, "SCENE_RECALL");
     assert.deepEqual(msg.recallVector, [4, 0, 0, 0, 0, 0, 0]);
@@ -217,6 +229,7 @@ describe("decodeAndParse — SCENE_RECALL", () => {
 
 describe("decodeAndParse — COMPONENT_CMD", () => {
   test("shade/component set, group=100, params=[10,4800]", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_COMPONENT_CMD) as CCXComponentCmd;
     assert.equal(msg.type, "COMPONENT_CMD");
     assert.equal(msg.command, 0);
@@ -229,6 +242,7 @@ describe("decodeAndParse — COMPONENT_CMD", () => {
 
 describe("decodeAndParse — STATUS", () => {
   test("binary payload + scene_family_id", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_STATUS) as CCXStatus;
     assert.equal(msg.type, "STATUS");
     assert.ok(msg.innerData instanceof Uint8Array);
@@ -241,6 +255,7 @@ describe("decodeAndParse — STATUS", () => {
 
 describe("decodeAndParse — PRESENCE", () => {
   test("heartbeat status=1", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_PRESENCE) as CCXPresence;
     assert.equal(msg.type, "PRESENCE");
     assert.equal(msg.status, 1);
@@ -251,6 +266,7 @@ describe("decodeAndParse — PRESENCE", () => {
 
 describe("decodeAndParse — UNKNOWN", () => {
   test("falls through to UNKNOWN with raw body", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(HEX_UNKNOWN) as CCXUnknown;
     assert.equal(msg.type, "UNKNOWN");
     assert.equal(msg.msgType, 99);
@@ -265,6 +281,7 @@ describe("collectUnknown — unknown key tracking", () => {
   test("PRESENCE with synthetic unknown top-level key is captured", () => {
     // PRESENCE normally has {4: status, 5: seq}. Add key 99 = 7.
     const hex = "8219ffff" + "a3" + "0401" + "05" + "1832" + "1863" + "07";
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(hex) as CCXPresence;
     assert.equal(msg.type, "PRESENCE");
     assert.equal(msg.status, 1);
@@ -284,6 +301,7 @@ describe("collectUnknown — unknown key tracking", () => {
       "01821018" +
       "64" +
       "0501";
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(hex) as CCXLevelControl;
     assert.equal(msg.level, 0xfeff);
     assert.ok(msg.unknownKeys);
@@ -301,6 +319,7 @@ describe("collectUnknown — unknown key tracking", () => {
       "64" +
       "0501" +
       "0703"; // unknown top-level key 7 = 3
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(hex) as CCXLevelControl;
     assert.ok(msg.unknownKeys);
     assert.equal(msg.unknownKeys![7], 3);
@@ -310,6 +329,7 @@ describe("collectUnknown — unknown key tracking", () => {
     // msgType = 0xBEEF (unknown)
     const hex = "82" + "19beef" + "a1" + "0500";
     assert.doesNotThrow(() => decodeAndParse(hex));
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(hex) as CCXUnknown;
     assert.equal(msg.type, "UNKNOWN");
     assert.equal(msg.msgType, 0xbeef);
@@ -319,6 +339,7 @@ describe("collectUnknown — unknown key tracking", () => {
     // LEVEL_CONTROL with empty body
     const hex = "8200a0";
     assert.doesNotThrow(() => decodeAndParse(hex));
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = decodeAndParse(hex) as CCXLevelControl;
     assert.equal(msg.type, "LEVEL_CONTROL");
     assert.equal(msg.level, 0);
@@ -335,6 +356,7 @@ describe("decoder robustness", () => {
   });
 
   test("parseMessage directly on synthetic body still produces shape", () => {
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const msg = parseMessage(CCXMessageType.PRESENCE, {
       4: 0,
       5: 123,

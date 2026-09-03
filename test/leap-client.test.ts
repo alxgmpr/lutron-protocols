@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import { processorIPs } from "../lib/config";
+import type { JsonValue } from "../lib/data-values";
 import {
   buildDumpData,
   fetchLeapData,
@@ -17,13 +18,14 @@ type ConnInternals = {
   socket: { write(data: string): void } | null;
   pendingRequests: Map<
     string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    { resolve: (v: JsonValue) => void; reject: (e: Error) => void }
   >;
   handleData(data: string): void;
   nextTag(): string;
 };
 const internals = (conn: LeapConnection): ConnInternals =>
-  conn as unknown as ConnInternals;
+  // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
+  conn as ConnInternals;
 
 // ── hrefId ────────────────────────────────────────────────────────
 
@@ -79,6 +81,7 @@ describe("fetchLeapData auto-detection", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     assert.equal(result.leapVersion, "03.247.2710");
@@ -119,6 +122,7 @@ describe("fetchLeapData auto-detection", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     assert.equal(result.productType, "Caseta");
@@ -136,6 +140,7 @@ describe("fetchLeapData auto-detection", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
     assert.equal(result.productType, "HomeWorks");
   });
@@ -148,6 +153,7 @@ describe("fetchLeapData auto-detection", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
     assert.equal(result.productType, "");
   });
@@ -182,6 +188,7 @@ describe("link info parsing", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     assert.equal(result.link.rf?.channel, 7);
@@ -206,6 +213,7 @@ describe("link info parsing", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
     assert.equal(result.link.rf?.channel, 7);
     assert.equal(result.link.rf?.subnetAddress, undefined);
@@ -219,6 +227,7 @@ describe("link info parsing", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
     assert.equal(result.link.rf, undefined);
     assert.equal(result.link.ccx, undefined);
@@ -264,6 +273,7 @@ describe("RA3 area walk", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     assert.equal(result.devices.length, 1);
@@ -291,6 +301,7 @@ describe("RA3 area walk", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     // Only the leaf area's zones should be walked
@@ -338,6 +349,7 @@ describe("Caseta direct path", () => {
       "/project": { Project: { MasterDeviceList: { Devices: [] } } },
     });
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const result = await fetchLeapData(mock as never);
 
     assert.equal(result.zones.length, 1);
@@ -531,6 +543,7 @@ describe("LeapConnection message framing", () => {
       }) + "\n",
     );
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const resp = (await received) as { Body: { value: number } };
     assert.equal(resp.Body.value, 42);
     assert.equal(i.pendingRequests.size, 0, "pending map should be drained");
@@ -553,6 +566,7 @@ describe("LeapConnection message framing", () => {
 
     // Feed the rest
     i.handleData(full.slice(20));
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const resp = (await received) as { Body: { ok: boolean } };
     assert.equal(resp.Body.ok, true);
   });
@@ -571,6 +585,7 @@ describe("LeapConnection message framing", () => {
     );
 
     assert.equal(events.length, 1);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const evt = events[0] as { Body: { Zone: { Level: number } } };
     assert.equal(evt.Body.Zone.Level, 75);
   });
@@ -652,7 +667,9 @@ describe("LeapConnection message framing", () => {
       "\n";
     i.handleData(batch);
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const r1 = (await got1) as { Body: { n: number } };
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const r2 = (await got2) as { Body: { n: number } };
     assert.equal(r1.Body.n, 1);
     assert.equal(r2.Body.n, 2);
@@ -707,6 +724,7 @@ describe("LeapConnection 102 Processing interim frames", () => {
       }) + "\n",
     );
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const resp = (await received) as {
       Body: { OneFirmwareImageDefinition: { Firmware: string } };
     };
@@ -753,6 +771,7 @@ describe("LeapConnection 102 Processing interim frames", () => {
       }) + "\n",
     );
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const resp = (await received) as { Body: { value: number } };
     assert.equal(resp.Body.value, 42);
     assert.equal(i.pendingRequests.size, 0);
@@ -786,6 +805,7 @@ describe("LeapConnection 102 Processing interim frames", () => {
       }) + "\n",
     );
 
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const respB = (await receivedB) as { Body: { n: number } };
     assert.equal(respB.Body.n, 2);
     assert.equal(i.pendingRequests.size, 1, "tag A remains pending");
@@ -807,6 +827,7 @@ describe("LeapConnection 102 Processing interim frames", () => {
     );
 
     assert.equal(events.length, 1);
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const evt = events[0] as { Body: { foo: string } };
     assert.equal(evt.Body.foo, "bar");
   });

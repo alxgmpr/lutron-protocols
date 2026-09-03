@@ -19,6 +19,13 @@
  */
 
 /** What the bridge needs to connect, once discovery has resolved it. */
+import {
+  isJsonObject,
+  isNumber,
+  isString,
+  type JsonValue,
+} from "./data-values";
+
 export interface DiscoveredMqtt {
   /** Broker URL, e.g. mqtt://core-mosquitto:1883 */
   url: string;
@@ -33,7 +40,7 @@ export type FetchLike = (
 ) => Promise<{
   ok: boolean;
   status: number;
-  json: () => Promise<unknown>;
+  json: () => Promise<JsonValue>;
 }>;
 
 export interface DiscoverOptions {
@@ -63,13 +70,24 @@ export async function discoverMqttService(
   // just be a DNS failure with a scarier message.
   if (!token) return null;
 
-  const fetchImpl =
-    opts.fetchImpl ?? (globalThis.fetch as unknown as FetchLike);
+  const fetchImpl: FetchLike =
+    opts.fetchImpl ??
+    (async (requestUrl, init) => {
+      const response = await globalThis.fetch(requestUrl, init);
+      return {
+        ok: response.ok,
+        status: response.status,
+        json: async (): Promise<JsonValue> => {
+          const parsed: JsonValue = JSON.parse(await response.text());
+          return parsed;
+        },
+      };
+    });
   if (!fetchImpl) return null;
 
   const url = `${opts.baseUrl ?? SUPERVISOR_URL}/services/mqtt`;
 
-  let body: unknown;
+  let body: JsonValue;
   try {
     const res = await fetchImpl(url, {
       headers: { Authorization: `Bearer ${token}` },
@@ -113,10 +131,16 @@ interface ServiceData {
 }
 
 /** `{ result: "ok", data: {...} }` — anything else is not an answer. */
-function readServiceData(body: unknown): ServiceData | null {
-  if (typeof body !== "object" || body === null) return null;
-  const envelope = body as { result?: unknown; data?: unknown };
-  if (envelope.result !== "ok") return null;
-  if (typeof envelope.data !== "object" || envelope.data === null) return null;
-  return envelope.data as ServiceData;
+function readServiceData(body: JsonValue): ServiceData | null {
+  if (!isJsonObject(body) || body.result !== "ok" || !isJsonObject(body.data)) {
+    return null;
+  }
+  const data = body.data;
+  return {
+    host: isString(data.host) ? data.host : undefined,
+    port: isNumber(data.port) ? data.port : undefined,
+    ssl: data.ssl === true,
+    username: isString(data.username) ? data.username : undefined,
+    password: isString(data.password) ? data.password : undefined,
+  };
 }

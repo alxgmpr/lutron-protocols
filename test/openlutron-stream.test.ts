@@ -19,7 +19,13 @@ import {
   CMD_KEEPALIVE,
   OpenlutronStream,
   type StreamDatagramSocket,
+  type StreamTimerHandle,
 } from "../lib/openlutron-stream";
+
+function isTimerId(handle: StreamTimerHandle): handle is number {
+  return typeof handle === "number";
+}
+
 import {
   FLAG_CCX,
   FLAG_SRC,
@@ -52,10 +58,9 @@ class FakeSocket implements StreamDatagramSocket {
   private messageListeners: Array<(msg: Buffer) => void> = [];
   private errorListeners: Array<(err: Error) => void> = [];
 
-  on(event: "message" | "error", listener: (arg: any) => void): unknown {
+  on(event: "message" | "error", listener: (arg: any) => void): void {
     if (event === "message") this.messageListeners.push(listener);
     else this.errorListeners.push(listener);
-    return this;
   }
 
   bind(callback?: () => void): void {
@@ -117,21 +122,21 @@ function fakeTimers() {
     now: () => now,
     api: {
       now: () => now,
-      setInterval(fn: () => void, ms: number): unknown {
+      setInterval(fn: () => void, ms: number): number {
         const id = nextId++;
         pending.set(id, { fn, due: now + ms, every: ms });
         return id;
       },
-      setTimeout(fn: () => void, ms: number): unknown {
+      setTimeout(fn: () => void, ms: number): number {
         const id = nextId++;
         pending.set(id, { fn, due: now + ms, every: null });
         return id;
       },
-      clearInterval(handle: unknown): void {
-        pending.delete(handle as number);
+      clearInterval(handle: StreamTimerHandle): void {
+        if (isTimerId(handle)) pending.delete(handle);
       },
-      clearTimeout(handle: unknown): void {
-        pending.delete(handle as number);
+      clearTimeout(handle: StreamTimerHandle): void {
+        if (isTimerId(handle)) pending.delete(handle);
       },
     },
     /** Advance the clock, firing everything due along the way. */

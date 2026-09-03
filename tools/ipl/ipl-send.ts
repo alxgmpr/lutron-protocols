@@ -19,6 +19,7 @@ import { connect } from "tls";
 import { fileURLToPath } from "url";
 import { deflateSync, inflateSync } from "zlib";
 import { defaultHost } from "../../lib/config";
+import { isString, type JsonValue } from "../../lib/data-values";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -39,7 +40,7 @@ const jsonArg = args[args.indexOf(command!) + 1];
 
 let seq = 0;
 
-function buildLEIAt(cmdName: string, jsonPayload?: any): Buffer {
+function buildLEIAt(cmdName: string, jsonPayload?: JsonValue): Buffer {
   seq++;
   // Header: LEI@ + version(00 01) + flags(00 FF) + seq(u16) + subtype(01 5D)
   const header = Buffer.alloc(12);
@@ -60,10 +61,9 @@ function buildLEIAt(cmdName: string, jsonPayload?: any): Buffer {
 
   let body: Buffer;
   if (jsonPayload !== undefined) {
-    const jsonStr =
-      typeof jsonPayload === "string"
-        ? jsonPayload
-        : JSON.stringify(jsonPayload);
+    const jsonStr = isString(jsonPayload)
+      ? jsonPayload
+      : JSON.stringify(jsonPayload);
     const compressed = deflateSync(Buffer.from(jsonStr, "utf-8"));
     body = Buffer.concat([prefix, compressed]);
   } else {

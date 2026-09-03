@@ -31,6 +31,7 @@ import {
   formatMessage,
   getMessageTypeName,
 } from "../../ccx/decoder";
+import { isNumber } from "../../lib/data-values";
 
 const cborDecoder = new Decoder({ mapsAsObjects: false });
 
@@ -156,7 +157,7 @@ function decodeSmpChunk(payload: Buffer): SmpChunk | null {
 
       // Extract offset — integer key 0 or string key "off"
       const offset = decoded.get(0) ?? decoded.get("off");
-      if (typeof offset !== "number") continue;
+      if (!isNumber(offset)) continue;
 
       // Extract data — integer key 1 or string key "data"
       let data = decoded.get(1) ?? decoded.get("data");
@@ -170,7 +171,7 @@ function decodeSmpChunk(payload: Buffer): SmpChunk | null {
       return {
         offset,
         data,
-        totalSize: typeof totalSize === "number" ? totalSize : undefined,
+        totalSize: isNumber(totalSize) ? totalSize : undefined,
       };
     } catch {
       // Not valid CBOR at this offset

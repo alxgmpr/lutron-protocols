@@ -17,7 +17,7 @@ function makeLevelControlPacket(opts: {
   cct?: number;
 }): CCXPacket {
   const level16 = Math.round((opts.level * 0xfeff) / 100);
-  const inner: Record<number, unknown> = { 0: level16, 3: opts.fade ?? 1 };
+  const inner = { 0: level16, 3: opts.fade ?? 1 };
   if (opts.cct != null) inner[6] = opts.cct;
   return {
     timestamp: new Date().toISOString(),
@@ -88,6 +88,7 @@ describe("bridge WiZ output (live UDP)", () => {
     assert.equal(parsed.method, "setPilot");
     assert.equal(parsed.params.state, true);
     // Default CCT path at ~50% brightness should produce non-zero channels
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const p = parsed.params as {
       r: number;
       g: number;
@@ -142,6 +143,7 @@ describe("bridge WiZ output (live UDP)", () => {
 
     const msg = await firstMessage;
     const parsed = JSON.parse(msg.toString());
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const p = parsed.params as {
       r: number;
       g: number;
@@ -262,7 +264,7 @@ pairings:
       devices: {},
       serials: {},
       presets: {},
-    } as unknown as LeapDumpData);
+    } satisfies LeapDumpData);
     try {
       const { pairings } = loadBridgeConfigFromOptions({
         pairings: [{ zone_id: 42, wiz_ips: ["10.0.0.1"] }],

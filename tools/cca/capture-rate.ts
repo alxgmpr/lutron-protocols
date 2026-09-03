@@ -53,6 +53,7 @@ import {
   slotDispersion,
 } from "../../lib/capture-run";
 import { config, defaultHost } from "../../lib/config";
+import { isNumber } from "../../lib/data-values";
 import { hrefId, LeapConnection } from "../../lib/leap-client";
 import type { NucleoStatus } from "../../lib/nucleo-status";
 import {
@@ -226,7 +227,7 @@ async function findZone(
   return {
     id,
     name: match.Name,
-    restoreLevel: typeof level === "number" ? level : null,
+    restoreLevel: isNumber(level) ? level : null,
   };
 }
 
@@ -415,7 +416,7 @@ async function main(): Promise<number> {
         console.log(`\nRestored zone ${zone.id} to ${zone.restoreLevel}%`);
       } catch (err) {
         console.error(
-          `\nFAILED to restore zone ${zone.id} to ${zone.restoreLevel}%: ${(err as Error).message}`,
+          `\nFAILED to restore zone ${zone.id} to ${zone.restoreLevel}%: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }

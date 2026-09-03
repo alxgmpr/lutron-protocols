@@ -27,6 +27,13 @@
  */
 
 import { readFileSync } from "fs";
+import {
+  isJsonObject,
+  isNumber,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 
 const args = process.argv.slice(2);
 const getArg = (n: string) => {
@@ -58,7 +65,7 @@ const SOURCES = new Set(
 
 const MS_NS = 1_000_000n;
 
-type Raw = Record<string, unknown>;
+type Raw = JsonObject;
 type Record_ = {
   ts: number; // host wall-clock ms (callback-arrival)
   monoNs: bigint | null; // host hrtime since capture start (ns)
@@ -81,19 +88,19 @@ const records: Record_[] = [];
 
 for (const l of lines) {
   if (!l) continue;
-  let o: any;
+  let o: JsonValue;
   try {
     o = JSON.parse(l);
   } catch {
     continue;
   }
-  if (typeof o.ts !== "number" || typeof o.src !== "string") continue;
+  if (!isJsonObject(o) || !isNumber(o.ts) || !isString(o.src)) continue;
   records.push({
     ts: o.ts,
-    monoNs: typeof o.mono_ns === "string" ? BigInt(o.mono_ns) : null,
-    radioTsMs: typeof o.radioTs === "number" ? o.radioTs : null,
-    radioCyc: typeof o.radioCyc === "number" ? o.radioCyc : null,
-    epochNs: typeof o.epoch_ns === "string" ? BigInt(o.epoch_ns) : null,
+    monoNs: isString(o.mono_ns) ? BigInt(o.mono_ns) : null,
+    radioTsMs: isNumber(o.radioTs) ? o.radioTs : null,
+    radioCyc: isNumber(o.radioCyc) ? o.radioCyc : null,
+    epochNs: isString(o.epoch_ns) ? BigInt(o.epoch_ns) : null,
     src: o.src,
     raw: o,
   });
@@ -109,7 +116,7 @@ for (const l of lines) {
  * provided ordering (records in host-arrival order). Assumes no reorderings
  * larger than a wrap — true for our capture rates. */
 function unwrap32(values: number[]): bigint[] {
-  const out: bigint[] = new Array(values.length);
+  const out = Array<bigint>(values.length).fill(0n);
   let high = 0n;
   const WRAP = 1n << 32n;
   let prev = values[0] ?? 0;
@@ -291,7 +298,7 @@ function isHeartbeat(r: Raw): boolean {
 }
 
 function summary(r: Raw): string {
-  const src = r.src as string;
+  const src = isString(r.src) ? r.src : "";
   if (src === "ipl") {
     const t = r.msgType ?? "?";
     const op = r.opName ? `${r.opName}(${r.op})` : `op=${r.op}`;
@@ -307,7 +314,7 @@ function summary(r: Raw): string {
     return `${dir} radioTs=${r.radioTs}${rssi}${data}`;
   }
   if (src === "sniff") {
-    const p = (r.parsed as any) ?? {};
+    const p = isJsonObject(r.parsed) ? r.parsed : {};
     const t = p.type ?? "?";
     const seq = p.sequence !== undefined ? ` seq=${p.sequence}` : "";
     const extra = p.sceneId
@@ -315,7 +322,8 @@ function summary(r: Raw): string {
       : p.buttonZone !== undefined
         ? ` btn=${p.buttonZone}`
         : "";
-    return `${t}${seq}${extra} via ${(r.srcEui64 as string)?.slice(0, 17) ?? "?"}`;
+    const sourceEui64 = isString(r.srcEui64) ? r.srcEui64.slice(0, 17) : "?";
+    return `${t}${seq}${extra} via ${sourceEui64}`;
   }
   if (src === "leap") {
     return `${r.communiqueType ?? "?"} ${r.url ?? ""} ${r.statusCode ?? ""}`;

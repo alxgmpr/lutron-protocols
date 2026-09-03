@@ -38,6 +38,7 @@
  * no occupancy in the vocabulary yet.
  */
 
+import type { JsonObject } from "../../data-values";
 import type {
   BridgeSink,
   DeviceEvent,
@@ -60,7 +61,7 @@ export interface MqttClientLike {
     opts: { retain?: boolean; qos?: 0 | 1 | 2 },
     cb?: (err?: Error) => void,
   ): void;
-  on(event: string, listener: (...args: any[]) => void): unknown;
+  on(event: string, listener: (...args: any[]) => void): void;
   end(force?: boolean, cb?: () => void): void;
 }
 
@@ -138,7 +139,7 @@ export async function connectMqttClient(
     clientId: opts.clientId,
     will: lastWillFor(opts.baseTopic),
     reconnectPeriod: 5000,
-  }) as unknown as MqttClientLike;
+  });
 }
 
 // ── Sink ──────────────────────────────────────────────────
@@ -181,7 +182,8 @@ export class MqttSink implements BridgeSink {
     try {
       this.client.end();
     } catch (err) {
-      this.log(`  [mqtt] close failed: ${errMessage(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(`  [mqtt] close failed: ${message}`);
     }
   }
 
@@ -330,7 +332,8 @@ export class MqttSink implements BridgeSink {
         if (err) this.log(`  [mqtt] publish ${topic} failed: ${err.message}`);
       });
     } catch (err) {
-      this.log(`  [mqtt] publish ${topic} failed: ${errMessage(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(`  [mqtt] publish ${topic} failed: ${message}`);
     }
   }
 }
@@ -338,10 +341,10 @@ export class MqttSink implements BridgeSink {
 // ── Payload shaping ───────────────────────────────────────
 
 /** HA JSON light schema. Levels are percent on the wire, 0-255 in HA. */
-function zoneStatePayload(e: ZoneChangedEvent): Record<string, unknown> {
+function zoneStatePayload(e: ZoneChangedEvent): JsonObject {
   if (e.level <= 0) return { state: "OFF" };
 
-  const payload: Record<string, unknown> = {
+  const payload: JsonObject = {
     state: "ON",
     brightness: Math.round((e.level * 255) / 100),
   };
@@ -356,8 +359,4 @@ function zoneStatePayload(e: ZoneChangedEvent): Record<string, unknown> {
   }
 
   return payload;
-}
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

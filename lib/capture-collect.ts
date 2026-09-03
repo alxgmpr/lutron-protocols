@@ -69,8 +69,8 @@ function observeCcx(frame: StreamPacketFrame): CapturedFrame {
   try {
     const msg = decodeBytes(new Uint8Array(frame.data));
     decoded = true;
-    typeName = (msg as { type?: string }).type ?? null;
-    if ("sequence" in msg) sequence = (msg as { sequence: number }).sequence;
+    typeName = msg.type;
+    sequence = msg.sequence;
   } catch {
     // Undecodable frame — counted, not attributed.
   }

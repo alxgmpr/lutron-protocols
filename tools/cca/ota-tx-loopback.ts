@@ -146,9 +146,9 @@ function matchPackets(
   expected: OtaPacket[],
   received: Uint8Array[],
 ): MatchSummary {
-  const matched = new Array(expected.length).fill(false);
-  const matchCounts = new Array(expected.length).fill(0);
-  const recvUsed = new Array(received.length).fill(false);
+  const matched = Array<boolean>(expected.length).fill(false);
+  const matchCounts = Array<number>(expected.length).fill(0);
+  const recvUsed = Array<boolean>(received.length).fill(false);
   for (let r = 0; r < received.length; r++) {
     for (let e = 0; e < expected.length; e++) {
       if (packetsEqualIgnoringSeq(expected[e].pkt, received[r])) {
@@ -307,7 +307,7 @@ async function decodeIqJsonl(iqPath: string): Promise<Uint8Array[]> {
   for (const line of result.stdout.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
-      const obj = JSON.parse(line) as { hex: string };
+      const obj: { hex: string } = JSON.parse(line);
       const bytes = obj.hex.split(" ").map((b) => parseInt(b, 16));
       // The hex includes the 2-byte CRC; strip it (builders are pre-CRC).
       if (bytes.length < 4) continue;

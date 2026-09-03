@@ -1,10 +1,12 @@
+import type { JsonObject, JsonValue } from "./data-values";
+
 /** One frame observed after a SubscribeRequest, in arrival order. */
 export type Frame = {
   seq: number;
   receivedMsAfterSubscribe: number;
   communiqueType: string;
-  header: Record<string, unknown>;
-  body?: unknown;
+  header: JsonObject;
+  body?: JsonValue;
 };
 
 export type SubscribeLog = {

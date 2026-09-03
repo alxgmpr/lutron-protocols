@@ -6,7 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 // Evidence: repeated "end clamp" knots are at 0x7FFF, curves visually collapsed
 // at 50% because we were evaluating past the end of the real domain.
 
-const DOMAIN_MAX = 32767; // 0x7FFF = 100% brightness
+const _DOMAIN_MAX = 32767; // 0x7FFF = 100% brightness
 
 const CURVES = {
   curve1: {
@@ -177,7 +177,7 @@ function generateXY(steps = 300) {
         if (isFinite(cx) && isFinite(cy) && cx > 0.2 && cx < 0.7) {
           arr.push({ pct: Math.round(pct*1000)/10, x: cx, y: cy });
         }
-      } catch(e) {}
+      } catch {}
     }
   }
   return arr;
@@ -317,7 +317,7 @@ const ComparisonTable = ({ sbMin, sbMax }) => {
         try {
           const v = evalBSpline(vk, vc, t);
           if (isFinite(v) && v > 500) row[key] = Math.round(v);
-        } catch(e) {}
+        } catch {}
       }
     }
 
@@ -390,7 +390,7 @@ export default function App() {
           try {
             const v = evalBSpline(vk, vc, t);
             if (isFinite(v) && v > 500 && v < 10000) pt[key] = Math.round(v);
-          } catch(e) {}
+          } catch {}
         }
       }
       arr.push(pt);

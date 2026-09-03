@@ -10,6 +10,7 @@
 import { presetIdFromDeviceId } from "../../../ccx/config";
 import { formatMessage, getMessageTypeName } from "../../../ccx/decoder";
 import type { CCXPacket } from "../../../ccx/types";
+import { isCborMap } from "../../data-values";
 import { deviceIdFor } from "../device-id";
 import type { ApplyResult, DeviceAction, SourceIntent } from "../types";
 
@@ -116,7 +117,8 @@ export class CcxSource {
       case "LEVEL_CONTROL": {
         // A level command with CBOR key 0 absent from the inner map is
         // colour-only and must not disturb the zone's level.
-        const inner = (msg.rawBody?.[0] ?? {}) as Record<number, unknown>;
+        const command = msg.rawBody?.[0];
+        const inner = command && isCborMap(command) ? command : {};
         const levelPresent = 0 in inner;
         return {
           kind: "zoneLevel",

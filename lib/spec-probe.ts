@@ -15,7 +15,12 @@
  */
 
 import { parse as parseYaml } from "yaml";
+import type { JsonObject } from "./data-values";
 import { expandTemplate, type IdIndex } from "./id-harvest";
+
+interface SpecDocument {
+  paths?: JsonObject;
+}
 
 /** An OpenAPI placeholder segment: `{areaId}`, `{linknodeId}`, `{withId}`. */
 const SPEC_PLACEHOLDER = /^\{\w+\}$/;
@@ -29,8 +34,8 @@ const SPEC_PLACEHOLDER = /^\{\w+\}$/;
  * normalisation, separately, so the original is never lost.
  */
 export function parseSpecPaths(specYamlText: string): string[] {
-  const doc = parseYaml(specYamlText) as { paths?: Record<string, unknown> };
-  if (!doc || typeof doc !== "object" || !doc.paths) return [];
+  const doc: SpecDocument = parseYaml(specYamlText);
+  if (!doc?.paths) return [];
   return Object.keys(doc.paths);
 }
 

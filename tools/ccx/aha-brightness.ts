@@ -27,6 +27,7 @@
 import { Decoder, Encoder } from "cbor-x";
 import { type CoapTarget, createCcxCoapClient } from "../../lib/ccx-coap";
 import { config } from "../../lib/config";
+import { type CborValue, isCborMap, isNumber } from "../../lib/data-values";
 
 const AHA_PATH = "cg/db/ct/c/AHA";
 const AHA_RECORD = 108;
@@ -43,7 +44,7 @@ const getArg = (n: string) => {
 };
 
 const mode = args[0];
-const host = getArg("--host") ?? (config as { openBridge?: string }).openBridge;
+const host = getArg("--host") ?? config.openBridge;
 const rloc = getArg("--rloc");
 const timeout = Number(getArg("--timeout") ?? "8000");
 
@@ -58,15 +59,19 @@ function parseLevel(name: string): number {
 }
 
 /** Decode an AHA payload into {active, inactive}, tolerating map-vs-object. */
-function decodeAha(payload: Buffer): { active?: number; inactive?: number } {
+interface AhaLevels {
+  active?: number;
+  inactive?: number;
+}
+
+function decodeAha(payload: Buffer): AhaLevels {
   if (!payload?.length) return {};
-  const v = decoder.decode(payload) as unknown;
+  const v: CborValue = decoder.decode(payload);
   if (!Array.isArray(v) || v.length < 2) return {};
   const m = v[1];
   const read = (k: number): number | undefined => {
-    if (m instanceof Map) return m.get(k) as number | undefined;
-    if (m && typeof m === "object") return (m as Record<number, number>)[k];
-    return undefined;
+    const value = m instanceof Map ? m.get(k) : isCborMap(m) ? m[k] : undefined;
+    return value !== undefined && isNumber(value) ? value : undefined;
   };
   return { active: read(KEY_ACTIVE), inactive: read(KEY_INACTIVE) };
 }

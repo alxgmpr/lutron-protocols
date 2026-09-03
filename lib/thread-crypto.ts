@@ -13,6 +13,7 @@
  */
 
 import { createDecipheriv, createHmac } from "crypto";
+import type { NumberLookup } from "./data-values";
 
 export interface ThreadKeyPair {
   mleKey: Buffer;
@@ -34,7 +35,7 @@ export function deriveThreadKeys(
 /** MIC length for a given 802.15.4 security level */
 export function micLength(secLevel: number): number {
   // Levels 0,4 = no MIC; 1,5 = 4; 2,6 = 8; 3,7 = 16
-  const micMap: Record<number, number> = {
+  const micMap: NumberLookup<number> = {
     0: 0,
     1: 4,
     2: 8,

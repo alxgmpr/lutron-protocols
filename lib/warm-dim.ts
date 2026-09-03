@@ -1,3 +1,5 @@
+import type { StringLookup } from "./data-values";
+
 /**
  * Warm Dimming — Evaluate Lutron's B-spline curves to map brightness → CCT (Kelvin).
  *
@@ -13,7 +15,7 @@ export interface WarmDimCurve {
 }
 
 /** Built-in curves from Designer DB */
-export const WARM_DIM_CURVES: Record<string, WarmDimCurve> = {
+export const WARM_DIM_CURVES: StringLookup<WarmDimCurve> = {
   default: {
     name: "Default Warm Dim",
     knots: [32, 32, 32, 187, 607, 2162, 4713, 8223, 32767, 32767, 65535],
@@ -105,7 +107,7 @@ export function generateWarmDimTable(
   outMin?: number,
   outMax?: number,
 ): number[] {
-  const table: number[] = new Array(101);
+  const table = Array<number>(101).fill(0);
   const { coeffs } = getValidSpline(curve);
   const nativeMin = coeffs[0];
   const nativeMax = coeffs[coeffs.length - 1];

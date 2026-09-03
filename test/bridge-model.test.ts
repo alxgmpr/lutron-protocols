@@ -441,6 +441,7 @@ describe("model fade", () => {
     });
 
     model.apply(levelIntent(100, 80, { fade: 8, dedupKey: "a" }));
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     const started = (model.getZoneState(100)!.activity as { startTime: number })
       .startTime;
 
@@ -450,6 +451,7 @@ describe("model fade", () => {
     const zone = model.getZoneState(100)!;
     assert.equal(zone.activity.type, "fading");
     assert.equal(
+      // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
       (zone.activity as { startTime: number }).startTime,
       started,
       "fade should not have been restarted",

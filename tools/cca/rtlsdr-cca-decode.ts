@@ -35,6 +35,7 @@
 import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { instantaneousFrequency } from "../../lib/cca-ota-demod";
+import { isNumber, type NumberLookup } from "../../lib/data-values";
 
 // --- RF Constants ---
 let SAMPLE_RATE = 2_000_000; // 2 MHz default (32 samples/bit for better clock recovery)
@@ -616,7 +617,7 @@ function hexByte(b: number): string {
 }
 
 function getTypeName(type: number): string {
-  const names: Record<number, string> = {
+  const names: NumberLookup<string> = {
     0x88: "BTN_PRESS_A",
     0x89: "BTN_RELEASE_A",
     0x8a: "BTN_PRESS_B",
@@ -666,8 +667,7 @@ function emitPacket(
   const type = bytes[0];
   const hex = bytes.map(hexByte).join(" ");
   // burstTimeMs may arrive as a string (call sites use toFixed(1)). Coerce.
-  const tMs =
-    typeof burstTimeMs === "number" ? burstTimeMs : Number(burstTimeMs);
+  const tMs = isNumber(burstTimeMs) ? burstTimeMs : Number(burstTimeMs);
   process.stdout.write(JSON.stringify({ tMs, type, crcOk: true, hex }) + "\n");
 }
 

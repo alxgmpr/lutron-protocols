@@ -19,6 +19,7 @@
 import { createSocket, type Socket } from "dgram";
 import { readFileSync } from "fs";
 import { config } from "../../lib/config";
+import type { NumberLookup } from "../../lib/data-values";
 
 const UDP_PORT = 9433;
 
@@ -31,7 +32,7 @@ const RESP_FW_OTA = 0xfc;
 /** Payload cap is the [LEN:1] byte: 255 total, 4 of which are the offset. */
 const CHUNK_BYTES = 240;
 
-const OTA_STATUS: Record<number, string> = {
+const OTA_STATUS: NumberLookup<string> = {
   0: "ok",
   [-1 & 0xff]: "bad argument",
   [-2 & 0xff]: "image too large for slot",

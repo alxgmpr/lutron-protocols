@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import test, { describe } from "node:test";
+import type { JsonValue } from "../lib/data-values";
 import { echoWritePhase } from "../tools/leap/leap-sweep";
 
 // echoWritePhase writes its capture to `data/sweep/<host>-write.json` — the
@@ -12,7 +13,7 @@ const OUT_DIR = "data/sweep";
 const TEST_HOST = "test-fake-host";
 const OUT_PATH = `${OUT_DIR}/${TEST_HOST}-write.json`;
 
-type ScriptedResponse = { Header: { StatusCode: string }; Body?: unknown };
+type ScriptedResponse = { Header: { StatusCode: string }; Body?: JsonValue };
 
 /**
  * Duck-typed stand-in for LeapConnection — echoWritePhase only ever calls
@@ -20,17 +21,18 @@ type ScriptedResponse = { Header: { StatusCode: string }; Body?: unknown };
  * responses consumed in call order (before-read, write, after-read).
  */
 function makeFakeConn(script: Record<string, ScriptedResponse[]>) {
-  const calls: { communiqueType: string; url: string; body?: unknown }[] = [];
+  const calls: { communiqueType: string; url: string; body?: JsonValue }[] = [];
   const send = async (
     communiqueType: string,
     url: string,
-    body?: unknown,
+    body?: JsonValue,
   ): Promise<ScriptedResponse> => {
     calls.push({ communiqueType, url, body });
     const queue = script[url];
     if (!queue || queue.length === 0) {
       throw new Error(`no scripted response left for ${communiqueType} ${url}`);
     }
+    // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
     return queue.shift() as ScriptedResponse;
   };
   return { send, calls };

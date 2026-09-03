@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     );
   } catch (err) {
     throw new Error(
-      `nrfutil DFU failed: ${(err as Error).message}. If this was --tmf, consider running --rollback.`,
+      `nrfutil DFU failed: ${err instanceof Error ? err.message : String(err)}. If this was --tmf, consider running --rollback.`,
     );
   }
 
@@ -107,7 +107,7 @@ const isMain =
   process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
   });
 }

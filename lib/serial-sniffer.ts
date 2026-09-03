@@ -18,6 +18,7 @@ import { ReadlineParser } from "@serialport/parser-readline";
 import { EventEmitter } from "events";
 import { existsSync, readdirSync } from "fs";
 import { SerialPort } from "serialport";
+import { stripVTControlCharacters } from "util";
 
 export interface SerialSnifferOptions {
   /** Serial port path (e.g. /dev/ttyACM0, /dev/cu.usbmodem201401) */
@@ -178,9 +179,7 @@ export class SerialSniffer extends EventEmitter {
   private handleLine(line: string): void {
     // Format: "\x1b[Jreceived: <hex> power: <rssi> lqi: <lqi> time: <ts>"
     // Strip ANSI escape sequences and \r before matching
-    const clean = line
-      .replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, "")
-      .replace(/\r/g, "");
+    const clean = stripVTControlCharacters(line).replace(/\r/g, "");
     const match = clean.match(/received:\s+([0-9a-fA-F]+)\s+power:/);
     if (!match) return;
 

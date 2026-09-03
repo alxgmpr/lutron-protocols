@@ -38,8 +38,8 @@ export const RESP_HEARTBEAT = 0xff;
  * constructed so tests drive a real client with no network.
  */
 export interface StreamDatagramSocket {
-  on(event: "message", listener: (msg: Buffer) => void): unknown;
-  on(event: "error", listener: (err: Error) => void): unknown;
+  on(event: "message", listener: (msg: Buffer) => void): void;
+  on(event: "error", listener: (err: Error) => void): void;
   bind(callback?: () => void): void;
   send(
     msg: Buffer,
@@ -53,20 +53,22 @@ export interface StreamDatagramSocket {
 }
 
 /** Clock and timers, injected for the same reason as the socket. */
+export type StreamTimerHandle = number | ReturnType<typeof setTimeout>;
+
 export interface StreamTimers {
   now(): number;
-  setInterval(fn: () => void, ms: number): unknown;
-  clearInterval(handle: unknown): void;
-  setTimeout(fn: () => void, ms: number): unknown;
-  clearTimeout(handle: unknown): void;
+  setInterval(fn: () => void, ms: number): StreamTimerHandle;
+  clearInterval(handle: StreamTimerHandle): void;
+  setTimeout(fn: () => void, ms: number): StreamTimerHandle;
+  clearTimeout(handle: StreamTimerHandle): void;
 }
 
 const realTimers: StreamTimers = {
   now: () => Date.now(),
   setInterval: (fn, ms) => setInterval(fn, ms),
-  clearInterval: (h) => clearInterval(h as ReturnType<typeof setInterval>),
+  clearInterval,
   setTimeout: (fn, ms) => setTimeout(fn, ms),
-  clearTimeout: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  clearTimeout,
 };
 
 export interface OpenlutronStreamOptions {
@@ -119,8 +121,8 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
   private readonly rebindDelayMs: number;
 
   private socket: StreamDatagramSocket | null = null;
-  private keepaliveTimer: unknown = null;
-  private rebindTimer: unknown = null;
+  private keepaliveTimer: StreamTimerHandle | null = null;
+  private rebindTimer: StreamTimerHandle | null = null;
   private lastDatagramAt = 0;
   private connectedAt = 0;
   private up = false;
@@ -272,7 +274,7 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
     this.rebindTimer = this.timers.setTimeout(() => {
       this.rebindTimer = null;
       if (this.closed) return;
-      void this.bindSocket().catch((bindErr: unknown) => {
+      void this.bindSocket().catch((bindErr) => {
         this.emit(
           "error",
           bindErr instanceof Error ? bindErr : new Error(String(bindErr)),

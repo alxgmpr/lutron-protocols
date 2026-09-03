@@ -26,6 +26,7 @@ import {
   level16ToPercent,
   percentToLevel16,
 } from "../protocol/shared";
+import type { JsonValue, NumberLookup } from "./data-values";
 
 export enum MsgType {
   Command = 0,
@@ -34,6 +35,8 @@ export enum MsgType {
   Event = 3,
   Control = 4,
   Telemetry = 5,
+  Reserved6 = 6,
+  Reserved7 = 7,
 }
 
 export const MsgTypeName: Record<MsgType, string> = {
@@ -43,6 +46,8 @@ export const MsgTypeName: Record<MsgType, string> = {
   [MsgType.Event]: "Evt",
   [MsgType.Control]: "Ctrl",
   [MsgType.Telemetry]: "Tlm",
+  [MsgType.Reserved6]: "Reserved6",
+  [MsgType.Reserved7]: "Reserved7",
 };
 
 /** Command.Operation enum values (from Lutron.Gulliver.Infrastructure.dll). */
@@ -206,7 +211,7 @@ export const ControlOp = {
 } as const;
 
 /** EventAction.ProcessorEventIdType (operationId of an LEIC frame). */
-export const EventOp: Record<number, string> = {
+export const EventOp: NumberLookup<string> = {
   0: "ButtonPress",
   1: "ButtonRelease",
   2: "ButtonMultiTap",
@@ -275,7 +280,7 @@ export const OriginatorFeature = {
 } as const;
 
 /** OccupancyStatus values seen in OccupancyStatusChanged events / property 16. */
-export const OccupancyStatus: Record<number, string> = {
+export const OccupancyStatus: NumberLookup<string> = {
   1: "Unknown",
   3: "Occupied",
   4: "Unoccupied",
@@ -288,7 +293,7 @@ export const OccupancyStatus: Record<number, string> = {
  * ones extracted below. Source:
  * Lutron.Gulliver.Infrastructure.RuntimeDomainObjectFramework.RuntimePropertyNumberEnum
  */
-export const RuntimeProperty: Record<number, string> = {
+export const RuntimeProperty: NumberLookup<string> = {
   0: "Identify",
   1: "Level",
   2: "PowerAndEnergySavings",
@@ -836,7 +841,7 @@ export function bodySetConfigurationProperty(
  */
 export function bodyNamedRPC(
   commandName: string,
-  args: unknown,
+  args: JsonValue,
   requestId = 0,
   operationSessionId = 0,
 ): Buffer {
@@ -1329,7 +1334,7 @@ export function parseFrame(buf: Buffer, pos = 0): ParsedFrame | null {
   if (i < 0 || i + 12 > buf.length) return null;
   const typeByte = buf[i + 3];
   const version = ((typeByte & 0xe0) >> 5) + 1;
-  const msgType = (typeByte & 0x07) as MsgType;
+  const msgType: MsgType = typeByte & 0x07;
   const rp = typeByte & 0x10 ? "Normal" : "NoAck";
   const attempt = typeByte & 0x08 ? "Resend" : "Original";
   const systemId = buf.readUInt16BE(i + 4);
@@ -1382,10 +1387,12 @@ export function parseFrame(buf: Buffer, pos = 0): ParsedFrame | null {
 }
 
 /** Greedy parse — extract all complete frames; return parsed frames + leftover bytes. */
-export function parseAllFrames(buf: Buffer): {
+export interface ParsedFrames {
   frames: ParsedFrame[];
   remainder: Buffer;
-} {
+}
+
+export function parseAllFrames(buf: Buffer): ParsedFrames {
   const frames: ParsedFrame[] = [];
   let pos = 0;
   while (pos < buf.length) {

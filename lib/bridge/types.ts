@@ -224,10 +224,10 @@ export type CommandEvent =
 
 /** The subset of the model a sink is allowed to see. */
 export interface SinkHost {
-  on(event: "zone:changed", listener: (e: ZoneChangedEvent) => void): unknown;
-  on(event: "zone:settled", listener: (e: ZoneSettledEvent) => void): unknown;
-  on(event: "command", listener: (e: CommandEvent) => void): unknown;
-  on(event: "device:event", listener: (e: DeviceEvent) => void): unknown;
+  on(event: "zone:changed", listener: (e: ZoneChangedEvent) => void): void;
+  on(event: "zone:settled", listener: (e: ZoneSettledEvent) => void): void;
+  on(event: "command", listener: (e: CommandEvent) => void): void;
+  on(event: "device:event", listener: (e: DeviceEvent) => void): void;
   /** True only for zones named explicitly in the watch list. */
   isExplicitlyWatched(zoneId: number): boolean;
 }

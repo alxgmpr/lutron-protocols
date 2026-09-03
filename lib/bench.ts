@@ -59,10 +59,14 @@ export function summarize(
  * The reference must be code that does not change when the code under test
  * does, or the ratios move for reasons unrelated to any regression.
  */
+export interface BenchmarkValues {
+  [name: string]: number;
+}
+
 export function normalize(
-  timings: Record<string, number>,
+  timings: BenchmarkValues,
   referenceName: string,
-): Record<string, number> {
+): BenchmarkValues {
   const reference = timings[referenceName];
   if (reference === undefined) {
     throw new Error(`reference benchmark "${referenceName}" did not run`);
@@ -73,7 +77,7 @@ export function normalize(
     );
   }
 
-  const ratios: Record<string, number> = {};
+  const ratios: BenchmarkValues = {};
   for (const [name, value] of Object.entries(timings)) {
     if (name === referenceName) continue;
     ratios[name] = value / reference;

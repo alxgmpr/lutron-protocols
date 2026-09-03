@@ -8,9 +8,14 @@ import {
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { processorIPs } from "../../lib/config";
+import {
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 import { assertVerbAllowed, checkEcho } from "../../lib/echo-guard";
 import { expandTemplate, harvestIds, type IdIndex } from "../../lib/id-harvest";
-import { LeapConnection } from "../../lib/leap-client";
+import { LeapConnection, type LeapWireFrame } from "../../lib/leap-client";
 import {
   coveredIdentsFromOperationIds,
   planSweep,
@@ -65,7 +70,14 @@ const FIXTURES = [
   "/Users/alex/leap-api/fixtures/caseta.json",
 ];
 
-type Capture = Record<string, { status: string; body?: unknown }>;
+interface CaptureEntry {
+  status: string;
+  body?: JsonValue;
+}
+
+interface Capture {
+  [url: string]: CaptureEntry;
+}
 
 /**
  * A frame that arrived via the unsolicited (onEvent) path but carried the
@@ -87,8 +99,8 @@ type LateFrame = {
   seq: number;
   receivedMsAfterSubscribe: number;
   communiqueType: string;
-  header: Record<string, unknown>;
-  body?: unknown;
+  header: JsonObject;
+  body?: JsonValue;
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -100,7 +112,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * JSON that the next run's JSON.parse threw on before connecting — losing
  * all prior progress instead of resuming from it.
  */
-function writeJsonAtomic(outPath: string, data: unknown): void {
+function writeJsonAtomic<T>(outPath: string, data: T): void {
   const tmpPath = `${outPath}.tmp`;
   writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`);
   renameSync(tmpPath, outPath);
@@ -132,9 +144,9 @@ function coveredIdents(): Set<string> {
     console.warn(`spec not found at ${SPEC}; treating everything as uncovered`);
     return new Set();
   }
-  const doc = parse(readFileSync(SPEC, "utf8")) as {
+  const doc: {
     paths: Record<string, Record<string, { operationId?: string }>>;
-  };
+  } = parse(readFileSync(SPEC, "utf8"));
   const ids: string[] = [];
   for (const item of Object.values(doc.paths)) {
     for (const [method, op] of Object.entries(item)) {
@@ -149,7 +161,7 @@ async function probe(
   conn: LeapConnection,
   url: string,
   capture: Capture,
-): Promise<unknown> {
+): Promise<JsonValue | undefined> {
   assertVerbAllowed("GET");
   try {
     const resp = await conn.send("ReadRequest", url);
@@ -157,7 +169,9 @@ async function probe(
     capture[url] = { status, body: resp?.Body };
     return resp?.Body;
   } catch (err) {
-    capture[url] = { status: `(error) ${(err as Error).message}` };
+    capture[url] = {
+      status: `(error) ${err instanceof Error ? err.message : String(err)}`,
+    };
     return undefined;
   }
 }
@@ -240,11 +254,7 @@ async function subscribePhase(
     // request send() already considers finished.
     const resolvedTags = new Set<string>();
     const started = Date.now();
-    conn.onEvent = (msg: {
-      CommuniqueType?: string;
-      Header?: Record<string, unknown>;
-      Body?: unknown;
-    }) => {
+    conn.onEvent = (msg: LeapWireFrame) => {
       const elapsed = Date.now() - started;
       frames.push({
         seq: frames.length,
@@ -255,7 +265,11 @@ async function subscribePhase(
       });
 
       const frameTag = msg?.Header?.ClientTag;
-      if (typeof frameTag === "string" && resolvedTags.has(frameTag)) {
+      if (
+        frameTag !== undefined &&
+        isString(frameTag) &&
+        resolvedTags.has(frameTag)
+      ) {
         onLateFrame({
           url: entry.template,
           requestTag: frameTag,
@@ -277,7 +291,7 @@ async function subscribePhase(
       resolvedTags.add(requestTag);
       await sleep(SUBSCRIBE_HOLD_MS);
     } catch (err) {
-      status = `(error) ${(err as Error).message}`;
+      status = `(error) ${err instanceof Error ? err.message : String(err)}`;
     } finally {
       conn.close();
     }
@@ -348,13 +362,13 @@ async function firmwareImageLateFrameProbe(
     // second request on this connection to disambiguate against.
     const resolvedTags = new Set(["lt-1"]);
     const started = Date.now();
-    conn.onEvent = (msg: {
-      CommuniqueType?: string;
-      Header?: Record<string, unknown>;
-      Body?: unknown;
-    }) => {
+    conn.onEvent = (msg: LeapWireFrame) => {
       const frameTag = msg?.Header?.ClientTag;
-      if (typeof frameTag === "string" && resolvedTags.has(frameTag)) {
+      if (
+        frameTag !== undefined &&
+        isString(frameTag) &&
+        resolvedTags.has(frameTag)
+      ) {
         onLateFrame({
           url,
           requestTag: frameTag,

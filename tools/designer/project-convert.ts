@@ -29,6 +29,7 @@ import { basename, dirname, extname, join } from "path";
 import { fileURLToPath } from "url";
 import { parseArgs } from "util";
 import { config } from "../../lib/config";
+import { isString, type StringLookup } from "../../lib/data-values";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -75,9 +76,15 @@ Options:
 
 // ── VM Config ────────────────────────────────────────────────────────
 
-const VM_HOST = values["vm-host"] as string;
-const VM_USER = values["vm-user"] as string;
-const VM_PASS = values["vm-pass"] as string;
+const VM_HOST = isString(values["vm-host"])
+  ? values["vm-host"]
+  : config.designer.host;
+const VM_USER = isString(values["vm-user"])
+  ? values["vm-user"]
+  : config.designer.user;
+const VM_PASS = isString(values["vm-pass"])
+  ? values["vm-pass"]
+  : config.designer.pass;
 const VM_WORK_DIR = "C:\\Temp\\lutron-convert"; // Working directory on VM
 
 // ── Device-agnostic model mapping engine ────────────────────────────
@@ -92,7 +99,7 @@ const VM_WORK_DIR = "C:\\Temp\\lutron-convert"; // Working directory on VM
 //   PJ*, LMJ* → identity   (picos, powpaks — shared across systems)
 //
 // Manual overrides (for models that don't follow prefix rules):
-const MANUAL_OVERRIDES: Record<string, string> = {
+const MANUAL_OVERRIDES: StringLookup<string> = {
   "RR-PROC3-KIT": "HQP7-RF-2",
   "RR-PROC3-CW": "HQP7-RF-2",
 };
@@ -113,10 +120,12 @@ function loadModelInfo(): ModelEntry[] {
   return data.models;
 }
 
-function buildModelMap(direction: "RA3_TO_HW" | "HW_TO_RA3"): {
+interface ModelMapResult {
   map: Record<number, number>;
   log: string[];
-} {
+}
+
+function buildModelMap(direction: "RA3_TO_HW" | "HW_TO_RA3"): ModelMapResult {
   const models = loadModelInfo();
   const log: string[] = [];
 
@@ -881,10 +890,10 @@ END;
 `;
 }
 
-function buildConversionSql(direction: string): string {
+function buildConversionSql(direction: "RA3_TO_HW" | "HW_TO_RA3"): string {
   const sourceProductType = direction === "RA3_TO_HW" ? 3 : 4;
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
-  const map = getModelMap(direction as "RA3_TO_HW" | "HW_TO_RA3");
+  const map = getModelMap(direction);
   const log = getMapLog();
 
   if (log.length > 0) {
@@ -1103,9 +1112,9 @@ PRINT 'Done.';
 `;
 }
 
-function _buildVerifySql(direction: string): string {
+function _buildVerifySql(direction: "RA3_TO_HW" | "HW_TO_RA3"): string {
   const targetProductType = direction === "RA3_TO_HW" ? 4 : 3;
-  const map = getModelMap(direction as "RA3_TO_HW" | "HW_TO_RA3");
+  const map = getModelMap(direction);
 
   const mapValues = Object.entries(map)
     .map(([s, t]) => `(${s},${t})`)
@@ -1167,7 +1176,7 @@ PRINT '';
 
 async function runConversion(
   bakPath: string,
-  direction: string,
+  direction: "RA3_TO_HW" | "HW_TO_RA3",
 ): Promise<string> {
   console.log(`Running ${direction} conversion via VM LocalDB (${VM_HOST})...`);
 
@@ -1464,7 +1473,7 @@ async function main(): Promise<void> {
   }
 
   // -- Extract-only mode --
-  if (values["extract-only"]) {
+  if (isString(values["extract-only"])) {
     const input = positionals[0];
     if (!input) {
       console.error("Provide an input project file.");
@@ -1475,7 +1484,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    const outDir = values["extract-only"] as string;
+    const outDir = values["extract-only"];
     mkdirSync(outDir, { recursive: true });
 
     const result = await extractBak(input);
@@ -1500,8 +1509,8 @@ async function main(): Promise<void> {
   }
 
   // -- Pack-only mode --
-  if (values["pack-only"]) {
-    const bakPath = values["pack-only"] as string;
+  if (isString(values["pack-only"])) {
+    const bakPath = values["pack-only"];
     const output = positionals[0];
     if (!output) {
       console.error("Provide an output filename.");
@@ -1549,7 +1558,7 @@ async function main(): Promise<void> {
   }
 
   // Auto-detect direction from extensions
-  let direction = values.direction as string | undefined;
+  let direction = isString(values.direction) ? values.direction : undefined;
   if (!direction) {
     const inExt = extname(input).toLowerCase();
     const outExt = extname(output).toLowerCase();

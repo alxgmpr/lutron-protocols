@@ -194,9 +194,11 @@ function buildPairings(
 }
 
 /** Load bridge config from a YAML or JSON file */
-export function loadBridgeConfig(configPath: string): {
+export interface LoadedBridgeConfig {
   pairings: WizPairing[];
-} {
+}
+
+export function loadBridgeConfig(configPath: string): LoadedBridgeConfig {
   if (!existsSync(configPath)) {
     throw new Error(`Config not found: ${configPath}`);
   }
@@ -216,16 +218,18 @@ export function loadBridgeConfig(configPath: string): {
 }
 
 /** Load bridge config from HA add-on /data/options.json */
-export function loadBridgeConfigFromOptions(opts: {
+export interface AddonBridgeOptions {
   pairings?: Array<{
     zone_id: number;
     name?: string;
     wiz_ips: string[];
   }>;
   wiz_port?: number;
-}): {
-  pairings: WizPairing[];
-} {
+}
+
+export function loadBridgeConfigFromOptions(
+  opts: AddonBridgeOptions,
+): LoadedBridgeConfig {
   const rawPairings = (opts.pairings ?? []).map((p) => ({
     zoneId: p.zone_id,
     name: p.name,

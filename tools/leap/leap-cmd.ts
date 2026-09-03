@@ -20,6 +20,7 @@
 
 import { parseArgs } from "util";
 import { defaultHost } from "../../lib/config";
+import { isJsonObject, isString } from "../../lib/data-values";
 import {
   hrefId,
   LeapConnection,
@@ -139,14 +140,21 @@ async function main() {
       try {
         const sub = await conn.subscribe(url, onPush);
         console.log(`Subscribed: ${url} (${sub.status})`);
-        for (const item of pushItems(sub) as any[]) {
-          if (!item?.Zone?.href) continue;
+        for (const item of pushItems(sub)) {
+          if (
+            !isJsonObject(item) ||
+            !isJsonObject(item.Zone) ||
+            !isString(item.Zone.href)
+          )
+            continue;
           const zid = item.Zone.href.replace("/zone/", "");
           const sw = item.SwitchedLevel ? ` [${item.SwitchedLevel}]` : "";
           console.log(`  zone ${zid}: ${item.Level}%${sw}`);
         }
       } catch (err) {
-        console.log(`Subscribe ${url} failed: ${(err as Error).message}`);
+        console.log(
+          `Subscribe ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     console.log("\nWatching for events... (Ctrl+C to stop)\n");

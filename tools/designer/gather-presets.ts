@@ -17,11 +17,19 @@ import { execFileSync } from "child_process";
 import { readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import type { NumberLookup, StringLookup } from "../../lib/data-values";
+import type { LeapDumpData } from "../../lib/leap-client";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 // tools/designer/ → project root is two levels up, not one.
 const PROJECT_ROOT = join(__dir, "../..");
 const DESIGNER_PROJECT_TS = join(__dir, "designer-project.ts");
+
+interface PresetZoneAssignment {
+  level: number;
+  fade?: number;
+  warmDimCurve?: string;
+}
 
 const dataDir = join(PROJECT_ROOT, "data");
 const outPath = join(dataDir, "preset-zones.json");
@@ -42,7 +50,7 @@ ORDER BY pa.ParentID, pa.AssignableObjectID
 `.trim();
 
 /** Map Designer WarmDimCurveId → warm-dim.ts curve name */
-const CURVE_NAMES: Record<number, string> = {
+const CURVE_NAMES: NumberLookup<string> = {
   1: "default",
   2: "halogen",
   3: "finire2700",
@@ -67,17 +75,16 @@ function queryDesignerDb(sql: string): string {
   });
 }
 
-function loadLeapPresetNames(): Record<string, string> {
+function loadLeapPresetNames(): StringLookup<string> {
   const lookup: Record<string, string> = {};
   for (const file of readdirSync(dataDir).filter(
     (f) => f.startsWith("leap-") && f.endsWith(".json"),
   )) {
     try {
-      const data = JSON.parse(readFileSync(join(dataDir, file), "utf-8"));
-      for (const [id, p] of Object.entries(data.presets ?? {}) as [
-        string,
-        any,
-      ][]) {
+      const data: LeapDumpData = JSON.parse(
+        readFileSync(join(dataDir, file), "utf-8"),
+      );
+      for (const [id, p] of Object.entries(data.presets ?? {})) {
         const name = p.name?.trim();
         const device = p.device || "";
         if (name) lookup[id] = device ? `${name} [${device}]` : name;
@@ -145,7 +152,7 @@ async function main() {
       };
     }
 
-    const entry: { level: number; fade?: number; warmDimCurve?: string } = {
+    const entry: PresetZoneAssignment = {
       level,
     };
     if (fade > 0) entry.fade = fade;

@@ -50,6 +50,11 @@ export function level16ToPercent(raw: number): number {
 /** CoAP response code in dotted "class.detail" form (e.g. "2.05", "4.04"). */
 export type CoapCode = `${number}.${number}`;
 
+function formatCoapCode(cls: number, detail: number): CoapCode {
+  // SAFETY: Both interpolated values are numbers, so this always matches the CoapCode template.
+  return `${cls}.${detail.toString().padStart(2, "0")}` as CoapCode;
+}
+
 export function coapCodeToNumber(code: CoapCode): number {
   const m = /^(\d+)\.(\d+)$/.exec(code);
   if (!m) throw new Error(`Invalid CoAP code: ${code}`);
@@ -61,7 +66,7 @@ export function coapCodeToNumber(code: CoapCode): number {
 export function coapCodeFromNumber(code: number): CoapCode {
   const cls = (code >> 5) & 0x07;
   const det = code & 0x1f;
-  return `${cls}.${det.toString().padStart(2, "0")}` as CoapCode;
+  return formatCoapCode(cls, det);
 }
 
 export function coapCodeClass(code: CoapCode): number {
@@ -167,7 +172,7 @@ export function parseCoapGetResponse(text: string): GetParse | null {
 
   const cls = Number(respMatch[1]);
   const det = Number(respMatch[2]);
-  const code = `${cls}.${det.toString().padStart(2, "0")}` as CoapCode;
+  const code = formatCoapCode(cls, det);
   const codeNum = ((cls & 0x07) << 5) | (det & 0x1f);
   const mid = Number.parseInt(respMatch[3], 16);
   const src = respMatch[4]?.trim();
@@ -214,15 +219,16 @@ export function parseCoapBroadcast(line: string): CoapNotification | null {
     !pathCandidate.startsWith("token=")
       ? pathCandidate
       : "";
-  return {
-    code: `${cls}.${det.toString().padStart(2, "0")}` as CoapCode,
+  const notification: CoapNotification = {
+    code: formatCoapCode(cls, det),
     path,
     mid,
     len,
-    ...(src ? { src } : {}),
-    ...(token ? { token } : {}),
-    ...(payloadHex ? { payload: Buffer.from(payloadHex, "hex") } : {}),
   };
+  if (src) notification.src = src;
+  if (token) notification.token = token;
+  if (payloadHex) notification.payload = Buffer.from(payloadHex, "hex");
+  return notification;
 }
 
 // ── Scan helpers ─────────────────────────────────────────
@@ -540,7 +546,8 @@ export class CcxCoapClient {
         }
         opts?.onProgress?.(i + 1, paths.length, path, resp.code);
       } catch (err) {
-        if (/timeout/i.test((err as Error).message)) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/timeout/i.test(message)) {
           result.timeout.push(path);
           opts?.onProgress?.(i + 1, paths.length, path, "timeout");
         } else {
@@ -673,7 +680,11 @@ export class CcxCoapClient {
     };
 
     this.transport.sendText(command).catch((err) => {
-      if (this.current) this.current.reject(err as Error);
+      if (this.current) {
+        this.current.reject(
+          err instanceof Error ? err : new Error(String(err)),
+        );
+      }
     });
   }
 

@@ -36,6 +36,7 @@ import {
   getButtonName,
   identifyPacket,
 } from "../../../protocol/protocol-ui";
+import type { StringLookup } from "../../data-values";
 import type { StreamPacketFrame } from "../../stream-frame";
 import { deviceIdFor } from "../device-id";
 import type { DeviceAction, SourceIntent } from "../types";
@@ -75,7 +76,7 @@ const SEQ_OFFSET = 1;
 const SEQ_BURST_START = 0;
 
 /** Wire action codes → the model's vocabulary. Anything absent is not an event. */
-const ACTIONS: Record<string, DeviceAction> = {
+const ACTIONS: StringLookup<DeviceAction> = {
   PRESS: "press",
   HOLD: "hold",
   RELEASE: "release",

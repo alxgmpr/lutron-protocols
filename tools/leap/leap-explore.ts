@@ -26,23 +26,39 @@ function hasFlag(name: string): boolean {
 }
 
 import { defaultHost } from "../../lib/config";
+import {
+  isJsonObject,
+  isString,
+  type JsonObject,
+  type JsonValue,
+} from "../../lib/data-values";
 
 const HOST = getArg("--host") ?? defaultHost;
 const SAVE = hasFlag("--save");
 const SECTION = getArg("--section");
 
 // Collect all results
-const results: Record<string, any> = {};
+interface ProbeResult {
+  status?: string;
+  body?: JsonObject;
+  error?: string;
+}
+
+interface ProbeResults {
+  [url: string]: ProbeResult;
+}
+
+const results: ProbeResults = {};
 let conn: LeapConnection;
 
 // --- Helpers ---
 
-async function probe(url: string, label?: string): Promise<any> {
+async function probe(url: string, label?: string): Promise<JsonObject | null> {
   const tag = label ?? url;
   try {
     const resp = await conn.read(url);
     const status = resp.Header?.StatusCode ?? "";
-    const body = resp.Body;
+    const body = isJsonObject(resp.Body) ? resp.Body : null;
 
     if (status.startsWith("2") && body) {
       results[url] = { status, body };
@@ -51,37 +67,48 @@ async function probe(url: string, label?: string): Promise<any> {
       console.log(`  \x1b[32m✓\x1b[0m ${tag} → ${status}${count}`);
       return body;
     } else if (status.startsWith("4") || status.startsWith("5")) {
-      results[url] = { status, error: body?.Message ?? status };
+      results[url] = { status, error: String(body?.Message ?? status) };
       console.log(`  \x1b[90m✗ ${tag} → ${status}\x1b[0m`);
       return null;
     }
     results[url] = { status };
     return body ?? null;
-  } catch (e: any) {
-    results[url] = { error: e.message };
-    console.log(`  \x1b[31m✗ ${tag} → ${e.message}\x1b[0m`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    results[url] = { error: message };
+    console.log(`  \x1b[31m✗ ${tag} → ${message}\x1b[0m`);
     return null;
   }
 }
 
-function bodyCount(val: any): string {
+function bodyCount(val: JsonValue | undefined): string {
   if (Array.isArray(val)) return ` (${val.length} items)`;
   return "";
 }
 
 /** Probe a URL and follow all hrefs in the response */
-async function _probeAndFollow(url: string, depth = 0): Promise<any> {
+async function _probeAndFollow(
+  url: string,
+  depth = 0,
+): Promise<JsonObject | null> {
   if (depth > 2) return null;
   const body = await probe(url);
   return body;
 }
 
 /** Extract all IDs from a collection response */
-function extractIds(body: any, key: string): number[] {
-  const items = body?.[key] ?? [];
-  return items
-    .map((item: any) => hrefId(item.href))
-    .filter((id: number) => id > 0);
+function objectItems(
+  body: JsonObject | null | undefined,
+  key: string,
+): JsonObject[] {
+  const items = body?.[key];
+  return Array.isArray(items) ? items.filter(isJsonObject) : [];
+}
+
+function extractIds(body: JsonObject | null, key: string): number[] {
+  return objectItems(body, key)
+    .map((item) => (isString(item.href) ? hrefId(item.href) : 0))
+    .filter((id) => id > 0);
 }
 
 // --- Section probers ---
@@ -119,8 +146,9 @@ async function probeSystem() {
 async function probeLinks() {
   console.log("\n\x1b[1m=== Links (Radios) ===\x1b[0m");
   const body = await probe("/link");
-  const links = body?.Links ?? [];
+  const links = objectItems(body, "Links");
   for (const link of links) {
+    if (!isString(link.href)) continue;
     const id = hrefId(link.href);
     await probe(`/link/${id}`);
     await probe(`/link/${id}/status`);
@@ -134,8 +162,9 @@ async function probeAreas() {
   console.log("\n\x1b[1m=== Areas ===\x1b[0m");
   const body = await probe("/area");
   await probe("/area/summary");
-  const areas = body?.Areas ?? [];
+  const areas = objectItems(body, "Areas");
   for (const area of areas) {
+    if (!isString(area.href)) continue;
     const id = hrefId(area.href);
     await probe(`/area/${id}`);
     await probe(`/area/${id}/associatedzone`);
@@ -157,11 +186,13 @@ async function probeZones() {
   } else {
     // RA3: get from area walk
     const areaBody = results["/area"]?.body;
-    const areas = areaBody?.Areas ?? [];
+    const areas = objectItems(areaBody, "Areas");
     for (const area of areas) {
+      if (!isString(area.href)) continue;
       const areaId = hrefId(area.href);
       const azBody = results[`/area/${areaId}/associatedzone`]?.body;
-      for (const z of azBody?.Zones ?? []) {
+      for (const z of objectItems(azBody, "Zones")) {
+        if (!isString(z.href)) continue;
         zoneIds.push(hrefId(z.href));
       }
     }
@@ -207,12 +238,14 @@ async function probeDevices() {
     }
     // Also from area walk control stations
     const areaBody = results["/area"]?.body;
-    for (const area of areaBody?.Areas ?? []) {
+    for (const area of objectItems(areaBody, "Areas")) {
+      if (!isString(area.href)) continue;
       const areaId = hrefId(area.href);
       const csBody = results[`/area/${areaId}/associatedcontrolstation`]?.body;
-      for (const cs of csBody?.ControlStations ?? []) {
-        for (const g of cs.AssociatedGangedDevices ?? []) {
-          if (g.Device?.href) deviceIds.push(hrefId(g.Device.href));
+      for (const cs of objectItems(csBody, "ControlStations")) {
+        for (const g of objectItems(cs, "AssociatedGangedDevices")) {
+          if (!isJsonObject(g.Device) || !isString(g.Device.href)) continue;
+          deviceIds.push(hrefId(g.Device.href));
         }
       }
     }
@@ -403,7 +436,10 @@ async function main() {
   await conn.connect();
   console.log("Connected.\n");
 
-  const sections: Record<string, () => Promise<void>> = {
+  interface Sections {
+    [name: string]: () => Promise<void>;
+  }
+  const sections: Sections = {
     system: probeSystem,
     links: probeLinks,
     areas: probeAreas,

@@ -21,6 +21,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import type { NumberLookup } from "../../lib/data-values";
 
 const __dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
 
@@ -223,7 +224,7 @@ function loadManualMap(): ManualEntry[] {
 
 /** Map Designer ModelInfoID to human-readable device type */
 function modelToType(modelInfoId: number): string {
-  const models: Record<number, string> = {
+  const models: NumberLookup<string> = {
     5056: "SunnataDimmer", // HRST-PRO-N-XX
     5062: "SunnataKeypad", // HRST-W4B-XX (4-button)
     5063: "SunnataKeypad", // HRST-W3RL-XX (3-button raise/lower)

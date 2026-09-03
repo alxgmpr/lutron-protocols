@@ -20,6 +20,7 @@
 import { createSocket } from "dgram";
 import { appendFileSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
+import type { StringLookup } from "../../lib/data-values";
 import { identifyPacket, parseFieldValue } from "../../protocol/protocol-ui";
 
 const args = process.argv.slice(2);
@@ -146,7 +147,7 @@ function handleCcaPacket(data: Buffer, flags: number, _radioTs: number) {
       fieldParts.push(`${field.name}=${val}`);
     }
 
-    const catColor: Record<string, string> = {
+    const catColor: StringLookup<string> = {
       BUTTON: GREEN,
       STATE: BLUE,
       BEACON: YELLOW,

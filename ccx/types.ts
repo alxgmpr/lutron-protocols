@@ -5,14 +5,16 @@
  * All messages are CBOR arrays: [msg_type, body_map]
  */
 
+import type { CborMap, CborValue } from "../lib/data-values";
+
 /** Raw CBOR body - integer-keyed map */
-export type CCXBody = Record<number, unknown>;
+export type CCXBody = CborMap;
 
 /** Base interface — all parsed message types extend this */
 export interface CCXMessageBase {
   sequence: number;
   rawBody?: CCXBody;
-  unknownKeys?: Record<number, unknown>;
+  unknownKeys?: CborMap;
 }
 
 /** Level control command (on/off, dimming) */
@@ -54,7 +56,7 @@ export interface CCXStatus extends CCXMessageBase {
   deviceType: number;
   deviceId: number;
   sceneFamilyId?: number; // key 3.1 — recurring scene/group-family identifier
-  extra: Record<number, unknown>;
+  extra: CborMap;
 }
 
 /** Presence/broadcast announcement */
@@ -94,7 +96,7 @@ export interface CCXDeviceReport extends CCXMessageBase {
   deviceType: number; // key 2[0] — always 1 observed
   deviceSerial: number; // key 2[1] — device serial number
   groupId: number; // key 3.1 — scene/group identifier
-  innerData: Record<number, unknown>; // key 0 inner map
+  innerData: CborMap; // key 0 inner map
   level?: number; // 0-0xFEFF, extracted from inner map
   levelPercent?: number; // 0-100
   outputType?: number; // Format B tuple element [2] — 2 or 3 observed
@@ -113,7 +115,7 @@ export interface CCXDeviceState extends CCXMessageBase {
 /** Scene/group recall command */
 export interface CCXSceneRecall extends CCXMessageBase {
   type: "SCENE_RECALL";
-  command: unknown; // key 0.0 raw value for compatibility
+  command: CborValue; // key 0.0 raw value for compatibility
   recallVector: number[]; // key 0.0 observed as a fixed-length byte vector, not just [4]
   targets: number[]; // key 1 — target list, e.g. [0] for all
   sceneId: number; // key 3.0 — scene/group identifier
@@ -123,7 +125,7 @@ export interface CCXSceneRecall extends CCXMessageBase {
 /** Shade/component command */
 export interface CCXComponentCmd extends CCXMessageBase {
   type: "COMPONENT_CMD";
-  command: unknown; // key 0.0 — e.g. 0
+  command: CborValue; // key 0.0 — e.g. 0
   targets: number[]; // key 1
   groupId: number; // key 3.0
   params: number[]; // key 3.2 — [component_type, value], e.g. [10, 4800]
@@ -154,6 +156,8 @@ export type CCXMessage =
 /** A fully decoded CCX packet with transport metadata */
 export interface CCXPacket {
   timestamp: string;
+  /** Hardware capture timestamp in epoch nanoseconds, when supplied by pcap. */
+  epoch_ns?: string;
   srcAddr: string; // IPv6 source
   dstAddr: string; // IPv6 destination
   srcEui64: string; // 802.15.4 EUI-64 source (if available)
