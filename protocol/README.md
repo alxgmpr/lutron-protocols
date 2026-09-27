@@ -1,5 +1,9 @@
 # Protocol Definitions
 
+An initial [Lean verification package](../verification/lean/README.md) proves
+shared encoding properties and checks executable model results against the
+TypeScript implementation. Run it with `npm run test:lean`.
+
 TypeScript definition files for CCA and CCX protocol structures. These files are the single source of truth for packet formats, enums, and field layouts. The codegen tool (`tools/codegen.ts`) reads these definitions and emits C headers for the firmware.
 
 ## Files

@@ -25,6 +25,7 @@
     "lint:fix": "biome check --fix . && npm run lint:anti-slop",
     "format": "biome format --fix .",
     "test:ts": "node --import tsx --test test/**/*.test.ts",
+    "test:lean": "tsx tools/check-lean.ts",
     "test:firmware": "make -C firmware test",
     "test:python": "python3 -m unittest discover -s tools/dom -t tools/dom",
     "typecheck": "tsc --noEmit",

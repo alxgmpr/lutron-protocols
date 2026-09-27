@@ -346,6 +346,13 @@ export class LeapConnection {
           }
           const pending = this.pendingRequests.get(tag)!;
           this.pendingRequests.delete(tag);
+          // subscribe() resumes on a microtask, but another frame can follow
+          // this refusal in the current chunk. Detach before routing it.
+          const subscription = this.subscriptions.get(tag);
+          if (subscription && !status.startsWith("2")) {
+            subscription.active = false;
+            this.subscriptions.delete(tag);
+          }
           pending.resolve(resp);
           continue;
         }
@@ -431,15 +438,22 @@ export class LeapConnection {
     if (!this.socket) throw new Error("Not connected");
 
     const response = await new Promise<any>((resolve, reject) => {
-      this.pendingRequests.set(tag, { resolve, reject });
+      const pending = {
+        resolve: (value: any): void => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (err: Error): void => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      };
 
       const req: any = {
         CommuniqueType: communiqueType,
         Header: { Url: url, ClientTag: tag },
       };
       if (body !== undefined) req.Body = body;
-      this.socket!.write(JSON.stringify(req) + "\n");
-
       // Not extended when a 102 Processing interim frame is seen for this
       // tag (see handleData). Captured evidence shows the real response
       // typically follows ~1s after the 102, well inside the default
@@ -447,12 +461,23 @@ export class LeapConnection {
       // enough to cover the observed case. Extending on every 102 would
       // let a processor that keeps re-emitting 102 without ever finishing
       // stall the caller indefinitely instead of failing loudly.
-      setTimeout(() => {
-        if (this.pendingRequests.has(tag)) {
+      const timer = setTimeout(() => {
+        // ClientTags restart after reconnect. A deadline belongs to this
+        // request object, never to a later request that happens to reuse it.
+        if (this.pendingRequests.get(tag) === pending) {
           this.pendingRequests.delete(tag);
-          reject(new Error(`Timeout: ${communiqueType} ${url}`));
+          pending.reject(new Error(`Timeout: ${communiqueType} ${url}`));
         }
       }, timeout);
+      this.pendingRequests.set(tag, pending);
+      try {
+        this.socket!.write(JSON.stringify(req) + "\n");
+      } catch (err) {
+        if (this.pendingRequests.get(tag) === pending) {
+          this.pendingRequests.delete(tag);
+        }
+        pending.reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
     return response;
   }
@@ -538,14 +563,14 @@ export class LeapConnection {
       );
     } catch (err) {
       state.active = false;
-      this.subscriptions.delete(tag);
+      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
       throw err;
     }
 
     const status: string = response?.Header?.StatusCode ?? "";
     if (!status.startsWith("2")) {
       state.active = false;
-      this.subscriptions.delete(tag);
+      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
       throw new Error(
         `SubscribeRequest ${url} refused: ${status || "(no status)"}` +
           (response?.Body?.Message ? ` — ${response.Body.Message}` : ""),

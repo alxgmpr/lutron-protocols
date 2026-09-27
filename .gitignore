@@ -48,6 +48,7 @@ rtl_433/
 
 # Node.js
 node_modules/
+verification/lean/.lake/
 *.tsbuildinfo
 
 # macOS
