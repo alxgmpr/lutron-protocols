@@ -365,6 +365,94 @@ Notes:
 - A per-tree `device-firmware-manifest.json` sits beside each PFF set and maps
   DeviceClass → codename → path.
 
+### Firmware-image matching is an exact 32-bit compare, not masked
+
+Settled in the Go implementation, which is statically resolvable.
+`msshared/devicefw.(*PackageParser).AppFirmwareContentForDeviceClass` in
+`multi-server-phoenix.gobin` (va `0x00a85bb0`–`0x00a85d18`, symbolized from
+`.gopclntab`) takes the lock, refreshes the manifest cache, then passes the
+`uint32` device class **verbatim** to `runtime.mapaccess2_fast32` against a
+`map[uint32]*devicefw.FirmwareContent`. No `and`, `bic`, `lsr` or mask constant
+appears anywhere in the function. The cache is built in
+`updateManifestCacheLocked` (`0x00a85d6c`) via `json.Unmarshal` → `strconv.ParseUint`
+→ `runtime.mapassign_fast32` on the full key, with `time.Time.Equal` for mtime
+invalidation. `FirmwareRevisionForDeviceClass` (`0x00a859b8`) has the same shape.
+
+The manifests corroborate it: sibling classes sharing the top 16 bits are
+enumerated **individually with identical `Path` and `Sha256Hash`** — `0x03120101`,
+`0x03120102` and `0x03120103` all point at `07911256_EO_APP_RELEASE_v2.025.pff`,
+and likewise `0x1B060101`/`0x1B060301` and `0x1B080101`/`0x1B080301` on Phoenix.
+Under `0xFFFF0000` matching one entry would have covered each group.
+
+**So `DeviceClassMask` does not govern firmware selection.** Masking is real but
+belongs to identity and capability resolution:
+
+- Device addressing/activation masks to family+product in C++
+  (`caseta-device/lutron-core` func `0x001735f4`, site `0x00174cf4`: `r1 = 0xFFFF0000`
+  via `mov`/`movt`, both sides `and`-ed then `orr`-ed with `0x00000101` to normalize
+  hwrev/customrev, then `cmp`). Failure logs
+  `addressing-idle-state: processRequestAddressDevice: DeviceClass family/product mismatch`.
+- Capability and model resolution mask in SQL, with the mask stored in DB rows:
+  `WHERE (DeviceClass & DeviceClassMask) = (?001 & DeviceClassMask)`.
+
+Consequence for recovery work: a sibling class's image cannot be loaded onto a
+device by relying on the hub's matcher. There is also no fallback, nearest-match or
+family-default path — the failure strings just skip the device
+(`Could not get info for device class from firmware manifest`,
+`pegasus-firmware-update-core-receiver: could not find a firmware file in the manifest for device firmware revision: device will not be updated`).
+
+Two caveats, flagged as unresolved rather than findings. The C++ manifest lookup is
+reached through a virtual call (`[[ [r0+8] +12 ] +16]` at `0x007c2ab0`) and no
+vtable in `.rodata` covers the manifest module range `0x779000`–`0x786000`, so the
+C++ compare was not read directly; the conclusion there rests on the exhaustive
+absence of mask code in that module plus the redundant sibling entries. And the
+config node name `ActivationDeviceClassChecksOverrideFlag` appears as a string in
+both `caseta-device/lutron-core` and `lutron-coproc-firmware-update-app` with no
+resolvable xref — by name it would gate the activation check above, not firmware
+selection, but that is untested.
+
+No hardcoded device-class table exists in any `lutron-core` build. The only one
+found anywhere is `msshared.GetAccessoryProductData` in `multi-server-phoenix.gobin`
+(`0x009f4658`, literal pool `0x009f4a64`): 11 exact-equality HomeKit entries, all
+family `0x08` (`0x08100101 08100201 08110101 08110201 08170101 08170201 08180101
+08180201 08180301 08180401 08180501`). Searches for `0x04480101` as LE, BE and ASCII
+return zero hits in either core.
+
+### What changed across Caseta builds 08.25.17 → 08.30.09
+
+Diffed by `(path, sha256)` over the extracted rootfs of each build: **+566 added,
+−8 removed, ~908 changed** net. The bulk of the additions are `usr/share` (492)
+and `var/db` (57). Changed binaries: `lutron-core`, `leap-server.gobin`,
+`lutron-coproc-firmware-update-app`, `lutron-integration`, `lutron-button-engine`,
+`lutron-eeprom-engine`, `lutron-led-ui`, `lutron-eol`, `lutron-core-client`,
+`database-conversion-engine`, `internet-connectivity-monitor.gobin`, plus
+`busybox`, `libcrypto.so.1.1`, `libpython3.8`, `mdnsd`/`dns-sd`.
+
+The 57 new files in `var/db` are config-db conversion scripts **v398–v450**, and
+their headers are the clearest changelog Lutron ships. New systems and codenames
+appearing there, none of them previously in this repo:
+
+| Script | Adds |
+|---|---|
+| v398–v400, v407, v426 | **Lite Heron** processor — RA2 Select CCA 434 MHz device support, CCX link candidates |
+| v402, v411, v442 | **Tolkien** link and **Starling** system; **MAIA** processor within Starling |
+| v419, v434 | **Orion** processor |
+| v425 | **Nuthatch** trimkit |
+| v430 | **Wonder Woman** Dimmer Remote |
+| v401, v426 | Paddle Pico |
+| v424, v436, v438, v450 | **Lumaris** tape-light zones (Toe Kick, Mirror …) |
+| v429 | references **Hydra** and **Rockhopper** device FWU |
+
+Firmware-relevant, and the reason this matters here: **v428 creates
+`FirmwareImageType`, `CurrentDeviceFirmwareData`, `UploadedDeviceFirmwareData` and
+`DisabledDeviceFirmwarePackages`**, and v431/v434/v446 add automatic
+device-firmware update scheduling. These are the same tables previously seen only in
+the Phoenix DB, now reaching Caseta. They are keyed on
+**`SerialNumber` REFERENCES `Device`(`SerialNumber`)**, not on DeviceClass, and
+neither v428 nor any other new script contains `.pff`, a manifest reference, or
+`0x0448`. So the newest schema still does not link class to image — it tracks
+per-device installed revision by serial.
+
 ### The two class → image mapping mechanisms, and their scopes
 
 There are exactly two known mechanisms that resolve a DeviceClass to a firmware
