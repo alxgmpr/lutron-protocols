@@ -365,6 +365,55 @@ Notes:
 - A per-tree `device-firmware-manifest.json` sits beside each PFF set and maps
   DeviceClass → codename → path.
 
+### The two class → image mapping mechanisms, and their scopes
+
+There are exactly two known mechanisms that resolve a DeviceClass to a firmware
+image. Neither covers PD-5NE, but only one of them is evidence about it.
+
+**1. `device-firmware-manifest.json` — hub side, Caseta/RA3/lite-heron.** Keyed on
+the full class as a string (`"0x1B010101"`) → `App.Path` / `Boot.Path`, plus
+`Sha256Hash`, `TargetLocationName`, `ImageType`, revision and `MinimumRevisions`.
+This is the authoritative map for `.pff` images and it is resolved **on the hub
+after download** — device class appears nowhere in the cloud addressing. Every
+sampled version of every channel lacks `0x0448`. **This is the evidence.**
+
+**2. `FirmwareHeaderFile.xml` — Designer side, QS / HomeWorks / RadioRA 2.**
+`QuantumResi/BinDirectory/Firmware/FirmwareHeaderFile.xml`, 205,497 bytes,
+`PackageVersion 4.0.0.A`, 372 leaf records / 396 `OSFirmwareFile` entries. Keyed on
+the class **decomposed byte by byte**:
+
+```
+DeviceTypeFamily family="0x04"        <- DeviceClass byte 3
+  DeviceTypeProduct product="0x01"    <- byte 2
+    DeviceTypeHardwareRev hardwarerev <- byte 1
+      DeviceTypeCustom customrev      <- byte 0
+        OSFirmwareFile/Filename, MajorRev, MinorRev, BuildRev, DeltaTime, FirmwareUpdateSpeed
+```
+
+Families present: `0x01 03 04 05 06 09 0B 0F 13 16 17`. Family `0x04` carries 27
+products: `01 02 05 07 0C 0E 0F 14 15 1F 20 21 22 23 24 25 26 2A 2C 31 35 36 39 3A
+3C 3D 45`.
+
+**Its silence on PD-5NE proves nothing.** No Caseta class appears in this file at
+all — not `0x32` (PD-6WCL, which demonstrably *has* a `.pff`), nor `0x33`, `0x34`,
+`0x41`, `0x42`, `0x48`, `0x56`, `0x63`, `0x64`, `0x66` or `0x68`. The images it
+names are RadioRA 2 / HWQS wallbox parts (`qs dimmer and switch\RRD_WALL_3-08.ldf`
+and the like). Product `0x48` does occur once in the file, but under family `0x13`
+— a DALI ballast. So this map is scoped to the wired/RF QS lines and is simply
+silent on Caseta; do not cite it as evidence either way. (Side note: 148 basenames
+it references are absent from the MSIX — the RadioRA2-branded LDFs and ~130 DALI
+`.hex` files — so Designer references a firmware set it does not ship.)
+
+**What carries no mapping at all:** `.ldf` has no device-class field. It is a
+binary container (64-byte NUL-padded internal name, `u32` total length at `0x40`,
+format version at `0x48`, header size at `0x50`, record count at `0x54`, payload
+count at `0x5C`, digest at `0x60`), and the enclosed HCS08 code is unencrypted —
+but the class lives externally, in the XML above. Proof the class is absent:
+`RFCCO434_1-51.LDF` and `RFCCO868_1-51.LDF` are byte-identical despite different RF
+bands, and `HWQS_6NE_2-13.ldf` (a dimmer) shares its `0x5C` value with
+`RFCCO434_1-51.LDF` (a contact-closure output). No `.ldf` on disk contains the
+bytes `04 48 01 01`. The Lutron iOS app (26.1.0) bundles no device firmware at all.
+
 ### Reading a manifest without downloading the bundle
 
 `device-firmware-manifest.json` is the **first member of the `lutron_firmware` ZIP
