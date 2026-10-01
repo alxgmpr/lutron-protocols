@@ -242,32 +242,61 @@ State machine at FUN_000186b4, transfer at FUN_000183d4:
 
 PFF = "Pegasus Firmware Format" (update-file-format-{0,1}.pff)
 
+Two header layouts exist. The u32 at `0x000` selects which: `1` → 308-byte
+(`0x134`) header, `0` → 304-byte (`0x130`) header, the difference being the
+presence of the target-flash field at `0x120`. Layout 0 is used by the CCX boot
+images; CCA boot images use layout 1.
+
 ```
 Offset  Size  Field                     Notes
-0x000     4   Version Major (BE u32)    0 = boot, 1 = app
-0x004     4   Version Minor (BE u32)    1
+0x000     4   Header layout version     BE u32; 1 → 0x134 header, 0 → 0x130 header
+0x004     4   Constant                  BE u32, always 1
 0x008    64   Per-file unique field     likely ECDSA-P256 sig (r‖s) or HMAC-SHA512
 0x048   192   Reserved                  all-zero, universal across every PFF observed
-0x108     4   Constant marker           0x00000003
-0x10C     4   Format/version            0x00000001
-0x110     4   Marker                    0x01010000
+0x108     2   Flags                     BE u16; 0 normally, 1 on secondary-MCU sub-images
+0x10A     2   Image kind                BE u16; 2 = boot, 3 = app
+0x10C     4   Revision                  Major, Minor, Patch, Label (one byte each)
+0x110     4   MinimumRevisions gate     0 when the manifest lists none
 0x114     4   DeviceClass (BE u32)      firmware-space class, e.g. 0x04630201 = DVRF-6L
-0x118     4   Revision (BE u32)
-0x11C     4   Declared image length     BE u32; a little under the on-disk payload size
-0x120     4   Target flash address      BE u32, e.g. 0x0006F000 (eagle-owl app), 0x00032000 (vogelkop)
-0x124   var   Encrypted body            AES, per-device-model key; block-aligned (mod 16 = 0)
+0x118     4   ImageType (BE u32)        always 1
+0x11C     4   Ciphertext length         BE u32; exact, see below
+0x120     4   Target flash addr/size    layout 1 only; 0xFFFFFFFF or e.g. 0x00072000
+  —      16   IV                        the 16 bytes immediately preceding the body
+0x134   var   Encrypted body            AES-CBC, per-device-model key (0x130 on layout 0)
 ```
 
-Verified across all 48 sample PFFs (9 Caseta/RA2-Select + 39 Phoenix). Bytes
-0x048..0x107 (192 bytes) are an all-zero run, identical in every file regardless of
-device class, boot-vs-app split, or build version. **The encrypted body starts at
-0x124, not 0x10B** — provable because only a 0x124 start makes every payload
-block-aligned (`(size - 0x124) mod 16 == 0`); a 0x10B start would misalign the AES
-blocks. Bytes 0x108..0x123 are a plaintext metadata block (DeviceClass, revision,
-length, target flash address) readable *without* the decryption key. The DeviceClass
-here is the **firmware-space** class the device reports (0x04630201 = DVRF-6L,
-confirmed against the 2026-04-28 live OTA capture), distinct from Designer's
-commissioning-space QSDEVICECLASSTYPEID (e.g. 0x04240101 for HQR-3PD).
+Verified across all 120 sample PFFs (9 Caseta + 9 RA2-Select + 46 Phoenix +
+56 lite-heron): 31 CCA app, 12 CCA boot, 40 CCX app, 37 CCX boot.
+
+**The encrypted body starts at `0x134` (layout 1) or `0x130` (layout 0), not
+`0x10B` and not `0x124`.** The discriminator is the length field at `0x11C`:
+`len(file) - header == field@0x11C` holds for 120/120 files, and every resulting
+length is 16-byte aligned. Block alignment alone cannot settle this — `0x124` and
+`0x134` differ by exactly one AES block, so both satisfy `(size - off) mod 16 == 0`.
+The earlier `0x124` reading is why the length at `0x11C` looked like "a little
+under the on-disk payload size": the 16-byte shortfall is the IV.
+
+**The 16 bytes before the body are a per-image IV, not ciphertext.** 71 distinct
+values across the 120 files; the 48 repeats are all byte-identical copies shared
+between the `phoenix-device/` and `lite-heron-decrypted/` trees. Zero collisions
+between files with differing content, i.e. no IV reuse to exploit.
+
+Bytes `0x108..0x11F` are a plaintext metadata block readable *without* the
+decryption key, and it agrees with `device-firmware-manifest.json`: image kind at
+`0x10A` matches boot-vs-app for 120/120 files, and the revision at `0x10C` matches
+the filename's major.minor for 116/120. The four exceptions are both eagle-owl app
+builds (Caseta v2.025 and CCA v2.026, each appearing in two trees), which carry
+`00 00 00 01` there instead of their actual revision — unexplained.
+
+The `0x108` flag is set on exactly three images — `dart-hybrid-keypad-dimming-app`,
+`powerbird-hybrid-coproc-app`, `powerbird-hybrid-coproc-switch-app` — all small
+(~35 KB) secondary-MCU sub-images, and these are also the only three files whose
+reserved run is not all-zero. It is *not* a "locked build" marker: the two
+`kit-kat-*-locked-*` images have it clear.
+
+The DeviceClass at `0x114` is the **firmware-space** class the device reports
+(0x04630201 = DVRF-6L, confirmed against the 2026-04-28 live OTA capture), distinct
+from Designer's commissioning-space QSDEVICECLASSTYPEID (e.g. 0x04240101 for HQR-3PD).
 
 Use `tools/firmware/pff-parse.ts` to dump the layout and run the chi-square / structural
 sanity check on any `.pff`.
@@ -280,6 +309,12 @@ sanity check on any `.pff`.
   `firmware.tar.enc` bundle**, not the per-`.pff` payload — empirically it decrypts
   none of the 5 CCA PFF payloads (eagle-owl/basenji/bananaquit/vogelkop/caseta),
   every result stays ~38% printable (still encrypted) in both ECB and CBC
+- **No PFF payload has been decrypted.** Body entropy is 7.99–8.00 bits/byte on all
+  120 files, nothing below 7.95. The `0x124` offset error did not mask a correct
+  key: under CBC, treating the IV as ciphertext block 0 corrupts only the first
+  block and yields correct plaintext from block 2 on, so a right key would still
+  have shown mostly-printable output.
+
 - Package signature verified by opkg with `/etc/ssl/firmwaresigning/public.pem` (valid 2020-2120)
 
 ### Device Firmware Manifest
@@ -301,11 +336,40 @@ sanity check on any `.pff`.
 
 ## Source Material
 
-The firmware images behind this document live under
-`data/firmware/phoenix-device/`, which is gitignored — a clone does not carry
-them. Regenerate them from a published firmware bundle:
+The firmware images behind this document live under `data/firmware/`, which is
+gitignored — a clone does not carry them. Everything is reproducible from
+published bundles on `firmware-downloads.iot.lutron.io`; no authentication is
+required and nothing here came off live hardware.
 
-- `coprocessor/phoenix_*.s19` — deobfuscated S19 images
+### PFF provenance
+
+71 unique PFFs, duplicated across four trees to 120 files on disk.
+
+| Tree | Files | Chain |
+|---|---|---|
+| `ra2select-device/firmware/`, `caseta-device/firmware/` | 9 (byte-identical sets) | `caseta-ra2select/final/08.25.17f000/rootfs-08.25.17f000.deb` → `ar x` → `data.tar.gz` → `rootfs.ubifs.xz` → UBIFS → `/opt/lutron/device_firmware/firmware/`. Unencrypted deb, no key needed. |
+| `phoenix-device/{cca,pegasus}/` | 46 of 55 | `phoenix/final/26.01.13f000/lutron_firmware` → AES-128-CBC with `6cba80b2bf3cf2a63be017340f1801d8` → `firmware.tar` → rootfs → `/var/misc_unsynced/device_firmware/phoenix-device-firmware-package.tar.gz` (contains 55; 46 extracted). Byte-identical bundle also ships in the Designer MSIX at `QuantumResi/BinDirectory/Firmware/phoenix/lutron_firmware`. |
+| `lite-heron-decrypted/device-firmware/{cca,pegasus}/` | 55 | `lite-heron/final/26.00.12f000/lutron_firmware` → same decrypt → `device-firmware/` sits at the bundle root, no rootfs hop. Most complete set of the three. |
+| `dvrf6l-v3.021.pff` | 1 | Renamed copy of `07911506_v3.021_VogelkopDimmerAppCaseta.pff` (same SHA-256). Kept under the DVRF-6L name because the 2026-04-28 live OTA capture matched it. |
+
+Notes:
+
+- The `caseta-ra2select/final/` channel carries 329 versions, all unencrypted
+  `.deb`, so Caseta Pro / RA2 Select device firmware needs no key and no bridge
+  access — just the deb and UBIFS tooling.
+- The older SmartBridge rootfs (`caseta-smartbridge`, v02.x, L-BDG2/SBP2) has no
+  `/opt/lutron/device_firmware` at all, matching it never gaining CCA OTA.
+- `data/firmware/caseta-ra2select/rootfs.tar.zst` is the extraction working
+  directory, not a device dump: it holds the deb members, the unpacked
+  `rootfs.ubifs`, and `tmp/extracted/` with the full root filesystem.
+- A per-tree `device-firmware-manifest.json` sits beside each PFF set and maps
+  DeviceClass → codename → path.
+
+### Coprocessor images
+
+- `coprocessor/phoenix_*.s19` — deobfuscated S19 images, recovered from the
+  embedded blobs in `lutron-coproc-firmware-update-app` (no external firmware
+  file exists on these rootfs images)
 - `coprocessor/phoenix_*.bin` — flat binary conversions, for loading into Ghidra
 - `coproc-firmware.gpr` — Ghidra project over the ARM images
 

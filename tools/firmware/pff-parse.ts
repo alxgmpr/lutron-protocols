@@ -3,13 +3,20 @@
  * pff-parse — Inspect Lutron Pegasus Firmware Format (.pff) files.
  *
  * Verified layout (see docs/devices/coprocessor-firmware.md §"PFF File Format"):
- *   0x000   4   Version Major (BE u32)        — 0 = boot, 1 = app
- *   0x004   4   Version Minor (BE u32)        — 1
- *   0x008  64   Per-file unique field         — likely ECDSA-P256 sig or HMAC-SHA512
+ *   0x000   4   Header layout version (BE u32) — 1 → 0x134 header, 0 → 0x130 header
+ *   0x004   4   Constant (BE u32)              — always 1
+ *   0x008  64   Per-file unique field          — likely ECDSA-P256 sig or HMAC-SHA512
  *   0x048 192   Reserved (all-zero, universal)
- *   0x114   4   DeviceClass (BE u32)          — firmware-space class (0x04630201 = DVRF-6L)
- *   0x120   4   Target flash address (BE u32) — e.g. 0x0006F000 eagle-owl app
- *   0x124 var   Encrypted body                — AES, per-device-model key (block-aligned)
+ *   0x108   2   Flags (BE u16)                 — 1 on secondary-MCU sub-images
+ *   0x10A   2   Image kind (BE u16)            — 2 = boot, 3 = app
+ *   0x10C   4   Revision                       — major, minor, patch, label
+ *   0x114   4   DeviceClass (BE u32)           — firmware-space class (0x04630201 = DVRF-6L)
+ *   0x118   4   ImageType (BE u32)             — always 1
+ *   0x11C   4   Ciphertext length (BE u32)     — exact: size - headerLen
+ *   0x120   4   Target flash addr/size (BE u32) — layout 1 only
+ *     —    16   IV                             — 16 bytes immediately before the body
+ *   0x134 var   Encrypted body                 — AES-CBC, per-device-model key
+ *                                                (0x130 on layout 0)
  *
  * Usage:
  *   npx tsx tools/pff-parse.ts <file.pff> [<file.pff> ...]
@@ -18,63 +25,99 @@
  */
 
 import { readFileSync, statSync } from "fs";
+import { pathToFileURL } from "node:url";
 
 const HDR_SIG_OFFSET = 8;
 const HDR_SIG_SIZE = 64;
 const HDR_RESERVED_OFFSET = 72;
 const HDR_RESERVED_SIZE = 192; // 0x048..0x107
+const HDR_FLAGS_OFFSET = 0x108;
+const HDR_KIND_OFFSET = 0x10a;
+const HDR_REVISION_OFFSET = 0x10c;
 const HDR_DEVCLASS_OFFSET = 0x114;
-const HDR_FLASHADDR_OFFSET = 0x120;
-const BODY_OFFSET = 0x124; // encrypted body; only this start keeps payload block-aligned
+const HDR_IMAGETYPE_OFFSET = 0x118;
+const HDR_CTLEN_OFFSET = 0x11c;
+const HDR_FLASHADDR_OFFSET = 0x120; // layout 1 only
+const IV_SIZE = 16;
 
-type ParseResult = {
+// Header length is selected by the layout version at 0x000. Layout 1 carries the
+// extra target-flash field at 0x120; layout 0 does not. In both cases the final
+// 16 header bytes are the AES-CBC IV, and the ciphertext length at 0x11C equals
+// (file size - header length) exactly — that is what pins the body offset, since
+// 0x124 and 0x134 differ by one AES block and both look "block-aligned".
+const HEADER_LEN_BY_LAYOUT: Record<number, number> = { 0: 0x130, 1: 0x134 };
+
+export type ParseResult = {
   path: string;
   size: number;
-  major: number;
-  minor: number;
+  layoutVersion: number;
+  headerLen: number;
+  kind: string;
+  flags: number;
+  revision: string;
   sigHex: string;
   deviceClass: string;
-  targetFlashAddr: string;
+  imageType: number;
+  targetFlashAddr: string | null;
+  ivHex: string;
   reservedAllZero: boolean;
   bodyOffset: number;
   bodySize: number;
+  declaredCtLen: number;
+  ctLenMatches: boolean;
   bodyBlockAligned: boolean;
   chi2?: number;
   uniformLikely?: boolean;
 };
 
-function parse(path: string, withChi: boolean): ParseResult {
+export function parse(path: string, withChi: boolean): ParseResult {
   const data = readFileSync(path);
-  if (data.length < BODY_OFFSET) {
-    throw new Error(`${path}: too small (${data.length} < ${BODY_OFFSET})`);
+
+  const layoutVersion = data.length >= 4 ? data.readUInt32BE(0) : -1;
+  const headerLen = HEADER_LEN_BY_LAYOUT[layoutVersion];
+  if (headerLen === undefined) {
+    throw new Error(
+      `${path}: unknown header layout version ${layoutVersion} at 0x000 (expected 0 or 1)`,
+    );
+  }
+  if (data.length < headerLen + 16) {
+    throw new Error(`${path}: too small (${data.length} < ${headerLen + 16})`);
   }
 
-  const major = data.readUInt32BE(0);
-  const minor = data.readUInt32BE(4);
   const sig = data.subarray(HDR_SIG_OFFSET, HDR_SIG_OFFSET + HDR_SIG_SIZE);
   const reserved = data.subarray(
     HDR_RESERVED_OFFSET,
     HDR_RESERVED_OFFSET + HDR_RESERVED_SIZE,
   );
-  const body = data.subarray(BODY_OFFSET);
+  const body = data.subarray(headerLen);
+  const declaredCtLen = data.readUInt32BE(HDR_CTLEN_OFFSET);
+  const kindRaw = data.readUInt16BE(HDR_KIND_OFFSET);
+  const rev = data.subarray(HDR_REVISION_OFFSET, HDR_REVISION_OFFSET + 4);
 
   const result: ParseResult = {
     path,
     size: data.length,
-    major,
-    minor,
+    layoutVersion,
+    headerLen,
+    kind: kindRaw === 2 ? "boot" : kindRaw === 3 ? "app" : `?(${kindRaw})`,
+    flags: data.readUInt16BE(HDR_FLAGS_OFFSET),
+    revision: `${rev[0]}.${rev[1]}.${rev[2]}r${rev[3]}`,
     sigHex: sig.toString("hex"),
     deviceClass: data
       .readUInt32BE(HDR_DEVCLASS_OFFSET)
       .toString(16)
       .padStart(8, "0"),
-    targetFlashAddr: data
-      .readUInt32BE(HDR_FLASHADDR_OFFSET)
-      .toString(16)
-      .padStart(8, "0"),
+    imageType: data.readUInt32BE(HDR_IMAGETYPE_OFFSET),
+    targetFlashAddr:
+      layoutVersion === 1
+        ? data.readUInt32BE(HDR_FLASHADDR_OFFSET).toString(16).padStart(8, "0")
+        : null,
+    ivHex: data.subarray(headerLen - IV_SIZE, headerLen).toString("hex"),
     reservedAllZero: reserved.every((b) => b === 0),
-    bodyOffset: BODY_OFFSET,
+    bodyOffset: headerLen,
     bodySize: body.length,
+    declaredCtLen,
+    ctLenMatches: body.length === declaredCtLen,
     bodyBlockAligned: body.length % 16 === 0,
   };
 
@@ -96,18 +139,19 @@ function parse(path: string, withChi: boolean): ParseResult {
 }
 
 function formatHuman(r: ParseResult): string {
-  const variant =
-    r.major === 0 ? "boot" : r.major === 1 ? "app" : `?(${r.major})`;
   const sigPreview = `${r.sigHex.slice(0, 24)}…${r.sigHex.slice(-8)}`;
   const lines = [
     `${r.path}`,
     `  size            : ${r.size} bytes`,
-    `  version         : ${r.major}.${r.minor}  (${variant})`,
+    `  header layout   : v${r.layoutVersion} (${r.headerLen} bytes)`,
+    `  kind / revision : ${r.kind}  ${r.revision}${r.flags ? `  [flags=0x${r.flags.toString(16)}]` : ""}`,
     `  signature [64B] : ${sigPreview}`,
-    `  DeviceClass     : 0x${r.deviceClass}`,
-    `  target flash    : 0x${r.targetFlashAddr}`,
-    `  reserved 0-fill : ${r.reservedAllZero ? "OK (192 zeros)" : "FAIL — non-zero bytes in reserved field!"}`,
+    `  DeviceClass     : 0x${r.deviceClass}  (ImageType ${r.imageType})`,
+    `  target flash    : ${r.targetFlashAddr ? `0x${r.targetFlashAddr}` : "— (absent on layout 0)"}`,
+    `  IV [16B]        : ${r.ivHex}`,
+    `  reserved 0-fill : ${r.reservedAllZero ? "OK (192 zeros)" : "non-zero — expected only on secondary-MCU sub-images"}`,
     `  body            : offset 0x${r.bodyOffset.toString(16)}, ${r.bodySize} bytes${r.bodyBlockAligned ? " (16-aligned)" : " — NOT 16-aligned!"}`,
+    `  declared ct len : ${r.declaredCtLen}${r.ctLenMatches ? " (matches)" : " — MISMATCH, header model wrong for this file!"}`,
   ];
   if (r.chi2 !== undefined) {
     lines.push(
@@ -148,4 +192,9 @@ function main() {
   }
 }
 
-main();
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main();
+}

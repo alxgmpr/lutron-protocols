@@ -671,16 +671,25 @@ assuming worst case.
 
 ### .pff format (Pegasus Firmware Format)
 
-Same container as CCX device firmware (see
-[coprocessor-firmware.md](coprocessor-firmware.md) for the verified layout):
-4-byte BE Major (0=boot, 1=app), 4-byte BE Minor, 64-byte unique field (likely
-ECDSA-P256 signature), 195 reserved zero bytes, then AES ciphertext at offset
-`0x10B`. The bridge does **not** decrypt — it ships the `.pff` bytes unmodified
-to the device bootloader, which decrypts in place. The Caseta manifest ships only
-App images (format 1, 100–900 KB); boot images (format 0, ~20 KB) would require
-physical access. The PFF symmetric key is burned in the device bootloader at
-manufacture; recovering it likely needs SWD/JTAG on a CCA device. (PowPak HCS08
-LDFs are plaintext — only EFR32 PFFs are encrypted; see [powpak.md](powpak.md).)
+Same container as CCX device firmware. See
+[coprocessor-firmware.md](coprocessor-firmware.md) §"PFF File Format" for the
+verified layout — in outline: 4-byte BE header-layout version, 4-byte BE constant,
+64-byte unique field (likely ECDSA-P256 signature), 192 reserved zero bytes, a
+plaintext metadata block at `0x108` (image kind, revision, DeviceClass, ciphertext
+length), a 16-byte IV, then AES-CBC ciphertext at `0x134` (or `0x130` on the
+layout-0 variant used by CCX boot images). The bridge does **not** decrypt — it
+ships the `.pff` bytes unmodified to the device bootloader, which decrypts in place.
+
+The Caseta manifest ships only App images (format 1, 100–900 KB); its boot images
+(format 0, ~20 KB) are absent. CCA boot images for basenji, eagle-owl and
+bananaquit-avis *are* present in the Phoenix and lite-heron bundles, so a boot
+image is obtainable without physical access — just not from a Caseta bundle.
+
+The PFF symmetric key is burned in the device bootloader at manufacture;
+recovering it likely needs SWD/JTAG or a glitch on a CCA device (see
+[../tooling/glitch-extraction.md](../tooling/glitch-extraction.md)). No PFF
+payload has been decrypted to date. (PowPak HCS08 LDFs are plaintext — only
+EFR32 PFFs are encrypted; see [powpak.md](powpak.md).)
 
 ### SSH paths reference
 
