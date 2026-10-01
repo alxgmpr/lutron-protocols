@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+
 /**
  * pff-parse — Inspect Lutron Pegasus Firmware Format (.pff) files.
  *
@@ -24,8 +25,8 @@
  *   npx tsx tools/pff-parse.ts --json <file.pff>    # JSON output
  */
 
-import { readFileSync, statSync } from "fs";
 import { pathToFileURL } from "node:url";
+import { readFileSync, statSync } from "fs";
 
 const HDR_SIG_OFFSET = 8;
 const HDR_SIG_SIZE = 64;
@@ -45,7 +46,10 @@ const IV_SIZE = 16;
 // 16 header bytes are the AES-CBC IV, and the ciphertext length at 0x11C equals
 // (file size - header length) exactly — that is what pins the body offset, since
 // 0x124 and 0x134 differ by one AES block and both look "block-aligned".
-const HEADER_LEN_BY_LAYOUT: Record<number, number> = { 0: 0x130, 1: 0x134 };
+const HEADER_LEN_BY_LAYOUT = new Map([
+  [0, 0x130],
+  [1, 0x134],
+]);
 
 export type ParseResult = {
   path: string;
@@ -74,7 +78,7 @@ export function parse(path: string, withChi: boolean): ParseResult {
   const data = readFileSync(path);
 
   const layoutVersion = data.length >= 4 ? data.readUInt32BE(0) : -1;
-  const headerLen = HEADER_LEN_BY_LAYOUT[layoutVersion];
+  const headerLen = HEADER_LEN_BY_LAYOUT.get(layoutVersion);
   if (headerLen === undefined) {
     throw new Error(
       `${path}: unknown header layout version ${layoutVersion} at 0x000 (expected 0 or 1)`,
