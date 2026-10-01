@@ -658,7 +658,7 @@ firmware.
 | `07911256_EO_APP_RELEASE_v2.025.pff` | f85630e0cb1b | 172 660 | 002.025.000r000 | EO | 0x03120101, 0x03120102, 0x03120103 |
 | `07911258_BASENJI_APP_RELEASE_v2.025.pff` | c15fd086d179 | 217 860 | 002.025.000r000 | BASENJI | 0x03150201, 0x03160201 |
 | `07911260_BANANAQUIT_APP_RELEASE_v2.025.pff` | 73bca282fb85 | 220 116 | 002.025.000r000 | BANANAQUIT | 0x03090601, 0x030A0601, 0x03130601, 0x03140601 |
-| `07911326_Antillean_App_Release_v1.001.pff` | 2f176aed13b8 | 167 300 | 001.001.000r000 | Antillean | (1, in extracted) |
+| `07911326_Antillean_App_Release_v1.001.pff` | 2f176aed13b8 | 167 300 | 001.001.000r000 | Antillean | 0x04680101 (RRX-RNFSQ-240; not in manifest) |
 | `07911506_v3.021_VogelkopDimmerAppCaseta.pff` | dc5325d2d84d | 187 060 | 003.021.000r000 | Vogelkop Dimmer Caseta | 0x04630201 |
 | `07911507_v3.021_VogelkopSwitchAppCaseta.pff` | 84e07acc9fdb | 168 452 | 003.021.000r000 | Vogelkop Switch Caseta | 0x04640101 |
 

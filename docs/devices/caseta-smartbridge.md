@@ -651,12 +651,30 @@ Codename → device-class map (15 classes covered):
 
 | Codename | Device classes | Files | MCU |
 |---|---|---|---|
-| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
+| BASENJI (product identity unresolved — see note) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
 | BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
 | EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
 | Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
-| Antillean | (in firmware list, class TBD) | v1.001 | TBD |
+| Antillean (RRX-RNFSQ-240, RA2 Select In-Line Fan Controller) | `0x04680101` | v1.001 | TBD |
 | Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
+
+> **BASENJI is not Diva.** This table previously labelled BASENJI as
+> "Diva, e.g. DVRF-6L". That is wrong. DVRF-6L is DeviceClass `0x04630201` in all
+> three shipped commissioning DBs (`caseta-backup/lutron-db.sqlite.orig`,
+> `rr-sel-rep2/var/db/lutron-db.sqlite`, `vive-hub/lutron-db.sqlite`), and
+> `0x04630201` is the class in the header of
+> `07911506_v3.021_VogelkopDimmerAppCaseta.pff` — the image confirmed against the
+> 2026-04-28 live OTA capture. **Diva is Vogelkop.** BASENJI's `0x03150101` and
+> `0x03160101` resolve in commissioning space to QSERX-B-X (Triathlon Select Roller
+> Shade) and SYERX-B-X (Lutron Roller Shade), which is a family-`0x03`
+> firmware-vs-commissioning namespace collision rather than a usable answer — so
+> BASENJI's product identity is genuinely unresolved, not merely mislabelled.
+>
+> Antillean's class was read directly from the PFF header at offset `0x114`
+> (`0x04680101`) and resolves cleanly in the commissioning DBs to RRX-RNFSQ-240.
+> Note it is a fan controller, not a dimmer. Its `.pff` ships in the bundle but no
+> manifest entry references it: the 15 manifest entries point at only 8 of the 9
+> files on disk.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device** — plan
 capture buffer / streaming accordingly. `MinimumRevisions` is empty for all
@@ -668,6 +686,40 @@ token-based unlock, Secure Boot RTSL, OTP key storage); older xG1/xG12/xG14
 (Cortex-M4) glitch attacks do not apply directly. Secure Boot and debug-lock on
 FG23 are configurable, so empirically check what Lutron actually enabled before
 assuming worst case.
+
+### Device-firmware bundle history across CDN versions
+
+Sampled the `caseta-ra2select/final/` channel to establish which device classes
+have ever had an OTA image. Each build's `/opt/lutron/device_firmware/` was read
+out of the rootfs deb. Note the container changed: builds up to ~08.21 ship
+`rootfs.tar.gz`, later ones ship `rootfs.ubifs.xz` — which is actually a **tar**
+containing a bare UBIFS, not a bare UBIFS, so unwrap one tar layer before handing
+it to `ubireader_extract_files`.
+
+| Build | Pkg version | PFFs | Notes |
+|---|---|---|---|
+| 08.00.06f000 | — | 0 | No `device_firmware` directory at all; CCA OTA did not exist yet |
+| 08.12.00f000 | (no manifest) | 6 | TGP, BANANAQUIT/BASENJI v1.001, Vogelkop with the class in the filename (`VogelkopDimmer_04630201_2.12.pff`) |
+| 08.15.01f000 | 001.000.011r000 | 6 | 9 classes |
+| 08.18.02f000 | 001.002.001r000 | 5 | 10 classes |
+| 08.21.01f000 | 001.003.000r000 | 9 | 16 classes; last build carrying TGP; Antillean debuts at v0.005 |
+| 08.25.17f000 | 001.003.004r000 | 9 | 15 classes; TGP gone, EO present |
+| 08.28.02f000 | 001.003.004r000 | 9 | Byte-identical PFFs and identical 15 classes to 08.25.17 |
+
+Two findings from this:
+
+- **TGP is the former name of EO / eagle-owl.** The TGP image in 08.21.01 carries
+  DeviceClass `0x03120101` at header offset `0x114`, and its manifest maps TGP to
+  `0x03120101/0102/0103` — exactly the classes EO covers in 08.25+. Same device
+  lineage, renamed between those builds.
+- **The covered class set has never included `0x0448`.** Across every sampled
+  build the classes are drawn from `0x0309`, `0x030A`, `0x0312`, `0x0313`,
+  `0x0314`, `0x0315`, `0x0316`, `0x0432`, `0x0463`, `0x0464`, `0x0466` and
+  `0x0468`. In particular **PD-5NE (`0x04480101`, mask `0xFFFF0000`) has never had
+  an OTA image in this channel**, even though the commissioning DBs have carried
+  its row since schema v103. Of the whole pre-Diva `PD-*` family, only PD-6WCL
+  hwrev 5 (`0x04320501`) ever got one. Coverage caveat: 7 of ~329 versions were
+  sampled, chosen to span the range.
 
 ### .pff format (Pegasus Firmware Format)
 
