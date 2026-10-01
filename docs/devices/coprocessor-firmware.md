@@ -365,6 +365,36 @@ Notes:
 - A per-tree `device-firmware-manifest.json` sits beside each PFF set and maps
   DeviceClass → codename → path.
 
+### Reading a manifest without downloading the bundle
+
+`device-firmware-manifest.json` is the **first member of the `lutron_firmware` ZIP
+and is stored uncompressed** (method 0), so two HTTP Range requests retrieve it
+from a 120 MB bundle. Parse the local file header at offset 0 for the name length,
+extra length and compressed size, then range-read the body:
+
+```
+curl -s -r 0-200 "$URL"                      # local file header
+# nameLen @0x1A, extraLen @0x1C, cSize @0x12 (all little-endian)
+curl -s -r "$START-$((START+CSIZE-1))" "$URL" > manifest.json
+```
+
+Verified against `phoenix/final/26.09.18f000/lutron_firmware`: first member
+`device-firmware-manifest.json`, method 0, 64,466 bytes.
+
+Newest live versions as of 2026-10-01 (all unauthenticated):
+
+| Channel | Newest | Device-firmware pkg | Entries |
+|---|---|---|---|
+| `caseta-ra2select/final/` | `08.30.09f000` | 001.003.004r000 | 15 |
+| `phoenix/final/` | `26.09.18f000` | 002.025.035r000 | 36 |
+| `lite-heron/final/` | `26.00.13f000` | 002.025.024r000 | 28 |
+
+The local phoenix set is from 26.01.13f000; the 26.09.18f000 manifest adds eight
+classes (`0x06190301`, `0x061F0101`, `0x1B010201`, `0x1B060201`, `0x1B060401`,
+`0x1B060501`, `0x1B080501`, `0x1B0A0101`) and reaches 68 `.pff` paths. Its only
+family-`0x04` classes are `0x045E0101`, `0x045F0101`, `0x04670101`. No channel at
+any version carries `0x0448`.
+
 ### Coprocessor images
 
 - `coprocessor/phoenix_*.s19` — deobfuscated S19 images, recovered from the
