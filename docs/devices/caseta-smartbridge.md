@@ -651,30 +651,46 @@ Codename → device-class map (15 classes covered):
 
 | Codename | Device classes | Files | MCU |
 |---|---|---|---|
-| BASENJI (product identity unresolved — see note) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
-| BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
-| EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
+| BASENJI (battery roller shade) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
+| BANANAQUIT (roller / roman shades) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
+| EO / eagle-owl, formerly **TGP** (battery roller shade) | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
 | Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
 | Antillean (RRX-RNFSQ-240, RA2 Select In-Line Fan Controller) | `0x04680101` | v1.001 | TBD |
 | Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
 
-> **BASENJI is not Diva.** This table previously labelled BASENJI as
-> "Diva, e.g. DVRF-6L". That is wrong. DVRF-6L is DeviceClass `0x04630201` in all
-> three shipped commissioning DBs (`caseta-backup/lutron-db.sqlite.orig`,
-> `rr-sel-rep2/var/db/lutron-db.sqlite`, `vive-hub/lutron-db.sqlite`), and
-> `0x04630201` is the class in the header of
-> `07911506_v3.021_VogelkopDimmerAppCaseta.pff` — the image confirmed against the
-> 2026-04-28 live OTA capture. **Diva is Vogelkop.** BASENJI's `0x03150101` and
-> `0x03160101` resolve in commissioning space to QSERX-B-X (Triathlon Select Roller
-> Shade) and SYERX-B-X (Lutron Roller Shade), which is a family-`0x03`
-> firmware-vs-commissioning namespace collision rather than a usable answer — so
-> BASENJI's product identity is genuinely unresolved, not merely mislabelled.
+> **The family-`0x03` codenames are all shades, not dimmers.** This table
+> previously labelled BASENJI as "Diva, e.g. DVRF-6L" and BANANAQUIT as
+> "plug-in / Maestro family". Both are wrong, and the conversion scripts say so
+> outright (paths relative to
+> `data/firmware/vive/v01.30.04-decrypted/rootfs-full/usr/db/conversions/config-db/conversion-scripts/`):
 >
-> Antillean's class was read directly from the PFF header at offset `0x114`
-> (`0x04680101`) and resolves cleanly in the commissioning DBs to RRX-RNFSQ-240.
-> Note it is a fan controller, not a dimmer. Its `.pff` ships in the bundle but no
-> manifest entry references it: the 15 manifest entries point at only 8 of the 9
-> files on disk.
+> | Codename | Script evidence | Shipped commissioning row |
+> |---|---|---|
+> | BASENJI | `v339.sql:1` "support \"Basenji\" Battery Roller Shades"; `:52` `DeviceClass = 0x03150101 ... (Basenji Roller Shade)`; `:58` inserts `BSNJ-T`, renamed to `BSNJI-TE` in `v368.sql:17` | `0x03150101` = QSERX-B-X, Triathlon Select Roller Shade; `0x03160101` = SYERX-B-X, Lutron Roller Shade |
+> | EO / eagle-owl | `v320.sql:1` "support \"Eagle Owl\" Battery Roller Shades"; `v322.sql` adds it to the Caseta DB | `0x03120101` = LBMRX-C, Palladiom Wire-Free |
+> | BANANAQUIT | — | `0x03090101` = SYRJ-S2A13-XX Lutron Roller Shade; `0x030A0101` = QSFRJ-S2A13-XX Sivoia QS Triathlon Roller Shade; `0x03130101` = SYMX-C Lutron Roman Shade; `0x03140101` = QSFMX-C Sivoia QS Triathlon Roman Shade |
+>
+> **There is no firmware-vs-commissioning namespace collision in family `0x03`.**
+> An earlier revision of this file claimed one; the two spaces agree once you mask
+> to the top 16 bits, which is what `DeviceClassMask = 0xFFFF0000` instructs. What
+> differs is the **hardware byte**: the manifest ships BANANAQUIT at `0x__060601`
+> where the DB records `0x__0101`, and BASENJI at `0x03150201` where the DB has
+> `0x03150101`. Same device, different hardware revision, and the DB deliberately
+> does not enumerate revisions when the mask ignores that byte. The clearest case
+> is `0x04660201`, which has a shipping image but appears in no DB or script at all
+> — only `0x04660101` (DVRF-5NE-XX) does.
+>
+> **Diva is Vogelkop, not BASENJI.** DVRF-6L is `0x04630201` in all shipped
+> commissioning DBs, and that is the class in the header of
+> `07911506_v3.021_VogelkopDimmerAppCaseta.pff` — the image confirmed against the
+> 2026-04-28 live OTA capture. `v321.sql:26,32` created Vogelkop at `0x04630101`
+> and `v335.sql:10` silently bumped it to `0x04630201` without narrowing the mask.
+>
+> Antillean's class was read from the PFF header at offset `0x114` (`0x04680101`)
+> and is corroborated by `v372.sql:24,30`, the only place in the SQL corpus that
+> exposes an internal product enum: `PRODUCT_RA2_STICK_FAN_CONTROL` for class byte
+> `0x68`. It is a fan controller, not a dimmer. Its `.pff` ships in the bundle but
+> no manifest entry references it — the 15 entries point at only 8 of the 9 files.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device** — plan
 capture buffer / streaming accordingly. `MinimumRevisions` is empty for all
