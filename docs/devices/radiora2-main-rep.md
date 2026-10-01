@@ -209,7 +209,7 @@ Priority: find UART TX/RX test points — there may be a console UART that outpu
 | Power | 9V DC external | Barrel jack | Barrel jack | PoE + barrel |
 | Link type | 9 (Clear Connect) | 9 (Clear Connect) | 30 (Vive CC) | 9+40 (CCA+CCX) |
 
-## Attack Plan
+## Firmware Extraction Plan
 
 **Assumption**: BDM SECSTAT is set (ColdFire security enabled, BDM read access locked). This means we cannot simply connect a debugger and dump memory. Alternative extraction paths are needed.
 
@@ -233,9 +233,9 @@ Priority: find UART TX/RX test points — there may be a console UART that outpu
    - RS232/RS485 transceivers
 8. **Map test points** — continuity test to find UART TX/RX (look for 3.3V idle-high signals)
 9. **Trace unpopulated USB** — where do D+/D- route? If to MCF527x USB pins, could enable USB boot/DFU
-10. **Identify unpopulated switch** — trace to what pin; could be boot mode select or BDM security override
+10. **Identify unpopulated switch** — trace to what pin; could be boot mode select or a BDM security override
 
-### Phase 3: Firmware Extraction (bypassing SECSTAT)
+### Phase 3: Firmware Extraction (working around SECSTAT)
 
 Three paths, roughly ordered by difficulty:
 
@@ -254,7 +254,7 @@ The S25FL116K (2 MB SPI NOR, SOIC-8) is secondary storage (config, database, rad
 The main firmware (bootloader + application, 4 MB) is in the parallel NOR flash (BGA). Cannot clip-read. Options:
 
 14. **Software path first** — if RS232/telnet gives any memory dump capability, read the flash through the MCF527x at its mapped address (likely 0x00000000). Even a hex dump command would work.
-15. **BDM with SECSTAT bypass** — if we can glitch past SECSTAT, full 4 MB readable via BDM memory read at the flash base address
+15. **BDM with a SECSTAT glitch** — if we can glitch past SECSTAT, full 4 MB readable via BDM memory read at the flash base address
 16. **Firmware update capture** — intercept Designer pushing firmware; the update image IS the firmware
 17. **BGA rework** — last resort: hot air desolder M28W320FCB, read on a parallel flash programmer (TL866II+ supports M28W320), reball and resolder
 

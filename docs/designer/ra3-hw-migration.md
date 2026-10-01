@@ -1,11 +1,12 @@
 # RA3 to HomeWorks QSX Migration
 
-*Running a HomeWorks QSX project on RadioRA 3 hardware to unlock HW-exclusive programming features.*
+*Running a HomeWorks QSX project on RadioRA 3 hardware to use HW-exclusive programming features on hardware that already supports them.*
 
 RadioRA 3 and HomeWorks QSX use identical hardware (same processors, same CCA/CCX
 radios) and identical database schemas. A RA3 processor can run a HomeWorks project,
-unlocking HW-exclusive features like DoubleTap, HoldPreset, richer LED logic, and
-full scene/shade programming.
+giving access to features like DoubleTap, HoldPreset, richer LED logic, and
+full scene/shade programming that the hardware supports but the RA3 project
+shell does not expose.
 
 ## Which do I use?
 
@@ -101,8 +102,8 @@ the save cycle and persist to the `.hw` file.
 ## Part 2: CCA Device Pairing (RA3 devices in HW projects)
 
 Toolbox visibility, ProductMasterList membership, LinkType compat, and the
-family/model TOOLBOXPLATFORMTYPES bits are all handled universally by the DLL
-patcher (documented outside this repo).
+family/model TOOLBOXPLATFORMTYPES bits are all application-layer filters,
+handled outside this repo.
 
 The only remaining gate is DeviceClass comparison at pairing time, which is
 code-level and has no DB fix.
@@ -130,7 +131,7 @@ ModelInfoID is immutable once a device is created in Designer (Designer caches i
 memory and overwrites DB changes on save), so the workflow is:
 
 1. **Add the RA3 model** (e.g. RR-3PD-1) from the toolbox — it's visible in HW
-   projects thanks to the universal-unlock IL patches
+   projects once the toolbox platform filter is lifted (handled outside this repo)
 2. **Activate via CCA pairing** — DeviceClass matches because you're using the RA3 model
 3. **Transfer to processor** — works, device responds to commands
 4. **For full HW programming features**: add a NEW HW model (e.g. HQR-3PD-1) to the
@@ -191,7 +192,6 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 
 | File | Purpose |
 |------|---------|
-| DLL patcher (maintained outside this repo) | DLL patcher — universal cross-platform unlock |
 | `../../tools/designer/sql-http-api.ps1` | HTTP SQL API for Designer VM |
 | `../../tools/designer/mcp-designer-db.ts` | MCP server for Designer DB queries |
 | `../../tools/designer/project-convert.ts` | Project file converter (RA3↔HW) |
@@ -201,13 +201,13 @@ LEAP DeviceHeard → DeviceHeardClass.HexadecimalEncoding (hex string)
 # ID-only switch workflow
 
 Switch `ModelInfoID` references only, without changing project/system metadata, to
-unlock HomeWorks-style programming behavior paths while staying in an RA3 project
+reach HomeWorks-style programming behavior paths while staying in an RA3 project
 shell.
 
 ## Objective
 
 Switch `ModelInfoID` references only, without changing project/system metadata, to
-unlock HomeWorks-style programming behavior paths while staying in an RA3 project
+reach HomeWorks-style programming behavior paths while staying in an RA3 project
 shell.
 
 ## Validation note
@@ -351,4 +351,3 @@ Why:
 Safer strategy:
 - Keep one canonical project DB and do in-place ID switching (RA3<->HW) with strict pre/post invariants.
 - If using a separate HW sandbox, merge only programming rows back with deterministic ID translation, not network/identity rows.
-</content>

@@ -1,10 +1,8 @@
 # TMF Extension — Source Investigation Notes
 
-Investigation output for the NCP TMF Vendor Extension implementation plan
-(`docs/superpowers/plans/2026-04-21-stable-ccx-addressing-tmf-diag.md`,
-spec at `docs/superpowers/specs/2026-04-22-ncp-tmf-extension-design.md`).
-This file is Phase 1's deliverable; subsequent phases cite it for exact
-line numbers and API shapes.
+Investigation output for the NCP TMF Vendor Extension work (stable CCX
+addressing via TMF diagnostics). Holds the exact line numbers and API shapes
+the implementation was built against.
 
 ## Pinned revisions
 

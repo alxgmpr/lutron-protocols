@@ -279,7 +279,7 @@ TEST(ota_chunk_iter_pads_short_final_chunk)
 /* --------------------------------------------------------------------------
  * Device-poll (sub-op 06 03) — safe pre-flight, no flash side effects.
  * Use BEFORE BeginTransfer to verify device reachability without bricking.
- * Refs docs/firmware-re/powpak-conversion-attack.md §"Brick incident".
+ * Refs the conversion notes (maintained outside this repo), §"Brick incident".
  * -------------------------------------------------------------------------- */
 
 TEST(ota_poll_broadcast_matches_capture)

@@ -353,10 +353,10 @@ bytes 16-20 (leading 5 bytes' meaning open even for EFR32), the device-side
 ACK format, and end-of-transfer behavior (sub-ops `0x04`/`0x05` reach handlers
 but were never observed on-air). The HCS08 bootloader's default fallback
 (sub-op `0x00` → flash-write primitive) may be destructive on an
-already-in-OTA device. The conversion-attack feasibility (RMJ → LMJ) hinges on
+already-in-OTA device. The RMJ → LMJ conversion feasibility hinges on
 the HCS08 bootloader's validation rules — whether it cross-checks the LDF's
 declared DeviceClass (body offset `0x8AD`) and whether a signature/HMAC seals
-the LDF body or CRC32 is the only seal; see the conversion-attack notes
+the LDF body or CRC32 is the only seal; see the conversion notes
 (maintained outside this repo).
 
 ## 6. Cross-references

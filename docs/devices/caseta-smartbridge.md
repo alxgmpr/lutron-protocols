@@ -706,10 +706,10 @@ To watch a session: `tail -F /var/log/messages | grep -E "firmware-update|cca|co
   a different platform-manager binary; ESN (RMJ) is unconfirmed and may not
   support OTA at all (see [esn.md](esn.md)); the Vive hub (RMJS) is unconfirmed
   and has its own `lutron-core` variant.
-- For RMJ→LMJ "conversion attacks", the host system that owns the device must run
+- For RMJ→LMJ conversions, the host system that owns the device must run
   the orchestrator; captured Caseta wire packets could let us craft equivalent RF
   directly from a controllable transmitter (openBridge), given a recovered/forged
-  per-device-model PFF key. See the conversion-attack notes (maintained outside
+  per-device-model PFF key. See the conversion notes (maintained outside
   this repo).
 
 ## 5. Method / reproducibility

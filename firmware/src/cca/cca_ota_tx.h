@@ -4,9 +4,9 @@
  * Synth-OTA-TX builders — emit on-air OTA packets that match captured
  * Caseta Pro REP2 → DVRF-6L OTA traffic byte-for-byte.
  *
- * Used by the PowPak RMJ/RMJS → LMJ conversion attack to push an LMJ LDF
- * body to a target PowPak from a Nucleo+CC1101, bypassing every Lutron
- * host system. See the conversion-attack notes (maintained outside this repo).
+ * Used by the PowPak RMJ/RMJS → LMJ conversion to push an LMJ LDF body to a
+ * target PowPak from a Nucleo+CC1101, without involving any Lutron host
+ * system. See the conversion notes (maintained outside this repo).
  *
  * Each builder fills a raw packet buffer pre-CRC (CRC-16/0xCA0F is added by
  * the N81 framer downstream). Sequence byte at offset 1 is left as 0x00 —

@@ -438,7 +438,7 @@ Hardware: AM335X-GP rev 2.1 "Lutron Ethernet Bridge", 256 MiB DRAM, 256 MiB NAND
 - Unlabeled 2-pin pads present (likely SWDIO + SWCLK for coprocessor)
 - Not yet attempted
 
-#### Remaining Attack Vectors
+#### Remaining Extraction Paths
 1. STM32 SWD dump (untested)
 2. NAND chip-off (desolder and read directly)
 3. OTA firmware intercept

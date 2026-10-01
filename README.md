@@ -14,10 +14,10 @@ This project started with Caseta CCA radios and expanded into reverse engineerin
 - Imitating a bridge, pairing devices to our own radios and fake CCA subnet.
 - Adding virtual devices to a project, allowing for low-latency bridging to other devices (I used this to turn my RGB+CCT WiZ WiFi bulbs into fake Ketra bulbs)
 - Mixing device families (RA3 <-> HomeWorks QSX), "teaching" devices to pair with other families
-- Spoofing devices during pairing to allow more x-family pairing
+- Presenting an equivalent model identity during pairing, which widens cross-family pairing
 - On-the-fly configuration of devices and expanded parameters like fade rates, delays, trim config, and status LED config
 - Decoding Vive, Caseta, RA2 Select, and Phoenix (RA3/QSX/Athena/XC) firmware from publicly accessible sources and hardware purchased on eBay
-- Unlocking device limits and cross-family interoperability on owned hardware
+- Cross-family interoperability and expanded device configuration on hardware we own
 
 ## Key Concepts
 
@@ -158,4 +158,5 @@ Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than sta
 
 ## License
 
-Research and educational purposes. Not affiliated with Lutron Electronics.
+Research, interoperability, and repair of hardware we own. Not affiliated with
+Lutron Electronics.

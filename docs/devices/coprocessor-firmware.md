@@ -299,35 +299,14 @@ sanity check on any `.pff`.
 | 0x03140601 | cca-bananaquit-avis | CCA device | CCA |
 | 0x03150201 | cca-basenji | CCA device | CCA |
 
-## Custom Firmware Flashing — Attack Surface Analysis
+## Source Material
 
-### Viable Approaches (not yet attempted)
+The firmware images behind this document live under
+`data/firmware/phoenix-device/`, which is gitignored — a clone does not carry
+them. Regenerate them from a published firmware bundle:
 
-1. **SWD/JTAG on Sunnata** — If debug pads exist and aren't fused, bypasses all crypto.
-   Need to open a Sunnata and probe for SWD.
+- `coprocessor/phoenix_*.s19` — deobfuscated S19 images
+- `coprocessor/phoenix_*.bin` — flat binary conversions, for loading into Ghidra
+- `coproc-firmware.gpr` — Ghidra project over the ARM images
 
-2. **CoAP DFU over Thread** — Join network, send to `fw/ia` endpoint:
-   - Extract Thread network key from Phoenix (root SSH → Spinel commands or NVM dump)
-   - Join Thread with nRF52840 dongle
-   - Send crafted PFF via CoAP Block1 PUT
-   - Requires valid PFF or exploitable parser
-
-3. **Bootloader exploit** — PFF parser vulnerabilities:
-   - Buffer overflow in header/length parsing
-   - CBC padding oracle (if different error codes for bad padding vs bad signature)
-   - TOCTOU in dual-bank A/B validation
-
-4. **Downgrade attack** — Push old firmware if no rollback protection (no monotonic counter)
-
-### Prerequisites for all CoAP approaches
-- Thread network key (extractable from live Phoenix)
-- Device mesh-local IPv6 address (discoverable via Thread address resolver)
-- Understanding of PFF validation on device side (need bootloader dump)
-
-## Files Created This Session
-
-- An S19 extraction/deobfuscation tool (maintained outside this repo)
-- `data/firmware/phoenix-device/coprocessor/phoenix_*.s19` — 10 deobfuscated S19 files
-- `data/firmware/phoenix-device/coprocessor/phoenix_*.bin` — flat binary conversions
-- `data/firmware/phoenix-device/coproc-firmware.gpr` — Ghidra project with 5 ARM images
-- `docs/coproc-firmware-re.md` — this document
+The S19 extraction/deobfuscation tool is maintained outside this repo.

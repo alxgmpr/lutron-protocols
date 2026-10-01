@@ -123,7 +123,7 @@ All handshake packets are 24 bytes (22 data + 2 CRC, 0xCA0F poly). All pairing p
 | 25-50| 26| padding | 0x00 or 0xCC |
 | 51-52| 2 | CRC-16 | poly 0xCA0F |
 
-The **DeviceClass at byte 20–23** is the single field that makes a PowPak RMJ → LMJ conversion attack feasible: the bridge does no integrity check on this, so a device that flashed a different DeviceClass announces itself differently. Bridge enforcement must happen on the AM335x against a host-system whitelist (RMJ→ESN, RMJS→Vive, LMJ→RA2/3/HW per the SKU rules).
+The **DeviceClass at byte 20–23** is the single field that makes a PowPak RMJ → LMJ conversion feasible: the bridge does no integrity check on this, so a device that flashed a different DeviceClass announces itself differently. Bridge enforcement must happen on the AM335x against a host-system whitelist (RMJ→ESN, RMJS→Vive, LMJ→RA2/3/HW per the SKU rules).
 
 ### PAIR_B8 / B9 / BA / BB — Pico / Vive / sensor variants
 
@@ -283,7 +283,7 @@ These can be characterized fully only with on-air capture during a live RA3 pair
 
 ## Implementation notes for our bridge
 
-`firmware/src/cca/cca_pairing.cpp` implements the **bridge side** of this protocol. Key gotchas already discovered (from `docs/protocols/cca.md:551–584` and prior session notes):
+`firmware/src/cca/cca_pairing.cpp` implements the **bridge side** of this protocol. Key gotchas already discovered, each validated against a live capture:
 
 - **Echo verbatim**: the device validates `payload[8..21]` byte-for-byte. Any deviation from the captured challenge → device rejects, pair fails silently.
 - **Sequence transform**: `response.seq = challenge.seq + 5`, NOT `+1`. We hardcoded `+5` per the validated capture.

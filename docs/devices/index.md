@@ -91,7 +91,7 @@ Consistent across all CCA sources:
 
 1. **LEAP API exposes everything**: CCA subnet address, RF channel, Thread network master key, device serials, preset mappings — single source of truth (port 8081, read-only)
 
-2. **CCX button encoding cracked**: `device_id[0:1]` = LEAP Preset ID as big-endian uint16, `device_id[2:3]` = constant `0xEF20`
+2. **CCX button encoding decoded**: `device_id[0:1]` = LEAP Preset ID as big-endian uint16, `device_id[2:3]` = constant `0xEF20`
 
 3. **Arbitrary subnets work**: No subnet validation — any 16-bit value is accepted by devices during pairing
 

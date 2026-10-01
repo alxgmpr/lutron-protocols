@@ -595,7 +595,7 @@ During an OTA the `format` byte is the **device's state code** — see §9.5 for
 
 > **Discovery (2026-02-05): Zone Encoding Problem (RESOLVED)**
 >
-> Root cause: `start_vive_pairing()` didn't accept/propagate `zone_id` — auto-accept always defaulted to 0x38. Fix: Added `zone_id` param to `start_vive_pairing()`, stored as `vive_zone_id_`, passed through auto-accept. See `docs/vive-protocol.md` for full writeup.
+> Root cause: `start_vive_pairing()` didn't accept/propagate `zone_id` — auto-accept always defaulted to 0x38. Fix: Added `zone_id` param to `start_vive_pairing()`, stored as `vive_zone_id_`, passed through auto-accept. See [Vive Pairing](#vive-pairing) above for the full writeup.
 
 > **Discovery (2026-02-06): Vive Pairing Protocol (RESOLVED)**
 >

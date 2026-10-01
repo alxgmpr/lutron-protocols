@@ -114,7 +114,7 @@ _serial_bl:
 
 Lutron almost certainly has both CRP on and BL off → **double glitch required**.
 
-## Attack Strategy
+## Extraction Strategy
 
 Based on "Fill your Boots" (Van den Herrewegen et al., TCHES 2021) which demonstrated the first successful multi-glitch attack on real STM8L hardware.
 
@@ -123,7 +123,7 @@ Code: https://github.com/janvdherrewegen/bootl-attacks
 
 ### Overview
 
-The attack corrupts the bootloader's option byte reads during the boot sequence by briefly dropping VDD. If the CRP byte is misread as anything other than 0xAA, the serial bootloader activates, granting full flash read access over UART.
+The glitch corrupts the bootloader's option byte reads during the boot sequence by briefly dropping VDD. If the CRP byte is misread as anything other than 0xAA, the serial bootloader activates, granting full flash read access over UART.
 
 A fully locked chip requires two glitches in quick succession:
 1. **Glitch 1**: Skip the chk_empty/chk_bl check → fall through to chk_crp
@@ -158,7 +158,7 @@ A fully locked chip requires two glitches in quick succession:
 
 ## Equipment
 
-### Attack Hardware
+### Bench Hardware
 
 | Item | Purpose | Notes |
 |------|---------|-------|
@@ -285,9 +285,9 @@ Also attempt to identify the exact STM8L151 variant (C2 = 4KB, C3 = 8KB) from th
    | 0x82 | chk_crp | 38.0 | 0.6% |
    | 0xAC | chk_crp | 39.0 | 0.5% |
 
-### Phase 3: Double-Glitch Attack on Locked PD-3PCL
+### Phase 3: Double-Glitch Extraction from a Locked PD-3PCL
 
-**Goal**: Bypass both protection checks and dump firmware.
+**Goal**: Get past both protection checks and dump the firmware.
 
 1. **Connect Nucleo to PD-3PCL test pads**:
    ```
@@ -314,7 +314,7 @@ Also attempt to identify the exact STM8L151 variant (C2 = 4KB, C3 = 8KB) from th
    V_F = 1.84V (from Phase 1)
    ```
 
-4. **Attack loop** (runs on Nucleo):
+4. **Glitch loop** (runs on Nucleo):
    ```
    while not success:
        pull NRST low          // hold in reset
@@ -428,7 +428,7 @@ Use TIM1 or TIM2 on the STM32H723 in one-pulse mode:
 | Wrong USART pins | Try both default (PA2/PA3) and alternate (PC2/PC3) mappings |
 | Different bootloader version | STM8L151 family likely shares bootloader with STM8L152. Verify with profiling chip. |
 | BOR triggers during glitch | V_F = 1.84V is above minimum BOR threshold (1.8V). Disable BOR via option bytes on profiling chip. |
-| Dimmer's power supply interference | Power the MCU from an external 3.3V supply during the attack, bypassing the dimmer's regulator |
+| Dimmer's power supply interference | Power the MCU from an external 3.3V supply during the run, bypassing the dimmer's regulator |
 
 ## References
 

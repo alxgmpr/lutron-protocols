@@ -144,10 +144,8 @@ AGENTS.md
 docs/superpowers/
 
 # .NET build artifacts
-tools/auth-bypass/bin/
-tools/auth-bypass/obj/
-tools/dll-patcher/**/bin/
-tools/dll-patcher/**/obj/
+**/bin/Debug/
+**/obj/Debug/
 
 # Session memory
 .remember/
@@ -162,3 +160,6 @@ data/phoenix-ssl/
 
 # Raw sweep captures — unredacted, never committed
 data/sweep/
+
+# House-specific programming reviews (scene/zone layout, like data/)
+docs/programming-review-*.md

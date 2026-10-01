@@ -6,7 +6,7 @@
  *
  * Mirrors the firmware-side `cca ota-tx` orchestration but in TypeScript,
  * so the packet format is fast to iterate during Phase 2 debugging. See the
- * conversion-attack notes (maintained outside this repo) and docs/protocols/cca/ota.md.
+ * conversion notes (maintained outside this repo) and docs/protocols/cca/ota.md.
  *
  * Usage:
  *   npx tsx tools/cca/ota-tx.ts \

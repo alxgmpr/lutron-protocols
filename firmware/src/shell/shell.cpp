@@ -1736,10 +1736,10 @@ static void cmd_cca(const char* arg)
 
     /* cca ota-begin <subnet_hex> <serial_hex> [duration_sec]
      * Synth-OTA BeginTransfer burst — Phase 2a subnet recon for the
-     * PowPak RMJ/RMJS → LMJ conversion attack. Watch the device's `0x0B`
+     * PowPak RMJ/RMJS → LMJ conversion. Watch the device's `0x0B`
      * XOR-ACK with format=0xC1 to confirm subnet acceptance. For unpaired
      * devices start with subnet=ffff (factory default). See the
-     * conversion-attack notes (maintained outside this repo). */
+     * conversion notes (maintained outside this repo). */
     if (strncmp(arg, "ota-begin ", 10) == 0) {
         char* p;
         uint16_t subnet = (uint16_t)strtoul(arg + 10, &p, 16);
@@ -1768,11 +1768,11 @@ static void cmd_cca(const char* arg)
     }
 
     /* cca ota-tx <subnet_hex> <serial_hex>
-     * Full-OTA TX — Phase 2b PowPak conversion attack. Walks the LDF body
+     * Full-OTA TX — Phase 2b PowPak conversion. Walks the LDF body
      * uploaded via STREAM_CMD_OTA_UPLOAD_*, sending BeginTransfer +
      * TransferData× + ChangeAddrOff at the captured 75ms cadence. Watch
      * for the device's 0x0B XOR-ACK with format=0xEC to confirm commit.
-     * See the conversion-attack notes (maintained outside this repo). */
+     * See the conversion notes (maintained outside this repo). */
     if (strncmp(arg, "ota-tx ", 7) == 0) {
         char* p;
         uint16_t subnet = (uint16_t)strtoul(arg + 7, &p, 16);

@@ -10,7 +10,3 @@ work that lets a RadioRA 3 processor run HomeWorks-style programming.
 - [Database](database.md) — Designer's SQL Server LocalDB schema and project tables
 - [RA3 ↔ HomeWorks migration](ra3-hw-migration.md) — full identity migration and the ID-only switch workflow
 - [Cycle dimming](cycle-dim.md) — cycle-dim button programming and validation
-
-DLL-patch / jailbreak material (universal platform unlock, channel-compat patches)
-is maintained outside this repository.
-</content>

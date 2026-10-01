@@ -26,7 +26,7 @@ The device's identity is determined by **a 4-byte DeviceClass at body offset `0x
 
 **Flash-write primitive** at BN `0x4290` — standard HCS08 FCMD/FSTAT sequence. All flash-write callers route through `sub_8bb4` (which has no static callers — likely reached via interrupt/state-machine).
 
-**Conversion attack — feasible path**: Direct CCA OTA from a Nucleo+CC1101 transmitter, bypassing every Lutron host system. Build CCA OTA packets in software, send the wake-up sequence to a target PowPak's serial number, stream LMJ firmware bytes via TransferData. Whether the device's bootloader cross-checks the firmware's declared DeviceClass against the in-flash one is the only remaining unknown — answerable empirically by attempting the attack.
+**Conversion — feasible path**: Direct CCA OTA from a Nucleo+CC1101 transmitter, without involving any Lutron host system. Build CCA OTA packets in software, send the wake-up sequence to a target PowPak's serial number, stream LMJ firmware bytes via TransferData. Whether the device's bootloader cross-checks the firmware's declared DeviceClass against the in-flash one is the only remaining unknown — answerable empirically on the bench.
 
 **Path NOT viable**: Designer/processor-mediated update — Designer doesn't OTA CCA devices (only CCX), and even the cloud-portal CCA OTA path on Phoenix/Caseta processors only carries `0x03xx` device-class entries (eagle-owl/bananaquit-avis/basenji — HQRD-style devices), not PowPak (`0x16xx`). Plus an RMJ-prefixed device can't pair to an RA3 system to begin with.
 
@@ -288,7 +288,7 @@ Combining all findings:
 
 ## Designer-side firmware push internals
 
-CIL analysis of `Lutron.Gulliver.Infrastructure.dll` revealed the **filename-encoding binding mechanism** that's the simplest attack point.
+CIL analysis of `Lutron.Gulliver.Infrastructure.dll` revealed the **filename-encoding binding mechanism** that's the simplest intervention point.
 
 ### Filename pattern
 
@@ -334,7 +334,7 @@ For completeness — `FirmwareFileProvider..ctor` at RVA `0x3be80` initializes t
 
 `Lutron.Gulliver.Infrastructure.dll` only has the *bottom* of the stack — protocol opcodes, the bundle parser, the cloud-download client. The actual orchestrator that turns "user clicks update" into the LEAP/Gulliver byte stream is in a higher-tier DLL we haven't unpacked: most likely `Lutron.Gulliver.DomainObjects.dll`, `Lutron.Gulliver.Programming.dll`, `Lutron.Gulliver.MainViewModel.dll`, or `Lutron.Services.Leap*.dll`. The literal LEAP message names (`BeginTransferSession`, `getCcaFirmwareUpdateSupportedDevices`, `fetchCCADeviceFirmwareUpdateDetails`) appear in NONE of the five DLLs we've inspected — so they live up there too.
 
-## Concrete attack plan: RMJ-16R-DV-B → LMJ-16R-DV-B conversion
+## Concrete conversion plan: RMJ-16R-DV-B → LMJ-16R-DV-B
 
 ### Two facts that constrain every path
 
@@ -392,7 +392,7 @@ The cleanest path *if it works*. The Phoenix RA3 manifest doesn't list PowPak, b
 This would tell us:
 - The actual PowPak `.pff` format (vs. the Designer-shipped `.ldf` we have)
 - Whether HWQS distinguishes RMJ and LMJ as separate DeviceClass entries
-- The wire-protocol path is the same Pipeline 2 — confirming the conversion attack reduces to manifest editing on a rooted HWQS processor (modulo the device-bootloader's own DeviceClass check)
+- The wire-protocol path is the same Pipeline 2 — confirming the conversion reduces to manifest editing on a rooted HWQS processor (modulo the device-bootloader's own DeviceClass check)
 
 ### Bootloader unknowns (gates Paths 2 and 3)
 
@@ -648,9 +648,9 @@ packets at any subnet. Subnet sweeping was unnecessary. Whatever destructive
 op fires (PAGE_ERASE, EndTransfer commit, etc.) fires on any subnet
 matching the device serial.
 
-#### Net effect for the conversion attack
+#### Net effect for the conversion
 
-Finding #1 (DeviceClass hardcoded into code) means the conversion attack
+Finding #1 (DeviceClass hardcoded into code) means the conversion
 ALWAYS requires writing all of Section A — there's no shortcut "just flip
 the DeviceClass bytes at `0x8AD`". The LDF flow already does this (Section A
 + Section B + factory-config all replaced atomically), so the architectural
@@ -685,7 +685,7 @@ Multiple paths CMP against 0x32 (at body offsets 0x1023A, 0x15B0B, 0x15B82, 0x15
 
 The receive-side state machine + flash-write integration appears to start in the BN 0x9290-0x9300 region (the function containing the FADE sync check). Likely the orphaned `sub_8bb4` (which exclusively calls flash-write) is reached from this state machine via a function pointer or banked-CALL we couldn't trace earlier.
 
-## Revised attack feasibility
+## Revised conversion feasibility
 
 With the wire protocol fully decoded (see [protocols/cca/ota.md](../protocols/cca/ota.md)), **Path 2 (direct CCA OTA from Nucleo+CC1101) is now concrete**: configure the radio with the shared LEC register values (see the CC1101 table above), build single-channel `55 55 55 FF FA DE [len][op][payload][CRC16(0xCA0F)]` packets in async serial mode, and stream the LMJ firmware bytes via the BeginTransfer → TransferData × N → ChangeAddressOffset transfer sequence (full framing in ota.md).
 
@@ -724,7 +724,7 @@ Key consequences:
 - **Both formats ultimately deliver Motorola S-records** to the device's MCU. The processor side just adds varying amounts of crypto/integrity tooling on top.
 - **CCA-on-Pegasus** (newer 0x03xx CCA devices on Phoenix RA3) uses PFFs because the Phoenix firmware-bundle distribution model encrypts everything. **CCA-on-QS-Link** (PowPak family 0x16, QSE-CI-NWK-E sub-network controllers, GRAFIK Eye, etc.) uses LDFs because they ride Designer's much older "MSIX-bundled" distribution model.
 
-The format inflection point matters for our attack: PFF's signed/encrypted header makes Path A (filename swap) impossible there — you'd need the ECDSA signing key. LDF's plaintext format means Path A works trivially: just rename a file. **PowPak being on the LDF path is exactly why the conversion attack is feasible at all.**
+The format inflection point matters for the conversion: PFF's signed/encrypted header makes Path A (filename swap) impossible there — you'd need the ECDSA signing key. LDF's plaintext format means Path A works trivially: just rename a file. **PowPak being on the LDF path is exactly why the conversion is feasible at all.**
 
 ## Open questions
 

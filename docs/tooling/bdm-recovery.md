@@ -363,4 +363,4 @@ unrecoverable loss.
 - MC9S08QE128 datasheet: NXP doc number `MC9S08QE128RM` (reference manual).
 - USBDM project: https://github.com/podonoghue/usbdm-eclipse-makefiles-build
 - This project's PowPak HCS08 RE: [powpak.md](../devices/powpak.md)
-- Conversion-attack plan that triggered the brick (the 2026-04-29 brick incident on RMJ 0x00BC2107) — documented outside this repo
+- Conversion plan that triggered the brick (the 2026-04-29 brick incident on RMJ 0x00BC2107) — documented outside this repo

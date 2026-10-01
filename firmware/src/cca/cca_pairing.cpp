@@ -1394,7 +1394,7 @@ static void exec_subnet_pair(uint32_t bridge_id, uint8_t zone_byte, uint8_t dura
  * Transmits `cca_ota_build_begin_transfer` packets at the captured-OTA
  * cadence (~75 ms) for `duration_sec` seconds. Watch for the device's
  * `0x0B` XOR-ACK with `format=0xC1` (READY) to confirm the chosen subnet
- * was accepted. See the conversion-attack notes (maintained outside this repo), Phase 2.
+ * was accepted. See the conversion notes (maintained outside this repo), Phase 2.
  *
  * For unpaired RMJ/RMJS targets, start with subnet=0xFFFF (factory
  * default per docs/protocols/cca/ota.md). Sweep candidates
@@ -1476,7 +1476,7 @@ static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_t
 }
 
 /* -----------------------------------------------------------------------
- * Synth-OTA full TX — Phase 2b PowPak conversion attack.
+ * Synth-OTA full TX — Phase 2b PowPak conversion.
  *
  * Walks the LDF body in cca_ota_session via cca_ota_full_tx_walk, sending
  * each packet (BeginTransfer, TransferData× chunks, ChangeAddrOff at page
@@ -1487,7 +1487,7 @@ static void exec_ota_poll(uint32_t target_id, uint16_t subnet, uint8_t carrier_t
  * packets via stream_broadcast_text so the host TUI sees it.
  *
  * The host must upload the LDF body via STREAM_CMD_OTA_UPLOAD_* first.
- * See the conversion-attack notes (maintained outside this repo).
+ * See the conversion notes (maintained outside this repo).
  * ----------------------------------------------------------------------- */
 struct OtaFullTxCtx {
     uint32_t count;
