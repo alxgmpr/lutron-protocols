@@ -721,6 +721,7 @@ it to `ubireader_extract_files`.
 | 08.21.01f000 | 001.003.000r000 | 9 | 16 classes; last build carrying TGP; Antillean debuts at v0.005 |
 | 08.25.17f000 | 001.003.004r000 | 9 | 15 classes; TGP gone, EO present |
 | 08.28.02f000 | 001.003.004r000 | 9 | Byte-identical PFFs and identical 15 classes to 08.25.17 |
+| 08.28.11f000 | 001.003.004r000 | 9 | The build `/sources` actually offers a production L-BDG2-WH. Same 9 PFFs, byte-identical; same 15 classes |
 | 08.30.09f000 | 001.003.004r000 | 9 | Newest live build (CDN mtime 2026-10-01). Same 9 PFFs, byte-identical; same 15 classes |
 
 The device-firmware package version has been frozen at `001.003.004r000` from
