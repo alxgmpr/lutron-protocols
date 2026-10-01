@@ -245,9 +245,8 @@ function timeOnce(run: () => void): number {
   return Number(process.hrtime.bigint() - started);
 }
 
-function main() {
-  const write = process.argv.includes("--write");
-
+/** Time every case once over and return the ratios vs the reference. */
+function measure(): Record<string, number> {
   const timings: Record<string, number> = {};
   for (const bench of CASES) {
     const samples = Array.from({ length: REPS }, () => timeOnce(bench.run));
@@ -263,8 +262,16 @@ function main() {
         `   spread ${spreadPct.toFixed(0)}%${noisy ? "  ← NOISY, verdict unreliable" : ""}`,
     );
   }
+  return normalize(timings, REFERENCE);
+}
 
-  const ratios = normalize(timings, REFERENCE);
+/** A real regression survives a re-measure; a noisy shared runner does not. */
+const GATE_ATTEMPTS = 3;
+
+function main() {
+  const write = process.argv.includes("--write");
+
+  let ratios = measure();
   console.log("\nratios vs reference:");
   for (const [name, ratio] of Object.entries(ratios)) {
     console.log(`  ${name.padEnd(20)} ${ratio.toFixed(4)}`);
@@ -297,12 +304,14 @@ function main() {
   }
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-  const verdict = compareBench(
-    ratios,
-    baseline.ratios,
-    baseline.tolerancePct,
-    baseline.perCaseTolerancePct ?? {},
-  );
+  const compare = () =>
+    compareBench(
+      ratios,
+      baseline.ratios,
+      baseline.tolerancePct,
+      baseline.perCaseTolerancePct ?? {},
+    );
+  let verdict = compare();
 
   // The baseline is CI-derived. Enforcing it on other hardware produces
   // confident nonsense, so a local run reports and stops there.
@@ -313,6 +322,20 @@ function main() {
         "this machine. Compare successive local runs instead, or --gate to force.",
     );
     return;
+  }
+
+  // Re-measure before believing a regression: one noisy sample on a shared
+  // runner once failed an unrelated lockfile-only change.
+  for (
+    let attempt = 2;
+    gating && verdict.regressions.length > 0 && attempt <= GATE_ATTEMPTS;
+    attempt++
+  ) {
+    console.log(
+      `\nRegression seen — re-measuring (attempt ${attempt}/${GATE_ATTEMPTS})\n`,
+    );
+    ratios = measure();
+    verdict = compare();
   }
 
   for (const r of verdict.regressions) {
