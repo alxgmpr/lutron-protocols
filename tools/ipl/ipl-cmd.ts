@@ -169,7 +169,7 @@ function decodeBody(f: ParsedFrame): string | null {
   }
   // opId 60 IntegrationCommand — body is printable ASCII terminated with \n
   if (
-    (f.msgType === MsgType.Command || f.msgType === MsgType.Response) &&
+    f.msgType === MsgType.Command &&
     f.operationId === 60 &&
     f.body.length > 0
   ) {
