@@ -15,9 +15,11 @@
  *   +6  senderId (u8)
  *   +7  receiverId (u8; 0xFF = broadcast)
  *   +8  messageId (u16 BE)
- *   +10 operationId (u16 BE)       -- if message HasOperationId
- *   +12 payloadLength (u16 BE)     -- if message HasPayload
- *   +14 payload bytes
+ *   +10 operationId (u16 BE)       -- except Acknowledgement / Response
+ *   next payloadLength (u16 BE)   -- except Acknowledgement
+ *   next payload bytes
+ * Version1 omits systemId; Version2 uses one byte. Response payload lengths
+ * directly follow the base header; Responses correlate by messageId.
  */
 
 import { deflateSync as zlibDeflateSync } from "zlib";
@@ -193,7 +195,7 @@ export function resolveOpName(msgType: MsgType, op: number): string {
       `ctrl${op}`
     );
   }
-  // Command / Response — ack has no opId
+  // Command — acknowledgements and responses have no operation ID.
   return CommandOpName[op] ?? `op${op}`;
 }
 
@@ -1331,18 +1333,27 @@ export interface ParsedFrame {
  */
 export function parseFrame(buf: Buffer, pos = 0): ParsedFrame | null {
   const i = buf.indexOf("LEI", pos);
-  if (i < 0 || i + 12 > buf.length) return null;
+  if (i < 0 || i + 4 > buf.length) return null;
   const typeByte = buf[i + 3];
   const version = ((typeByte & 0xe0) >> 5) + 1;
   const msgType: MsgType = typeByte & 0x07;
   const rp = typeByte & 0x10 ? "Normal" : "NoAck";
   const attempt = typeByte & 0x08 ? "Resend" : "Original";
-  const systemId = buf.readUInt16BE(i + 4);
-  const senderId = buf[i + 6];
-  const receiverId = buf[i + 7];
-  const messageId = buf.readUInt16BE(i + 8);
-
-  let cursor = i + 10;
+  const systemIdBytes = version === 1 ? 0 : version === 2 ? 1 : 2;
+  let cursor = i + 4;
+  if (cursor + systemIdBytes + 4 > buf.length) return null;
+  // Version1 has no system ID; use zero for the absent field.
+  const systemId =
+    systemIdBytes === 0
+      ? 0
+      : systemIdBytes === 1
+        ? buf[cursor]
+        : buf.readUInt16BE(cursor);
+  cursor += systemIdBytes;
+  const senderId = buf[cursor++];
+  const receiverId = buf[cursor++];
+  const messageId = buf.readUInt16BE(cursor);
+  cursor += 2;
 
   // requestedAcknowledgementSet (16 bytes) only on Resend
   if (attempt === "Resend") {
@@ -1351,7 +1362,9 @@ export function parseFrame(buf: Buffer, pos = 0): ParsedFrame | null {
   }
 
   let operationId: number | undefined;
-  const hasOp = msgType !== MsgType.Acknowledgement;
+  // Responses correlate by messageId and omit operationId.
+  const hasOp =
+    msgType !== MsgType.Acknowledgement && msgType !== MsgType.Response;
   if (hasOp) {
     if (cursor + 2 > buf.length) return null;
     operationId = buf.readUInt16BE(cursor);

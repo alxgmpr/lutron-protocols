@@ -112,12 +112,19 @@ Offset  Size  Field
 7       1     receiverId (0xFF = broadcast)
 8       2     messageId (uint16 BE, monotonically increasing per sender)
 10      16    requestedAcknowledgementSet  -- ONLY when Attempt==Resend (0x08 bit)
-10/26   2     operationId (uint16 BE)  -- ONLY when HasOperationId (Command/Response/Event/Control/Telemetry)
+10/26   2     operationId (uint16 BE)  -- ONLY for Command/Event/Control/Telemetry
 
 -- after the header, if the message HasPayload (all types except Acknowledgement):
-12/28   2     payloadLength (uint16 BE)      -- per MessageFactorylet.ReadPayload
-14/30   N     payload bytes                  -- operation-specific body
+next    2     payloadLength (uint16 BE)      -- per MessageFactorylet.ReadPayload
+next    N     payload bytes                  -- message-specific body
 ```
+
+For Version3 Responses, the length is at offset 10 (26 on resend), because
+there is no operation ID. Version1 omits the two-byte system ID, shifting the
+subsequent fields two bytes earlier; Version2 shifts them one byte earlier.
+Version1 acknowledgements can therefore be complete at eight bytes. Live
+26.06.47 traffic began with Version1 and later used Version3; clients must
+decode the version in each frame rather than assume a fixed header layout.
 
 **Critical:** the payload is always preceded by a 2-byte BE length prefix. Missing it
 causes the processor to try parsing the first two body bytes as the length and then
@@ -135,8 +142,9 @@ Minimum Version3 Command wire size: 14 bytes (12-byte header + 2-byte length 0 f
 | 3       | 0x08 | Attempt            | `0x00`=Original, `0x08`=Resend |
 | 2-0     | 0x07 | MessageType        | `0`=Command, `1`=Ack, `2`=Response, `3`=Event, `4`=Control, `5`=Telemetry |
 
-RA3 uses **Version3**. `IPLVersionManager.MAX_VERSION_SUPPORTED` is Version3 (the client
-warns if a processor advertises Version4+). So the 4th byte is almost always `0x40 | msgType`:
+RA3 supports **Version3**, but live traffic can also use Version1.
+`IPLVersionManager.MAX_VERSION_SUPPORTED` is Version3 (the client warns if a
+processor advertises Version4+). The following examples show Version3 type bytes:
 
 | Byte | ASCII | MsgType | Direction | Purpose |
 |------|-------|---------|-----------|---------|
@@ -208,8 +216,14 @@ Ack of a prior command/event by `messageId`. Has no operationId and no payload (
 
 ### 3.3 Response (LEIB, MsgType=2)
 
-Response to a command. OperationId matches the command being responded to. Parsed by
-`ResponseFactorylet`.
+Response to a command, correlated by `messageId`. Live Ping exchanges on firmware
+26.06.47 show no operation ID: the payload length immediately follows the base
+header. Seven captured Version3 Ping responses each have a 10-byte base header,
+a two-byte length (`00 32`), and 50 payload bytes. Treating that length as an
+operation ID incorrectly consumes subsequent frames as response data.
+
+This corrects the earlier claim that Response repeats the command's operation ID.
+Other response payload schemas remain command-specific and require validation.
 
 ### 3.4 Event (LEIC, MsgType=3)
 
