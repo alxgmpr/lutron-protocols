@@ -340,6 +340,35 @@ This is the Designer-side equivalent of the Telnet `#DEVICE,...,14,level` comman
 No fade field — matches the telnet protocol note that DEVICE actions don't carry
 fade; the dimmer uses its programmed default ramp.
 
+### Designer load identification via NamedRPCWrapper (opId 349)
+
+A live Designer 26.6 identification capture on processor firmware `26.06.47f000`
+shows both CCA load Flash and CCX dimmer Identify associated with these named RPCs:
+
+| Name | JSON arguments observed |
+| --- | --- |
+| `RequestStartObjectIdentification` | `RequestId` (string), `ObjectId` (load-controller ID), `ObjectType: 3`, `TimeoutSeconds: 60`, `OperationSessionId` (string) |
+| `RequestStopObjectIdentification` | `RequestId`, `ObjectId`, `ObjectType: 3`, `OperationSessionId` |
+| `ReportObjectIdentificationStatus` | `RequestId`, `ObjectId`, `ObjectType: 3`, `Status` (1 after start; 2 after stop) |
+
+These were processor-to-broadcast Command frames received on an independent
+authenticated IPL connection. The capture establishes the processor broadcasts
+associated with the Designer actions, rather than Designer's outbound transport.
+
+The observed targets were **load controllers**, rather than their zones or
+physical devices. LEAP `ReadRequest /loadcontroller/{id}` exposes
+`AssociatedZone` and `AssociatedDevice` to resolve that distinction.
+
+These are opcode 349 bodies matching the `bodyNamedRPC` encoding: ASCII command name,
+NUL, four-byte wrapper request ID, one-byte wrapper operation-session ID, then
+zlib-compressed JSON. In these broadcasts, the five binary wrapper ID bytes
+were zero; the JSON independently carried string request/session IDs.
+
+This verifies the emitted Designer workflow and status reports, not successful
+independent client replay. Request/session-ID lifecycle and required client
+permissions remain unverified. No opcode 6 `RuntimeIdentify` or opcode 40
+`DeviceSetIdentifyState` was observed in these two identification actions.
+
 ### GoToLevel (opId 13) — 14 bytes (OUTPUT path, has fade) ✅ verified
 
 ```
