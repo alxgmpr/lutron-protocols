@@ -278,6 +278,12 @@ Probe read-only with `ccx coap get` — `5.01` means the bucket exists (write-on
 | Keypad / H-Keypad (`Led` rows in DB) | AHA, AAQ, AAU, AAY, ABI, ABM, AFE, AFI, AFM, AFQ, AIE | **`AHA`** |
 | Dimmer / switch (`ZoneControllerUserInterface` rows) | AAI, AAM, AAQ, AAU, AAY | **`AAM`** |
 
+See [Sunnata LED brightness](../../designer/sunnata-led-brightness.md) for a
+Designer 26.6 sunrise/sunset keypad candidate and the dimmer command-catalog
+limitation. The candidate is untransferred and physically untested. Direct AAM
+changes were not attempted in that investigation; the complete-record replacement
+requirement above applies before attempting that route.
+
 ### Presets (cg/db/pr/c/)
 
 Written via POST with CBOR payload:

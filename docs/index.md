@@ -68,6 +68,7 @@ reference tables.
 | [designer/database.md](designer/database.md) | Designer LocalDB — schema, tables, preset/scene mapping |
 | [designer/ra3-hw-migration.md](designer/ra3-hw-migration.md) | RA3 ↔ HomeWorks QSX migration — full identity injection and ID-only switch workflows |
 | [designer/cycle-dim.md](designer/cycle-dim.md) | RA3 cycle dimming enablement (ATPM) — custom dimming curve spec |
+| [designer/sunnata-led-brightness.md](designer/sunnata-led-brightness.md) | Sunrise/sunset LED brightness — untransferred keypad candidate, dimmer command limitation, and CCX prerequisites |
 
 ## Tooling
 
