@@ -359,7 +359,30 @@ declared DeviceClass (body offset `0x8AD`) and whether a signature/HMAC seals
 the LDF body or CRC32 is the only seal; see the conversion notes
 (maintained outside this repo).
 
-## 6. Cross-references
+## 6. Device-firmware delivery (host side)
+
+Where the RF transfer in §3 gets its bytes from, on both the Caseta hub and the Phoenix processor:
+
+- Device firmware is installed with **opkg**, not a bespoke transfer protocol. The device feed is
+  `/etc/opkg_device-firmware.conf` (destination `/var/firmware/device-firmware/`) with
+  `check_signature 1`, `signature_type openssl`, `signature_ca_file /etc/ssl/firmwaresigning/public.pem`
+  — the same signing anchor as the processor's own feed.
+- `usr/sbin/fwu_check_and_download.sh` takes `-p <processor repo>` / `-d <device repo>`; when neither
+  is given, both addresses come from a single `curlscript.sh sources` POST to
+  `firmwareupdates.lutron.com/sources` (the class-keyed API in
+  [firmware-updates.md](../../tooling/firmware-updates.md)), which returns **two** repository
+  addresses. The device URL is cached to the path named by the platform config key
+  `DeviceFirmwarePackageRepositoryUrlFile`.
+- **Selection is by `DeviceClass`, not by device.** The fetched `device-firmware-manifest.json` maps
+  class → `App`/`Boot` images; the processor skips any entry without a `DeviceClass` (`Manifest entry
+  is missing 'DeviceClass': Device will be skipped`). Two devices of the same class always receive
+  the same image.
+- The `.pff` container these packages carry is described in
+  [caseta-smartbridge.md](../../devices/caseta-smartbridge.md) §".pff format"; the class set is
+  identical across the Caseta hub and the RA3 processor (see
+  [shade-firmware-comparison.md](../../devices/shade-firmware-comparison.md)).
+
+## 7. Cross-references
 
 - [`../../devices/powpak.md`](../../devices/powpak.md) — PowPak HCS08 RE:
   RX-side anchors, dispatcher decode, flash-write primitive, sync-detect,
