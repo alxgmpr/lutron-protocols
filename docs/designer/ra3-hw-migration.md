@@ -8,6 +8,13 @@ giving access to features like DoubleTap, HoldPreset, richer LED logic, and
 full scene/shade programming that the hardware supports but the RA3 project
 shell does not expose.
 
+> **Evidence that RA3 and HWQSX are one Phoenix codebase** (added 2026-10-05): the RA3 firmware
+> bundle's config-DB schema ships the **full Ketra object model** (device types `KETRA_A20`…`N3`,
+> `ChromaZone`, `Emitter`/`EmitterController`/`DeviceEmitterProperties`, `KetraProject`,
+> `KetraSpectrumScene`), and `lutron-core` contains `KetraCRC32Hash`. RA3 hides these at the *project
+> layer*, not by removing firmware support — so HW-exclusive features (and Ketra) are present on the
+> hardware and unlocked by the project type.
+
 ## Which do I use?
 
 Two distinct approaches are documented here:

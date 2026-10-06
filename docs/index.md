@@ -49,6 +49,7 @@ reference tables.
 | [devices/index.md](devices/index.md) | RF transport overview — CCA vs CCX, product families, link types, OUTPUT vs DEVICE |
 | [devices/ra3-processor.md](devices/ra3-processor.md) | RA3 processor ("Janus", AM3351) — architecture, services, DB schema, cert chains |
 | [devices/caseta-smartbridge.md](devices/caseta-smartbridge.md) | Caséta SmartBridge — STM32 coprocessor, firmware extraction, dispatch/IPC, CCA OTA orchestration |
+| [devices/shade-firmware-comparison.md](devices/shade-firmware-comparison.md) | Shade firmware — Caseta vs RA3 manifest diff, `.pff` payloads, live device-class table |
 | [devices/vive.md](devices/vive.md) | Vive hub — teardown, app evolution (HTTP → Athena/LEAP), device firmware |
 | [devices/radiora2-select-rep.md](devices/radiora2-select-rep.md) | RadioRA 2 Select Repeater (RR-SEL-REP2) — hardware, NAND layout, coprocessor |
 | [devices/radiora2-main-rep.md](devices/radiora2-main-rep.md) | RadioRA 2 Main Repeater (RR-MAIN-REP-WH) — ColdFire, NOR flash, memory map |
