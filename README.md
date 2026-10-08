@@ -146,7 +146,7 @@ Thread credentials come from LEAP dump data (`data/leap-*.json`) rather than sta
 
 ## Prior Work
 
-- Entropy512's Lutron RF parameter and packet structure research: [github.com/Entropy512/lutron_hacks](https://github.com/Entropy512/lutron_hacks)
+- Entropy512's Lutron RF research: [github.com/Entropy512/lutron_hacks](https://github.com/Entropy512/lutron_hacks) — RF parameters, 8N1 async-serial framing (CC1101 receiver), packet structure, and the CRC-16 polynomial (0xCA0F) and packet-length rule recovered from the Caseta bridge's STM32 coprocessor firmware
 - Ceady's wireless interface documentation: [hackaday.io/project/2291](https://hackaday.io/project/2291-integrated-room-sunrise-simulator/log/7223-the-wireless-interface)
 
 ## Future Work
