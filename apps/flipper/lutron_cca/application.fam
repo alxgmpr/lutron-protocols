@@ -1,0 +1,9 @@
+App(
+    appid="lutron_cca",
+    name="Lutron CCA",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="lutron_cca_app",
+    requires=["gui"],
+    stack_size=4 * 1024,
+    fap_category="Sub-GHz",
+)
