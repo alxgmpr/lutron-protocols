@@ -553,6 +553,126 @@ EXEC dbo.sel_CheckCorruptBtnProgramming @ProgrammingParentID = <button_id>;
 
 If these are clean but runtime behavior differs, the blocker is likely feature gating during transfer/runtime interpretation rather than row-level corruption.
 
+## 11. Processor Image, Boot Chain & Secure Element
+
+*Recovered from the decrypted `26.06.47f000` bundle and a device eMMC dump. Offline analysis only.*
+
+### eMMC Partition Layout (GPT, 20 partitions)
+
+GPT at LBA 1: 7,471,104 LBAs (3,825,205,248 B, 512 B sectors), 128 × 128 B entries at LBA 2. All
+entries carry the same type GUID (`ebd0a0a2-…`); addressing must be **by partition name, never by
+index**, since the layout is not the same shape as the Vive hub's.
+
+| # | Name | Start LBA | Size | `fstab` / use |
+|---|------|-----------|------|---------------|
+| 0-2 | `spl1` / `spl2` / `spl3` | 256 / 512 / 768 | ~127.5K ea (`spl3` 128.5K) | SPL (MLO), raw — LBA 0-255 unallocated |
+| 3-5 | `uboot1` / `uboot2` / `uboot_recovery` | 2048 / 4096 / 6144 | 1M ea | U-Boot images |
+| 6 | `uboot_env` | 8192 | 1M | **all zeros** — see below |
+| 7-9 | `kernel1` / `kernel2` / `kernel_recovery` | 10240 / 30720 / 51200 | 10M / 10M / 5M | Linux kernels |
+| 10-12 | `devicetree1` / `devicetree2` / `devicetree_recovery` | 61440 / 63488 / 65536 | 1M ea | DTBs |
+| 13 | `rawbuffer` | 67584 | 5M | |
+| 14 | `rootfs` | 77824 | 500M | `mmcroot=/dev/mmcblk1p15 ro` |
+| 15 | `rootfs2` | 1101824 | 500M | inactive A/B slot |
+| 16 | `recovery_rootfs` | 2125824 | 150M | |
+| 17 | `database` | 2433024 | 200M | `/var/db` (SQLite) |
+| 18 | `misc_unsynced` | 2842624 | 2059M | `/var/misc_unsynced` |
+| 19 | `misc_synced` | 7059456 | 200M | `/var/misc` |
+
+`etc/fstab` maps `mmcblk1p18 → /var/db`, `p19 → /var/misc_unsynced`, `p20 → /var/misc`; `/` is
+partition 14 (`rootfs`). Names match the userspace scripts verbatim. (`#` above is the GPT entry
+index, 0-based; Linux device names are 1-based, so entry 14 is `/dev/mmcblk1p15` and entry 15 is
+`/dev/mmcblk1p16`.)
+
+### Boot chain
+
+| Stage | Image | Version / notes |
+|-------|-------|-----------------|
+| SPL | `spl1` @ 0x20000 | TI AM335x raw MLO. `U-Boot SPL 2017.01.027 (Dec 06 2024)`, `Board: Lutron Phoenix`. `spl1`/`spl2` byte-identical; `spl3` differs |
+| U-Boot | `uboot1` @ LBA 2048 | Legacy uImage, `U-Boot 2017.01.027 for lutron_ph` (Sep 17 2026 build), load `0x80800000`. `uboot2` byte-identical; `uboot_recovery` is `2017.01.010` |
+| Kernel | `kernel1`/`kernel2` | Legacy uImage of an **uncompressed** ARM zImage (`comp=0`), `Linux-5.10.208-001-ts-armv7l`, `0x80008000`. A/B slots are the same size/version but different builds. `kernel_recovery` is `4.4.32` |
+| Devicetree | `devicetree1` | Raw DTB (not FIT): model `Lutron Phoenix Wireless Board(ZCE)`, `compatible = ti,am3352` |
+
+`uboot_env` is entirely zero and there is no `fw_setenv`/`fw_printenv` on the system — the
+environment is **not persistent**; U-Boot runs compiled-in defaults (`bootdelay 0`, `mmcdev 1`,
+`kernelsrcaddr 0x2800`/`fdtsrcaddr 0xF000`, `mmcroot /dev/mmcblk1p15 ro`, console `ttyS0,115200n8`,
+`memory_size 256M`). Board is 256 MB DDR, AM3351 in ZCE package.
+
+### Firmware verification posture
+
+Stated as structure, not as a procedure:
+
+- **No cryptographic verification anywhere in the boot chain.** SPL and U-Boot use raw-sector loads
+  and `bootm` on a legacy uImage, i.e. a **CRC32** integrity check only. A string census of U-Boot
+  finds zero `FIT`/`fit_image`/`rsa`/`pkcs`/`public key`/`sha256`/`Verified OK` references; the
+  command set has `bootm`/`bootz`/`iminfo`/`verify` but no `fit`/`hash`/`sb`. `bootsecure` exists as a
+  string but is undefined in the default environment.
+- **Kernels** carry no `dm-verity`, no device-mapper, no `CONFIG_MODULE_SIG`/PKCS#7, no IMA/EVM.
+  `fs-verity` code is compiled in but is opt-in and needs a verity superblock that is absent; the
+  cmdline has no `dm=`/`roothash`.
+- **Rootfs** is plain ext4, read-write at boot (`etc/init.d/rcS`); `RO_COMPAT_VERITY` is not set on
+  any of `rootfs`/`rootfs2`/`recovery_rootfs`.
+- Boot-time integrity checking is limited to an md5 list: `etc/init.d/S98-custom-script` walks
+  `etc/file_system_checks/files_checksum` (20 files — mostly shared libraries, `monit`, `rsyslogd`,
+  `libssl`/`libcrypto`, `opkg.conf`, `supportfile_public.pem`) and calls `reboot_and_hang` on
+  mismatch. The manifests, `/etc/ssl/firmwaresigning/public.pem`, `inittab`, `passwd`,
+  `sshd_config` and the check list itself are **not** covered.
+- Downloaded OTA packages are verified (`firmwareValidation.sh`, S/MIME manifest) but the **running**
+  rootfs is not.
+
+### A/B slots and failover
+
+Slot selection and fail-to-boot accounting are done by the **Lutron-customised SPL** out of an **SPI
+EEPROM**, not by U-Boot (the env has no `bootcount`/`bootlimit`/`altbootcmd`/`upgrade_available`).
+SPL strings include `Partition Sync = %s`, `REQ_PROCESSED`/`SYNC_REQUESTED`/`SYNC_REQUEST_NOT_PROCESSED`/
+`SYNC_REQ_FAILED`, `| copy to boot | %03d |`, `| copy {1,2} boot count | %03d |`, and
+`Error! Invalid copy to boot value (%d) detected, falling back to recovery`. This mirrors
+`usr/sbin/partitionSync.sh` (`PARTITION_SYNC_REQ_PROCESSED=1`, `PARTITION_SYNC_REQUESTED=2`,
+`PARTITION_SYNC_REQ_FAILED=4`, `FAILCOUNT_INVALID_VAL=255`, addresses from `etc/lutron.d/eeprom.conf`).
+
+Userspace A/B sync is plain `dd if=src of=dest`, and the only "is this slot newer" check is a
+**version-string comparison** (`validate_system_versions.sh` against `/var/lib/opkg/status`;
+`parted --list` + regex on `U-Boot 2017.01.027` / `Linux-5.10.208`).
+
+### Secure Element — ATECC608A
+
+An ATECC608A on I²C bus 1 at address `0xC0`, driven by `usr/sbin/secure-element-engine` (CryptoAuthLib
+shape; started by `etc/init.d/S70-secure-element-engine` and monitored by `monitrc`). The 16-slot map
+comes from `etc/lutron.d/secure_element.conf` (`TotalNumberOfSlots: 16`); **internal** = key material
+that never leaves the chip, **external** = a plain rootfs file.
+
+| # | Type | KeyIdentifier | Source |
+|---|------|---------------|--------|
+| 0-5 | ecc-private | `IntegrationServer`, `IntegrationClient`, `ReservedServer`, `ReservedClient`, `ReservedDualCert`, `ECCPrivateKeySpare` | internal (LEAP secure-channel identity) |
+| 6 | aes-128 | `FirmwareDecryptionKey` | external — `primary_firmware_decryption_key.txt` |
+| 7 | aes-128 | `AESKey1Shared` | external |
+| 8 | secret-data | `SecretData1` | external |
+| 9 | aes-128 | `AESKey2Shared` | external |
+| 10-11 | aes-128 | `ProcAESKey1`, `ProcAESKey2` | internal (per-device) |
+| 12 | ecc-public | `FirmwareSignatureKey` | external — `firmware_signature_verification.pem` |
+| 13 | ecc-public | `FirmwareSignatureVerificationSpare` | external |
+| 14 | ecc-public | `ECCPublicKey` | external |
+| 15 | secret-data | `SecretData2` | external |
+
+Device-unique material is slots 0-5 (ECC private, unreadable) plus 10/11 (`ProcAESKey1/2`). Everything
+else is a **static file**: slot 6's decryption key and slots 7-9/15 are shared across the fleet.
+
+Two files ship in `secure_element_external_keys/`: the primary firmware decryption key (see
+`firmware-updates.md` §Encryption — it is the same value used to decrypt the OTA bundle) and a
+pre-staged **secondary** key for the next firmware generation, which does not decrypt current
+bundles. Most other `DataFile` slots are dormant — the engine logs `skipping slot due to missing
+information`, and slot 12's `firmware_signature_verification.pem` is absent, so the live manifest
+signature check reads `/etc/ssl/firmwaresigning/public.pem` instead. The slot map is partly
+provisioning-side/vestigial.
+
+### Platform config overlays
+
+The rootfs carries five platform config sets, each with its own `lutron.conf` + `eol.conf`:
+`rfs_wired`, `rfs_wireless`, `rfs_zero_link`, `rfs_wired_one_link`, `rfs_janus`. Boot picks one from
+the hardware type read out of the M93C46 EEPROM (`getEepromProcessorType.sh`); an RA3 reports
+`Wireless_Janus` → `rfs_janus`. There is no `lutron.conf` in the base `/etc/lutron.d/` — it is
+overlaid. This is why single keys such as `ActivationDeviceClassChecksOverrideFlag` can exist in the
+schema without being present at runtime.
+
 ## RA3 System Internals (from Designer Transfer Log)
 
 ### Source

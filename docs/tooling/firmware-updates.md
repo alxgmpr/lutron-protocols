@@ -53,7 +53,11 @@ Response type is `FirmwareFileServiceResponseDto` with fields `{Status, Url, Mes
 - **phoenix** = RA3 processor codename, **heron** = Caseta codename
 - CDN is CloudFront backed by S3 (`firmware-downloads.iot.lutron.io`)
 - Server always returns the latest version regardless of `coderev` sent
-- Returned URLs currently 404 (`NoSuchKey`) — likely wrong URL format or missing path component
+- **URL format resolved (2026-10-05)**: the CDN object is `phoenix/final/{ver}` **+ `/lutron_firmware`**.
+  The bare `.../{ver}` path returns `404 NoSuchKey` — that is why earlier probes here failed. Verified
+  `200` (`binary/octet-stream`) for `.../phoenix/final/26.06.47f000/lutron_firmware` and
+  `.../phoenix/final/26.00.13f000/lutron_firmware`. The same suffix applies to `lite-heron`:
+  `.../lite-heron/final/26.00.11f000/lutron_firmware` (79 MB, sha256 `d79fc6bd…`).
 - Only processor-level device classes work; CCA/CCX device classes return `404 Unknown device class`
 
 ### Device Class Enumeration
@@ -187,8 +191,49 @@ lutron_firmware (ZIP)
   - Vive hub: `key.enc` = 512 bytes (RSA-4096 encrypted AES key)
   - RA3 package: `key.enc` = 48 bytes base64 (different wrapping scheme)
 - **Decryption happens on the processor** — neither Designer nor iOS app decrypt firmware
-- The processor's RSA private key decrypts `key.enc` to recover the AES key, then
-  decrypts `firmware.tar.enc` with that key + `iv.hex`
+- `key.tar` carries `key.enc` + `iv.hex` (+ `algorithm` = `-aes-128-cbc`, `message_digest` = `md5`).
+  Where the wrapping is real (Vive), the processor unwraps `key.enc` to recover the AES key and
+  decrypts `firmware.tar.enc` with it + `iv.hex`. The Phoenix/lite-heron line does not wrap a key at
+  all — see below.
+
+#### Phoenix / lite-heron bundle decryption
+
+For the Phoenix (RA3 / HomeWorks QSX / Athena) and lite-heron (Caseta) bundles the encryption is
+**obfuscation, not secrecy**: the AES-128 bundle key is a single static value reused fleet-wide,
+stored in the rootfs at
+`/etc/lutron.d/secure_element_external_keys/primary_firmware_decryption_key.txt` and mirrored in
+Secure Element slot 6 (`FirmwareDecryptionKey`). It is the same value across every RA3/HWQSX and
+lite-heron bundle tested — there is no per-device secret, no RSA unwrap, and nothing in `key.tar`
+that the processor has to protect. See `coprocessor-firmware.md` §"PFF File Format" for the key and
+`ra3-processor.md` §11 for the slot map.
+
+- A second file, `secondary_firmware_decryption_key.txt`, is **pre-staged** in the same directory and
+  does not decrypt current bundles (`bad decrypt`) — Lutron ships the next generation's key ahead of
+  the bundle that needs it. Treat the primary as current and the secondary as "watch this one".
+- Unwrap path for the payload: `lutron_firmware` (ZIP) → `firmware.tar.enc` → `.deb` packages →
+  `ar x` → `data.tar.gz` → `tar xzf` → `rootfs.tar.gz`. The `.deb` set is
+  `spl-*.deb`, `uboot-*.deb`, `kernel-5.10.001.deb`, `rootfs-<version>.deb`.
+
+### Bundle provenance
+
+| Bundle | Version | Size | SHA-256 |
+|--------|---------|------|---------|
+| `phoenix/final/…/lutron_firmware` | `26.06.47f000` | 111,796,991 B | `aaf2896a288cd6cdfd4df036eb0213accbfa65a7d4de94f2d8061363fcc03d33` |
+| `lite-heron/final/…/lutron_firmware` | `26.00.11f000` | 79 MB | `d79fc6bd…` |
+
+Build date for `26.06.47f000` is 2026-09-16. Both bundles carry SPL + U-Boot `2017.01.027`, i.e. one
+bootloader generation across the Phoenix and Caseta lines.
+
+### Bundle signing
+
+The OTA manifest is **S/MIME-signed** and verified with `openssl smime -verify` against a single CA
+file, `/etc/ssl/firmwaresigning/public.pem` (`usr/sbin/firmwareValidation.sh`); per-package opkg
+signatures use the same anchor (`check_signature 1`, `signature_type openssl`,
+`signature_ca_file /etc/ssl/firmwaresigning/public.pem` in `etc/opkg.conf` and
+`etc/opkg_device-firmware.conf`). The signing certificate is self-signed with subject = issuer
+(`OU=Phoenix Processors`) and a 2020-02-13 → 2120-01-20 validity window. Anti-rollback is **not** a
+fuse or counter: `usr/sbin/firmwareUpgrade.sh` gates on
+`opkg compare-versions "${SERVER}" ">>" "${INSTALLED}"`, i.e. declared version strings.
 
 ### Extracted Packages
 
@@ -199,8 +244,25 @@ lutron_firmware (ZIP)
 
 ## Device Firmware Manifest
 
-Extracted from `device-firmware-manifest.json` in the RA3 firmware package (v002.025.019r000).
-Contains 25 device types with firmware paths inside `firmware.tar.enc`.
+Extracted from `device-firmware-manifest.json` inside `firmware.tar.enc`. It contains one entry per
+device class, with the firmware paths that live inside the encrypted tar. The manifest version and
+entry count differ per bundle (see table below); the class list also grows between generations.
+
+The same manifest ships inside every bundle and is also **fetched to the processor at runtime** —
+`/var/misc_unsynced/device_firmware/device-firmware-manifest.json` on a live RA3 (55 KB), pulled
+under the node name `DeviceFirmwareManifest`. Device firmware is selected **by `DeviceClass`**, so
+the manifest is the authoritative class → image mapping on both lines.
+
+| Bundle | `FirmwarePackageVersion` | Entries |
+|--------|--------------------------|---------|
+| Phoenix `26.06.47f000` | `002.025.033r000` | 30 |
+| lite-heron `26.00.11f000` | `002.025.019r000` | 25 |
+
+Every lite-heron class is also a Phoenix class; there are **no Caseta-only classes**. Classes present
+only in Phoenix: `0x06190301`, `0x061F0101`, `0x1B060301`, `0x1B080301`, `0x1B090101`. For classes in
+both, the five shade entries are **byte-identical** (same `Path`, same `Sha256Hash`, same
+`DisplayRevision 002.026.000r000`) — there is no separate Caseta shade firmware. See
+[shade-firmware-comparison.md](../devices/shade-firmware-comparison.md).
 
 ### Internal Codenames
 
@@ -347,7 +409,8 @@ and different subscription tokens.
 
 - CloudFront distribution backed by S3
 - Paths: `phoenix/final/`, `lite-heron/final/`
-- Returned URLs currently 404 (`NoSuchKey`) — URL format may need additional path components
+- Object name is fixed: `{line}/final/{version}/lutron_firmware` (no extension). The bare
+  `{line}/final/{version}` path returns `404 NoSuchKey`
 - No bucket listing (returns `NoSuchKey` for `index.html` default)
 
 ### Other Firmware URLs
@@ -427,13 +490,14 @@ for QS keypads, shades, dimmers, panels, DMX interfaces, thermostats, IR eyes, e
 
 ## Open Questions
 
-- **Firmware decryption**: Processor's RSA private key needed to unwrap `key.enc`.
-  Could potentially be extracted via SSH to processor or from a firmware dump.
-- **CDN URL format**: Returned URLs 404 — may need file extension, auth headers,
-  or different path construction than what the server returns
+- **`key.tar` wrapping**: for Vive the AES key is RSA-wrapped in `key.enc`; which key/nonce scheme
+  that 48-byte base64 blob uses is still unconfirmed. (The Phoenix/lite-heron line does not need it —
+  its bundle key is static and in the rootfs.)
 - **CCA OTA protocol**: What RF packet types are used for 433MHz firmware updates?
   Capturing a CCA firmware update would reveal new packet formats.
 - **RA3 CCX update**: 5 devices need updates (`001.043` → `003.014`). Triggering
   this would capture Thread-based OTA traffic.
 - **CCA device class → product mapping**: eagle-owl, bananaquit, basenji codenames
-  need mapping to physical product models (Diva, Maestro, etc.)
+  need mapping to physical product models. The classes are pinned (see the CCA Device Firmware table);
+  the *retail product names* are not, and the mapping previously published in
+  [caseta-smartbridge.md](../devices/caseta-smartbridge.md) conflicts with live system data.

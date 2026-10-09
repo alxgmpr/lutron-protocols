@@ -651,12 +651,28 @@ Codename → device-class map (15 classes covered):
 
 | Codename | Device classes | Files | MCU |
 |---|---|---|---|
-| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
-| BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
+| BASENJI | `0x03150201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
+| BANANAQUIT / bananaquit-avis | `0x03140601`, `0x030A0601` | v2.025 | TBD (likely EFR32) |
 | EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
 | Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
 | Antillean | (in firmware list, class TBD) | v1.001 | TBD |
 | Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
+
+> **Corrected 2026-10-06.** The product identities previously given for BASENJI/BANANAQUIT in this
+> table ("Diva, e.g. DVRF-6L"; "plug-in / Maestro family") **conflict with live system data and are
+> retracted**. Device class encodes `0xTTTTHHCC` = type·hardware·custom, and the `0x0301`–`0x0315`
+> type range is **shades**, not dimmers/switches: the processor's `DeviceClassCapabilitiesInfo` table
+> holds exactly 21 contiguous rows covering `0x03010000`–`0x03150000` with mask `0xFFFF0000`, and
+> reports `BatteryPowered` for `0x0306`, `0x0307`, `0x0309`, `0x030A`, `0x0310`–`0x0315`. Concretely, on
+> a live RA3 the class `0x03150201` is a **Triathlon Essentials roller shade**, and `0x030A0601` is a
+> battery roller shade (Sivoia QS Wireless on the system measured) — neither is a Diva dimmer. The
+> `0x03150101`/`0x03160101` classes formerly listed under BASENJI do not appear in the manifest at
+> all. The `EO`/eagle-owl and `0x03120101/0102/0103` binding is unchanged. See
+> [shade-firmware-comparison.md](shade-firmware-comparison.md) for the full evidence and for which
+> retail product names remain unknown.
+
+The MCU observations below were made on physical devices and are independent of the codename→product
+labels above.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device** — plan
 capture buffer / streaming accordingly. `MinimumRevisions` is empty for all
@@ -681,6 +697,17 @@ App images (format 1, 100–900 KB); boot images (format 0, ~20 KB) would requir
 physical access. The PFF symmetric key is burned in the device bootloader at
 manufacture; recovering it likely needs SWD/JTAG on a CCA device. (PowPak HCS08
 LDFs are plaintext — only EFR32 PFFs are encrypted; see [powpak.md](powpak.md).)
+
+Observed on a full live tree (`/var/misc_unsynced/device_firmware/`, 60 `.pff` across `cca/` and
+`pegasus/`):
+
+- Every file opens with the **same 8 bytes** — `00 00 00 01 00 00 00 01`, i.e. Major 1 / Minor 1
+  (app images) — followed immediately by high-entropy ciphertext. There is no other cleartext
+  metadata, so the manifest is the only class→file index; the header alone cannot identify a device.
+- **All 60 hash-match the manifest** (SHA-256), so the complete device-firmware set — including every
+  shade image — is recoverable from a single eMMC dump with no per-file CDN fetch.
+- The tree is identical between the RA3 processor and the Caseta hub; see
+  [shade-firmware-comparison.md](shade-firmware-comparison.md) §3.
 
 ### SSH paths reference
 
