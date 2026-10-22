@@ -242,32 +242,61 @@ State machine at FUN_000186b4, transfer at FUN_000183d4:
 
 PFF = "Pegasus Firmware Format" (update-file-format-{0,1}.pff)
 
+Two header layouts exist. The u32 at `0x000` selects which: `1` → 308-byte
+(`0x134`) header, `0` → 304-byte (`0x130`) header, the difference being the
+presence of the target-flash field at `0x120`. Layout 0 is used by the CCX boot
+images; CCA boot images use layout 1.
+
 ```
 Offset  Size  Field                     Notes
-0x000     4   Version Major (BE u32)    0 = boot, 1 = app
-0x004     4   Version Minor (BE u32)    1
+0x000     4   Header layout version     BE u32; 1 → 0x134 header, 0 → 0x130 header
+0x004     4   Constant                  BE u32, always 1
 0x008    64   Per-file unique field     likely ECDSA-P256 sig (r‖s) or HMAC-SHA512
 0x048   192   Reserved                  all-zero, universal across every PFF observed
-0x108     4   Constant marker           0x00000003
-0x10C     4   Format/version            0x00000001
-0x110     4   Marker                    0x01010000
+0x108     2   Flags                     BE u16; 0 normally, 1 on secondary-MCU sub-images
+0x10A     2   Image kind                BE u16; 2 = boot, 3 = app
+0x10C     4   Revision                  Major, Minor, Patch, Label (one byte each)
+0x110     4   MinimumRevisions gate     0 when the manifest lists none
 0x114     4   DeviceClass (BE u32)      firmware-space class, e.g. 0x04630201 = DVRF-6L
-0x118     4   Revision (BE u32)
-0x11C     4   Declared image length     BE u32; a little under the on-disk payload size
-0x120     4   Target flash address      BE u32, e.g. 0x0006F000 (eagle-owl app), 0x00032000 (vogelkop)
-0x124   var   Encrypted body            AES, per-device-model key; block-aligned (mod 16 = 0)
+0x118     4   ImageType (BE u32)        always 1
+0x11C     4   Ciphertext length         BE u32; exact, see below
+0x120     4   Target flash addr/size    layout 1 only; 0xFFFFFFFF or e.g. 0x00072000
+  —      16   IV                        the 16 bytes immediately preceding the body
+0x134   var   Encrypted body            AES-CBC, per-device-model key (0x130 on layout 0)
 ```
 
-Verified across all 48 sample PFFs (9 Caseta/RA2-Select + 39 Phoenix). Bytes
-0x048..0x107 (192 bytes) are an all-zero run, identical in every file regardless of
-device class, boot-vs-app split, or build version. **The encrypted body starts at
-0x124, not 0x10B** — provable because only a 0x124 start makes every payload
-block-aligned (`(size - 0x124) mod 16 == 0`); a 0x10B start would misalign the AES
-blocks. Bytes 0x108..0x123 are a plaintext metadata block (DeviceClass, revision,
-length, target flash address) readable *without* the decryption key. The DeviceClass
-here is the **firmware-space** class the device reports (0x04630201 = DVRF-6L,
-confirmed against the 2026-04-28 live OTA capture), distinct from Designer's
-commissioning-space QSDEVICECLASSTYPEID (e.g. 0x04240101 for HQR-3PD).
+Verified across all 120 sample PFFs (9 Caseta + 9 RA2-Select + 46 Phoenix +
+56 lite-heron): 31 CCA app, 12 CCA boot, 40 CCX app, 37 CCX boot.
+
+**The encrypted body starts at `0x134` (layout 1) or `0x130` (layout 0), not
+`0x10B` and not `0x124`.** The discriminator is the length field at `0x11C`:
+`len(file) - header == field@0x11C` holds for 120/120 files, and every resulting
+length is 16-byte aligned. Block alignment alone cannot settle this — `0x124` and
+`0x134` differ by exactly one AES block, so both satisfy `(size - off) mod 16 == 0`.
+The earlier `0x124` reading is why the length at `0x11C` looked like "a little
+under the on-disk payload size": the 16-byte shortfall is the IV.
+
+**The 16 bytes before the body are a per-image IV, not ciphertext.** 71 distinct
+values across the 120 files; the 48 repeats are all byte-identical copies shared
+between the `phoenix-device/` and `lite-heron-decrypted/` trees. Zero collisions
+between files with differing content, i.e. no IV reuse to exploit.
+
+Bytes `0x108..0x11F` are a plaintext metadata block readable *without* the
+decryption key, and it agrees with `device-firmware-manifest.json`: image kind at
+`0x10A` matches boot-vs-app for 120/120 files, and the revision at `0x10C` matches
+the filename's major.minor for 116/120. The four exceptions are both eagle-owl app
+builds (Caseta v2.025 and CCA v2.026, each appearing in two trees), which carry
+`00 00 00 01` there instead of their actual revision — unexplained.
+
+The `0x108` flag is set on exactly three images — `dart-hybrid-keypad-dimming-app`,
+`powerbird-hybrid-coproc-app`, `powerbird-hybrid-coproc-switch-app` — all small
+(~35 KB) secondary-MCU sub-images, and these are also the only three files whose
+reserved run is not all-zero. It is *not* a "locked build" marker: the two
+`kit-kat-*-locked-*` images have it clear.
+
+The DeviceClass at `0x114` is the **firmware-space** class the device reports
+(0x04630201 = DVRF-6L, confirmed against the 2026-04-28 live OTA capture), distinct
+from Designer's commissioning-space QSDEVICECLASSTYPEID (e.g. 0x04240101 for HQR-3PD).
 
 Use `tools/firmware/pff-parse.ts` to dump the layout and run the chi-square / structural
 sanity check on any `.pff`.
@@ -280,6 +309,12 @@ sanity check on any `.pff`.
   `firmware.tar.enc` bundle**, not the per-`.pff` payload — empirically it decrypts
   none of the 5 CCA PFF payloads (eagle-owl/basenji/bananaquit/vogelkop/caseta),
   every result stays ~38% printable (still encrypted) in both ECB and CBC
+- **No PFF payload has been decrypted.** Body entropy is 7.99–8.00 bits/byte on all
+  120 files, nothing below 7.95. The `0x124` offset error did not mask a correct
+  key: under CBC, treating the IV as ciphertext block 0 corrupts only the first
+  block and yields correct plaintext from block 2 on, so a right key would still
+  have shown mostly-printable output.
+
 - Package signature verified by opkg with `/etc/ssl/firmwaresigning/public.pem` (valid 2020-2120)
 
 ### Device Firmware Manifest
@@ -301,11 +336,207 @@ sanity check on any `.pff`.
 
 ## Source Material
 
-The firmware images behind this document live under
-`data/firmware/phoenix-device/`, which is gitignored — a clone does not carry
-them. Regenerate them from a published firmware bundle:
+The firmware images behind this document live under `data/firmware/`, which is
+gitignored — a clone does not carry them. Everything is reproducible from
+published bundles on `firmware-downloads.iot.lutron.io`; no authentication is
+required and nothing here came off live hardware.
 
-- `coprocessor/phoenix_*.s19` — deobfuscated S19 images
+### PFF provenance
+
+71 unique PFFs, duplicated across four trees to 120 files on disk.
+
+| Tree | Files | Chain |
+|---|---|---|
+| `ra2select-device/firmware/`, `caseta-device/firmware/` | 9 (byte-identical sets) | `caseta-ra2select/final/08.25.17f000/rootfs-08.25.17f000.deb` → `ar x` → `data.tar.gz` → `rootfs.ubifs.xz` → UBIFS → `/opt/lutron/device_firmware/firmware/`. Unencrypted deb, no key needed. |
+| `phoenix-device/{cca,pegasus}/` | 46 of 55 | `phoenix/final/26.01.13f000/lutron_firmware` → AES-128-CBC with `6cba80b2bf3cf2a63be017340f1801d8` → `firmware.tar` → rootfs → `/var/misc_unsynced/device_firmware/phoenix-device-firmware-package.tar.gz` (contains 55; 46 extracted). Byte-identical bundle also ships in the Designer MSIX at `QuantumResi/BinDirectory/Firmware/phoenix/lutron_firmware`. |
+| `lite-heron-decrypted/device-firmware/{cca,pegasus}/` | 55 | `lite-heron/final/26.00.12f000/lutron_firmware` → same decrypt → `device-firmware/` sits at the bundle root, no rootfs hop. Most complete set of the three. |
+| `dvrf6l-v3.021.pff` | 1 | Renamed copy of `07911506_v3.021_VogelkopDimmerAppCaseta.pff` (same SHA-256). Kept under the DVRF-6L name because the 2026-04-28 live OTA capture matched it. |
+
+Notes:
+
+- The `caseta-ra2select/final/` channel carries 329 versions, all unencrypted
+  `.deb`, so Caseta Pro / RA2 Select device firmware needs no key and no bridge
+  access — just the deb and UBIFS tooling.
+- The older SmartBridge rootfs (`caseta-smartbridge`, v02.x, L-BDG2/SBP2) has no
+  `/opt/lutron/device_firmware` at all, matching it never gaining CCA OTA.
+- `data/firmware/caseta-ra2select/rootfs.tar.zst` is the extraction working
+  directory, not a device dump: it holds the deb members, the unpacked
+  `rootfs.ubifs`, and `tmp/extracted/` with the full root filesystem.
+- A per-tree `device-firmware-manifest.json` sits beside each PFF set and maps
+  DeviceClass → codename → path.
+
+### Firmware-image matching is an exact 32-bit compare, not masked
+
+Settled in the Go implementation, which is statically resolvable.
+`msshared/devicefw.(*PackageParser).AppFirmwareContentForDeviceClass` in
+`multi-server-phoenix.gobin` (va `0x00a85bb0`–`0x00a85d18`, symbolized from
+`.gopclntab`) takes the lock, refreshes the manifest cache, then passes the
+`uint32` device class **verbatim** to `runtime.mapaccess2_fast32` against a
+`map[uint32]*devicefw.FirmwareContent`. No `and`, `bic`, `lsr` or mask constant
+appears anywhere in the function. The cache is built in
+`updateManifestCacheLocked` (`0x00a85d6c`) via `json.Unmarshal` → `strconv.ParseUint`
+→ `runtime.mapassign_fast32` on the full key, with `time.Time.Equal` for mtime
+invalidation. `FirmwareRevisionForDeviceClass` (`0x00a859b8`) has the same shape.
+
+The manifests corroborate it: sibling classes sharing the top 16 bits are
+enumerated **individually with identical `Path` and `Sha256Hash`** — `0x03120101`,
+`0x03120102` and `0x03120103` all point at `07911256_EO_APP_RELEASE_v2.025.pff`,
+and likewise `0x1B060101`/`0x1B060301` and `0x1B080101`/`0x1B080301` on Phoenix.
+Under `0xFFFF0000` matching one entry would have covered each group.
+
+**So `DeviceClassMask` does not govern firmware selection.** Masking is real but
+belongs to identity and capability resolution:
+
+- Device addressing/activation masks to family+product in C++
+  (`caseta-device/lutron-core` func `0x001735f4`, site `0x00174cf4`: `r1 = 0xFFFF0000`
+  via `mov`/`movt`, both sides `and`-ed then `orr`-ed with `0x00000101` to normalize
+  hwrev/customrev, then `cmp`). Failure logs
+  `addressing-idle-state: processRequestAddressDevice: DeviceClass family/product mismatch`.
+- Capability and model resolution mask in SQL, with the mask stored in DB rows:
+  `WHERE (DeviceClass & DeviceClassMask) = (?001 & DeviceClassMask)`.
+
+Consequence for recovery work: a sibling class's image cannot be loaded onto a
+device by relying on the hub's matcher. There is also no fallback, nearest-match or
+family-default path — the failure strings just skip the device
+(`Could not get info for device class from firmware manifest`,
+`pegasus-firmware-update-core-receiver: could not find a firmware file in the manifest for device firmware revision: device will not be updated`).
+
+Two caveats, flagged as unresolved rather than findings. The C++ manifest lookup is
+reached through a virtual call (`[[ [r0+8] +12 ] +16]` at `0x007c2ab0`) and no
+vtable in `.rodata` covers the manifest module range `0x779000`–`0x786000`, so the
+C++ compare was not read directly; the conclusion there rests on the exhaustive
+absence of mask code in that module plus the redundant sibling entries. And the
+config node name `ActivationDeviceClassChecksOverrideFlag` appears as a string in
+both `caseta-device/lutron-core` and `lutron-coproc-firmware-update-app` with no
+resolvable xref — by name it would gate the activation check above, not firmware
+selection, but that is untested.
+
+No hardcoded device-class table exists in any `lutron-core` build. The only one
+found anywhere is `msshared.GetAccessoryProductData` in `multi-server-phoenix.gobin`
+(`0x009f4658`, literal pool `0x009f4a64`): 11 exact-equality HomeKit entries, all
+family `0x08` (`0x08100101 08100201 08110101 08110201 08170101 08170201 08180101
+08180201 08180301 08180401 08180501`). Searches for `0x04480101` as LE, BE and ASCII
+return zero hits in either core.
+
+### What changed across Caseta builds 08.25.17 → 08.30.09
+
+Diffed by `(path, sha256)` over the extracted rootfs of each build: **+566 added,
+−8 removed, ~908 changed** net. The bulk of the additions are `usr/share` (492)
+and `var/db` (57). Changed binaries: `lutron-core`, `leap-server.gobin`,
+`lutron-coproc-firmware-update-app`, `lutron-integration`, `lutron-button-engine`,
+`lutron-eeprom-engine`, `lutron-led-ui`, `lutron-eol`, `lutron-core-client`,
+`database-conversion-engine`, `internet-connectivity-monitor.gobin`, plus
+`busybox`, `libcrypto.so.1.1`, `libpython3.8`, `mdnsd`/`dns-sd`.
+
+The 57 new files in `var/db` are config-db conversion scripts **v398–v450**, and
+their headers are the clearest changelog Lutron ships. New systems and codenames
+appearing there, none of them previously in this repo:
+
+| Script | Adds |
+|---|---|
+| v398–v400, v407, v426 | **Lite Heron** processor — RA2 Select CCA 434 MHz device support, CCX link candidates |
+| v402, v411, v442 | **Tolkien** link and **Starling** system; **MAIA** processor within Starling |
+| v419, v434 | **Orion** processor |
+| v425 | **Nuthatch** trimkit |
+| v430 | **Wonder Woman** Dimmer Remote |
+| v401, v426 | Paddle Pico |
+| v424, v436, v438, v450 | **Lumaris** tape-light zones (Toe Kick, Mirror …) |
+| v429 | references **Hydra** and **Rockhopper** device FWU |
+
+Firmware-relevant, and the reason this matters here: **v428 creates
+`FirmwareImageType`, `CurrentDeviceFirmwareData`, `UploadedDeviceFirmwareData` and
+`DisabledDeviceFirmwarePackages`**, and v431/v434/v446 add automatic
+device-firmware update scheduling. These are the same tables previously seen only in
+the Phoenix DB, now reaching Caseta. They are keyed on
+**`SerialNumber` REFERENCES `Device`(`SerialNumber`)**, not on DeviceClass, and
+neither v428 nor any other new script contains `.pff`, a manifest reference, or
+`0x0448`. So the newest schema still does not link class to image — it tracks
+per-device installed revision by serial.
+
+### The two class → image mapping mechanisms, and their scopes
+
+There are exactly two known mechanisms that resolve a DeviceClass to a firmware
+image. Neither covers PD-5NE, but only one of them is evidence about it.
+
+**1. `device-firmware-manifest.json` — hub side, Caseta/RA3/lite-heron.** Keyed on
+the full class as a string (`"0x1B010101"`) → `App.Path` / `Boot.Path`, plus
+`Sha256Hash`, `TargetLocationName`, `ImageType`, revision and `MinimumRevisions`.
+This is the authoritative map for `.pff` images and it is resolved **on the hub
+after download** — device class appears nowhere in the cloud addressing. Every
+sampled version of every channel lacks `0x0448`. **This is the evidence.**
+
+**2. `FirmwareHeaderFile.xml` — Designer side, QS / HomeWorks / RadioRA 2.**
+`QuantumResi/BinDirectory/Firmware/FirmwareHeaderFile.xml`, 205,497 bytes,
+`PackageVersion 4.0.0.A`, 372 leaf records / 396 `OSFirmwareFile` entries. Keyed on
+the class **decomposed byte by byte**:
+
+```
+DeviceTypeFamily family="0x04"        <- DeviceClass byte 3
+  DeviceTypeProduct product="0x01"    <- byte 2
+    DeviceTypeHardwareRev hardwarerev <- byte 1
+      DeviceTypeCustom customrev      <- byte 0
+        OSFirmwareFile/Filename, MajorRev, MinorRev, BuildRev, DeltaTime, FirmwareUpdateSpeed
+```
+
+Families present: `0x01 03 04 05 06 09 0B 0F 13 16 17`. Family `0x04` carries 27
+products: `01 02 05 07 0C 0E 0F 14 15 1F 20 21 22 23 24 25 26 2A 2C 31 35 36 39 3A
+3C 3D 45`.
+
+**Its silence on PD-5NE proves nothing.** No Caseta class appears in this file at
+all — not `0x32` (PD-6WCL, which demonstrably *has* a `.pff`), nor `0x33`, `0x34`,
+`0x41`, `0x42`, `0x48`, `0x56`, `0x63`, `0x64`, `0x66` or `0x68`. The images it
+names are RadioRA 2 / HWQS wallbox parts (`qs dimmer and switch\RRD_WALL_3-08.ldf`
+and the like). Product `0x48` does occur once in the file, but under family `0x13`
+— a DALI ballast. So this map is scoped to the wired/RF QS lines and is simply
+silent on Caseta; do not cite it as evidence either way. (Side note: 148 basenames
+it references are absent from the MSIX — the RadioRA2-branded LDFs and ~130 DALI
+`.hex` files — so Designer references a firmware set it does not ship.)
+
+**What carries no mapping at all:** `.ldf` has no device-class field. It is a
+binary container (64-byte NUL-padded internal name, `u32` total length at `0x40`,
+format version at `0x48`, header size at `0x50`, record count at `0x54`, payload
+count at `0x5C`, digest at `0x60`), and the enclosed HCS08 code is unencrypted —
+but the class lives externally, in the XML above. Proof the class is absent:
+`RFCCO434_1-51.LDF` and `RFCCO868_1-51.LDF` are byte-identical despite different RF
+bands, and `HWQS_6NE_2-13.ldf` (a dimmer) shares its `0x5C` value with
+`RFCCO434_1-51.LDF` (a contact-closure output). No `.ldf` on disk contains the
+bytes `04 48 01 01`. The Lutron iOS app (26.1.0) bundles no device firmware at all.
+
+### Reading a manifest without downloading the bundle
+
+`device-firmware-manifest.json` is the **first member of the `lutron_firmware` ZIP
+and is stored uncompressed** (method 0), so two HTTP Range requests retrieve it
+from a 120 MB bundle. Parse the local file header at offset 0 for the name length,
+extra length and compressed size, then range-read the body:
+
+```
+curl -s -r 0-200 "$URL"                      # local file header
+# nameLen @0x1A, extraLen @0x1C, cSize @0x12 (all little-endian)
+curl -s -r "$START-$((START+CSIZE-1))" "$URL" > manifest.json
+```
+
+Verified against `phoenix/final/26.09.18f000/lutron_firmware`: first member
+`device-firmware-manifest.json`, method 0, 64,466 bytes.
+
+Newest live versions as of 2026-10-01 (all unauthenticated):
+
+| Channel | Newest | Device-firmware pkg | Entries |
+|---|---|---|---|
+| `caseta-ra2select/final/` | `08.30.09f000` | 001.003.004r000 | 15 |
+| `phoenix/final/` | `26.09.18f000` | 002.025.035r000 | 36 |
+| `lite-heron/final/` | `26.00.13f000` | 002.025.024r000 | 28 |
+
+The local phoenix set is from 26.01.13f000; the 26.09.18f000 manifest adds eight
+classes (`0x06190301`, `0x061F0101`, `0x1B010201`, `0x1B060201`, `0x1B060401`,
+`0x1B060501`, `0x1B080501`, `0x1B0A0101`) and reaches 68 `.pff` paths. Its only
+family-`0x04` classes are `0x045E0101`, `0x045F0101`, `0x04670101`. No channel at
+any version carries `0x0448`.
+
+### Coprocessor images
+
+- `coprocessor/phoenix_*.s19` — deobfuscated S19 images, recovered from the
+  embedded blobs in `lutron-coproc-firmware-update-app` (no external firmware
+  file exists on these rootfs images)
 - `coprocessor/phoenix_*.bin` — flat binary conversions, for loading into Ghidra
 - `coproc-firmware.gpr` — Ghidra project over the ARM images
 

@@ -651,12 +651,46 @@ Codename → device-class map (15 classes covered):
 
 | Codename | Device classes | Files | MCU |
 |---|---|---|---|
-| BASENJI (Diva, e.g. DVRF-6L) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
-| BANANAQUIT (plug-in / Maestro family) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
-| EO / eagle-owl | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
+| BASENJI (battery roller shade) | `0x03150101/0201`, `0x03160101/0201` | v2.015 + v2.025 | **EFR32FG23** (Cortex-M33, Secure Vault Mid) |
+| BANANAQUIT (roller / roman shades) | `0x03090601`, `0x030A0601`, `0x03130601`, `0x03140601` | v2.025 | TBD (likely EFR32) |
+| EO / eagle-owl, formerly **TGP** (battery roller shade) | `0x03120101/0102/0103` | v2.025 | TBD (likely EFR32) |
 | Vogelkop (high-end dimmer) | `0x04630201`, `0x04640101`, `0x04660201` | v3.012 + v3.021 | TBD |
-| Antillean | (in firmware list, class TBD) | v1.001 | TBD |
+| Antillean (RRX-RNFSQ-240, RA2 Select In-Line Fan Controller) | `0x04680101` | v1.001 | TBD |
 | Caseta Dimmer (legacy) | `0x04320501` | v2.05 | TBD (likely HCS08 — pre-EFR32 era) |
+
+> **The family-`0x03` codenames are all shades, not dimmers.** This table
+> previously labelled BASENJI as "Diva, e.g. DVRF-6L" and BANANAQUIT as
+> "plug-in / Maestro family". Both are wrong, and the conversion scripts say so
+> outright (paths relative to
+> `data/firmware/vive/v01.30.04-decrypted/rootfs-full/usr/db/conversions/config-db/conversion-scripts/`):
+>
+> | Codename | Script evidence | Shipped commissioning row |
+> |---|---|---|
+> | BASENJI | `v339.sql:1` "support \"Basenji\" Battery Roller Shades"; `:52` `DeviceClass = 0x03150101 ... (Basenji Roller Shade)`; `:58` inserts `BSNJ-T`, renamed to `BSNJI-TE` in `v368.sql:17` | `0x03150101` = QSERX-B-X, Triathlon Select Roller Shade; `0x03160101` = SYERX-B-X, Lutron Roller Shade |
+> | EO / eagle-owl | `v320.sql:1` "support \"Eagle Owl\" Battery Roller Shades"; `v322.sql` adds it to the Caseta DB | `0x03120101` = LBMRX-C, Palladiom Wire-Free |
+> | BANANAQUIT | — | `0x03090101` = SYRJ-S2A13-XX Lutron Roller Shade; `0x030A0101` = QSFRJ-S2A13-XX Sivoia QS Triathlon Roller Shade; `0x03130101` = SYMX-C Lutron Roman Shade; `0x03140101` = QSFMX-C Sivoia QS Triathlon Roman Shade |
+>
+> **There is no firmware-vs-commissioning namespace collision in family `0x03`.**
+> An earlier revision of this file claimed one; the two spaces agree once you mask
+> to the top 16 bits, which is what `DeviceClassMask = 0xFFFF0000` instructs. What
+> differs is the **hardware byte**: the manifest ships BANANAQUIT at `0x__060601`
+> where the DB records `0x__0101`, and BASENJI at `0x03150201` where the DB has
+> `0x03150101`. Same device, different hardware revision, and the DB deliberately
+> does not enumerate revisions when the mask ignores that byte. The clearest case
+> is `0x04660201`, which has a shipping image but appears in no DB or script at all
+> — only `0x04660101` (DVRF-5NE-XX) does.
+>
+> **Diva is Vogelkop, not BASENJI.** DVRF-6L is `0x04630201` in all shipped
+> commissioning DBs, and that is the class in the header of
+> `07911506_v3.021_VogelkopDimmerAppCaseta.pff` — the image confirmed against the
+> 2026-04-28 live OTA capture. `v321.sql:26,32` created Vogelkop at `0x04630101`
+> and `v335.sql:10` silently bumped it to `0x04630201` without narrowing the mask.
+>
+> Antillean's class was read from the PFF header at offset `0x114` (`0x04680101`)
+> and is corroborated by `v372.sql:24,30`, the only place in the SQL corpus that
+> exposes an internal product enum: `PRODUCT_RA2_STICK_FAN_CONTROL` for class byte
+> `0x68`. It is a fan controller, not a dimmer. Its `.pff` ships in the bundle but
+> no manifest entry references it — the 15 entries point at only 8 of the 9 files.
 
 `EstimatedFastUploadTimeInSeconds: 1200` ⇒ **~20 min of RF per device** — plan
 capture buffer / streaming accordingly. `MinimumRevisions` is empty for all
@@ -669,18 +703,109 @@ token-based unlock, Secure Boot RTSL, OTP key storage); older xG1/xG12/xG14
 FG23 are configurable, so empirically check what Lutron actually enabled before
 assuming worst case.
 
+### Device-firmware bundle history across CDN versions
+
+Sampled the `caseta-ra2select/final/` channel to establish which device classes
+have ever had an OTA image. Each build's `/opt/lutron/device_firmware/` was read
+out of the rootfs deb. Note the container changed: builds up to ~08.21 ship
+`rootfs.tar.gz`, later ones ship `rootfs.ubifs.xz` — which is actually a **tar**
+containing a bare UBIFS, not a bare UBIFS, so unwrap one tar layer before handing
+it to `ubireader_extract_files`.
+
+| Build | Pkg version | PFFs | Notes |
+|---|---|---|---|
+| 08.00.06f000 | — | 0 | No `device_firmware` directory at all; CCA OTA did not exist yet |
+| 08.12.00f000 | (no manifest) | 6 | TGP, BANANAQUIT/BASENJI v1.001, Vogelkop with the class in the filename (`VogelkopDimmer_04630201_2.12.pff`) |
+| 08.15.01f000 | 001.000.011r000 | 6 | 9 classes |
+| 08.18.02f000 | 001.002.001r000 | 5 | 10 classes |
+| 08.21.01f000 | 001.003.000r000 | 9 | 16 classes; last build carrying TGP; Antillean debuts at v0.005 |
+| 08.25.17f000 | 001.003.004r000 | 9 | 15 classes; TGP gone, EO present |
+| 08.28.02f000 | 001.003.004r000 | 9 | Byte-identical PFFs and identical 15 classes to 08.25.17 |
+| 08.28.11f000 | 001.003.004r000 | 9 | The build `/sources` actually offers a production L-BDG2-WH. Same 9 PFFs, byte-identical; same 15 classes |
+| 08.30.09f000 | 001.003.004r000 | 9 | Newest live build (CDN mtime 2026-10-01). Same 9 PFFs, byte-identical; same 15 classes |
+
+The device-firmware package version has been frozen at `001.003.004r000` from
+08.25.17 through 08.30.09 — three further hub releases with no device-firmware
+change at all.
+
+### Two cloud channels, only one of them addressable
+
+The device-firmware repo is **not** a static CDN prefix. It is handed to each unit
+at runtime:
+
+- `etc/opkg_device-firmware.conf` ships its `src` line as the literal placeholder
+  `#REPLACE_ME` (line 1).
+- `usr/sbin/fwu_check_and_download.sh` calls `curlscript.sh sources`, takes field 1
+  as the processor repo and field 2 as the device repo, and `sed`s the latter into
+  the opkg conf as `src/gz repo $REPO_ADDRESS`.
+- `usr/sbin/curlscript.sh:50` names the JSON field: `DevicePackageUrl` (the
+  processor URL is `Url`).
+
+So the full shape is `POST https://firmwareupdates.lutron.com/sources` →
+`{"Url": <processor repo>, "DevicePackageUrl": <device repo>}`, then
+`{DevicePackageUrl}/Packages.gz` and `{DevicePackageUrl}/lutron_device_firmware`.
+That POST requires the hardcoded basic-auth plus a real
+`(macid, deviceclass, coderev, datestamp, claimedstatus)` tuple, so the literal
+`DevicePackageUrl` value is **unrecovered** — no observed value appears anywhere on
+disk. Probing plausible prefixes under `firmware-downloads.iot.lutron.io`
+(`/device-firmware/`, `/phoenix-device/`, `/pegasus/`, …) returns 404, but that is
+not evidence of absence: `/lite-heron/` and `/vive/` also 404 as directory markers
+while their contents are demonstrably live. Wayback has indexed only `phoenix/*`
+and `connect/*` for this host.
+
+`fwu_check_and_download.sh` carries the comment *"It is okay to not have a device
+repo address if only say alpha/beta processors are eligible for device updates from
+the cloud"* — so a production unit may legitimately be served an empty
+`DevicePackageUrl`, and the bundled copy in the rootfs is then the only source.
+
+A secondary, non-cloud route exists: per `etc/lutron.d/lutron-platform.conf`,
+Designer pushes the same `lutron_device_firmware` file over SFTP as user `u_dfp`,
+chrooted to `/var/firmware/u_dfp`.
+
+Package naming is a single monolithic opkg package — from
+`var/lib/opkg_device-firmware/status`: `Package: device-firmware`,
+`Version: 001.003.004r000`, `Description: Caseta processor's device firmware.`
+`fwu_check_and_download.sh` hardcodes `PACKAGE_TO_INSTALL="device-firmware"`.
+**Device class appears nowhere in the cloud addressing** — only inside the package,
+in `device-firmware-manifest.json`. Class → image is resolved on the hub after
+download.
+
+Two findings from this:
+
+- **TGP is the former name of EO / eagle-owl.** The TGP image in 08.21.01 carries
+  DeviceClass `0x03120101` at header offset `0x114`, and its manifest maps TGP to
+  `0x03120101/0102/0103` — exactly the classes EO covers in 08.25+. Same device
+  lineage, renamed between those builds.
+- **The covered class set has never included `0x0448`.** Across every sampled
+  build the classes are drawn from `0x0309`, `0x030A`, `0x0312`, `0x0313`,
+  `0x0314`, `0x0315`, `0x0316`, `0x0432`, `0x0463`, `0x0464`, `0x0466` and
+  `0x0468`. In particular **PD-5NE (`0x04480101`, mask `0xFFFF0000`) has never had
+  an OTA image in this channel**, even though the commissioning DBs have carried
+  its row since schema v103. Of the whole pre-Diva `PD-*` family, only PD-6WCL
+  hwrev 5 (`0x04320501`) ever got one. Coverage caveat: 7 of ~329 versions were
+  sampled, chosen to span the range.
+
 ### .pff format (Pegasus Firmware Format)
 
-Same container as CCX device firmware (see
-[coprocessor-firmware.md](coprocessor-firmware.md) for the verified layout):
-4-byte BE Major (0=boot, 1=app), 4-byte BE Minor, 64-byte unique field (likely
-ECDSA-P256 signature), 195 reserved zero bytes, then AES ciphertext at offset
-`0x10B`. The bridge does **not** decrypt — it ships the `.pff` bytes unmodified
-to the device bootloader, which decrypts in place. The Caseta manifest ships only
-App images (format 1, 100–900 KB); boot images (format 0, ~20 KB) would require
-physical access. The PFF symmetric key is burned in the device bootloader at
-manufacture; recovering it likely needs SWD/JTAG on a CCA device. (PowPak HCS08
-LDFs are plaintext — only EFR32 PFFs are encrypted; see [powpak.md](powpak.md).)
+Same container as CCX device firmware. See
+[coprocessor-firmware.md](coprocessor-firmware.md) §"PFF File Format" for the
+verified layout — in outline: 4-byte BE header-layout version, 4-byte BE constant,
+64-byte unique field (likely ECDSA-P256 signature), 192 reserved zero bytes, a
+plaintext metadata block at `0x108` (image kind, revision, DeviceClass, ciphertext
+length), a 16-byte IV, then AES-CBC ciphertext at `0x134` (or `0x130` on the
+layout-0 variant used by CCX boot images). The bridge does **not** decrypt — it
+ships the `.pff` bytes unmodified to the device bootloader, which decrypts in place.
+
+The Caseta manifest ships only App images (format 1, 100–900 KB); its boot images
+(format 0, ~20 KB) are absent. CCA boot images for basenji, eagle-owl and
+bananaquit-avis *are* present in the Phoenix and lite-heron bundles, so a boot
+image is obtainable without physical access — just not from a Caseta bundle.
+
+The PFF symmetric key is burned in the device bootloader at manufacture;
+recovering it likely needs SWD/JTAG or a glitch on a CCA device (see
+[../tooling/glitch-extraction.md](../tooling/glitch-extraction.md)). No PFF
+payload has been decrypted to date. (PowPak HCS08 LDFs are plaintext — only
+EFR32 PFFs are encrypted; see [powpak.md](powpak.md).)
 
 ### SSH paths reference
 

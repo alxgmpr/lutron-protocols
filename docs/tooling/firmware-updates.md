@@ -43,6 +43,51 @@ overridden with actual processor values before the POST.
 
 Response type is `FirmwareFileServiceResponseDto` with fields `{Status, Url, Message}`.
 
+### `DevicePackageUrl` is not served to production units
+
+`curlscript.sh` reads a second field from this response — `DevicePackageUrl`
+(`curlscript.sh:56`) — which `fwu_check_and_download.sh` seds into
+`etc/opkg_device-firmware.conf` in place of its `#REPLACE_ME` placeholder. That is
+the **device firmware** (`.pff`) repo, distinct from the processor repo in `Url`.
+The request only carries `devicepackagerev` when the product supports it
+(`curlscript.sh:220-223`), so the obvious hypothesis was that the device repo is
+returned only when that field is present.
+
+**It is not.** Tested 2026-10-01 against a production L-BDG2-WH SmartBridge 2 using
+its own MAC, class `080F0101`, `coderev=08.25.17f000` and
+`devicepackagerev=001.003.004r000`:
+
+```
+{"Status": "200 OK", "Url": "https://firmware-downloads.iot.lutron.io/caseta-ra2select/final/08.28.11f000"}
+```
+
+`200 OK`, and **no `DevicePackageUrl` key at all**. Omitting `datestamp` returns
+`400 Bad Request / Missing request parameters`, so the field is required even though
+the server does not appear to validate it against the unit.
+
+This matches the comment in `fwu_check_and_download.sh`: *"It is okay to not have a
+device repo address if only say alpha/beta processors are eligible for device
+updates from the cloud."* For a production Caseta unit the device-firmware repo is
+never handed out, so **the copy bundled in the rootfs is the only source of `.pff`
+images** — there is no separate device-firmware CDN prefix to find. Combined with
+the version sweep in
+[caseta-smartbridge.md](../devices/caseta-smartbridge.md#device-firmware-bundle-history-across-cdn-versions),
+this closes the question: no PD-5NE (`0x04480101`) image is obtainable from Lutron's
+cloud by any route.
+
+### Correction: the server targets a version per unit
+
+The note below that the server "always returns the latest version regardless of
+`coderev` sent" is wrong. The L-BDG2-WH above was offered **`08.28.11f000`** while
+`08.30.09f000` was simultaneously live on the same channel (both `Packages.gz`
+return 200). So `/sources` performs per-unit version targeting, and the newest
+build on the CDN is not necessarily what a given unit is told to take.
+`08.28.11f000` itself carries the same 15 classes and the same nine `.pff` files,
+byte-identical, at package version `001.003.004r000`.
+
+Device class `080F0101` (L-BDG2-WH) is confirmed working against `/sources`; the
+earlier enumeration only covered `0x0811`–`0x0820`.
+
 ### CDN Paths by Product Line
 
 | CDN Path | Product | Device Classes | Latest Version |
