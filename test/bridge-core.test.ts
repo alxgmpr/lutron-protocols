@@ -343,7 +343,7 @@ describe("zone state", () => {
     const zone = bridge.getZoneState(100);
     assert.ok(zone);
     assert.equal(zone.activity.type, "idle");
-    assert.notEqual(zone.reportAt, null, "reportAt should be scheduled");
+    assert.ok(Number.isFinite(zone.reportAt), "reportAt should be scheduled");
     bridge.destroy();
   });
 });

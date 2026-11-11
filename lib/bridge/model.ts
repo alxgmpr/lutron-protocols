@@ -115,7 +115,7 @@ export class DeviceModel extends EventEmitter {
         colorXy: null,
         activity: { type: "idle" },
         dirty: false,
-        reportAt: null,
+        reportAt: Number.POSITIVE_INFINITY,
       };
       this.zones.set(zoneId, z);
     }
@@ -478,12 +478,8 @@ export class DeviceModel extends EventEmitter {
         this.emit("zone:changed", this.snapshot(zoneId, zone));
       }
 
-      if (
-        zone.reportAt !== null &&
-        zone.activity.type === "idle" &&
-        now >= zone.reportAt
-      ) {
-        zone.reportAt = null;
+      if (zone.activity.type === "idle" && now >= zone.reportAt) {
+        zone.reportAt = Number.POSITIVE_INFINITY;
         this.emit("zone:settled", {
           zoneId,
           zoneName: this.zoneName(zoneId),

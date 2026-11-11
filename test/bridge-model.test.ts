@@ -539,7 +539,7 @@ describe("model ramp", () => {
     const zone = model.getZoneState(100)!;
     assert.equal(zone.level, 100);
     assert.equal(zone.activity.type, "idle");
-    assert.notEqual(zone.reportAt, null);
+    assert.ok(Number.isFinite(zone.reportAt));
     model.destroy();
   });
 
