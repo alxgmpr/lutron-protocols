@@ -31,6 +31,7 @@
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { cpus } from "node:os";
 import { fileURLToPath } from "node:url";
 import { decodeAndParse } from "../ccx/decoder";
 import type { CCXPacket } from "../ccx/types";
@@ -66,18 +67,15 @@ const TOLERANCE_PCT = 40;
 /**
  * Cases needing a wider band than the default, with why.
  *
- * bridge.dispatch: 60%. Its ratio depends on which CPU model the runner gets
- * more than any other case does: unchanged main code measured 7.55–11.25
- * (reference 7.4 ms runners at the low end, 4.2–5.5 ms at the high end),
- * already up to +42% over a baseline taken on the slow runners. At 40% it
- * failed on runner type alone. An earlier 80% override was dropped when its
- * drift between identical runs fell to 12%; that drift was within one runner
- * type, and the spread between types is what this band absorbs. The
- * regressions this bench is for are still several times larger.
+ * Empty. bridge.dispatch carried 60% for a while, to absorb a ~50% ratio
+ * spread between runner CPU models. That spread was the bench measuring a
+ * frozen clock's unbounded dedup scan (see PACKET_INTERVAL_MS); with the
+ * clock advancing it is within about ±25% of the baseline on every model
+ * seen, which the default band covers.
+ * Kept as a mechanism because paths do differ in volatility, and one band
+ * will not always serve them all.
  */
-const PER_CASE_TOLERANCE_PCT = {
-  "bridge.dispatch": 60,
-} satisfies Record<string, number>;
+const PER_CASE_TOLERANCE_PCT: Record<string, number> = {};
 
 const REFERENCE = "reference";
 
@@ -130,16 +128,32 @@ const ccxPackets: CCXPacket[] = Array.from({ length: 4000 }, (_, i) => ({
   },
 }));
 
+/**
+ * Simulated gap between packets. The clock must advance: frozen at 0, no
+ * dedup entry ever expires, the table grows with every packet, and each
+ * packet past the 100-entry cap scans all of it. That degenerate prune was
+ * ~94% of this case's time, and it did not speed up with the reference on
+ * every CPU model, so the ratio read ~50% high on some runners. 4 ms keeps
+ * ~125 entries live, just over the cap, so the prune still runs on every
+ * packet, at the size it reaches under heavy real traffic.
+ */
+const PACKET_INTERVAL_MS = 4;
+
 function makeBridge() {
+  let clock = 0;
   const model = new DeviceModel({
     watchedZones: new Set([961]),
     presetZones: new Map(),
     resolveZoneName: (id) => `Zone ${id}`,
     autoTick: false,
     reportDelayMs: 2000,
-    now: () => 0,
+    now: () => clock,
   });
-  return new CcxSource({ model, log: () => {} });
+  const source = new CcxSource({ model, log: () => {} });
+  return (pkt: CCXPacket) => {
+    clock += PACKET_INTERVAL_MS;
+    source.handlePacket(pkt);
+  };
 }
 
 // ── Cases ────────────────────────────────────────────────
@@ -235,8 +249,12 @@ const CASES: BenchCase[] = [
   {
     name: "bridge.dispatch",
     run: () => {
-      const source = makeBridge();
-      for (const pkt of ccxPackets) source.handlePacket(pkt);
+      // 4 sweeps: with the dedup table bounded, one ran in ~2 ms on CI, too
+      // short to time. Sweeps rather than more packets because building
+      // packets at load grows the heap and put GC pauses in the reference.
+      // A repeated sequence number is 16 s later, far outside the window.
+      const dispatch = makeBridge();
+      for (let i = 0; i < 4; i++) for (const pkt of ccxPackets) dispatch(pkt);
     },
   },
 ];
@@ -274,6 +292,8 @@ const GATE_ATTEMPTS = 3;
 
 function main() {
   const write = process.argv.includes("--write");
+  // Ratios still shift a little between CPU models; name the one measured.
+  console.log(`cpu: ${cpus()[0]?.model ?? "unknown"}\n`);
 
   let ratios = measure();
   console.log("\nratios vs reference:");
