@@ -30,8 +30,7 @@ static bool rx_active_ = false;
 static cc1101_rx_callback_t rx_callback_ = NULL;
 
 static uint8_t accum_[RX_PKT_LEN + 4]; /* +4 margin */
-static size_t accum_len_ = 0;
-static bool accum_active_ = false;
+static size_t accum_len_ = 0;          /* > 0 means a packet is accumulating (accum_start_*, accum_rssi_ valid) */
 static uint32_t accum_start_ms_ = 0;
 static uint32_t accum_start_cyc_ = 0;
 static int8_t accum_rssi_ = 0;
@@ -312,6 +311,31 @@ const char* cc1101_tune_profile_name(cc1101_tune_profile_t profile)
 }
 
 /* -----------------------------------------------------------------------
+ * Mode register sets — chip must be in IDLE when these are written.
+ * ----------------------------------------------------------------------- */
+
+/* TX: data sync 0x7FCB, no hardware sync (N81 encoder supplies preamble+sync) */
+static void apply_tx_regs(void)
+{
+    cc1101_write_register(CC1101_SYNC1, 0x7F);
+    cc1101_write_register(CC1101_SYNC0, 0xCB);
+    cc1101_write_register(CC1101_MDMCFG2, 0x00);
+    cc1101_write_register(CC1101_PKTCTRL0, 0x00);
+}
+
+/* RX: preamble sync 0xAAAA (15/16 match), fixed-length RX_PKT_LEN.
+ * The decoder scans for the 7F CB data sync within the captured bytes. */
+static void apply_rx_regs(void)
+{
+    cc1101_write_register(CC1101_SYNC1, 0xAA);
+    cc1101_write_register(CC1101_SYNC0, 0xAA);
+    cc1101_write_register(CC1101_MDMCFG2, 0x01);
+    cc1101_write_register(CC1101_PKTCTRL0, 0x00);
+    cc1101_write_register(CC1101_PKTCTRL1, 0x00);
+    cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
+}
+
+/* -----------------------------------------------------------------------
  * Reset & Init
  * ----------------------------------------------------------------------- */
 void cc1101_reset(void)
@@ -345,18 +369,13 @@ void cc1101_init(void)
     /* Modem: 2-FSK, 19200 baud, ~25kHz deviation */
     cc1101_write_register(CC1101_MDMCFG4, 0x5B);
     cc1101_write_register(CC1101_MDMCFG3, 0x3B);
-    cc1101_write_register(CC1101_MDMCFG2, 0x00); /* no sync for TX mode */
     cc1101_write_register(CC1101_MDMCFG1, 0x00);
     cc1101_write_register(CC1101_MDMCFG0, 0x00);
     cc1101_write_register(CC1101_DEVIATN, 0x45);
 
-    /* Sync word: 0x7FCB (CCA preamble) */
-    cc1101_write_register(CC1101_SYNC1, 0x7F);
-    cc1101_write_register(CC1101_SYNC0, 0xCB);
-
-    /* Packet: infinite length, no addr check */
+    /* Sync 0x7FCB, MDMCFG2/PKTCTRL0 for TX; no addr check */
+    apply_tx_regs();
     cc1101_write_register(CC1101_PKTCTRL1, 0x00);
-    cc1101_write_register(CC1101_PKTCTRL0, 0x00);
     cc1101_write_register(CC1101_ADDR, 0x00);
     cc1101_write_register(CC1101_CHANNR, 0x00);
 
@@ -412,7 +431,6 @@ static void restart_rx(void)
     cc1101_set_idle();
     cc1101_flush_rx();
     accum_len_ = 0;
-    accum_active_ = false;
     cc1101_strobe(CC1101_SRX);
 }
 
@@ -421,7 +439,6 @@ static void restart_rx(void)
 static void restart_rx_fast(void)
 {
     accum_len_ = 0;
-    accum_active_ = false;
 }
 
 /* -----------------------------------------------------------------------
@@ -441,28 +458,16 @@ void cc1101_start_rx(void)
     HAL_Delay(1);
     cc1101_flush_rx();
 
-    /* Preamble sync: 0xAAAA matches Lutron's alternating preamble.
-     * 15/16 mode is tolerant enough for short preambles. */
-    cc1101_write_register(CC1101_SYNC1, 0xAA);
-    cc1101_write_register(CC1101_SYNC0, 0xAA);
+    apply_rx_regs();
 
-    /* 2-FSK, 15/16 sync word match */
-    cc1101_write_register(CC1101_MDMCFG2, 0x01);
-
-    /* Fixed-length mode, 80 bytes — covers all CCA packet types */
-    cc1101_write_register(CC1101_PKTCTRL0, 0x00);
-    cc1101_write_register(CC1101_PKTCTRL1, 0x00);
-    cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
-
-    /* FIFO threshold */
-    cc1101_write_register(CC1101_FIFOTHR, 0x07);
+    /* FIFO threshold — runtime-tunable (default 0x07) */
+    cc1101_write_register(CC1101_FIFOTHR, runtime_tuning_.fifothr);
 
     /* GDO0: sync word detect (assert) / end of packet (deassert) */
     cc1101_write_register(CC1101_IOCFG0, 0x06);
     cc1101_write_register(CC1101_IOCFG2, 0x06);
 
     accum_len_ = 0;
-    accum_active_ = false;
 
     cc1101_strobe(CC1101_SCAL);
     HAL_Delay(1);
@@ -473,13 +478,8 @@ void cc1101_start_rx(void)
 void cc1101_stop_rx(void)
 {
     cc1101_set_idle();
-    /* Restore init-time registers for TX */
-    cc1101_write_register(CC1101_SYNC1, 0x7F);
-    cc1101_write_register(CC1101_SYNC0, 0xCB);
-    cc1101_write_register(CC1101_MDMCFG2, 0x00);
-    cc1101_write_register(CC1101_PKTCTRL0, 0x00);
+    apply_tx_regs();
     accum_len_ = 0;
-    accum_active_ = false;
     rx_active_ = false;
 }
 
@@ -509,11 +509,9 @@ bool cc1101_check_rx(void)
 
     /* 2. Drain FIFO into accumulation buffer */
     if (avail > 0) {
-        if (!accum_active_) {
-            accum_active_ = true;
+        if (accum_len_ == 0) {
             accum_start_ms_ = HAL_GetTick();
             accum_start_cyc_ = DWT->CYCCNT;
-            accum_len_ = 0;
             /* Capture RSSI while signal is present */
             uint8_t rssi_raw = cc1101_read_status_register(CC1101_RSSI_REG);
             accum_rssi_ =
@@ -529,7 +527,7 @@ bool cc1101_check_rx(void)
     }
 
     /* 3. Nothing accumulated yet — idle, return */
-    if (!accum_active_) return false;
+    if (accum_len_ == 0) return false;
 
     /* 4. Full packet received — deliver to decoder.
      * With RXOFF=stay-in-RX, radio is already listening for next sync.
@@ -545,7 +543,7 @@ bool cc1101_check_rx(void)
 
     /* 5. Check accumulation timeout */
     if ((HAL_GetTick() - accum_start_ms_) > ACCUM_TIMEOUT_MS) {
-        if (accum_len_ > 0 && accum_len_ < 8) runt_count_++;
+        if (accum_len_ < 8) runt_count_++;
         timeout_count_++;
         restart_rx();
         return false;
@@ -702,16 +700,11 @@ bool cc1101_transmit_and_resume_rx(const uint8_t* data, size_t len)
     cc1101_write_register(CC1101_MCSM1, 0x0F);
 
     /* 5. Configure for RX */
-    cc1101_write_register(CC1101_SYNC1, 0xAA);
-    cc1101_write_register(CC1101_SYNC0, 0xAA);
-    cc1101_write_register(CC1101_MDMCFG2, 0x01);  /* 2-FSK, 15/16 sync match */
-    cc1101_write_register(CC1101_PKTCTRL0, 0x00); /* fixed-length */
-    cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
+    apply_rx_regs();
 
     /* 6. Enter RX — no calibration needed (MCSM0 FS_AUTOCAL=01 handles
      * IDLE→RX calibration automatically on the SRX strobe). */
     accum_len_ = 0;
-    accum_active_ = false;
     cc1101_strobe(CC1101_SRX);
     rx_active_ = true;
 

@@ -85,8 +85,8 @@ static volatile bool addr_query_result_ready = false;
 
 /* CoAP response capture (written by RX handler, polled by shell) */
 static ccx_coap_response_t coap_response = {};
-static volatile bool coap_response_armed = false;
-static volatile bool coap_response_ready = false;
+/* IDLE -> ARMED (shell arms) -> READY (RX handler captured) -> IDLE (shell reads) */
+static volatile enum { COAP_RESP_IDLE, COAP_RESP_ARMED, COAP_RESP_READY } coap_response_state = COAP_RESP_IDLE;
 
 /* CoAP probe table — maps mid → path for async response correlation */
 #define PROBE_TABLE_SIZE 64
@@ -200,7 +200,7 @@ static volatile uint32_t rx_count = 0;
 static volatile uint32_t tx_count = 0;
 static volatile uint32_t raw_rx_count = 0;
 static uint8_t our_ipv6_addr[16]; /* mesh-local address for TX source */
-static bool have_ipv6_addr = false;
+static volatile bool have_ipv6_addr = false;
 static uint8_t ccx_sequence = 0; /* auto-increment if caller passes 0 */
 
 /* -----------------------------------------------------------------------
@@ -721,6 +721,13 @@ static bool thread_join(void)
     printf("[ccx] Joining Lutron Thread network (ch=%d, PAN=0x%04X)...\r\n", LUTRON_THREAD_CHANNEL,
            LUTRON_THREAD_PANID);
 
+    /* Every caller follows an NCP reset (boot, SWD recovery, reflash, DFU).
+       Forget the old role and address so a silent NET_ROLE can't pass the
+       attach check on a stale value, and a reflashed NCP's new mesh-local
+       address gets picked up. */
+    thread_role = SPINEL_NET_ROLE_DETACHED;
+    have_ipv6_addr = false;
+
     /* 1. Set channel */
     uint8_t chan = LUTRON_THREAD_CHANNEL;
     if (!spinel_prop_set(SPINEL_PROP_PHY_CHAN, &chan, 1, 2000)) {
@@ -1196,8 +1203,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 }
             }
             /* Capture CoAP response if armed */
-            if (coap_response_armed) {
-                coap_response.valid = true;
+            if (coap_response_state == COAP_RESP_ARMED) {
                 coap_response.code = coap_code;
                 coap_response.msg_id = coap_mid;
                 memcpy(coap_response.src_addr, src_addr, 16);
@@ -1237,8 +1243,7 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
                 else {
                     coap_response.payload_len = 0;
                 }
-                coap_response_armed = false;
-                coap_response_ready = true;
+                coap_response_state = COAP_RESP_READY;
             }
             /* Always broadcast CoAP response metadata to stream (for probe/fuzz).
              * Format: [coap] X.YY src=<ipv6> [path] mid=0x<hex> token=<hex> len=<n> payload=<hex> [truncated=N]\r\n
@@ -1468,7 +1473,6 @@ static void ccx_process_rx(const uint8_t* spinel_payload, size_t payload_len)
         }
 
         if (have_target && have_mleid) {
-            result.valid = true;
             addr_query_result = result;
             addr_query_result_ready = true;
 
@@ -1717,18 +1721,28 @@ static ncp_wd_t ncp_wd;
  *  expected to fail: the image is still coming up. */
 #define NCP_REFLASH_JOIN_ATTEMPTS 3
 
-static volatile bool ncp_flash_active = false;
-static volatile bool ncp_rejoin_pending = false;
-static volatile bool ncp_reflashed = false;
+/* Who owns the NCP. One store per transition, so no task ever sees a
+   half-written combination. Transitions:
+     RUN -> SWD_FLASH                 ccx_ncp_flash_begin  (shell/stream task)
+     SWD_FLASH -> REJOIN[_REFLASHED]  ccx_ncp_flash_end    (same task)
+     REJOIN[_REFLASHED] -> RUN        ccx task, before the rejoin
+   begin only leaves RUN, so the ccx task's REJOIN -> RUN store cannot
+   clobber it. */
+typedef enum { NCP_OWN_RUN, NCP_OWN_SWD_FLASH, NCP_OWN_REJOIN, NCP_OWN_REJOIN_REFLASHED } ncp_owner_t;
+static volatile ncp_owner_t ncp_owner = NCP_OWN_RUN;
 
 bool ccx_ncp_flash_begin(void)
 {
-    if (ncp_flash_active || dfu_state != CCX_DFU_IDLE) {
-        return false;
-    }
-    ncp_flash_active = true;
+    /* Check-and-set against ccx_dfu_start(), which runs on the stream task. */
+    taskENTER_CRITICAL();
+    bool ok = ncp_owner == NCP_OWN_RUN && dfu_state == CCX_DFU_IDLE;
+    if (ok) ncp_owner = NCP_OWN_SWD_FLASH;
+    taskEXIT_CRITICAL();
+    if (!ok) return false;
+
     /* Stop TX and the health poll from reaching for a part that is about to
-       stop being a Thread radio. */
+       stop being a Thread radio. thread_join() resets the role too, but that
+       runs later; this keeps ccx_thread_joined() false during the flash. */
     ncp_detected = false;
     thread_role = SPINEL_NET_ROLE_DETACHED;
     return true;
@@ -1749,19 +1763,13 @@ void ccx_ncp_flash_end(bool reflashed)
        recovery only by accident 30 s later when the liveness watchdog gave up
        and reset a part that was fine. `reflashed` chooses the wording, not
        whether we look. */
-    ncp_reflashed = reflashed;
-    ncp_rejoin_pending = true;
-    ncp_flash_active = false;
-}
-
-bool ccx_ncp_flash_in_progress(void)
-{
-    return ncp_flash_active;
+    ncp_owner = reflashed ? NCP_OWN_REJOIN_REFLASHED : NCP_OWN_REJOIN;
 }
 
 bool ccx_ncp_rejoin_pending(void)
 {
-    return ncp_rejoin_pending;
+    ncp_owner_t o = ncp_owner;
+    return o == NCP_OWN_REJOIN || o == NCP_OWN_REJOIN_REFLASHED;
 }
 
 uint32_t ccx_ncp_recoveries(void)
@@ -1875,7 +1883,6 @@ static void ncp_rejoin_after_flash(bool reflashed)
                avoid.
            Re-pushing a dataset that was already correct costs one attach cycle.
            Skipping one that was needed costs the whole point of the feature. */
-        thread_role = SPINEL_NET_ROLE_DETACHED;
         bool joined = thread_join();
         watchdog_feed();
         if (joined) {
@@ -1921,14 +1928,15 @@ static void ccx_task_func(void* param)
 
         /* Somebody is programming the NCP over SWD. Do not poll it, do not
            recover it, and above all do not drive the SWD pins. */
-        if (ncp_flash_active) {
+        ncp_owner_t owner = ncp_owner;
+        if (owner == NCP_OWN_SWD_FLASH) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        if (ncp_rejoin_pending) {
-            ncp_rejoin_pending = false;
-            ncp_rejoin_after_flash(ncp_reflashed);
+        if (owner != NCP_OWN_RUN) {
+            ncp_owner = NCP_OWN_RUN;
+            ncp_rejoin_after_flash(owner == NCP_OWN_REJOIN_REFLASHED);
             last_health_poll = HAL_GetTick();
             continue;
         }
@@ -1966,9 +1974,8 @@ static void ccx_task_func(void* param)
             dfu_bytes_written = 0;
             dfu_image_size = 0;
 
-            /* Restore USART2 to 460800 baud for Spinel/HDLC */
-            printf("[ccx] DFU: restoring USART2 to 460800 baud\r\n");
-            bsp_uart2_set_baud(460800);
+            printf("[ccx] DFU: restoring USART2 to Spinel baud\r\n");
+            bsp_uart2_set_baud(BSP_UART2_NCP_BAUD);
 
             if (dfu_state == CCX_DFU_COMPLETE || dfu_state == CCX_DFU_ERROR) {
                 if (dfu_state == CCX_DFU_ERROR) {
@@ -2249,16 +2256,24 @@ uint8_t ccx_thread_role_id(void)
 
 bool ccx_dfu_start(uint32_t image_size)
 {
-    if (dfu_state != CCX_DFU_IDLE) {
-        printf("[ccx] DFU: already in progress (state=%d)\r\n", dfu_state);
+    /* Check-and-set against ccx_ncp_flash_begin() on the shell task. The size
+       fields go in first: the ccx task acts as soon as it sees the state. */
+    taskENTER_CRITICAL();
+    ccx_dfu_state_t prev = dfu_state;
+    ncp_owner_t owner = ncp_owner;
+    bool ok = prev == CCX_DFU_IDLE && owner == NCP_OWN_RUN;
+    if (ok) {
+        dfu_image_size = image_size;
+        dfu_bytes_written = 0;
+        dfu_state = CCX_DFU_ENTERING_BOOTLOADER;
+    }
+    taskEXIT_CRITICAL();
+
+    if (!ok) {
+        printf("[ccx] DFU: refused (dfu state=%d, ncp owner=%d)\r\n", (int)prev, (int)owner);
         return false;
     }
-
     printf("[ccx] DFU: starting, image_size=%lu\r\n", (unsigned long)image_size);
-    dfu_image_size = image_size;
-    dfu_bytes_written = 0;
-    dfu_state = CCX_DFU_ENTERING_BOOTLOADER;
-
     return true;
 }
 
@@ -2327,15 +2342,18 @@ bool ccx_build_rloc_addr(uint16_t rloc16, uint8_t out[16])
 
 void ccx_coap_response_arm(void)
 {
-    coap_response_ready = false;
-    coap_response.valid = false;
-    coap_response_armed = true;
+    coap_response_state = COAP_RESP_ARMED;
+}
+
+void ccx_coap_response_disarm(void)
+{
+    coap_response_state = COAP_RESP_IDLE;
 }
 
 bool ccx_coap_response_get(ccx_coap_response_t* result)
 {
-    if (!coap_response_ready) return false;
+    if (coap_response_state != COAP_RESP_READY) return false;
     *result = coap_response;
-    coap_response_ready = false;
+    coap_response_state = COAP_RESP_IDLE;
     return true;
 }

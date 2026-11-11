@@ -41,8 +41,9 @@
  * ----------------------------------------------------------------------- */
 ETH_HandleTypeDef heth;
 static struct netif gnetif;
+/* Written only by netif_status_cb (tcpip thread). Readers go through
+   eth_get_ip_str(), which gates it on the live netif state. */
 static char ip_str[16] = "0.0.0.0";
-static bool link_up = false;
 
 /* TX complete semaphore — signals when DMA is done with a frame */
 static SemaphoreHandle_t tx_sem = NULL;
@@ -123,11 +124,9 @@ static void netif_status_cb(struct netif* netif)
     if (netif_is_up(netif) && !ip4_addr_isany_val(*netif_ip4_addr(netif))) {
         snprintf(ip_str, sizeof(ip_str), "%s", ip4addr_ntoa(netif_ip4_addr(netif)));
         printf("[eth] DHCP assigned IP: %s\r\n", ip_str);
-        link_up = true;
     }
     else {
         snprintf(ip_str, sizeof(ip_str), "0.0.0.0");
-        link_up = false;
     }
 }
 
@@ -221,12 +220,14 @@ void bsp_eth_init(void)
 
 const char* eth_get_ip_str(void)
 {
-    return ip_str;
+    return eth_link_is_up() ? ip_str : "0.0.0.0";
 }
 
+/* Derived from the netif rather than mirrored: up, PHY link up, and a DHCP
+   address. Unlocked reads of a flags byte and one 32-bit word. */
 bool eth_link_is_up(void)
 {
-    return link_up;
+    return netif_is_up(&gnetif) && netif_is_link_up(&gnetif) && !ip4_addr_isany_val(*netif_ip4_addr(&gnetif));
 }
 
 /* LAN8742A PHY register addresses */
@@ -302,8 +303,6 @@ void eth_poll_link(void)
         netif_set_link_down(&gnetif);
         UNLOCK_TCPIP_CORE();
         HAL_ETH_Stop_IT(&heth);
-        link_up = false;
-        snprintf(ip_str, sizeof(ip_str), "0.0.0.0");
     }
 
     prev_link = phy_link;
