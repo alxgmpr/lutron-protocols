@@ -1,7 +1,9 @@
 {
-  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% — the 40% band is sized from that. Regenerated 2026-08-28: bridge.dispatch rose from 7.0309 to 7.9148 after 648119c added per-source dedup windows to DeviceModel (real added work, not noise — CI had been failing on it since).",
+  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% \u2014 the 40% band is sized from that. Regenerated 2026-08-28: bridge.dispatch rose from 7.0309 to 7.9148 after 648119c added per-source dedup windows to DeviceModel (real added work, not noise \u2014 CI had been failing on it since). 2026-11-11: bridge.dispatch gets a 60% band (see PER_CASE_TOLERANCE_PCT in tools/bench.ts) because its ratio spreads with the runner's CPU model; the gate reads bands from this file, not the constant.",
   "tolerancePct": 40,
-  "perCaseTolerancePct": {},
+  "perCaseTolerancePct": {
+    "bridge.dispatch": 60
+  },
   "ratios": {
     "cca.identifyPacket": 1.4596,
     "cca.decodeFrame": 2.4965,
