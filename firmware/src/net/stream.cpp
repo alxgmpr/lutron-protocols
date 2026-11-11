@@ -837,7 +837,11 @@ static void stream_task_func(void* param)
                 else {
                     /* Wire format: FLAGS(1) LEN(1) TS_MS(4) TS_CYC(4) DATA(N) [SRC(16)] */
                     uint8_t frame[STREAM_FRAME_HEADER_LEN + TX_ITEM_MAX_DATA + STREAM_SRC_ADDR_LEN];
-                    const uint8_t* src = (tx_item.flags & STREAM_FLAG_SRC) ? tx_item.src_addr : NULL;
+                    /* Bit 4 is RSSI on CCA frames, not SRC: passing src there makes
+                     * stream_frame_build reject the frame. */
+                    const uint8_t* src = ((tx_item.flags & STREAM_FLAG_CCX) && (tx_item.flags & STREAM_FLAG_SRC))
+                                             ? tx_item.src_addr
+                                             : NULL;
                     size_t frame_len =
                         stream_frame_build(frame, sizeof(frame), tx_item.flags, tx_item.data, tx_item.len,
                                            tx_item.timestamp_ms, tx_item.timestamp_cyc, src);

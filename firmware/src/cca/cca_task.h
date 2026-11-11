@@ -49,6 +49,9 @@ uint32_t cca_isr_latency_samples(void);
 /** Reset CCA task-side RX/TX telemetry counters */
 void cca_reset_stats(void);
 
+/** Print the FREQEST summary line for `status` (decoded vs. dropped packets, current trim). */
+void cca_print_freqest(void);
+
 /** Enable/disable verbose CCA RX UART logging (shell/VCP). */
 void cca_set_uart_log_enabled(bool enabled);
 bool cca_uart_log_enabled(void);

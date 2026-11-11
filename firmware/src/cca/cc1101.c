@@ -13,6 +13,7 @@
 
 #include "cc1101.h"
 #include "bsp.h"
+#include "flash_store.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -34,6 +35,7 @@ static size_t accum_len_ = 0;          /* > 0 means a packet is accumulating (ac
 static uint32_t accum_start_ms_ = 0;
 static uint32_t accum_start_cyc_ = 0;
 static int8_t accum_rssi_ = 0;
+static int8_t accum_freqest_ = 0;
 
 /* Counters */
 static uint32_t overflow_count_ = 0;
@@ -174,6 +176,11 @@ static uint8_t cc1101_read_rxbytes_safe(void)
 /* -----------------------------------------------------------------------
  * Counter getters
  * ----------------------------------------------------------------------- */
+int8_t cc1101_last_freqest(void)
+{
+    return accum_freqest_;
+}
+
 bool cc1101_is_initialized(void)
 {
     return initialized_;
@@ -381,7 +388,8 @@ void cc1101_init(void)
 
     /* Frequency synthesizer */
     cc1101_write_register(CC1101_FSCTRL1, 0x06);
-    cc1101_write_register(CC1101_FSCTRL0, 0x00);
+    /* Per-board crystal trim (`cca trim`), stored in flash. Applies to RX and TX. */
+    cc1101_write_register(CC1101_FSCTRL0, (uint8_t)flash_store_get()->cca_freq_trim);
 
     /* MCSM1=0x0F: CCA_MODE=00 (always), RXOFF=11 (stay in RX), TXOFF=11 (→RX).
      * Stay-in-RX eliminates ~1-2ms dead time per packet (no IDLE→CAL→SRX cycle).
@@ -516,6 +524,8 @@ bool cc1101_check_rx(void)
             uint8_t rssi_raw = cc1101_read_status_register(CC1101_RSSI_REG);
             accum_rssi_ =
                 (rssi_raw >= 128) ? (int8_t)((int16_t)(rssi_raw - 256) / 2 - 74) : (int8_t)(rssi_raw / 2 - 74);
+            /* Carrier offset the FOC loop locked onto during preamble/sync */
+            accum_freqest_ = (int8_t)cc1101_read_status_register(CC1101_FREQEST);
         }
 
         size_t space = sizeof(accum_) - accum_len_;
