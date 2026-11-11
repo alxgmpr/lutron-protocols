@@ -3393,7 +3393,7 @@ static void cmd_ccx_coap(const char* arg)
         }
 
         ccx_coap_response_arm();
-        if (!ccx_send_coap_port(dst, COAP_CODE_GET, uri, NULL, 0, port)) {
+        if (!ccx_send_coap_port(dst, COAP_CODE_GET, uri, NULL, 0, port, true)) {
             ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;
@@ -3458,7 +3458,7 @@ static void cmd_ccx_coap(const char* arg)
         }
 
         ccx_coap_response_arm();
-        if (!ccx_send_coap_observe(dst, uri, observe_val)) {
+        if (!ccx_send_coap_observe(dst, uri, observe_val, true)) {
             ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;
@@ -3596,7 +3596,7 @@ static void cmd_ccx_coap(const char* arg)
 
         uint8_t code = is_put ? COAP_CODE_PUT : COAP_CODE_POST;
         ccx_coap_response_arm();
-        if (!ccx_send_coap_port(dst, code, uri, payload, plen, port)) {
+        if (!ccx_send_coap_port(dst, code, uri, payload, plen, port, true)) {
             ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;

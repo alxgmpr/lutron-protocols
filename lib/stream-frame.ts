@@ -143,3 +143,15 @@ export function rloc16FromIpv6(addr: string): number | null {
   }
   return ((bytes[14] << 8) | bytes[15]) >>> 0;
 }
+
+/**
+ * True for text the firmware pushes on its own (`stream_broadcast_text`) rather
+ * than a shell command's reply. Both arrive as RESP_TEXT datagrams; broadcasts
+ * are one line tagged with the emitting subsystem, which no shell reply starts
+ * with. A reply waiter must skip these or it will take one as its answer.
+ */
+export function isAsyncBroadcastText(text: string): boolean {
+  return (
+    /^\[(ccx|coap|rx|diag|cca)\] /.test(text) && !text.trimEnd().includes("\n")
+  );
+}

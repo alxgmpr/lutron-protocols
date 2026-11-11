@@ -48,12 +48,13 @@ bool ccx_send_scene(uint16_t scene_id, uint8_t sequence);
 bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
                    size_t payload_len);
 
-/** Send CoAP to a non-standard port (0 = default 5683) */
+/** Send CoAP to a non-standard port (0 = default 5683). capture_response: this
+ *  request's reply fills the armed capture (see ccx_coap_response_arm). */
 bool ccx_send_coap_port(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
-                        size_t payload_len, uint16_t dst_port);
+                        size_t payload_len, uint16_t dst_port, bool capture_response);
 
 /** Send CoAP Observe GET (observe_val: 0=register, 1=deregister) */
-bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path, uint8_t observe_val);
+bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path, uint8_t observe_val, bool capture_response);
 
 /** Send pre-encoded CBOR bytes as a multicast CCX message */
 bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
@@ -211,7 +212,8 @@ typedef struct {
     size_t payload_len;
 } ccx_coap_response_t;
 
-/** Arm the CoAP response capture (call before sending request) */
+/** Arm the CoAP response capture, then send with capture_response=true. Only
+ *  the reply to that request (matched by token) is captured. */
 void ccx_coap_response_arm(void);
 
 /** Drop an armed capture (call when giving up on a response) */

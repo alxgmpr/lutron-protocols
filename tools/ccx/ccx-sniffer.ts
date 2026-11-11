@@ -621,22 +621,25 @@ function runDecryptPass(file: string): number {
         eui64,
       });
 
-    // Try EUI-64 sources: tshark MLE > address table > brute-force
-    const candidates: Buffer<ArrayBufferLike>[] = [];
-    if (meta.srcEui64.includes(":")) {
-      const eui64 = Buffer.from(meta.srcEui64.replace(/:/g, ""), "hex");
-      if (eui64.length === 8) candidates.push(eui64);
+    // Try EUI-64 sources: tshark MLE > address table > brute-force. A generator
+    // so the brute-force walk only happens once the cheap candidates miss.
+    const srcEui64 = meta.srcEui64; // narrowing doesn't reach into the closure
+    function* candidates(): Generator<Buffer<ArrayBufferLike>> {
+      if (srcEui64.includes(":")) {
+        const eui64 = Buffer.from(srcEui64.replace(/:/g, ""), "hex");
+        if (eui64.length === 8) yield eui64;
+      }
+      if (parsed.srcAddrMode === 2 && parsed.srcAddr.length === 2) {
+        const eui64 = addrTable.get(parsed.srcAddr.readUInt16LE(0));
+        if (eui64) yield eui64;
+      }
+      yield* addrTable.values();
     }
-    if (parsed.srcAddrMode === 2 && parsed.srcAddr.length === 2) {
-      const eui64 = addrTable.get(parsed.srcAddr.readUInt16LE(0));
-      if (eui64) candidates.push(eui64);
-    }
-    candidates.push(...addrTable.values());
 
     let hit:
       | { plaintext: Buffer<ArrayBufferLike>; eui64: Buffer<ArrayBufferLike> }
       | undefined;
-    for (const eui64 of candidates) {
+    for (const eui64 of candidates()) {
       const plaintext = tryWith(eui64);
       if (plaintext) {
         hit = { plaintext, eui64 };

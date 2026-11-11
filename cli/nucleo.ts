@@ -43,6 +43,7 @@ import {
 import {
   FLAG_RSSI_MASK,
   FLAG_TX,
+  isAsyncBroadcastText,
   type StreamPacketFrame,
 } from "../lib/stream-frame";
 import { DeviceClassNames } from "../protocol/cca.protocol";
@@ -1206,10 +1207,12 @@ function displayStatus(blob: Buffer) {
  * Empty ones arrive too, and clearing the pending-command timer before looking
  * at the content is deliberate: a command whose output is blank has still been
  * answered, and treating it as no reply reports a timeout for a command that
- * worked.
+ * worked. Async broadcasts ([rx], [coap], ...) are not replies, so they leave
+ * the timer, and any pending CoAP capture, alone.
  */
 function handleText(text: string) {
-  if (textCmdTimer) {
+  const isBroadcast = isAsyncBroadcastText(text);
+  if (textCmdTimer && !isBroadcast) {
     clearTimeout(textCmdTimer);
     textCmdTimer = null;
   }
@@ -1238,8 +1241,8 @@ function handleText(text: string) {
   // Suppress "OK" from probe commands during scan
   if (text === "OK" && coapScan) return;
 
-  // If we have a pending CoAP request, accumulate response lines
-  if (coapPending) {
+  // If we have a pending CoAP request, accumulate its reply's lines
+  if (coapPending && !isBroadcast) {
     for (const l of text.split("\n")) {
       const lt = l.trim();
       if (lt) coapPending.lines.push(lt);

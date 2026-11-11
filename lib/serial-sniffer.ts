@@ -202,6 +202,9 @@ export class SerialSniffer extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.stopped) return;
+    // The port is being replaced; its watchdog must not outlive it, or it can
+    // fire mid-reconnect and schedule a second one. initSniffer() restarts it.
+    this.stopWatchdog();
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       if (this.stopped) return;

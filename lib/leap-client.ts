@@ -242,6 +242,13 @@ export class LeapConnection {
    */
   onFrame: LeapEventHandler | null = null;
 
+  /**
+   * Called when the processor ends the connection (not on our own close()).
+   * By then every subscription is inactive and every pending request has been
+   * rejected; a long-lived caller reconnects and resubscribes from here.
+   */
+  onClose: ((reason: Error) => void) | null = null;
+
   readonly host: string;
   readonly port: number;
   private certPaths: { cert: string; key: string; ca: string };
@@ -305,7 +312,9 @@ export class LeapConnection {
     sock.on("close", () => {
       if (sock !== this.socket) return;
       this.socket = null;
-      this.resetConnectionState(new Error("connection closed by remote"));
+      const reason = new Error("connection closed by remote");
+      this.resetConnectionState(reason);
+      this.onClose?.(reason);
     });
   }
 

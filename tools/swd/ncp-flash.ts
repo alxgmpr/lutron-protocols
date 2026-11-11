@@ -32,6 +32,7 @@ import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { crc32 } from "node:zlib";
 import { config } from "../../lib/config";
+import { isAsyncBroadcastText } from "../../lib/stream-frame";
 
 const PORT = 9433;
 const STREAM_CMD_KEEPALIVE = 0x00;
@@ -77,11 +78,14 @@ class Nucleo {
   ) {
     // The firmware captures a command's whole output and sends it as one
     // datagram (stream.cpp, STREAM_CMD_TEXT), so the first reply is complete.
+    // Async broadcasts share the RESP_TEXT tag and must not be taken for it.
     sock.on("message", (msg) => {
       if (msg.length < 1 || msg[0] !== STREAM_RESP_TEXT) return;
+      const text = msg.subarray(1).toString("utf-8");
+      if (isAsyncBroadcastText(text)) return;
       const done = this.pending;
       this.pending = null;
-      done?.(msg.subarray(1).toString("utf-8"));
+      done?.(text);
     });
   }
 

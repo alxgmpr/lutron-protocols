@@ -64,18 +64,21 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     }
   }, []);
 
+  // Ends a cycle and takes its palette down with it: not every key that ends a
+  // cycle (Esc, PageUp/Down, Ctrl-L) goes on to push().
   const resetTab = useCallback(() => {
+    if (!tabRef.current) return;
     tabRef.current = null;
+    store.setPalette(null);
   }, []);
 
   const setLine = useCallback(
     (text: string) => {
       bufferRef.current = [...text];
       cursorRef.current = bufferRef.current.length;
-      resetTab();
       push();
     },
-    [push, resetTab],
+    [push],
   );
 
   const submit = useCallback(() => {
@@ -91,10 +94,9 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     cursorRef.current = 0;
     historyIndexRef.current = -1;
     savedLineRef.current = "";
-    resetTab();
     push();
     cb.onSubmit(line);
-  }, [cb, push, resetTab]);
+  }, [cb, push]);
 
   const historyUp = useCallback(() => {
     const hist = historyRef.current;
