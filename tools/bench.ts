@@ -75,9 +75,9 @@ const TOLERANCE_PCT = 40;
  * type, and the spread between types is what this band absorbs. The
  * regressions this bench is for are still several times larger.
  */
-const PER_CASE_TOLERANCE_PCT: Record<string, number> = {
+const PER_CASE_TOLERANCE_PCT = {
   "bridge.dispatch": 60,
-};
+} satisfies Record<string, number>;
 
 const REFERENCE = "reference";
 
