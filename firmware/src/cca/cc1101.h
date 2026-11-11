@@ -88,6 +88,7 @@ extern "C" {
 #define CC1101_LQI_REG 0x33
 #define CC1101_RSSI_REG 0x34
 #define CC1101_MARCSTATE 0x35
+#define CC1101_FREQEST 0x32 /* status reg: carrier offset, 26 MHz/2^14 per LSB */
 #define CC1101_PKTSTATUS 0x38
 #define CC1101_TXBYTES 0x3A
 #define CC1101_RXBYTES 0x3B
@@ -131,6 +132,9 @@ typedef struct {
 /* -----------------------------------------------------------------------
  * Public API
  * ----------------------------------------------------------------------- */
+
+/** FREQEST captured at the start of the packet being delivered (valid inside the RX callback). */
+int8_t cc1101_last_freqest(void);
 
 /** Initialize CC1101 radio (reset + configure for Lutron CCA) */
 void cc1101_init(void);

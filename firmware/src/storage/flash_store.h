@@ -53,8 +53,14 @@ struct FlashSettings {
     uint8_t thread_network_key[16];
     uint8_t thread_xpanid[8];
 
-    /* Reserved — pad to 256 bytes total (256 - 8 - 68 - 28 - 4 = 148) */
-    uint8_t _reserved[148];
+    /* CC1101 FSCTRL0 carrier trim, units of 26 MHz / 2^14 (~1587 Hz).
+     * Carved from _reserved, which defaults and old records hold as 0
+     * (= no trim), so no version bump. */
+    int8_t cca_freq_trim;
+    uint8_t _pad3[3];
+
+    /* Reserved — pad to 256 bytes total (256 - 8 - 68 - 28 - 4 - 4 = 144) */
+    uint8_t _reserved[144];
 
     /* CRC-32 over bytes [0..251] — last 4 bytes */
     uint32_t crc32;
