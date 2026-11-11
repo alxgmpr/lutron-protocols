@@ -103,6 +103,7 @@ w25q_status_t w25q_probe(w25q_t* f)
         return W25Q_ERR_ARG;
     }
 
+    f->capacity = 0; /* until this probe succeeds */
     io_begin(f);
 
     uint8_t op = W25Q_CMD_JEDEC_ID;
@@ -115,7 +116,6 @@ w25q_status_t w25q_probe(w25q_t* f)
     /* Before the ID checks, so a link that moved nothing is reported as a link
        fault and not as "no such part" — the two call for different repairs. */
     if (io_failed(f)) {
-        f->present = false;
         return W25Q_ERR_IO;
     }
 
@@ -127,14 +127,12 @@ w25q_status_t w25q_probe(w25q_t* f)
 
        0x00 and 0xFF are not assignable JEDEC manufacturer codes. */
     if (id[0] == 0x00 || id[0] == 0xFF) {
-        f->present = false;
         return W25Q_ERR_NO_DEVICE;
     }
     /* Capacity is log2 of the byte count: 16 is 64 KB, 26 is 64 MB. Outside
        that is a garbled read, and taking 0xFF at face value would claim a
        2^255-byte flash and disable every bounds check downstream. */
     if (id[2] < 16 || id[2] > 26) {
-        f->present = false;
         return W25Q_ERR_NO_DEVICE;
     }
 
@@ -142,7 +140,6 @@ w25q_status_t w25q_probe(w25q_t* f)
     f->mem_type = id[1];
     f->capacity_code = id[2];
     f->capacity = 1u << id[2];
-    f->present = true;
     return W25Q_OK;
 }
 
@@ -189,7 +186,7 @@ w25q_status_t w25q_set_quad_enable(w25q_t* f)
     if (f == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
 
@@ -250,7 +247,7 @@ w25q_status_t w25q_read(w25q_t* f, uint32_t addr, uint8_t* out, size_t len)
     if (f == NULL || out == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
     if (!range_ok(f, addr, len)) {
@@ -296,7 +293,7 @@ w25q_status_t w25q_program(w25q_t* f, uint32_t addr, const uint8_t* data, size_t
     if (f == NULL || data == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
     if (!range_ok(f, addr, len)) {
@@ -334,7 +331,7 @@ w25q_status_t w25q_erase_sector(w25q_t* f, uint32_t addr)
     if (f == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
     if (addr >= f->capacity) {
@@ -357,7 +354,7 @@ w25q_status_t w25q_erase_block(w25q_t* f, uint32_t addr)
     if (f == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
     if (addr >= f->capacity) {
@@ -381,7 +378,7 @@ w25q_status_t w25q_verify(w25q_t* f, uint32_t addr, const uint8_t* data, size_t 
     if (f == NULL || data == NULL) {
         return W25Q_ERR_ARG;
     }
-    if (!f->present) {
+    if (f->capacity == 0) {
         return W25Q_ERR_STATE;
     }
     if (!range_ok(f, addr, len)) {

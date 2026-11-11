@@ -141,8 +141,8 @@ static size_t shell_readline(char* buf, size_t max_len)
     size_t len = 0;    /* chars in buffer */
     size_t cursor = 0; /* cursor position */
     enum esc_state esc = ESC_NONE;
-    char saved_line[CMD_BUF_SIZE] = {0}; /* saved line when navigating history */
-    int saved_valid = 0;
+    char saved_line[CMD_BUF_SIZE] = {0}; /* line being typed, saved when history nav leaves 0 */
+    hist_nav = 0;                        /* each new line starts at the bottom of history */
 
     TaskHandle_t me = xTaskGetCurrentTaskHandle();
 
@@ -210,7 +210,6 @@ static size_t shell_readline(char* buf, size_t max_len)
                         /* Save current line before navigating */
                         memcpy(saved_line, buf, len);
                         saved_line[len] = '\0';
-                        saved_valid = 1;
                     }
                     const char* h = hist_get(hist_nav);
                     if (h) {
@@ -222,7 +221,7 @@ static size_t shell_readline(char* buf, size_t max_len)
             case 'B': /* Down arrow — history newer */
                 if (hist_nav > 0) {
                     hist_nav--;
-                    if (hist_nav == 0 && saved_valid) {
+                    if (hist_nav == 0) {
                         replace_line(saved_line);
                     }
                     else {
@@ -289,7 +288,6 @@ static size_t shell_readline(char* buf, size_t max_len)
                  * Prevents prompt flood from UART noise during boot. */
                 uart_puts("\r\n> ");
                 hist_nav = 0;
-                saved_valid = 0;
                 continue;
             }
             /* Mark inactive before printing newline */
@@ -376,7 +374,6 @@ static size_t shell_readline(char* buf, size_t max_len)
 
             /* Reset history navigation on any edit */
             hist_nav = 0;
-            saved_valid = 0;
         }
     }
 
@@ -3396,7 +3393,8 @@ static void cmd_ccx_coap(const char* arg)
         }
 
         ccx_coap_response_arm();
-        if (!ccx_send_coap_port(dst, COAP_CODE_GET, uri, NULL, 0, port)) {
+        if (!ccx_send_coap_port(dst, COAP_CODE_GET, uri, NULL, 0, port, true)) {
+            ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;
         }
@@ -3423,6 +3421,7 @@ static void cmd_ccx_coap(const char* arg)
                 return;
             }
         }
+        ccx_coap_response_disarm();
         printf("No CoAP response (timeout 5s)\r\n");
         return;
     }
@@ -3459,7 +3458,8 @@ static void cmd_ccx_coap(const char* arg)
         }
 
         ccx_coap_response_arm();
-        if (!ccx_send_coap_observe(dst, uri, observe_val)) {
+        if (!ccx_send_coap_observe(dst, uri, observe_val, true)) {
+            ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;
         }
@@ -3479,6 +3479,7 @@ static void cmd_ccx_coap(const char* arg)
                 return;
             }
         }
+        ccx_coap_response_disarm();
         printf("No initial response (timeout 5s)\r\n");
         printf("If registered, notifications will appear as [coap] broadcasts\r\n");
         return;
@@ -3595,7 +3596,8 @@ static void cmd_ccx_coap(const char* arg)
 
         uint8_t code = is_put ? COAP_CODE_PUT : COAP_CODE_POST;
         ccx_coap_response_arm();
-        if (!ccx_send_coap_port(dst, code, uri, payload, plen, port)) {
+        if (!ccx_send_coap_port(dst, code, uri, payload, plen, port, true)) {
+            ccx_coap_response_disarm();
             printf("CoAP TX failed (not joined?)\r\n");
             return;
         }
@@ -3614,6 +3616,7 @@ static void cmd_ccx_coap(const char* arg)
                 return;
             }
         }
+        ccx_coap_response_disarm();
         printf("No CoAP response (timeout 5s)\r\n");
         return;
     }
@@ -4276,14 +4279,11 @@ static void cmd_help(void)
  * assemble the datagram until shell_execute() has returned, so the reset always
  * beat the reply and network callers saw a timeout for a command that worked.
  * ----------------------------------------------------------------------- */
-static bool s_reset_requested = false;
-
-void shell_reset_if_requested(void)
+void shell_reset_if_requested(bool requested)
 {
-    if (!s_reset_requested) {
+    if (!requested) {
         return;
     }
-    s_reset_requested = false;
     HAL_Delay(50); /* drain the UART FIFO / let the datagram leave the MAC */
     NVIC_SystemReset();
 }
@@ -4292,8 +4292,9 @@ void shell_reset_if_requested(void)
  * Execute a single shell command line.
  * Called from the UART shell task and from UDP text passthrough.
  * ----------------------------------------------------------------------- */
-void shell_execute(const char* line)
+bool shell_execute(const char* line)
 {
+    bool reset_requested = false;
     if (strcmp(line, "status") == 0) {
         cmd_status();
     }
@@ -4343,7 +4344,7 @@ void shell_execute(const char* line)
             printf("Installing staged image (%lu bytes, version %lu) on reboot...\r\n", (unsigned long)info.staged_len,
                    (unsigned long)info.staged_version);
             boot_request_set(boot_request_area());
-            s_reset_requested = true;
+            reset_requested = true;
         }
     }
     else if (strcmp(line, "save") == 0) {
@@ -4356,7 +4357,7 @@ void shell_execute(const char* line)
     }
     else if (strcmp(line, "reboot") == 0) {
         printf("Rebooting...\r\n");
-        s_reset_requested = true;
+        reset_requested = true;
     }
     else if (strncmp(line, "tx ", 3) == 0) {
         cmd_tx(line + 3);
@@ -4418,6 +4419,7 @@ void shell_execute(const char* line)
     else {
         printf("Unknown command: '%s' (type 'help')\r\n", line);
     }
+    return reset_requested;
 }
 
 /* -----------------------------------------------------------------------
@@ -4433,7 +4435,7 @@ static void shell_task_func(void* param)
     printf("========================================\r\n");
     printf("Type 'help' for commands.\r\n\r\n");
 
-    char cmd_buf[CMD_BUF_SIZE];
+    char cmd_buf[CMD_BUF_SIZE] = {0};
 
     for (;;) {
         watchdog_feed();
@@ -4444,8 +4446,7 @@ static void shell_task_func(void* param)
         hist_add(cmd_buf);
 
         /* Parse and execute command */
-        shell_execute(cmd_buf);
-        shell_reset_if_requested();
+        shell_reset_if_requested(shell_execute(cmd_buf));
     }
 }
 

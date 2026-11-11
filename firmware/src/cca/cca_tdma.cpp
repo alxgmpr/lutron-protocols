@@ -40,7 +40,6 @@
  * ----------------------------------------------------------------------- */
 struct TdmaDeviceSlot {
     bool in_use;
-    bool have_anchor;
     uint32_t device_id;
     uint32_t last_ts_ms;
     uint32_t last_seen_ms;
@@ -103,7 +102,6 @@ static TdmaJobGroup groups_[TDMA_MAX_GROUPS] = {};
 static void clear_device(TdmaDeviceSlot& d)
 {
     d.in_use = false;
-    d.have_anchor = false;
     d.device_id = 0;
     d.last_ts_ms = 0;
     d.last_seen_ms = 0;
@@ -148,8 +146,9 @@ static uint8_t find_dominant_stride(const TdmaDeviceSlot& d)
     return best_stride;
 }
 
-static TdmaDeviceSlot* device_get_or_alloc(uint32_t device_id, uint32_t now_ms)
+static TdmaDeviceSlot* device_get_or_alloc(uint32_t device_id, uint32_t now_ms, bool* created)
 {
+    *created = false;
     TdmaDeviceSlot* free_slot = nullptr;
     TdmaDeviceSlot* oldest = nullptr;
     uint32_t oldest_age = 0;
@@ -173,6 +172,7 @@ static TdmaDeviceSlot* device_get_or_alloc(uint32_t device_id, uint32_t now_ms)
     if (!target) return nullptr;
 
     clear_device(*target);
+    *created = true;
     target->in_use = true;
     target->device_id = device_id;
     target->last_seen_ms = now_ms;
@@ -183,14 +183,13 @@ static void observe_device(const DecodedPacket& pkt, uint32_t timestamp_ms)
 {
     if (!pkt.crc_valid || pkt.device_id == 0) return;
 
-    TdmaDeviceSlot* d = device_get_or_alloc(pkt.device_id, timestamp_ms);
+    bool created;
+    TdmaDeviceSlot* d = device_get_or_alloc(pkt.device_id, timestamp_ms, &created);
     if (!d) return;
 
-    if (!d->have_anchor) {
+    if (created) { /* first sighting: anchor only, no delta yet */
         d->last_ts_ms = timestamp_ms;
         d->last_seq = pkt.sequence;
-        d->last_seen_ms = timestamp_ms;
-        d->have_anchor = true;
         return;
     }
 
@@ -671,6 +670,14 @@ void cca_tdma_cancel_groups(void)
     for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
         groups_[i].active = false;
     }
+}
+
+bool cca_tdma_group_active(void (*on_complete)(void* ctx))
+{
+    for (size_t i = 0; i < TDMA_MAX_GROUPS; i++) {
+        if (groups_[i].active && groups_[i].on_complete == on_complete) return true;
+    }
+    return false;
 }
 
 bool cca_tdma_is_idle(void)

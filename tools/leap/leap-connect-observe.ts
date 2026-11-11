@@ -240,8 +240,6 @@ async function main(): Promise<void> {
   let t0 = 0;
   /** False until the first byte this tool writes. */
   let hasWritten = false;
-  let lastRecord: FrameRecord | null = null;
-  let lastRaw: LeapWireFrame | null = null;
 
   const now = () => Date.now() - t0;
 
@@ -270,8 +268,6 @@ async function main(): Promise<void> {
     };
     frames.push(rec);
     raws.push(msg);
-    lastRecord = rec;
-    lastRaw = msg;
 
     console.log(
       `[${atMs.toString().padStart(6)}ms] #${rec.seq} ${rec.communiqueType} ` +
@@ -281,7 +277,7 @@ async function main(): Promise<void> {
   };
 
   conn.onEvent = (msg: any) => {
-    if (lastRecord && lastRaw === msg) lastRecord.deliveredToOnEvent = true;
+    if (raws.at(-1) === msg) frames.at(-1)!.deliveredToOnEvent = true;
   };
 
   const attributeResponse = (

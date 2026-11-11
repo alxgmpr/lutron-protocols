@@ -66,14 +66,18 @@ const TOLERANCE_PCT = 40;
 /**
  * Cases needing a wider band than the default, with why.
  *
- * Empty, and that is a result rather than an oversight: bridge.dispatch once
- * needed 80% because it drifted 28% between identical CI runs, but that was
- * under the old ALU reference. With a decode-shaped reference its drift fell
- * to 12% and the override stopped being justified. Kept as a mechanism
- * because paths do differ in volatility — stream.parseFrame is now the
- * twitchiest at 28% — and one band will not always serve them all.
+ * bridge.dispatch: 60%. Its ratio depends on which CPU model the runner gets
+ * more than any other case does: unchanged main code measured 7.55–11.25
+ * (reference 7.4 ms runners at the low end, 4.2–5.5 ms at the high end),
+ * already up to +42% over a baseline taken on the slow runners. At 40% it
+ * failed on runner type alone. An earlier 80% override was dropped when its
+ * drift between identical runs fell to 12%; that drift was within one runner
+ * type, and the spread between types is what this band absorbs. The
+ * regressions this bench is for are still several times larger.
  */
-const PER_CASE_TOLERANCE_PCT: Record<string, number> = {};
+const PER_CASE_TOLERANCE_PCT = {
+  "bridge.dispatch": 60,
+} satisfies Record<string, number>;
 
 const REFERENCE = "reference";
 

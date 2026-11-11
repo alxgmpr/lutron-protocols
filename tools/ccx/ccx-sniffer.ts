@@ -621,38 +621,33 @@ function runDecryptPass(file: string): number {
         eui64,
       });
 
-    // Try EUI-64 sources: tshark MLE > address table > brute-force
-    let plaintext: Buffer<ArrayBufferLike> | null = null;
-    let matchedEui64: Buffer<ArrayBufferLike> = Buffer.alloc(8);
-
-    if (meta.srcEui64.includes(":")) {
-      const eui64 = Buffer.from(meta.srcEui64.replace(/:/g, ""), "hex");
-      if (eui64.length === 8) {
-        plaintext = tryWith(eui64);
-        if (plaintext) matchedEui64 = eui64;
+    // Try EUI-64 sources: tshark MLE > address table > brute-force. A generator
+    // so the brute-force walk only happens once the cheap candidates miss.
+    const srcEui64 = meta.srcEui64; // narrowing doesn't reach into the closure
+    function* candidates(): Generator<Buffer<ArrayBufferLike>> {
+      if (srcEui64.includes(":")) {
+        const eui64 = Buffer.from(srcEui64.replace(/:/g, ""), "hex");
+        if (eui64.length === 8) yield eui64;
       }
+      if (parsed.srcAddrMode === 2 && parsed.srcAddr.length === 2) {
+        const eui64 = addrTable.get(parsed.srcAddr.readUInt16LE(0));
+        if (eui64) yield eui64;
+      }
+      yield* addrTable.values();
     }
 
-    if (!plaintext && parsed.srcAddrMode === 2 && parsed.srcAddr.length === 2) {
-      const srcShort = parsed.srcAddr.readUInt16LE(0);
-      const eui64 = addrTable.get(srcShort);
-      if (eui64) {
-        plaintext = tryWith(eui64);
-        if (plaintext) matchedEui64 = eui64;
+    let hit:
+      | { plaintext: Buffer<ArrayBufferLike>; eui64: Buffer<ArrayBufferLike> }
+      | undefined;
+    for (const eui64 of candidates()) {
+      const plaintext = tryWith(eui64);
+      if (plaintext) {
+        hit = { plaintext, eui64 };
+        break;
       }
     }
-
-    if (!plaintext) {
-      for (const [, eui64] of addrTable) {
-        plaintext = tryWith(eui64);
-        if (plaintext) {
-          matchedEui64 = eui64;
-          break;
-        }
-      }
-    }
-
-    if (!plaintext) continue;
+    if (!hit) continue;
+    const { plaintext, eui64: matchedEui64 } = hit;
 
     // Scan for CBOR array marker
     for (let i = 0; i < plaintext.length - 2; i++) {
@@ -702,7 +697,6 @@ async function main() {
   // In live mode, spawn the nRF extcap sniffer and pipe its pcap output into
   // tshark's stdin. In file mode, tshark reads the pcap file directly.
   let extcap: ReturnType<typeof spawn> | null = null;
-  let tsharkStdin: "ignore" | "pipe" = "ignore";
   if (!fileMode) {
     const extcapBin = findNrfExtcap();
     const iface = ifaceName ?? detectSnifferInterface(extcapBin);
@@ -730,11 +724,10 @@ async function main() {
     extcap.on("close", (code) => {
       if (code !== 0) console.error(`  [nrf-sniffer] exited code=${code}`);
     });
-    tsharkStdin = "pipe";
   }
 
   const tshark = spawn("tshark", tsharkArgs, {
-    stdio: [tsharkStdin, "pipe", "pipe"],
+    stdio: [extcap ? "pipe" : "ignore", "pipe", "pipe"],
   });
 
   if (extcap?.stdout && tshark.stdin) {
