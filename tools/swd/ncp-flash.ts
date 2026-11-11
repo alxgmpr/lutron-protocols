@@ -70,24 +70,18 @@ const hasFlag = (name: string): boolean => args.includes(name);
 
 class Nucleo {
   private pending: ((text: string) => void) | null = null;
-  private buffer = "";
 
   constructor(
     private sock: Socket,
     private host: string,
   ) {
+    // The firmware captures a command's whole output and sends it as one
+    // datagram (stream.cpp, STREAM_CMD_TEXT), so the first reply is complete.
     sock.on("message", (msg) => {
       if (msg.length < 1 || msg[0] !== STREAM_RESP_TEXT) return;
-      this.buffer += msg.subarray(1).toString("utf-8");
-      // Shell output arrives as one or more datagrams; a short quiet period
-      // after the first is the only end-of-response marker there is.
-      if (this.pending) {
-        const done = this.pending;
-        this.pending = null;
-        const text = this.buffer;
-        this.buffer = "";
-        done(text);
-      }
+      const done = this.pending;
+      this.pending = null;
+      done?.(msg.subarray(1).toString("utf-8"));
     });
   }
 
@@ -101,7 +95,6 @@ class Nucleo {
 
   /** Run a shell command and return everything it printed. */
   async cmd(line: string, timeoutMs = CMD_TIMEOUT_MS): Promise<string> {
-    this.buffer = "";
     const reply = new Promise<string>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending = null;

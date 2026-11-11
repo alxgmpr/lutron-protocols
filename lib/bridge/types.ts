@@ -34,8 +34,8 @@ export interface ZoneState {
   colorXy: [number, number] | null;
   activity: ZoneActivity;
   dirty: boolean;
-  /** 0 = no settle pending, >0 = timestamp at which the zone reports settled */
-  reportAt: number;
+  /** null = no settle pending, else timestamp at which the zone reports settled */
+  reportAt: number | null;
 }
 
 /** Scene definition: preset ID → the zone levels it drives. */

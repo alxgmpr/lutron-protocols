@@ -185,8 +185,6 @@ async function main() {
   const raws: LeapWireFrame[] = [];
   let t0 = 0;
   let levelChangeSentAtMs: number | null = null;
-  let lastRecord: FrameRecord | null = null;
-  let lastRaw: LeapWireFrame | null = null;
 
   const now = () => Date.now() - t0;
 
@@ -216,8 +214,6 @@ async function main() {
     };
     frames.push(rec);
     raws.push(msg);
-    lastRecord = rec;
-    lastRaw = msg;
 
     // Arrival-time label only. A frame answering a request this tool is
     // still awaiting shows as push-unknown-tag here, because sendTagged only
@@ -238,7 +234,7 @@ async function main() {
   // so the frame it is handed is the one just recorded. Recording this proves
   // the client's own routing agreed the frame was unsolicited.
   conn.onEvent = (msg: any) => {
-    if (lastRecord && lastRaw === msg) lastRecord.deliveredToOnEvent = true;
+    if (raws.at(-1) === msg) frames.at(-1)!.deliveredToOnEvent = true;
   };
 
   /** send() + bookkeeping so onFrame can classify against outstanding tags. */

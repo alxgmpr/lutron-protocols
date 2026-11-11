@@ -49,23 +49,23 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
   const historyRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const savedLineRef = useRef("");
-  const tabMatchesRef = useRef<string[]>([]);
-  const tabIndexRef = useRef(-1);
+  // Active tab-completion cycle; null when not cycling. Any non-Tab key ends it.
+  const tabRef = useRef<{ matches: string[]; index: number } | null>(null);
   const [, forceRender] = useState(0);
 
   const push = useCallback(() => {
     const text = bufferRef.current.join("");
     store.setInput(text, cursorRef.current);
-    if (tabMatchesRef.current.length > 1) {
-      store.setPalette(tabMatchesRef.current, tabIndexRef.current);
+    const tab = tabRef.current;
+    if (tab && tab.matches.length > 1) {
+      store.setPalette(tab.matches, tab.index);
     } else {
       store.setPalette(null);
     }
   }, []);
 
   const resetTab = useCallback(() => {
-    tabIndexRef.current = -1;
-    tabMatchesRef.current = [];
+    tabRef.current = null;
   }, []);
 
   const setLine = useCallback(
@@ -120,31 +120,28 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
 
   const backspace = useCallback(() => {
     if (cursorRef.current > 0) {
-      resetTab();
       bufferRef.current.splice(cursorRef.current - 1, 1);
       cursorRef.current--;
       push();
     }
-  }, [push, resetTab]);
+  }, [push]);
 
   const deleteForward = useCallback(() => {
     if (cursorRef.current < bufferRef.current.length) {
-      resetTab();
       bufferRef.current.splice(cursorRef.current, 1);
       push();
     }
-  }, [push, resetTab]);
+  }, [push]);
 
   const deleteWord = useCallback(() => {
     if (cursorRef.current === 0) return;
-    resetTab();
     let end = cursorRef.current;
     while (end > 0 && bufferRef.current[end - 1] === " ") end--;
     while (end > 0 && bufferRef.current[end - 1] !== " ") end--;
     bufferRef.current.splice(end, cursorRef.current - end);
     cursorRef.current = end;
     push();
-  }, [push, resetTab]);
+  }, [push]);
 
   const wordBackward = useCallback(() => {
     while (
@@ -183,7 +180,8 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     const prefix = lastSpace === -1 ? before : before.slice(lastSpace + 1);
     const matchLine = before.trimStart();
 
-    if (tabIndexRef.current === -1) {
+    let tab = tabRef.current;
+    if (!tab) {
       // Prefer full-line matches (covers "cca l" → "cca level"),
       // fall back to last-word prefix matches.
       let matches = completions.filter((c) =>
@@ -195,14 +193,13 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
         );
       }
       if (matches.length === 0) return;
-      tabMatchesRef.current = matches;
-      tabIndexRef.current = 0;
+      tab = { matches, index: 0 };
+      tabRef.current = tab;
     } else {
-      tabIndexRef.current =
-        (tabIndexRef.current + 1) % tabMatchesRef.current.length;
+      tab.index = (tab.index + 1) % tab.matches.length;
     }
 
-    const match = tabMatchesRef.current[tabIndexRef.current];
+    const match = tab.matches[tab.index];
     // Replace from last whitespace (or start) with match.
     const replaceFrom = lastSpace === -1 ? 0 : lastSpace + 1;
     // But if match actually begins with the full matchLine, use full replace
@@ -219,6 +216,7 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
 
   useInput((input, key) => {
     cb.onAnyKey?.();
+    if (!key.tab) resetTab();
 
     if (key.return) return submit();
     if (key.backspace || key.delete) {
@@ -294,7 +292,6 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
 
     // Printable input (may be multi-char for bracketed paste / utf-8)
     if (input && input.length > 0) {
-      resetTab();
       const chars = [...input];
       bufferRef.current.splice(cursorRef.current, 0, ...chars);
       cursorRef.current += chars.length;

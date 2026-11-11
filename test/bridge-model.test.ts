@@ -59,6 +59,7 @@ async function makeModel(opts: {
   >;
   zoneCurves?: Map<number, string>;
   now?: () => number;
+  reportDelayMs?: number;
 }) {
   const { DeviceModel } = await import("../lib/bridge/model");
   return new DeviceModel({
@@ -68,7 +69,7 @@ async function makeModel(opts: {
     resolveZoneName: (id) => `Zone ${id}`,
     now: opts.now,
     autoTick: false,
-    reportDelayMs: 2000,
+    reportDelayMs: opts.reportDelayMs ?? 2000,
   });
 }
 
@@ -433,6 +434,25 @@ describe("model fade", () => {
     model.destroy();
   });
 
+  test("interpolates cct mid-fade from the previous cct", async () => {
+    const clock = fakeClock();
+    const model = await makeModel({
+      watchedZones: new Set([100]),
+      now: clock.now,
+    });
+
+    model.apply(levelIntent(100, 50, { cct: 2000 }));
+    model.apply(levelIntent(100, 100, { cct: 4000, fade: 8 })); // 2000ms
+    clock.advance(1000);
+    model.tick();
+    assert.equal(model.getZoneState(100)!.cct, 3000);
+
+    clock.advance(1000);
+    model.tick();
+    assert.equal(model.getZoneState(100)!.cct, 4000);
+    model.destroy();
+  });
+
   test("re-commanding the same target mid-fade does not restart the fade", async () => {
     const clock = fakeClock();
     const model = await makeModel({
@@ -519,7 +539,7 @@ describe("model ramp", () => {
     const zone = model.getZoneState(100)!;
     assert.equal(zone.level, 100);
     assert.equal(zone.activity.type, "idle");
-    assert.ok(zone.reportAt > 0);
+    assert.notEqual(zone.reportAt, null);
     model.destroy();
   });
 
@@ -751,6 +771,24 @@ describe("model settle-to-idle", () => {
     model.tick();
     model.tick();
     assert.equal(settled.length, 1, "must not re-fire once settled");
+    model.destroy();
+  });
+
+  test("settles with a clock at 0 and no report delay", async () => {
+    const clock = fakeClock(0);
+    const model = await makeModel({
+      watchedZones: new Set([100]),
+      now: clock.now,
+      reportDelayMs: 0,
+    });
+    const settled: ZoneSettledEvent[] = [];
+    model.on("zone:settled", (e: ZoneSettledEvent) => settled.push(e));
+
+    model.apply(levelIntent(100, 75));
+    model.tick();
+    assert.equal(settled.length, 1);
+    model.tick();
+    assert.equal(settled.length, 1);
     model.destroy();
   });
 

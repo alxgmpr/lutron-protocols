@@ -143,10 +143,8 @@ let quiet = false;
 let raw = true;
 let verbose = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
-let lastCcaRadioTs = 0; // for CCA inter-packet delta
-let lastCcxRadioTs = 0; // for CCX inter-packet delta
-// Mirrors the stream's own liveness so the header can be redrawn on change.
-let connected = false;
+let lastCcaRadioTs: number | null = null; // for CCA inter-packet delta
+let lastCcxRadioTs: number | null = null; // for CCX inter-packet delta
 let textCmdTimer: ReturnType<typeof setTimeout> | null = null;
 let slotTracking = true;
 let showDiag = !hasCliFlag("--no-diag");
@@ -156,10 +154,8 @@ let showDiag = !hasCliFlag("--no-diag");
 // ============================================================================
 interface CoapPending {
   method: string;
-  addr: string;
   path: string;
   lines: string[];
-  startTime: number;
 }
 
 interface CoapScanJob {
@@ -252,9 +248,12 @@ function send(frame: Buffer): boolean {
 function sendTextCommand(text: string) {
   const textBytes = new TextEncoder().encode(text);
   send(buildCmd(CMD.TEXT, textBytes));
-  // Safety timeout — if no response in 10s
+  // Safety timeout — if no response in 10s. One slot: a newer command
+  // supersedes the older one's timeout instead of orphaning it.
+  if (textCmdTimer) clearTimeout(textCmdTimer);
   textCmdTimer = setTimeout(() => {
     textCmdTimer = null;
+    coapPending = null; // stop capturing shell lines for a reply that never came
     screen.appendLine(`${YELLOW}(no response — timeout)${RESET}`);
   }, TEXT_CMD_TIMEOUT_MS);
 }
@@ -357,7 +356,7 @@ function updateStatusBar(): void {
 }
 
 function updateHeader(): void {
-  const connState = connected
+  const connState = stream?.connected
     ? `${GREEN}● Connected${RESET}`
     : `${RED}● Disconnected${RESET}`;
   const left = `${BOLD}openlutron CLI${RESET} — ${host}:${OPENLUTRON_UDP_PORT}  ${connState}`;
@@ -1267,18 +1266,12 @@ function handleFrame(frame: StreamPacketFrame) {
   const radioTs = frame.tsMs;
 
   // Compute per-protocol inter-packet delta
-  let deltaMs = 0;
-  if (isCcx) {
-    if (lastCcxRadioTs > 0) {
-      deltaMs = (radioTs - lastCcxRadioTs) & 0xffffffff;
-    }
-    lastCcxRadioTs = radioTs;
-  } else {
-    if (lastCcaRadioTs > 0) {
-      deltaMs = (radioTs - lastCcaRadioTs) & 0xffffffff;
-    }
-    lastCcaRadioTs = radioTs;
-  }
+  // A timestamp going backwards means the board rebooted (a fast reboot never
+  // trips "down"), or the u32 ms clock wrapped after ~49 days: no delta then.
+  const last = isCcx ? lastCcxRadioTs : lastCcaRadioTs;
+  const deltaMs = last !== null && radioTs >= last ? radioTs - last : 0;
+  if (isCcx) lastCcxRadioTs = radioTs;
+  else lastCcaRadioTs = radioTs;
 
   // Warn once if the attached firmware predates the source trailer (GLAB-78),
   // so missing attribution reads as a version gap rather than a silent blank.
@@ -1314,12 +1307,11 @@ async function setupStream() {
   stream.on("frame", handleFrame);
   stream.on("text", handleText);
   stream.on("status", (blob) => displayStatus(blob));
-  stream.on("up", () => {
-    connected = true;
-    updateHeader();
-  });
+  stream.on("up", updateHeader);
   stream.on("down", () => {
-    connected = false;
+    // A board reboot restarts its clock; don't diff across it.
+    lastCcaRadioTs = null;
+    lastCcxRadioTs = null;
     updateHeader();
   });
   stream.on("error", (err) => {
@@ -1535,6 +1527,7 @@ function startCoapScan(addr: string, basePath: string) {
     paths.push(basePath);
   }
 
+  if (coapScan?.timer) clearTimeout(coapScan.timer); // stop a previous scan's loop
   coapScan = {
     addr,
     paths,
@@ -1617,13 +1610,7 @@ function handleCoapCommand(args: string[]) {
       return;
     }
     // Set up pending response capture
-    coapPending = {
-      method: sub,
-      addr,
-      path,
-      lines: [],
-      startTime: Date.now(),
-    };
+    coapPending = { method: sub, path, lines: [] };
     // Forward the full command to STM32 as-is
     sendTextCommand(args.join(" "));
     return;

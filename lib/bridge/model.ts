@@ -115,7 +115,7 @@ export class DeviceModel extends EventEmitter {
         colorXy: null,
         activity: { type: "idle" },
         dirty: false,
-        reportAt: 0,
+        reportAt: null,
       };
       this.zones.set(zoneId, z);
     }
@@ -350,6 +350,8 @@ export class DeviceModel extends EventEmitter {
       return;
     }
 
+    // Capture before updateColor overwrites it with the target.
+    const startCct = zone.colorMode === "cct" ? zone.cct : null;
     zone.activity = { type: "idle" }; // cancel whatever was in progress
     this.updateColor(zone, colorMode, resolvedCct, colorXy);
 
@@ -377,7 +379,7 @@ export class DeviceModel extends EventEmitter {
         type: "fading",
         startLevel: zone.level,
         targetLevel: level,
-        startCct: zone.colorMode === "cct" ? zone.cct : null,
+        startCct,
         targetCct: colorMode === "cct" ? resolvedCct : null,
         colorXy,
         startTime: now,
@@ -477,11 +479,11 @@ export class DeviceModel extends EventEmitter {
       }
 
       if (
-        zone.reportAt > 0 &&
+        zone.reportAt !== null &&
         zone.activity.type === "idle" &&
         now >= zone.reportAt
       ) {
-        zone.reportAt = 0;
+        zone.reportAt = null;
         this.emit("zone:settled", {
           zoneId,
           zoneName: this.zoneName(zoneId),
@@ -526,6 +528,7 @@ export class DeviceModel extends EventEmitter {
     if (curveName && zone.level > 0) {
       zone.cct = evalWarmDimCurve(getWarmDimCurve(curveName), zone.level);
       zone.colorMode = "cct";
+      zone.colorXy = null;
     }
 
     this.markDirty(zone);
