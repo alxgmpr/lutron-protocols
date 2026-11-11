@@ -41,12 +41,7 @@ static uint8_t zone_byte_;
 static uint32_t start_ms_;
 static uint32_t duration_ms_;
 
-static uint32_t detected_serial_;
-static uint32_t detect_time_ms_;
-
-static bool beacon_active_;
-static bool announce_active_;
-static bool config_submitted_;
+static uint32_t detected_serial_; /* data only: reported by stop; phase lives in state_ */
 
 /* -----------------------------------------------------------------------
  * BB Vive beacon group (auto-resubmits)
@@ -83,16 +78,13 @@ static void submit_beacon_group(void)
     g.phases[0].tx_count = 10;
     g.on_complete = beacon_complete;
 
-    if (cca_tdma_submit_group(&g)) {
-        beacon_active_ = true;
-    }
+    cca_tdma_submit_group(&g);
 }
 
 static void beacon_complete(void* ctx)
 {
     (void)ctx;
-    beacon_active_ = false;
-    if (state_ != AUTO_PAIR_IDLE && state_ != AUTO_PAIR_DONE) {
+    if (state_ != AUTO_PAIR_IDLE) {
         submit_beacon_group();
     }
 }
@@ -136,15 +128,12 @@ static void submit_announce_group(void)
     g.phases[0].tx_count = 10;
     g.on_complete = announce_complete;
 
-    if (cca_tdma_submit_group(&g)) {
-        announce_active_ = true;
-    }
+    cca_tdma_submit_group(&g);
 }
 
 static void announce_complete(void* ctx)
 {
     (void)ctx;
-    announce_active_ = false;
     if (state_ == AUTO_PAIR_ANNOUNCING) {
         submit_announce_group();
     }
@@ -324,7 +313,6 @@ static void submit_config_group(void)
     g.on_complete = config_complete;
 
     if (cca_tdma_submit_group(&g)) {
-        config_submitted_ = true;
         printf("[auto-pair] Config group submitted (6 phases)\r\n");
     }
     else {
@@ -336,7 +324,6 @@ static void config_complete(void* ctx)
 {
     (void)ctx;
     printf("[auto-pair] Config complete — device should be paired\r\n");
-    config_submitted_ = false;
 }
 
 /* -----------------------------------------------------------------------
@@ -389,9 +376,8 @@ static void auto_pair_rx_hook(const DecodedPacket* pkt)
 
         if (dev_id == hub_id_) return; /* ignore our own accept packets */
 
-        if (detected_serial_ == 0) {
+        if (state_ == AUTO_PAIR_BEACONING) {
             detected_serial_ = dev_id;
-            detect_time_ms_ = HAL_GetTick();
             state_ = AUTO_PAIR_ANNOUNCING;
 
             printf("[auto-pair] 0x%02X detected: serial=%08X — accept+config+announce\r\n", pkt->type_byte,
@@ -425,10 +411,6 @@ void cca_auto_pair_start(uint32_t hub_id, uint32_t device_class, uint16_t subnet
     duration_ms_ = (duration_sec == 0 ? 60 : duration_sec) * 1000;
     start_ms_ = HAL_GetTick();
     detected_serial_ = 0;
-    detect_time_ms_ = 0;
-    beacon_active_ = false;
-    announce_active_ = false;
-    config_submitted_ = false;
 
     printf("[auto-pair] START hub=%08X class=%08X subnet=%04X zone=0x%02X dur=%lus\r\n", (unsigned)hub_id,
            (unsigned)device_class, subnet, zone_byte, (unsigned long)(duration_ms_ / 1000));
@@ -448,14 +430,11 @@ void cca_auto_pair_stop(void)
     submit_stop_beacon();
     cca_set_rx_hook(NULL);
     state_ = AUTO_PAIR_IDLE;
-    beacon_active_ = false;
-    announce_active_ = false;
-    config_submitted_ = false;
 }
 
 void cca_auto_pair_poll(void)
 {
-    if (state_ == AUTO_PAIR_IDLE || state_ == AUTO_PAIR_DONE) return;
+    if (state_ == AUTO_PAIR_IDLE) return;
 
     uint32_t now = HAL_GetTick();
 
@@ -465,12 +444,11 @@ void cca_auto_pair_poll(void)
         return;
     }
 
-    /* Safety: resubmit beacon if expired */
-    if (!beacon_active_ && state_ != AUTO_PAIR_IDLE) {
+    /* Safety: resubmit if a group was dropped (queue full, TDMA reset/cancel) */
+    if (!cca_tdma_group_active(beacon_complete)) {
         submit_beacon_group();
     }
-    /* Safety: resubmit announce if expired */
-    if (!announce_active_ && state_ == AUTO_PAIR_ANNOUNCING && detected_serial_ != 0) {
+    if (!cca_tdma_group_active(announce_complete) && state_ == AUTO_PAIR_ANNOUNCING) {
         submit_announce_group();
     }
 }

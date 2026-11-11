@@ -298,7 +298,6 @@ export class UdpCoapTransport extends EventEmitter implements CoapTransport {
   private readonly keepaliveMs: number;
   private sock: Socket | null = null;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
-  private textBuffer = "";
 
   constructor(opts: UdpCoapTransportOptions) {
     super();
@@ -370,12 +369,8 @@ export class UdpCoapTransport extends EventEmitter implements CoapTransport {
     if (msg[0] === STREAM_HEARTBEAT) return;
     if (msg[0] !== STREAM_RESP_TEXT) return;
 
-    this.textBuffer += msg.subarray(1).toString("utf8");
-    // Emit whenever we accumulate new text. Consumers buffer until they see a
-    // terminal marker; flushing on chunk boundaries keeps latency low.
-    const flushed = this.textBuffer;
-    this.textBuffer = "";
-    this.emit("text", flushed);
+    // Emit each chunk as it arrives; consumers buffer until a terminal marker.
+    this.emit("text", msg.subarray(1).toString("utf8"));
   }
 }
 

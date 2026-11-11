@@ -3,6 +3,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -13,8 +14,10 @@ extern "C" {
 /** Start the debug shell FreeRTOS task (USART3 VCP) */
 void shell_task_start(void);
 
-/** Execute a shell command line (used by UART shell and UDP text passthrough) */
-void shell_execute(const char* line);
+/** Execute a shell command line (used by UART shell and UDP text passthrough).
+ *  Returns true if the command asked for a reset; pass that to
+ *  shell_reset_if_requested() once the reply is out. */
+bool shell_execute(const char* line);
 
 /**
  * Reset the board if the command just executed asked for one.
@@ -23,9 +26,11 @@ void shell_execute(const char* line);
  * its caller has sent anything: the UART console still has bytes in the FIFO,
  * and the UDP path does not build its datagram until afterwards — so resetting
  * inside the command meant the client never saw the reply. Every caller must
- * invoke this once its output is on the wire.
+ * invoke this once its output is on the wire, with shell_execute()'s return
+ * value — per caller, so a UDP `reboot` cannot be acted on by the UART task
+ * before the datagram is sent.
  */
-void shell_reset_if_requested(void);
+void shell_reset_if_requested(bool requested);
 
 /** Capture printf output into a buffer (for UDP text response) */
 void printf_capture_start(uint8_t* buf, size_t buf_size);

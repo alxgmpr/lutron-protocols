@@ -34,7 +34,11 @@ export interface ZoneState {
   colorXy: [number, number] | null;
   activity: ZoneActivity;
   dirty: boolean;
-  /** 0 = no settle pending, >0 = timestamp at which the zone reports settled */
+  /**
+   * Timestamp at which the zone reports settled; Infinity = none pending.
+   * Infinity rather than null keeps the field a plain double (V8 boxes a
+   * number field that can also hold null, on the per-packet dispatch path).
+   */
   reportAt: number;
 }
 

@@ -32,7 +32,6 @@ typedef enum {
     AUTO_PAIR_IDLE = 0,
     AUTO_PAIR_BEACONING,  /* B9 beacons active, waiting for B8 */
     AUTO_PAIR_ANNOUNCING, /* B8 detected, B0 announce + B9 beacon active */
-    AUTO_PAIR_DONE,       /* Timed out or manually stopped */
 } AutoPairState;
 
 /**

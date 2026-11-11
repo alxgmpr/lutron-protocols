@@ -4,7 +4,8 @@ import { LeapConnection, type LeapSubscription } from "../../lib/leap-client";
 
 interface Internals {
   pendingRequests: Map<string, unknown>;
-  subscriptions: Map<string, { active: boolean }>;
+  // Membership is the active state: a subscription leaves the map when it detaches.
+  subscriptions: Map<string, unknown>;
   handleData(data: string): void;
 }
 
@@ -43,7 +44,7 @@ function harness(subscribe: boolean) {
   );
   const snapshot = () => [
     internal.pendingRequests.size,
-    [...internal.subscriptions.values()].filter((s) => s.active).length,
+    internal.subscriptions.size,
     resolved,
     rejected,
     pushes,

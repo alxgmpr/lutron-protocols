@@ -48,12 +48,13 @@ bool ccx_send_scene(uint16_t scene_id, uint8_t sequence);
 bool ccx_send_coap(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
                    size_t payload_len);
 
-/** Send CoAP to a non-standard port (0 = default 5683) */
+/** Send CoAP to a non-standard port (0 = default 5683). capture_response: this
+ *  request's reply fills the armed capture (see ccx_coap_response_arm). */
 bool ccx_send_coap_port(const uint8_t* dst_addr, uint8_t code, const char* uri_path, const uint8_t* payload,
-                        size_t payload_len, uint16_t dst_port);
+                        size_t payload_len, uint16_t dst_port, bool capture_response);
 
 /** Send CoAP Observe GET (observe_val: 0=register, 1=deregister) */
-bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path, uint8_t observe_val);
+bool ccx_send_coap_observe(const uint8_t* dst_addr, const char* uri_path, uint8_t observe_val, bool capture_response);
 
 /** Send pre-encoded CBOR bytes as a multicast CCX message */
 bool ccx_send_raw_cbor(const uint8_t* cbor, size_t len);
@@ -81,7 +82,7 @@ uint32_t ccx_ncp_recovery_attempts(void);
  * precisely the evidence the liveness watchdog acts on. Left running it would
  * pulse CTRL-AP reset into the middle of a page write, over the same two pins.
  *
- * @return false if a flash or a DFU is already in progress.
+ * @return false if a flash, a DFU, or a post-flash rejoin is still pending.
  */
 bool ccx_ncp_flash_begin(void);
 
@@ -94,9 +95,6 @@ bool ccx_ncp_flash_begin(void);
  *        somebody to reboot the STM32.
  */
 void ccx_ncp_flash_end(bool reflashed);
-
-/** True between ccx_ncp_flash_begin() and ccx_ncp_flash_end(). */
-bool ccx_ncp_flash_in_progress(void);
 
 /** True while a post-reflash credential push is still outstanding. */
 bool ccx_ncp_rejoin_pending(void);
@@ -192,7 +190,6 @@ bool ccx_send_address_query(const uint8_t secondary_mleid[16]);
 
 /** Result of an address query (set by RX handler on /a/an reception) */
 typedef struct {
-    bool valid;
     uint8_t target_eid[16]; /* secondary ML-EID queried */
     uint8_t ml_eid[8];      /* primary ML-EID IID (8 bytes) */
     uint16_t rloc16;
@@ -208,7 +205,6 @@ bool ccx_get_address_result(ccx_address_result_t* result);
 
 /** Last CoAP response data (set by RX handler, polled by shell) */
 typedef struct {
-    bool valid;
     uint8_t code; /* CoAP response code (e.g. 0x45 = 2.05 Content) */
     uint16_t msg_id;
     uint8_t src_addr[16];
@@ -216,8 +212,12 @@ typedef struct {
     size_t payload_len;
 } ccx_coap_response_t;
 
-/** Arm the CoAP response capture (call before sending request) */
+/** Arm the CoAP response capture, then send with capture_response=true. Only
+ *  the reply to that request (matched by token) is captured. */
 void ccx_coap_response_arm(void);
+
+/** Drop an armed capture (call when giving up on a response) */
+void ccx_coap_response_disarm(void);
 
 /** Get last captured CoAP response. Returns false if none available.
  *  Clears the capture after reading. */

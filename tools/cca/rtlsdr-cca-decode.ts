@@ -121,15 +121,13 @@ function findBursts(iq: Uint8Array): Burst[] {
   const threshold = noiseFloor * BURST_AMP_FACTOR;
 
   const bursts: Burst[] = [];
-  let inBurst = false;
-  let burstStart = 0;
+  // null = not in a burst. A burst still open at end of input is dropped.
+  let burstStart: number | null = null;
 
   for (let i = 0; i < amplitudes.length; i++) {
-    if (amplitudes[i] > threshold && !inBurst) {
-      inBurst = true;
+    if (amplitudes[i] > threshold && burstStart === null) {
       burstStart = i;
-    } else if (amplitudes[i] < threshold * 0.8 && inBurst) {
-      inBurst = false;
+    } else if (amplitudes[i] < threshold * 0.8 && burstStart !== null) {
       const startSample = burstStart * BURST_WINDOW;
       const endSample = i * BURST_WINDOW;
       const durationBits = (endSample - startSample) / SAMPLES_PER_BIT;
@@ -140,6 +138,7 @@ function findBursts(iq: Uint8Array): Burst[] {
         }
         bursts.push({ start: startSample, end: endSample, peakAmp: peak });
       }
+      burstStart = null;
     }
   }
 

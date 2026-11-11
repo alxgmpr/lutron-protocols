@@ -60,7 +60,7 @@ void bsp_uart_init(void)
     __HAL_RCC_USART2_CLK_ENABLE();
 
     huart2.Instance = NRF_USART;
-    huart2.Init.BaudRate = 460800;
+    huart2.Init.BaudRate = BSP_UART2_NCP_BAUD;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
     huart2.Init.StopBits = UART_STOPBITS_1;
     huart2.Init.Parity = UART_PARITY_NONE;
