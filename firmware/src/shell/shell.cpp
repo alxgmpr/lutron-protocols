@@ -4433,7 +4433,7 @@ static void shell_task_func(void* param)
     printf("========================================\r\n");
     printf("Type 'help' for commands.\r\n\r\n");
 
-    char cmd_buf[CMD_BUF_SIZE];
+    char cmd_buf[CMD_BUF_SIZE] = {0};
 
     for (;;) {
         watchdog_feed();
