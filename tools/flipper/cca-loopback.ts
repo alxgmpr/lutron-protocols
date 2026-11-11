@@ -221,7 +221,9 @@ async function main() {
       `TX flipper->openlutron: ${hit}/${N} exact (flipper logged ${txLog.length}, ok=${txLog.filter((t) => t.ok).length}; openlutron heard ${mine.length})`,
     );
     console.log(`  heard idx: ${mine.map((b) => b[5]).join(",")}`);
-    for (const b of mine) if (!txLog.some((t) => b.subarray(0, 24).equals(t.b))) console.log(`  inexact ${b.toString("hex")}`);
+    for (const b of mine)
+      if (!txLog.some((t) => b.subarray(0, 24).equals(t.b)))
+        console.log(`  inexact ${b.toString("hex")}`);
     for (const t of txLog.slice(0, 3))
       console.log(`  sent  ${t.b.toString("hex")}`);
     if (hasFlag("--verbose"))
