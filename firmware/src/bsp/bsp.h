@@ -196,6 +196,7 @@ size_t bsp_uart2_rx_available(void);
 bool bsp_uart2_rx_read(uint8_t* byte);
 
 /** Change USART2 baud rate (for DFU bootloader mode switch). */
+#define BSP_UART2_NCP_BAUD 460800 /* Spinel/HDLC; DFU switches away and restores this */
 void bsp_uart2_set_baud(uint32_t baud);
 
 /* -----------------------------------------------------------------------

@@ -96,8 +96,7 @@ typedef struct {
     uint8_t manufacturer;
     uint8_t mem_type;
     uint8_t capacity_code;
-    uint32_t capacity;
-    bool present;
+    uint32_t capacity; /* 0 = no device probed successfully */
     /** Latched by any failed transfer; every entry point clears it and then
      *  refuses to report success while it is set. */
     bool io_error;

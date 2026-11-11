@@ -17,6 +17,9 @@
  */
 
 #include "stream.h"
+
+#include <algorithm>
+#include <iterator>
 #include "shell.h"
 #include "cca_task.h"
 #include "cca_commands.h"
@@ -85,7 +88,10 @@ struct UdpClient {
 static QueueHandle_t tx_queue = NULL;
 static struct netconn* udp_conn = NULL;
 static UdpClient clients[MAX_STREAM_CLIENTS];
-static int num_clients = 0;
+static int num_clients(void)
+{
+    return (int)std::count_if(std::begin(clients), std::end(clients), [](const UdpClient& c) { return c.active; });
+}
 
 static volatile uint32_t tx_drop_count = 0;
 static volatile uint32_t udp_sent_count = 0;
@@ -162,11 +168,11 @@ void stream_broadcast_text(const char* text, size_t len)
 
 bool stream_client_connected(void)
 {
-    return num_clients > 0;
+    return num_clients() > 0;
 }
 int stream_num_clients(void)
 {
-    return num_clients;
+    return num_clients();
 }
 
 uint32_t stream_tx_drop_count(void)
@@ -217,10 +223,9 @@ static void register_client(const ip_addr_t* addr, uint16_t port)
             clients[i].port = port;
             clients[i].last_heard = now;
             clients[i].active = true;
-            num_clients++;
-            printf("[stream] Client %s:%u registered (%d/%d)\r\n", ipaddr_ntoa(addr), port, num_clients,
-                   MAX_STREAM_CLIENTS);
-            if (num_clients == 1) LED_YELLOW_ON();
+            int n = num_clients();
+            printf("[stream] Client %s:%u registered (%d/%d)\r\n", ipaddr_ntoa(addr), port, n, MAX_STREAM_CLIENTS);
+            if (n == 1) LED_YELLOW_ON();
             return;
         }
     }
@@ -250,8 +255,7 @@ static void expire_clients(void)
         if (clients[i].active && (now - clients[i].last_heard) > CLIENT_TIMEOUT_MS) {
             printf("[stream] Client %s:%u expired\r\n", ipaddr_ntoa(&clients[i].addr), clients[i].port);
             clients[i].active = false;
-            num_clients--;
-            if (num_clients == 0) LED_YELLOW_OFF();
+            if (num_clients() == 0) LED_YELLOW_OFF();
         }
     }
 }
@@ -272,7 +276,7 @@ static void expire_clients(void)
  */
 static void broadcast_frame(const uint8_t* frame, uint16_t frame_len)
 {
-    if (udp_conn == NULL || num_clients == 0) return;
+    if (udp_conn == NULL || num_clients() == 0) return;
 
     struct netbuf* nb = netbuf_new();
     if (nb == NULL) {
@@ -337,7 +341,7 @@ static void send_status_response(const ip_addr_t* addr, uint16_t port)
     blob[40] = ccx_thread_joined() ? 1 : 0;                /* ccx_thread_joined */
     blob[41] = ccx_thread_role_id();                       /* ccx_thread_role */
     blob[42] = eth_link_is_up() ? 1 : 0;                   /* eth_link_up */
-    blob[43] = (uint8_t)num_clients;                       /* num_clients */
+    blob[43] = (uint8_t)num_clients();                     /* num_clients */
     put_le32(blob + 44, (uint32_t)xPortGetFreeHeapSize()); /* heap_free */
 
     /* Extended telemetry (v2 status blob) */
@@ -765,13 +769,13 @@ static void handle_rx_data(const uint8_t* buf, size_t len, const ip_addr_t* src_
         static uint8_t text_resp[1500];
         text_resp[0] = STREAM_RESP_TEXT;
         printf_capture_start(text_resp + 1, sizeof(text_resp) - 1);
-        shell_execute(cmd_line);
+        bool reset = shell_execute(cmd_line);
         size_t captured = printf_capture_stop();
 
         send_to_client(text_resp, (uint16_t)(1 + captured), src_addr, src_port);
         /* Only now, with the reply out: `reboot` and `ota install` defer their
          * reset to here precisely so the client gets an answer. */
-        shell_reset_if_requested();
+        shell_reset_if_requested(reset);
         break;
     }
 
@@ -810,7 +814,6 @@ static void stream_task_func(void* param)
     printf("[stream] Listening on UDP port %d\r\n", STREAM_UDP_PORT);
 
     memset(clients, 0, sizeof(clients));
-    num_clients = 0;
 
     uint32_t last_heartbeat = HAL_GetTick();
     uint32_t last_expire = HAL_GetTick();
@@ -877,7 +880,7 @@ static void stream_task_func(void* param)
         }
 
         /* --- 3. Heartbeat to all clients every 5s --- */
-        if (num_clients > 0 && HAL_GetTick() - last_heartbeat >= STREAM_HEARTBEAT_MS) {
+        if (num_clients() > 0 && HAL_GetTick() - last_heartbeat >= STREAM_HEARTBEAT_MS) {
             const uint8_t heartbeat[2] = {0xFF, 0x00};
             broadcast_frame(heartbeat, 2);
             last_heartbeat = HAL_GetTick();

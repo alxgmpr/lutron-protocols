@@ -125,9 +125,11 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
   private rebindTimer: StreamTimerHandle | null = null;
   private lastDatagramAt = 0;
   private connectedAt = 0;
-  private up = false;
-  /** Suppresses a `down` per keepalive while the board stays unreachable. */
-  private reportedDown = false;
+  /**
+   * unknown: not heard from since connect(). up: heard recently. down: `down`
+   * was emitted; stays down (no repeat per keepalive) until a datagram arrives.
+   */
+  private link: "unknown" | "up" | "down" = "unknown";
   private closed = false;
   private datagramWaiters: Array<() => void> = [];
   private statusWaiters: Array<(blob: Buffer) => void> = [];
@@ -151,7 +153,7 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
    * whether anything is listening at the other end.
    */
   get connected(): boolean {
-    return this.up;
+    return this.link === "up";
   }
 
   /**
@@ -162,7 +164,8 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
   async connect(): Promise<void> {
     this.closed = false;
     this.connectedAt = this.timers.now();
-    this.reportedDown = false;
+    this.lastDatagramAt = 0; // silence is measured from this connect()
+    this.link = "unknown";
     await this.bindSocket();
     this.keepaliveTimer = this.timers.setInterval(
       () => this.onKeepaliveTick(),
@@ -207,7 +210,7 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
    * that registration took — the board streams to registered clients only.
    */
   ready(timeoutMs = DEFAULT_READY_TIMEOUT_MS): Promise<void> {
-    if (this.up) return Promise.resolve();
+    if (this.link === "up") return Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const timer = this.timers.setTimeout(() => {
         this.datagramWaiters = this.datagramWaiters.filter((w) => w !== waiter);
@@ -296,13 +299,12 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
    */
   private onKeepaliveTick(): void {
     this.sendCommand(CMD_KEEPALIVE);
-    if (this.reportedDown) return;
+    if (this.link === "down") return;
 
     const since = this.lastDatagramAt || this.connectedAt;
     if (this.timers.now() - since <= this.connectionTimeoutMs) return;
 
-    this.up = false;
-    this.reportedDown = true;
+    this.link = "down";
     this.emit("down");
   }
 
@@ -315,9 +317,8 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
     if (msg.length < 2) return;
 
     this.lastDatagramAt = this.timers.now();
-    if (!this.up) {
-      this.up = true;
-      this.reportedDown = false;
+    if (this.link !== "up") {
+      this.link = "up";
       this.emit("up");
     }
     if (this.datagramWaiters.length > 0) {
@@ -409,6 +410,6 @@ export class OpenlutronStream extends EventEmitter<OpenlutronStreamEvents> {
       // Closing an already-dead socket is not worth reporting.
     }
     this.socket = null;
-    this.up = false;
+    this.link = "unknown";
   }
 }

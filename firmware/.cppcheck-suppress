@@ -23,9 +23,8 @@ constParameterPointer:src/net/lwip_arch/sys_arch.c
 // HAL callback signatures cannot be changed
 constParameterPointer:src/syscalls.c:39
 
-// HAL Ethernet callback signatures
-constParameterPointer:src/net/eth.c:108
-constParameterPointer:src/net/eth.c:101
+// HAL Ethernet callback signatures (file-scoped: line pins drift on every edit)
+constParameterPointer:src/net/eth.c
 constParameterCallback:src/net/eth.c
 
 // C-style casts to const uint8_t* are standard embedded pattern

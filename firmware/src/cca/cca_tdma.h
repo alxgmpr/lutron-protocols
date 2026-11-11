@@ -159,6 +159,9 @@ bool cca_tdma_submit_group(const TdmaJobGroup* group);
 /** Cancel all active job groups. */
 void cca_tdma_cancel_groups(void);
 
+/** True if a group with this on_complete is queued/in flight (callback still pending). */
+bool cca_tdma_group_active(void (*on_complete)(void* ctx));
+
 /** Check if all job groups are idle (no active TX). */
 bool cca_tdma_is_idle(void);
 

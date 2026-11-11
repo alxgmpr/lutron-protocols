@@ -90,7 +90,10 @@ export class SerialSniffer extends EventEmitter {
 
       const parser = port.pipe(new ReadlineParser({ delimiter: "\n" }));
 
+      // Handlers ignore a port that is no longer current, so an old port's
+      // late close after a reconnect can't schedule another reconnect.
       port.on("error", (err) => {
+        if (port !== this.port) return;
         this.emit("error", err);
         if (!this.stopped && this.opts.autoReconnect) {
           this.scheduleReconnect();
@@ -98,6 +101,8 @@ export class SerialSniffer extends EventEmitter {
       });
 
       port.on("close", () => {
+        if (port !== this.port) return;
+        this.stopWatchdog();
         this.emit("closed");
         if (!this.stopped && this.opts.autoReconnect) {
           this.scheduleReconnect();
@@ -197,6 +202,9 @@ export class SerialSniffer extends EventEmitter {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.stopped) return;
+    // The port is being replaced; its watchdog must not outlive it, or it can
+    // fire mid-reconnect and schedule a second one. initSniffer() restarts it.
+    this.stopWatchdog();
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       if (this.stopped) return;

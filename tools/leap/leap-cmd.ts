@@ -158,7 +158,10 @@ async function main() {
       }
     }
     console.log("\nWatching for events... (Ctrl+C to stop)\n");
-    await new Promise(() => {});
+    // Without this, a processor reboot leaves the watch running and silent.
+    await new Promise<never>((_, reject) => {
+      conn.onClose = reject;
+    });
   }
 
   // --- zones (list all) ---

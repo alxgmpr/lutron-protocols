@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test, { describe } from "node:test";
@@ -23,6 +24,7 @@ type ConnInternals = {
   >;
   subscriptions: Map<string, LeapSubscription>;
   handleData(data: string): void;
+  attachSocket(sock: EventEmitter, onError: (err: Error) => void): void;
 };
 const internals = (conn: LeapConnection): ConnInternals =>
   // SAFETY: The test controls this fixture and intentionally uses the asserted test-only shape.
@@ -359,6 +361,35 @@ describe("subscription lifecycle", () => {
 
     h.conn.close();
     assert.equal(internals(h.conn).tagCounter, 0);
+  });
+
+  test("a remote close deactivates subscriptions and rejects pending requests", async () => {
+    const h = harness();
+    const sock = Object.assign(new EventEmitter(), {
+      write: (data: string) => h.writes.push(data),
+      destroy: () => {},
+    });
+    h.i.attachSocket(sock, () => {});
+    const sub = await subscribed(h, "/zone/status", () => {});
+    const pending = h.conn.send("ReadRequest", "/project");
+    const closes: Error[] = [];
+    h.conn.onClose = (reason) => closes.push(reason);
+
+    // A stale socket closing must not touch the current connection.
+    const stale = new EventEmitter();
+    h.i.attachSocket(stale, () => {});
+    h.i.socket = sock;
+    stale.emit("close");
+    assert.equal(sub.active, true);
+    assert.equal(closes.length, 0);
+
+    sock.emit("close");
+    assert.equal(h.i.socket, null);
+    assert.equal(sub.active, false);
+    await assert.rejects(pending, /closed by remote/);
+    // Told once, after the state is already torn down.
+    assert.equal(closes.length, 1);
+    assert.match(closes[0].message, /closed by remote/);
   });
 
   test("unsubscribe on a closed subscription is a no-op, not a write", async () => {

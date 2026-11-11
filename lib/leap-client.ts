@@ -188,7 +188,6 @@ interface SubscriptionState {
   status: string;
   messageBodyType: string;
   snapshot: JsonValue;
-  active: boolean;
   onPush: LeapPushHandler;
 }
 
@@ -243,6 +242,13 @@ export class LeapConnection {
    */
   onFrame: LeapEventHandler | null = null;
 
+  /**
+   * Called when the processor ends the connection (not on our own close()).
+   * By then every subscription is inactive and every pending request has been
+   * rejected; a long-lived caller reconnects and resubscribes from here.
+   */
+  onClose: ((reason: Error) => void) | null = null;
+
   readonly host: string;
   readonly port: number;
   private certPaths: { cert: string; key: string; ca: string };
@@ -264,10 +270,14 @@ export class LeapConnection {
     // socket, and a subscription is bound to the connection that opened it. So
     // a reconnect starts the counter over and drops the old state rather than
     // letting a stale pending entry collide with a reissued tag.
+    // Drop the old socket first so its late data can't land in the new buffer.
+    const prev = this.socket;
+    this.socket = null;
+    prev?.destroy();
     this.resetConnectionState(new Error("connection replaced by reconnect"));
 
     return new Promise((resolve, reject) => {
-      this.socket = tls.connect(
+      const sock = tls.connect(
         this.port,
         this.host,
         {
@@ -278,15 +288,33 @@ export class LeapConnection {
         },
         () => resolve(),
       );
+      this.attachSocket(sock, reject);
+    });
+  }
 
-      this.socket.on("data", (data) => this.handleData(data.toString()));
-      this.socket.on("error", (err) => {
-        for (const [, req] of this.pendingRequests) {
-          req.reject(err);
-        }
-        this.pendingRequests.clear();
-        reject(err);
-      });
+  /** Wire a socket's events; every handler ignores a socket that is no longer current. */
+  private attachSocket(
+    sock: tls.TLSSocket,
+    onError: (err: Error) => void,
+  ): void {
+    this.socket = sock;
+    sock.on("data", (data) => {
+      if (sock === this.socket) this.handleData(data.toString());
+    });
+    sock.on("error", (err) => {
+      onError(err);
+      if (sock !== this.socket) return;
+      for (const [, req] of this.pendingRequests) {
+        req.reject(err);
+      }
+      this.pendingRequests.clear();
+    });
+    sock.on("close", () => {
+      if (sock !== this.socket) return;
+      this.socket = null;
+      const reason = new Error("connection closed by remote");
+      this.resetConnectionState(reason);
+      this.onClose?.(reason);
     });
   }
 
@@ -305,7 +333,6 @@ export class LeapConnection {
     this.tagCounter = 0;
     for (const [, req] of this.pendingRequests) req.reject(reason);
     this.pendingRequests.clear();
-    for (const [, sub] of this.subscriptions) sub.active = false;
     this.subscriptions.clear();
   }
 
@@ -350,7 +377,6 @@ export class LeapConnection {
           // this refusal in the current chunk. Detach before routing it.
           const subscription = this.subscriptions.get(tag);
           if (subscription && !status.startsWith("2")) {
-            subscription.active = false;
             this.subscriptions.delete(tag);
           }
           pending.resolve(resp);
@@ -363,7 +389,7 @@ export class LeapConnection {
         // response consumes the pending entry and a push arrives after it.
         // (`102 Processing` never gets here — it `continue`s as interim.)
         const sub = tag ? this.subscriptions.get(tag) : undefined;
-        if (sub?.active) {
+        if (sub) {
           const push: LeapPush = {
             url: resp.Header?.Url ?? sub.url,
             tag,
@@ -544,9 +570,11 @@ export class LeapConnection {
       status: "",
       messageBodyType: "",
       snapshot: null,
-      active: true,
       onPush,
     };
+    // Active exactly while this state is the map entry for its tag; tags are
+    // reused after a reconnect, hence the identity check.
+    const isActive = (): boolean => this.subscriptions.get(tag) === state;
     // Registered before the write: the processor can deliver a push in the
     // same segment as the SubscribeResponse, and a subscription that is not
     // yet in the map would lose it to onEvent.
@@ -562,15 +590,13 @@ export class LeapConnection {
         timeout,
       );
     } catch (err) {
-      state.active = false;
-      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
+      if (isActive()) this.subscriptions.delete(tag);
       throw err;
     }
 
     const status: string = response?.Header?.StatusCode ?? "";
     if (!status.startsWith("2")) {
-      state.active = false;
-      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
+      if (isActive()) this.subscriptions.delete(tag);
       throw new Error(
         `SubscribeRequest ${url} refused: ${status || "(no status)"}` +
           (response?.Body?.Message ? ` — ${response.Body.Message}` : ""),
@@ -582,8 +608,7 @@ export class LeapConnection {
     state.snapshot = response?.Body ?? null;
 
     const detach = (): void => {
-      state.active = false;
-      if (this.subscriptions.get(tag) === state) this.subscriptions.delete(tag);
+      if (isActive()) this.subscriptions.delete(tag);
     };
 
     return {
@@ -599,10 +624,10 @@ export class LeapConnection {
         return state.snapshot;
       },
       get active() {
-        return state.active;
+        return isActive();
       },
       unsubscribe: async (): Promise<LeapUnsubscribeResult> => {
-        if (!state.active) {
+        if (!isActive()) {
           return { status: "(inactive)", communiqueType: "" };
         }
         // Detach first: dispatch must stop whatever the processor answers,

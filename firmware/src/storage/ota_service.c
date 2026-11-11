@@ -9,12 +9,17 @@
 #include <string.h>
 
 static ota_stage_t stage;
-static bool session_active = false;
+/** COMMITTED: the last END staged a header; lets a retried END answer OK. */
+static enum { SESSION_IDLE, SESSION_OPEN, SESSION_COMMITTED } session = SESSION_IDLE;
 static uint32_t session_crc32 = 0;
 static uint32_t session_version = 0;
 static ota_status_t last_status = OTA_OK;
-/** Set when an END committed a header; lets a retried END answer OK. */
-static bool session_committed = false;
+
+/** A rejected START closes an open session but keeps a committed one retryable. */
+static void close_open_session(void)
+{
+    if (session == SESSION_OPEN) session = SESSION_IDLE;
+}
 
 /**
  * What the host may actually send: the smaller of what the slot holds and what
@@ -36,7 +41,7 @@ ota_status_t ota_service_start(uint32_t image_len, uint32_t crc32, uint32_t vers
      * refusing at install time costs it the whole upload and says nothing. */
     if (image_len > OTA_APP_REGION_SIZE) {
         last_status = OTA_ERR_CAPACITY;
-        session_active = false;
+        close_open_session();
         printf("[ota] Start rejected: %lu bytes exceeds the %lu byte application region\r\n", (unsigned long)image_len,
                (unsigned long)OTA_APP_REGION_SIZE);
         return OTA_ERR_CAPACITY;
@@ -45,22 +50,21 @@ ota_status_t ota_service_start(uint32_t image_len, uint32_t crc32, uint32_t vers
     ota_status_t st = ota_stage_begin(&stage, ota_flash_ops(), image_len);
     last_status = st;
     if (st != OTA_OK) {
-        session_active = false;
+        close_open_session();
         printf("[ota] Start rejected: %s\r\n", ota_status_name(st));
         return st;
     }
 
     session_crc32 = crc32;
     session_version = version;
-    session_active = true;
-    session_committed = false;
+    session = SESSION_OPEN;
     printf("[ota] Slot erased, ready\r\n");
     return OTA_OK;
 }
 
 ota_status_t ota_service_chunk(uint32_t offset, const uint8_t* data, uint32_t len)
 {
-    if (!session_active) {
+    if (session != SESSION_OPEN) {
         last_status = OTA_ERR_STATE;
         return OTA_ERR_STATE;
     }
@@ -93,9 +97,9 @@ static bool staged_matches_session(void)
 
 ota_status_t ota_service_end(void)
 {
-    if (!session_active) {
+    if (session != SESSION_OPEN) {
         /* A repeat of an END that already worked, not a stray one. */
-        if (session_committed && staged_matches_session()) {
+        if (session == SESSION_COMMITTED && staged_matches_session()) {
             last_status = OTA_OK;
             printf("[ota] Finish repeated; image already staged\r\n");
             return OTA_OK;
@@ -105,8 +109,7 @@ ota_status_t ota_service_end(void)
     }
     ota_status_t st = ota_stage_finish(&stage, session_crc32, session_version);
     last_status = st;
-    session_active = false;
-    session_committed = (st == OTA_OK);
+    session = (st == OTA_OK) ? SESSION_COMMITTED : SESSION_IDLE;
 
     if (st == OTA_OK) {
         printf("[ota] Image staged and verified (%lu bytes, version %lu)\r\n", (unsigned long)stage.expected_len,
@@ -120,15 +123,14 @@ ota_status_t ota_service_end(void)
 
 void ota_service_abort(void)
 {
-    if (session_active) printf("[ota] Session aborted\r\n");
-    session_active = false;
-    session_committed = false;
+    if (session == SESSION_OPEN) printf("[ota] Session aborted\r\n");
+    session = SESSION_IDLE;
     memset(&stage, 0, sizeof(stage));
 }
 
 uint32_t ota_service_written(void)
 {
-    return session_active ? ota_stage_written(&stage) : 0;
+    return session == SESSION_OPEN ? ota_stage_written(&stage) : 0;
 }
 
 void ota_service_info(ota_service_info_t* out)
@@ -136,9 +138,9 @@ void ota_service_info(ota_service_info_t* out)
     if (out == NULL) return;
     memset(out, 0, sizeof(*out));
     out->last_status = last_status;
-    out->active = session_active;
+    out->active = session == SESSION_OPEN;
     out->written = ota_service_written();
-    out->expected_len = session_active ? stage.expected_len : 0;
+    out->expected_len = session == SESSION_OPEN ? stage.expected_len : 0;
 
     ota_image_header_t hdr;
     if (ota_image_read_header(ota_flash_ops(), &hdr) == OTA_OK) {

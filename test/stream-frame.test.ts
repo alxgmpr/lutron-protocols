@@ -13,6 +13,7 @@ import {
   FLAG_SRC,
   FLAG_TX,
   FRAME_HEADER_LEN,
+  isAsyncBroadcastText,
   parseStreamPacketFrame,
   rloc16FromIpv6,
   SRC_ADDR_LEN,
@@ -195,5 +196,30 @@ describe("wire constants match the firmware", () => {
     assert.equal(FLAG_SRC, 0x10);
     assert.equal(FRAME_HEADER_LEN, 10);
     assert.equal(SRC_ADDR_LEN, 16);
+  });
+});
+
+describe("isAsyncBroadcastText", () => {
+  it("recognizes the firmware's broadcast lines", () => {
+    for (const line of [
+      "[rx] BUTTON_PRESS src=fd0d:02ef:a82c:0000:0000:00ff:fe00:7801 rloc=0x7801",
+      "[coap] 4.04 src=fd0d:2ef:a82c:0:0:ff:fe00:7801 fw/ic/md mid=0x1001 token=02 len=5",
+      "[ccx] CoAP GET fw/ic/md mid=0x1000 tx=OK\r\n",
+      "[diag] rx_active=1 marc=0x0D rxbytes=0",
+      "[cca] ota-full-tx progress: 100 pkts",
+    ]) {
+      assert.equal(isAsyncBroadcastText(line), true, line);
+    }
+  });
+
+  it("does not mistake shell replies for broadcasts", () => {
+    for (const reply of [
+      "flash session open, region 00001000..000e0000",
+      "Thread role: ROUTER\nRX: 0  TX: 0",
+      "[ccx] looks tagged\nbut a reply spans lines",
+      "",
+    ]) {
+      assert.equal(isAsyncBroadcastText(reply), false, reply);
+    }
   });
 });
