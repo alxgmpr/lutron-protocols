@@ -17,6 +17,9 @@
  */
 
 #include "stream.h"
+
+#include <algorithm>
+#include <iterator>
 #include "shell.h"
 #include "cca_task.h"
 #include "cca_commands.h"
@@ -87,9 +90,7 @@ static struct netconn* udp_conn = NULL;
 static UdpClient clients[MAX_STREAM_CLIENTS];
 static int num_clients(void)
 {
-    int n = 0;
-    for (const UdpClient& c : clients) n += c.active;
-    return n;
+    return (int)std::count_if(std::begin(clients), std::end(clients), [](const UdpClient& c) { return c.active; });
 }
 
 static volatile uint32_t tx_drop_count = 0;
