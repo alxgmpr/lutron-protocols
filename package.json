@@ -12,7 +12,7 @@
     "leap:sweep": "npx tsx tools/leap/leap-sweep.ts",
     "leap:spec-probe": "npx tsx tools/leap/leap-spec-probe.ts",
     "cca:ota-tx": "npx tsx tools/cca/ota-tx.ts",
-    "bench": "npx tsx tools/bench.ts",
+    "bench": "npx tsx --no-concurrent-recompilation tools/bench.ts",
     "corpus:build": "npx tsx tools/cca/build-corpus.ts",
     "corpus:check": "npx tsx tools/cca/build-corpus.ts --check",
     "capture-rate": "tsx tools/cca/capture-rate.ts",

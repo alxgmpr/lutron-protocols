@@ -1,4 +1,4 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env -S npx tsx --no-concurrent-recompilation
 /**
  * bench — decode-path performance regression gate.
  *
@@ -19,6 +19,15 @@
  * Compare local runs against each other instead.
  *
  * Inputs are the committed corpora, so the work is identical every run.
+ *
+ * The JIT is not, by default: V8 optimizes on a background thread, and where
+ * that compile lands relative to the main thread decides the machine code a
+ * hot loop keeps for the rest of the process. stream.parseFrame came out
+ * 15-33% slower in ~7% of processes, steady across every re-measure, which
+ * failed or nearly failed the gate. So the script runs node with
+ * --no-concurrent-recompilation: 0 slow processes in 130 locally against 6
+ * in 100 without it. Compile time moves onto the main thread, which warmup
+ * absorbs.
  *
  * Run:   npm run bench            report; gate only when CI is set
  *        npm run bench -- --write rewrite the baseline from this run
