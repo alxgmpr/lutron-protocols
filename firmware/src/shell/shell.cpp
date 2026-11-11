@@ -412,6 +412,7 @@ static void cmd_status(void)
         printf("  drops=%lu crc_fail=%lu n81_err=%lu ack=%lu crc_optional=%lu\r\n", (unsigned long)cca_drop_count(),
                (unsigned long)cca_crc_fail_count(), (unsigned long)cca_n81_err_count(), (unsigned long)cca_ack_count(),
                (unsigned long)cca_crc_optional_count());
+        cca_print_freqest();
         printf("  overflows=%lu runts=%lu short=%lu irq=%lu\r\n", (unsigned long)cc1101_overflow_count(),
                (unsigned long)cc1101_runt_count(), (unsigned long)cc1101_short_packet_count(),
                (unsigned long)cca_irq_count());
@@ -1132,6 +1133,26 @@ static void cmd_cca(const char* arg)
     if (strcmp(arg, "log off") == 0) {
         cca_set_uart_log_enabled(false);
         printf("CCA RX UART log disabled\r\n");
+        return;
+    }
+    /* cca trim [n] — CC1101 FSCTRL0 carrier trim, n * 1587 Hz. Live; `save` persists. */
+    if (strcmp(arg, "trim") == 0 || strncmp(arg, "trim ", 5) == 0) {
+        if (arg[4] == ' ') {
+            char* end;
+            long v = strtol(arg + 5, &end, 0);
+            if (*end != '\0' || v < -128 || v > 127) {
+                printf("Usage: cca trim [-128..127]   (FSCTRL0, x1587 Hz)\r\n");
+                return;
+            }
+            flash_store_get_mut()->cca_freq_trim = (int8_t)v;
+            bool was_rx = cc1101_is_rx_active();
+            if (was_rx) cc1101_stop_rx();
+            cc1101_write_register(CC1101_FSCTRL0, (uint8_t)v);
+            if (was_rx) cc1101_start_rx(); /* SCAL: synth relocks on the new offset */
+            printf("Run `save` to keep it across reboots.\r\n");
+        }
+        printf("CCA freq trim: %d (%ld Hz)\r\n", flash_store_get()->cca_freq_trim,
+               (long)flash_store_get()->cca_freq_trim * 1587L);
         return;
     }
     if (strcmp(arg, "diag") == 0) {
@@ -2092,6 +2113,7 @@ static void cmd_cca(const char* arg)
     printf("  cca query <target>                    — query device component info\r\n");
     printf("  cca tune ...                          — CC1101 tuning/debug tools\r\n");
     printf("  cca log [on|off]                      — CCA RX UART log toggle\r\n");
+    printf("  cca trim [n]                          — CC1101 FSCTRL0 carrier trim (n x 1587 Hz); `save` persists\r\n");
 }
 
 static void cmd_rx(const char* arg)

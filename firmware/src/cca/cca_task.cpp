@@ -12,6 +12,7 @@
  */
 
 #include "cca_task.h"
+#include <stdlib.h>
 #include "cca_commands.h"
 #include "cca_tdma.h"
 #include "cca_auto_pair.h"
@@ -68,6 +69,23 @@ static uint32_t crc_fail_count = 0;     /* decoded but CRC invalid */
 static uint32_t n81_err_count = 0;      /* decoded with N81 framing errors */
 static uint32_t ack_count = 0;          /* decoded dimmer ACK packets (0x0B) */
 static uint32_t crc_optional_count = 0; /* accepted with crc_valid=false */
+
+/* CC1101 FREQEST per packet (carrier offset vs. our LO, ~1587 Hz/LSB).
+ * Decoded packets show the trim error against real devices; drops show
+ * whether failures are off-frequency or just noise. */
+struct FreqEstStat {
+    uint32_t n;
+    int32_t sum;
+    int8_t min, max;
+};
+static FreqEstStat fe_rx, fe_drop;
+static void fe_add(FreqEstStat& s, int8_t fe)
+{
+    if (s.n == 0 || fe < s.min) s.min = fe;
+    if (s.n == 0 || fe > s.max) s.max = fe;
+    s.sum += fe;
+    s.n++;
+}
 /* High-rate UART packet logs can disrupt shell interactivity. Keep off by default. */
 static volatile bool cca_uart_log_enabled_ = false;
 /* Periodic radio diag broadcast over stream (UDP). Off by default — use printf only. */
@@ -103,6 +121,7 @@ static void reset_isr_latency_stats(void)
 struct CcaRxPending {
     DecodedPacket pkt;
     int8_t rssi;
+    int8_t freqest;
     uint32_t timestamp_ms;
     bool valid; /* true = decoded packet, false = drop */
     uint8_t drop_hex[16];
@@ -171,9 +190,11 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
 {
     DecodedPacket pkt;
     pkt.clear();
+    int8_t fe = cc1101_last_freqest();
 
     if (decoder.decode(data, len, pkt) && pkt.valid) {
         rx_count++;
+        fe_add(fe_rx, fe);
         if (!pkt.crc_valid) {
             crc_fail_count++;
             crc_optional_count++;
@@ -192,17 +213,20 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
             CcaRxPending& p = rx_pending[rx_pend_count++];
             p.pkt = pkt;
             p.rssi = rssi;
+            p.freqest = fe;
             p.timestamp_ms = timestamp_ms;
             p.valid = true;
         }
     }
     else if (rssi > -85) {
         drop_count++;
+        fe_add(fe_drop, fe);
 
         if (rx_pend_count < CCA_RX_PEND_MAX) {
             CcaRxPending& p = rx_pending[rx_pend_count++];
             p.valid = false;
             p.rssi = rssi;
+            p.freqest = fe;
             p.timestamp_ms = timestamp_ms;
             p.drop_raw_len = len;
             size_t dump_len = len < 16 ? len : 16;
@@ -243,8 +267,8 @@ static void flush_rx_pending(void)
                 char dev_id[9];
                 cca_format_device_id(p.pkt.device_id, dev_id, sizeof(dev_id));
 
-                n += snprintf(log_buf + n, sizeof(log_buf) - n, "[cca] RX %-12s dev=%s seq=%02X rssi=%d",
-                              cca_packet_type_name(p.pkt.type_byte), dev_id, p.pkt.sequence, p.rssi);
+                n += snprintf(log_buf + n, sizeof(log_buf) - n, "[cca] RX %-12s dev=%s seq=%02X rssi=%d fe=%d",
+                              cca_packet_type_name(p.pkt.type_byte), dev_id, p.pkt.sequence, p.rssi, p.freqest);
 
                 if (cca_is_button_type(p.pkt.type_byte)) {
                     n += snprintf(log_buf + n, sizeof(log_buf) - n, " btn=%s act=%s", cca_button_name(p.pkt.button),
@@ -260,8 +284,8 @@ static void flush_rx_pending(void)
                 n += snprintf(log_buf + n, sizeof(log_buf) - n, " crc=%s\r\n", crc_str);
             }
             else {
-                n += snprintf(log_buf + n, sizeof(log_buf) - n, "[cca] RX DROP rssi=%d len=%u hex=", p.rssi,
-                              (unsigned)p.drop_raw_len);
+                n += snprintf(log_buf + n, sizeof(log_buf) - n, "[cca] RX DROP rssi=%d fe=%d len=%u hex=", p.rssi,
+                              p.freqest, (unsigned)p.drop_raw_len);
                 for (size_t j = 0; j < p.drop_hex_len && n < (int)sizeof(log_buf) - 4; j++) {
                     n += snprintf(log_buf + n, sizeof(log_buf) - n, "%02X", p.drop_hex[j]);
                 }
@@ -545,8 +569,25 @@ void cca_reset_stats(void)
     n81_err_count = 0;
     ack_count = 0;
     crc_optional_count = 0;
+    fe_rx = {};
+    fe_drop = {};
     reset_isr_latency_stats();
     cca_tdma_reset();
+}
+
+void cca_print_freqest(void)
+{
+    /* Mean printed in tenths of an LSB; one LSB = 26 MHz / 2^14 = 1587 Hz */
+    const FreqEstStat* st[2] = {&fe_rx, &fe_drop};
+    const char* name[2] = {"rx", "drop"};
+    printf("  freqest:");
+    for (int i = 0; i < 2; i++) {
+        const FreqEstStat& s = *st[i];
+        int32_t avg10 = s.n ? (s.sum * 10) / (int32_t)s.n : 0;
+        printf(" %s n=%lu avg=%s%ld.%ld min=%d max=%d ", name[i], (unsigned long)s.n, avg10 < 0 ? "-" : "",
+               (long)(labs(avg10) / 10), (long)(labs(avg10) % 10), s.n ? s.min : 0, s.n ? s.max : 0);
+    }
+    printf(" trim=%d\r\n", (int8_t)cc1101_read_register(CC1101_FSCTRL0));
 }
 
 void cca_set_rx_hook(cca_rx_hook_t hook)

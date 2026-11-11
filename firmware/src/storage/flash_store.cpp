@@ -159,6 +159,7 @@ void flash_store_print(void)
     for (int i = 0; i < 8; i++) printf("%02X", settings.thread_xpanid[i]);
     printf("\r\n");
 
+    printf("CCA freq trim:  %d (FSCTRL0, x1587 Hz)\r\n", settings.cca_freq_trim);
     printf("Known devices:  %u\r\n", settings.known_count);
     for (uint8_t i = 0; i < settings.known_count && i < FLASH_STORE_MAX_DEVICES; i++) {
         printf("  [%u] %08lX\r\n", i, (unsigned long)settings.known_devices[i]);
