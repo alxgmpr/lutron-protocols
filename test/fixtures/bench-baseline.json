@@ -1,14 +1,12 @@
 {
-  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% \u2014 the 40% band is sized from that. Regenerated 2026-08-28: bridge.dispatch rose from 7.0309 to 7.9148 after 648119c added per-source dedup windows to DeviceModel (real added work, not noise \u2014 CI had been failing on it since). 2026-11-11: bridge.dispatch gets a 60% band (see PER_CASE_TOLERANCE_PCT in tools/bench.ts) because its ratio spreads with the runner's CPU model; the gate reads bands from this file, not the constant.",
+  "note": "Ratios vs the reference workload, measured on CI; the gate runs on CI only (see tools/bench.ts). Mean of three runs. Observed run-to-run drift on identical code: identify 2.6%, decode 5.2%, ccx 7.6%, bridge 11.9%, stream 27.8% \u2014 the 40% band is sized from that. Regenerated 2026-08-28: bridge.dispatch rose from 7.0309 to 7.9148 after 648119c added per-source dedup windows to DeviceModel (real added work, not noise \u2014 CI had been failing on it since). 2026-11-11: bridge.dispatch gets a 60% band (see PER_CASE_TOLERANCE_PCT in tools/bench.ts) because its ratio spreads with the runner's CPU model; the gate reads bands from this file, not the constant. 2026-11-11, later: bridge.dispatch re-measured after its clock was made to advance (frozen, it measured an unbounded dedup scan whose cost depends on the CPU model), and the 60% band dropped. 5.576 is the mean of 36 CI runs: EPYC 7763 4.34-5.74, Xeon 8573C 4.21-4.74, Xeon 8370C 5.33, EPYC 9V45 5.78-5.99, EPYC 9V74 6.02-6.99. The default 40% band (ceiling 7.81) covers every model seen; an injected 2x slowdown measured 8.98-14.2 and failed on all of them.",
   "tolerancePct": 40,
-  "perCaseTolerancePct": {
-    "bridge.dispatch": 60
-  },
+  "perCaseTolerancePct": {},
   "ratios": {
     "cca.identifyPacket": 1.4596,
     "cca.decodeFrame": 2.4965,
     "stream.parseFrame": 1.5044,
     "ccx.decodeAndParse": 3.61,
-    "bridge.dispatch": 7.9148
+    "bridge.dispatch": 5.576
   }
 }
