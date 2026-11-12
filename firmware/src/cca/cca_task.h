@@ -24,6 +24,7 @@ uint32_t cca_tx_count(void);
 
 /** Get count of dropped packets (decode failures with RSSI > -85) */
 uint32_t cca_drop_count(void);
+uint32_t cca_noise_count(void);
 
 /** Get count of packets decoded but with CRC failure */
 uint32_t cca_crc_fail_count(void);

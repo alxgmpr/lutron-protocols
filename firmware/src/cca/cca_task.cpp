@@ -65,6 +65,7 @@ static CcaDecoder decoder;
 static uint32_t rx_count = 0;
 static uint32_t tx_count = 0;
 static uint32_t drop_count = 0;         /* decode failures with strong signal */
+static uint32_t noise_count = 0;        /* preamble sync fired on noise: no FA DE marker */
 static uint32_t crc_fail_count = 0;     /* decoded but CRC invalid */
 static uint32_t n81_err_count = 0;      /* decoded with N81 framing errors */
 static uint32_t ack_count = 0;          /* decoded dimmer ACK packets (0x0B) */
@@ -219,6 +220,11 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
         }
     }
     else if (rssi > -85) {
+        /* No N81 FA DE marker anywhere = the preamble sync matched noise, not a lost packet. */
+        if (n81_find_sync_offset_from(data, len, 0, CcaDecoder::MAX_SYNC_SEARCH) < 0) {
+            noise_count++;
+            return;
+        }
         drop_count++;
         fe_add(fe_drop, fe);
 
@@ -502,6 +508,11 @@ uint32_t cca_drop_count(void)
 {
     return drop_count;
 }
+
+uint32_t cca_noise_count(void)
+{
+    return noise_count;
+}
 uint32_t cca_crc_fail_count(void)
 {
     return crc_fail_count;
@@ -565,6 +576,7 @@ void cca_reset_stats(void)
     rx_count = 0;
     tx_count = 0;
     drop_count = 0;
+    noise_count = 0;
     crc_fail_count = 0;
     n81_err_count = 0;
     ack_count = 0;

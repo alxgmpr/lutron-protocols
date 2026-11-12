@@ -409,8 +409,9 @@ static void cmd_status(void)
         uint8_t state = cc1101_get_state();
         printf("CCA (ISM): %s  RX=%lu TX=%lu\r\n", cc1101_is_rx_active() ? "RX" : (state == 0x01 ? "IDLE" : "INIT"),
                (unsigned long)cca_rx_count(), (unsigned long)cca_tx_count());
-        printf("  drops=%lu crc_fail=%lu n81_err=%lu ack=%lu crc_optional=%lu\r\n", (unsigned long)cca_drop_count(),
-               (unsigned long)cca_crc_fail_count(), (unsigned long)cca_n81_err_count(), (unsigned long)cca_ack_count(),
+        printf("  drops=%lu noise=%lu crc_fail=%lu n81_err=%lu ack=%lu crc_optional=%lu\r\n",
+               (unsigned long)cca_drop_count(), (unsigned long)cca_noise_count(), (unsigned long)cca_crc_fail_count(),
+               (unsigned long)cca_n81_err_count(), (unsigned long)cca_ack_count(),
                (unsigned long)cca_crc_optional_count());
         cca_print_freqest();
         printf("  overflows=%lu runts=%lu short=%lu irq=%lu\r\n", (unsigned long)cc1101_overflow_count(),
@@ -779,6 +780,7 @@ static void cmd_cca_tune_reg_set(const char* addr_tok, const char* value_tok)
     bool was_rx = cc1101_is_rx_active();
     if (was_rx) cc1101_stop_rx();
     cc1101_write_register(reg, value);
+    cc1101_set_rx_reg(reg, value);
     bool mirrored = false;
     if (reg == CC1101_IOCFG0) {
         cc1101_write_register(CC1101_IOCFG2, value);
