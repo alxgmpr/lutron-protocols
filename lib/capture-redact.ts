@@ -99,19 +99,24 @@ export function redactCcaFrame(data: Buffer, opts: RedactOptions = {}): Buffer {
   }
 
   const out = Buffer.from(data);
+
+  // By value first. A layout can put a device_id field a few bytes off
+  // where this frame really carries its id (an occupancy-sensor frame
+  // decoded as DIM_STEP: field at 9, id at 12). Filling that first
+  // overwrites one byte of the real id and hides the other three from
+  // the scrub.
+  for (const serial of opts.knownSerials ?? []) {
+    scrubValue(out, serial);
+  }
+
   for (const field of info.fields) {
+    // A truncated frame still holds the leading bytes of a cut-off field.
     const end = Math.min(field.offset + field.size, out.length);
     if (OPAQUE_FIELDS.has(field.name)) {
       out.fill(0, field.offset, end);
-      continue;
+    } else if (/device_id/.test(String(field.format))) {
+      fillPlaceholder(out, field.offset, end - field.offset);
     }
-    if (!/device_id/.test(String(field.format))) continue;
-    if (field.offset + field.size > out.length) continue;
-    fillPlaceholder(out, field.offset, field.size);
-  }
-
-  for (const serial of opts.knownSerials ?? []) {
-    scrubValue(out, serial);
   }
 
   return out;

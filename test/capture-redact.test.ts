@@ -42,6 +42,24 @@ describe("redactCcaFrame", () => {
     );
   });
 
+  it("scrubs an id that a misplaced device_id field only half covers", () => {
+    // Occupancy-sensor frame, decoded as DIM_STEP: that layout puts
+    // target_id at 9-12, but here the id repeats at 12-15.
+    const frame = Buffer.from(
+      "880011223344210b0300040111223344000000cccccc0000",
+      "hex",
+    );
+    const out = redactCcaFrame(frame, { knownSerials: [0x11223344] });
+
+    assert.equal(out.includes(Buffer.from("223344", "hex")), false);
+  });
+
+  it("covers the leading bytes of a device_id field cut off by truncation", () => {
+    const out = redactCcaFrame(BUTTON_FRAME.subarray(0, 15));
+
+    assert.deepEqual(out.subarray(12, 15), REDACTED_ID.subarray(0, 3));
+  });
+
   it("replaces every device_id field in an identified frame", () => {
     const out = redactCcaFrame(BUTTON_FRAME);
 
