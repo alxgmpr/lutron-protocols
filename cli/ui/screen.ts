@@ -11,6 +11,12 @@
 
 import { render as inkRender } from "ink";
 import { createElement } from "react";
+import {
+  getPacketLayout,
+  type PacketRow,
+  renderHeader,
+  renderRow,
+} from "../core/packets";
 import { App } from "./App";
 import { store } from "./store";
 
@@ -23,8 +29,8 @@ export interface InkScreen {
   init(): void;
   destroy(): void;
   setHeader(left: string, right?: string): void;
-  setColumnHeaders(labels: string, separator: string): void;
   appendLine(text: string): void;
+  appendRow(row: PacketRow): void;
   setStatusBar(text: string): void;
   showOverlay(lines: string[]): void;
   clearOverlay(): void;
@@ -42,7 +48,7 @@ export interface InkScreen {
 
 // ============================================================================
 // PassthroughScreen — non-TTY fallback (pipe mode).
-// Mirrors the old PassthroughScreen: prints lines directly, ignores layout.
+// Prints lines directly; packet rows are rendered once, at the current width.
 // ============================================================================
 class PassthroughScreen implements InkScreen {
   private headerPrinted = false;
@@ -52,14 +58,21 @@ class PassthroughScreen implements InkScreen {
   init(): void {}
   destroy(): void {}
   setHeader(_left: string, _right?: string): void {}
-  setColumnHeaders(labels: string, _separator: string): void {
-    if (!this.headerPrinted) {
-      console.log(labels);
-      this.headerPrinted = true;
-    }
-  }
   appendLine(text: string): void {
     console.log(text);
+  }
+  appendRow(row: PacketRow): void {
+    const { raw, verbose, filter } = store.getState();
+    if (filter && !filter.match(row)) return;
+    const layout = getPacketLayout(raw, this.width, verbose);
+    if (!this.headerPrinted) {
+      console.log(renderHeader(layout)[0]);
+      this.headerPrinted = true;
+    }
+    console.log(renderRow(row, layout));
+    if (verbose && row.verboseLine) {
+      console.log(renderRow({ ...row, isDetail: true }, layout));
+    }
   }
   setStatusBar(_text: string): void {}
   showOverlay(lines: string[]): void {
@@ -117,12 +130,12 @@ class InkScreenImpl implements InkScreen {
     store.setHeader(left, right);
   }
 
-  setColumnHeaders(labels: string, _separator: string): void {
-    store.setColumnHeaders(labels);
+  appendLine(text: string): void {
+    store.append([{ text }]);
   }
 
-  appendLine(text: string): void {
-    store.appendLines([text]);
+  appendRow(row: PacketRow): void {
+    store.append([row]);
   }
 
   setStatusBar(text: string): void {

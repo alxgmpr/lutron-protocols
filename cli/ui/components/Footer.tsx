@@ -8,6 +8,7 @@
  */
 
 import { Box, Text } from "ink";
+import { getPacketLayout, renderHeader } from "../../core/packets";
 import { useAppState } from "../hooks";
 
 interface Props {
@@ -15,7 +16,8 @@ interface Props {
 }
 
 export function Footer({ width }: Props) {
-  const { columnHeaders, headerLeft, headerRight, statusText } = useAppState();
+  const { raw, verbose, headerLeft, headerRight, statusText } = useAppState();
+  const [columnHeaders] = renderHeader(getPacketLayout(raw, width, verbose));
 
   const statusParts: string[] = [];
   if (statusText) statusParts.push(statusText);

@@ -6,21 +6,28 @@
  * useSyncExternalStore) plus mutation methods called by the IScreen adapter.
  */
 
-import { RING_BUFFER_SIZE } from "../core/packets";
+import {
+  entryLineCount,
+  type LogEntry,
+  parseFilter,
+  RING_BUFFER_SIZE,
+  type RowFilter,
+} from "../core/packets";
 
 export interface OverlayState {
   lines: string[];
 }
 
 export interface AppState {
-  /** Append-only buffer of rendered log lines (ring buffer). */
-  lines: string[];
-  /** Monotonically increasing generation; changes whenever lines changes. */
-  linesGen: number;
-  /** Scroll offset: 0 = live (tail), negative = scrolled back by N lines. */
+  /** Ring buffer of log entries; packets stay structured until rendered. */
+  entries: LogEntry[];
+  /** Scroll offset in display lines: 0 = live (tail), negative = scrolled back. */
   scrollOffset: number;
-  /** Column header labels (left of footer legend). */
-  columnHeaders: string;
+  /** Packet display options, applied at render time to the whole buffer. */
+  raw: boolean;
+  verbose: boolean;
+  /** Active packet filter, or null. */
+  filter: { spec: string; match: RowFilter } | null;
   /** Header text (right side of footer legend). */
   headerLeft: string;
   headerRight: string;
@@ -42,10 +49,11 @@ export type Listener = () => void;
 
 export class Store {
   private state: AppState = {
-    lines: [],
-    linesGen: 0,
+    entries: [],
     scrollOffset: 0,
-    columnHeaders: "",
+    raw: true,
+    verbose: false,
+    filter: null,
     headerLeft: "",
     headerRight: "",
     statusText: "",
@@ -75,29 +83,41 @@ export class Store {
   // Each produces a new AppState object so React can detect the change.
   // ============================================================================
 
-  appendLines(newLines: string[]): void {
-    if (newLines.length === 0) return;
-    let lines = this.state.lines;
-    // Copy-on-write to a new array, enforce ring size.
-    lines = lines.concat(newLines);
-    if (lines.length > RING_BUFFER_SIZE) {
-      lines = lines.slice(lines.length - RING_BUFFER_SIZE);
+  private lineCount(e: LogEntry): number {
+    return entryLineCount(
+      e,
+      this.state.verbose,
+      this.state.filter?.match ?? null,
+    );
+  }
+
+  append(newEntries: LogEntry[]): void {
+    if (newEntries.length === 0) return;
+    let entries = this.state.entries.concat(newEntries);
+    if (entries.length > RING_BUFFER_SIZE) {
+      entries = entries.slice(entries.length - RING_BUFFER_SIZE);
     }
     // If we're scrolled back, keep the same viewport (shift offset).
     let scrollOffset = this.state.scrollOffset;
-    if (scrollOffset < 0) scrollOffset -= newLines.length;
-    this.state = {
-      ...this.state,
-      lines,
-      linesGen: this.state.linesGen + 1,
-      scrollOffset,
-    };
+    if (scrollOffset < 0) {
+      for (const e of newEntries) scrollOffset -= this.lineCount(e);
+    }
+    this.state = { ...this.state, entries, scrollOffset };
     this.emit();
   }
 
-  setColumnHeaders(labels: string): void {
-    if (this.state.columnHeaders === labels) return;
-    this.state = { ...this.state, columnHeaders: labels };
+  /** Change display options; the viewport snaps back to live. */
+  setDisplay(opts: { raw?: boolean; verbose?: boolean }): void {
+    this.state = { ...this.state, ...opts, scrollOffset: 0 };
+    this.emit();
+  }
+
+  /** Set the packet filter (empty spec clears it). Throws on a bad spec. */
+  setFilter(spec: string): void {
+    const filter = spec.trim()
+      ? { spec: spec.trim(), match: parseFilter(spec) }
+      : null;
+    this.state = { ...this.state, filter, scrollOffset: 0 };
     this.emit();
   }
 
@@ -149,7 +169,8 @@ export class Store {
   }
 
   scrollBy(pages: number, pageSize: number): void {
-    const total = this.state.lines.length;
+    let total = 0;
+    for (const e of this.state.entries) total += this.lineCount(e);
     const maxBack = -Math.max(0, total - pageSize);
     const offset = Math.max(
       maxBack,

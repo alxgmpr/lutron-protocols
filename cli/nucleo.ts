@@ -59,17 +59,15 @@ import {
   CYAN,
   DIM,
   GREEN,
-  getPacketLayout,
   MAGENTA,
   type PacketRow,
   RED,
   RESET,
-  renderHeader,
-  renderRow,
   WHITE,
   YELLOW,
 } from "./core/packets";
 import { createScreen, type InkScreen } from "./ui/screen";
+import { store } from "./ui/store";
 
 // ============================================================================
 // Constants
@@ -141,8 +139,6 @@ let host = "";
 if (!host) host = process.env.OPEN_BRIDGE_HOST || config.openBridge;
 let stream: OpenlutronStream | null = null;
 let quiet = false;
-let raw = true;
-let verbose = false;
 let recording: { file: string; count: number; startTime: number } | null = null;
 let lastCcaRadioTs: number | null = null; // for CCA inter-packet delta
 let lastCcxRadioTs: number | null = null; // for CCX inter-packet delta
@@ -333,17 +329,13 @@ let ccxTxCount = 0;
 const ccxSource = new CcxSourceResolver();
 let warnedNoSourceSupport = false;
 
-function updateColumnHeaders(): void {
-  const layout = getPacketLayout(raw, screen.width, verbose);
-  const [labels, separator] = renderHeader(layout);
-  screen.setColumnHeaders(labels, separator);
-}
-
 function updateStatusBar(): void {
   const parts: string[] = [];
   if (quiet) parts.push(`${YELLOW}[quiet]${RESET}`);
+  const { raw, verbose, filter } = store.getState();
   if (!raw) parts.push(`${CYAN}[raw off]${RESET}`);
   if (verbose) parts.push(`${GREEN}[verbose]${RESET}`);
+  if (filter) parts.push(`${MAGENTA}[filter ${filter.spec}]${RESET}`);
   if (!showDiag) parts.push(`${YELLOW}[diag off]${RESET}`);
   if (!slotTracking) parts.push(`${YELLOW}[slot off]${RESET}`);
   if (recording) parts.push(`${RED}[REC ${recording.count}]${RESET}`);
@@ -366,40 +358,11 @@ function updateHeader(): void {
 }
 
 function emitPacketRow(row: PacketRow): void {
-  const layout = getPacketLayout(raw, screen.width, verbose);
-  const rendered = renderRow(row, layout);
-  screen.appendLine(rendered);
-  // Emit verbose detail line if present
-  if (row.verboseLine) {
-    const detailRow: PacketRow = {
-      ts: "",
-      proto: "",
-      protoColor: "",
-      direction: "",
-      dirColor: "",
-      rssi: "",
-      seq: "",
-      opcode: "",
-      typeAction: "",
-      typeActionColor: "",
-      device: "",
-      zone: "",
-      state: "",
-      raw: "",
-      delta: "",
-      isDetail: true,
-      verboseLine: row.verboseLine,
-    };
-    const detailRendered = renderRow(detailRow, layout);
-    if (detailRendered) {
-      screen.appendLine(detailRendered);
-    }
-  }
+  screen.appendRow(row);
 }
 
 function fullRedraw(): void {
   updateHeader();
-  updateColumnHeaders();
   updateStatusBar();
 }
 
@@ -788,7 +751,7 @@ function displayCcaPacket(
     zone: zoneText,
     zoneColor,
     state: stateParts.join("  "),
-    raw: raw ? rawHex : "",
+    raw: rawHex,
     delta: deltaText,
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
   });
@@ -1083,7 +1046,7 @@ function displayCcxPacket(
       zone: zoneText,
       zoneColor,
       state: compactParts.join("  "),
-      raw: raw ? rawHex : "",
+      raw: rawHex,
       delta: deltaStr,
       verboseLine: [...parts, ...srcDetail(src)].join("  ") || undefined,
     });
@@ -1106,8 +1069,8 @@ function displayCcxPacket(
       device: src.text,
       deviceColor: CYAN,
       zone: "",
-      state: raw ? "" : rawHex,
-      raw: raw ? rawHex : "",
+      state: "",
+      raw: rawHex,
       delta: deltaStr,
       verboseLine: srcDetail(src).join("  ") || undefined,
     });
@@ -1337,6 +1300,7 @@ function showHelp() {
     `  ${GREEN}quiet${RESET}             Toggle packet display on/off`,
     `  ${GREEN}raw${RESET}               Toggle raw hex column (on by default)`,
     `  ${GREEN}verbose${RESET}           Toggle verbose detail lines below packets`,
+    `  ${GREEN}filter${RESET} [terms|off] Show matching packets: dev=1234 type=btn -proto=x`,
     `  ${GREEN}diag${RESET}              Toggle [diag] log display (also --no-diag flag)`,
     `  ${GREEN}slot${RESET} [reset]      Toggle slot tracking on/off, or reset tracker`,
     `  ${GREEN}record${RESET} [name]     Start CSV recording to captures/cca-sessions/`,
@@ -1647,19 +1611,37 @@ function handleCommand(line: string) {
       updateStatusBar();
       return;
 
-    case "raw":
-      raw = !raw;
-      fullRedraw();
+    case "raw": {
+      const raw = !store.getState().raw;
+      store.setDisplay({ raw });
       screen.appendLine(`Raw hex display: ${raw ? "on" : "off"}`);
       updateStatusBar();
       return;
+    }
 
-    case "verbose":
-      verbose = !verbose;
-      fullRedraw();
+    case "verbose": {
+      const verbose = !store.getState().verbose;
+      store.setDisplay({ verbose });
       screen.appendLine(`Verbose display: ${verbose ? "on" : "off"}`);
       updateStatusBar();
       return;
+    }
+
+    case "filter": {
+      const spec = trimmed.slice(cmd.length).trim();
+      const clear = spec === "" || spec === "off";
+      try {
+        store.setFilter(clear ? "" : spec);
+      } catch (err) {
+        screen.appendLine(
+          `${RED}filter: ${err instanceof Error ? err.message : err}${RESET}`,
+        );
+        return;
+      }
+      screen.appendLine(`Filter: ${clear ? "off" : spec}`);
+      updateStatusBar();
+      return;
+    }
 
     case "diag":
       showDiag = !showDiag;
@@ -1861,7 +1843,6 @@ async function startup() {
   // Initialize screen state (header/columns/status) before mounting Ink.
   screen.init();
   updateHeader();
-  updateColumnHeaders();
   updateStatusBar();
 
   screen.onRedraw = () => fullRedraw();
@@ -1870,12 +1851,8 @@ async function startup() {
     process.exit(0);
   };
 
-  // On terminal resize, recompute column headers so they match the new width
-  // and the layout used for subsequent packet rows.
-  process.stdout.on("resize", () => {
-    updateColumnHeaders();
-    updateHeader();
-  });
+  // Column headers and packet rows re-layout on resize inside Ink.
+  process.stdout.on("resize", () => updateHeader());
 
   // Tab completion candidates
   screen.setCompletions([
@@ -1886,6 +1863,7 @@ async function startup() {
     "quiet",
     "raw",
     "verbose",
+    "filter",
     "diag",
     "slot",
     "help",
