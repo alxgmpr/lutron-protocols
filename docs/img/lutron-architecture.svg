@@ -1,0 +1,331 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1205" width="1280" height="1205" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Lutron systems map</title><desc id="dsc">Layered diagram of Lutron clouds and clients, processors, coprocessors, radio links (CCA 433 MHz, CCX Thread 2.4 GHz, BLE, QS Link RS-485) and end devices, with the openlutron transceiver and host tooling that tap into them.</desc>
+<style>
+:root{--ink:#1F2328;--mute:#57606A;--fill:#8A94A3;--line:#8A94A3;--leap:#4F7DF3;--ipl:#9A6BF5;--cca:#E8751A;--ccx:#14A39A;--ble:#D9399F;--qs:#6FA32B;--cloud:#7C8CA3;--gray:#8A94A3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#E6EDF3;--mute:#9DA7B3}}
+:root[data-theme="dark"]{--ink:#E6EDF3;--mute:#9DA7B3}
+text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--ink)}
+.band2{fill:var(--fill);fill-opacity:.10}
+.h1{font-size:24px;font-weight:700}.h2{font-size:12.5px;fill:var(--mute)}
+.bl{font-size:10px;font-weight:700;letter-spacing:.04em;fill:var(--mute)}
+.t{font-size:13px;font-weight:700}.s{font-size:11px;fill:var(--mute)}
+.m{font-family:ui-monospace,"SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;font-size:11px;fill:var(--mute)}
+.el{font-size:10.5px;font-weight:600}
+.box{fill:var(--fill);fill-opacity:.10;stroke:var(--line);stroke-opacity:.6;stroke-width:1.2}
+.ours{fill:var(--leap);fill-opacity:.12;stroke:var(--leap);stroke-width:1.4}
+.chip{fill:var(--fill);fill-opacity:.10;stroke-width:1.3}
+.card{fill-opacity:.14;stroke-width:1.5}
+.e{fill:none;stroke-width:2.2;stroke-linejoin:round}.dash{stroke-dasharray:6 4}
+.ghost{stroke-width:2.4;stroke-dasharray:1 5.5;stroke-linecap:round;stroke-dashoffset:0}
+.s-leap{stroke:var(--leap)}.f-leap{fill:var(--leap)}.s-ipl{stroke:var(--ipl)}.f-ipl{fill:var(--ipl)}.s-cca{stroke:var(--cca)}.f-cca{fill:var(--cca)}.s-ccx{stroke:var(--ccx)}.f-ccx{fill:var(--ccx)}.s-ble{stroke:var(--ble)}.f-ble{fill:var(--ble)}.s-qs{stroke:var(--qs)}.f-qs{fill:var(--qs)}.s-cloud{stroke:var(--cloud)}.f-cloud{fill:var(--cloud)}.s-gray{stroke:var(--gray)}.f-gray{fill:var(--gray)}
+.axis{stroke:var(--mute);stroke-width:1}.tick{stroke:var(--cca);stroke-width:1.6}
+</style>
+<defs><marker id="a-leap" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-leap"/></marker><marker id="a-ipl" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-ipl"/></marker><marker id="a-cca" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-cca"/></marker><marker id="a-ccx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-ccx"/></marker><marker id="a-ble" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-ble"/></marker><marker id="a-qs" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-qs"/></marker><marker id="a-cloud" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-cloud"/></marker><marker id="a-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9z" class="f-gray"/></marker></defs>
+<text x="20" y="38" class="h1">Lutron control stack: what this repo has mapped</text>
+<text x="20" y="60" class="h2">Cloud, processors, coprocessors, radios and end devices, with the pathways found so far. Highlighted blocks are ours.</text>
+<text x="20" y="100" class="bl">CLOUD &amp; CLIENTS</text>
+<rect x="0" y="236" width="1280" height="190" class="band2"/>
+<text x="20" y="260" class="bl">PROCESSORS</text>
+<text x="20" y="460" class="bl">COPROCESSORS</text>
+<rect x="0" y="576" width="1280" height="190" class="band2"/>
+<text x="20" y="600" class="bl">ON AIR / WIRE</text>
+<text x="20" y="800" class="bl">END DEVICES</text>
+<rect x="0" y="916" width="1280" height="200" class="band2"/>
+<text x="20" y="940" class="bl">THIS REPO</text>
+<rect x="130" y="92" width="210" height="118" rx="6" class="box"/>
+<text x="142" y="113" class="t">Lutron mobile app</text>
+<text x="142" y="132" class="s">BLE commissioning (iOS RE)</text>
+<text x="142" y="148" class="s">LEAP surface from Android APK</text>
+<text x="142" y="164" class="s">Thread key via TLS-in-GATT</text>
+<rect x="360" y="92" width="200" height="118" rx="6" class="box"/>
+<text x="372" y="113" class="t">Lutron Designer</text>
+<text x="372" y="132" class="s">Windows .NET + SQL LocalDB</text>
+<text x="372" y="148" class="s">project = source of truth</text>
+<text x="372" y="164" class="s">DLLs patched, flags traced</text>
+<text x="372" y="180" class="s">RA3 &lt;-> HWQS identity swap</text>
+<rect x="580" y="92" width="240" height="118" rx="6" class="box"/>
+<text x="592" y="113" class="t">Lutron cloud</text>
+<circle cx="595" cy="128.5" r="3.5" class="f-cloud"/>
+<text x="602" y="132" class="s">api.iot.lutron.io LEAP relay</text>
+<circle cx="595" cy="144.5" r="3.5" class="f-cloud"/>
+<text x="602" y="148" class="s">MQTT/TLS :8883 (AWS IoT)</text>
+<circle cx="595" cy="160.5" r="3.5" class="f-cloud"/>
+<text x="602" y="164" class="s">firmware download API + CDN</text>
+<rect x="840" y="92" width="410" height="118" rx="6" class="box"/>
+<text x="852" y="113" class="t">Third-party control</text>
+<circle cx="855" cy="128.5" r="3.5" class="f-leap"/>
+<text x="862" y="132" class="s">Home Assistant, pylutron-caseta</text>
+<circle cx="855" cy="144.5" r="3.5" class="f-leap"/>
+<text x="862" y="148" class="s">LEAP :8081 JSON/TLS, mutual auth</text>
+<circle cx="855" cy="160.5" r="3.5" class="f-gray"/>
+<text x="862" y="164" class="s">telnet integration protocol (#OUTPUT / #DEVICE)</text>
+<text x="852" y="180" class="s">OUTPUT = level+fade+delay; DEVICE = buttons</text>
+<rect x="130" y="252" width="420" height="160" rx="6" class="box"/>
+<text x="142" y="273" class="t">RA3 / HomeWorks QSX / Athena / myRoomXc  (Phoenix)</text>
+<text x="142" y="292" class="s">Janus: TI AM3351 (Cortex-A8), Linux 5.10</text>
+<circle cx="145" cy="304.5" r="3.5" class="f-leap"/>
+<text x="152" y="308" class="m">8081  LEAP  read-only, product certs</text>
+<circle cx="145" cy="320.5" r="3.5" class="f-ipl"/>
+<text x="152" y="324" class="m">8902  IPL   Designer sync + telemetry</text>
+<circle cx="145" cy="336.5" r="3.5" class="f-ipl"/>
+<text x="152" y="340" class="m">443   WSS   writes, project-CA certs</text>
+<text x="142" y="356" class="m">8083 LAP · 5353 mDNS · 22 SSH · 8883 MQTT</text>
+<text x="142" y="372" class="s">268-table project DB; Go services recovered</text>
+<rect x="570" y="252" width="330" height="160" rx="6" class="box"/>
+<text x="582" y="273" class="t">Caseta SmartBridge · RA2 Select REP2</text>
+<text x="582" y="292" class="s">TI AM335x, Lutron Linux userspace</text>
+<circle cx="585" cy="304.5" r="3.5" class="f-leap"/>
+<text x="592" y="308" class="s">LEAP :8081, zones exposed directly</text>
+<circle cx="585" cy="320.5" r="3.5" class="f-cloud"/>
+<text x="592" y="324" class="s">cloud LEAP proxy (api.iot.lutron.io)</text>
+<text x="582" y="340" class="s">REP2 / Pro orchestrate CCA OTA;</text>
+<text x="582" y="356" class="s">older SmartBridge does not</text>
+<rect x="920" y="252" width="160" height="160" rx="6" class="box"/>
+<text x="932" y="273" class="t">Vive hub</text>
+<text x="932" y="292" class="s">TI AM335x, Linux 4.4</text>
+<text x="932" y="308" class="s">CCA link type 30</text>
+<text x="932" y="324" class="s">hub ID + zone ID</text>
+<text x="932" y="340" class="s">app moved HTTP -></text>
+<text x="932" y="356" class="s">Athena / LEAP</text>
+<rect x="1100" y="252" width="150" height="160" rx="6" class="box"/>
+<text x="1112" y="273" class="t">Main Rep · ESN</text>
+<text x="1112" y="292" class="s">Main: MCF527x</text>
+<text x="1112" y="308" class="s">ColdFire, NOR XIP</text>
+<text x="1112" y="324" class="s">ESN-QS: 68K, 2009 fw</text>
+<text x="1112" y="340" class="s">both: telnet cmds</text>
+<text x="1112" y="356" class="s">ESN: RS-485 + CCA</text>
+<rect x="144" y="382" width="141.7" height="22" rx="11" class="chip" style="stroke:var(--leap);stroke-dasharray:2 3"/>
+<circle cx="155" cy="393" r="3.5" class="f-leap"/>
+<text x="164" y="397" class="s">LEAP from our tools</text>
+<rect x="309" y="382" width="135.39999999999998" height="22" rx="11" class="chip" style="stroke:var(--ipl);stroke-dasharray:2 3"/>
+<circle cx="320" cy="393" r="3.5" class="f-ipl"/>
+<text x="329" y="397" class="s">IPL from our tools</text>
+<rect x="584" y="382" width="141.7" height="22" rx="11" class="chip" style="stroke:var(--leap);stroke-dasharray:2 3"/>
+<circle cx="595" cy="393" r="3.5" class="f-leap"/>
+<text x="604" y="397" class="s">LEAP from our tools</text>
+<rect x="932" y="382" width="91.3" height="22" rx="11" class="chip" style="stroke:var(--leap);stroke-dasharray:2 3"/>
+<circle cx="943" cy="393" r="3.5" class="f-leap"/>
+<text x="952" y="397" class="s">LEAP (ours)</text>
+<rect x="130" y="452" width="200" height="100" rx="6" class="box"/>
+<text x="142" y="473" class="t">EFR32MG12 #2</text>
+<text x="142" y="492" class="s">Thread, 802.15.4</text>
+<text x="142" y="508" class="s">HDLC/Spinel to AM335x</text>
+<text x="142" y="524" class="s">fe80:: / fd12:: prefixes</text>
+<rect x="350" y="452" width="200" height="100" rx="6" class="box"/>
+<text x="362" y="473" class="t">EFR32MG12 #1 + CC110L</text>
+<text x="362" y="492" class="s">CCA over SPI, async serial</text>
+<text x="362" y="508" class="s">sync 0xFADE, CRC 0xCA0F</text>
+<text x="362" y="524" class="s">no DeviceClass check on OTA</text>
+<rect x="570" y="452" width="330" height="100" rx="6" class="box"/>
+<text x="582" y="473" class="t">STM32 Cortex-M + CC110L</text>
+<text x="582" y="492" class="s">SmartBridge: stateless, UART IPC to AM335x</text>
+<text x="582" y="508" class="s">fw v02.05 / 02.08 / 02.10 reversed</text>
+<text x="582" y="524" class="s">REP2 / Pro: STM32L100, EFR32 images too</text>
+<rect x="920" y="452" width="160" height="100" rx="6" class="box"/>
+<text x="932" y="473" class="t">Vive coproc</text>
+<text x="932" y="492" class="s">STM32L100 + 2x CC110L</text>
+<text x="932" y="508" class="s">Rockhopper v01.09.01</text>
+<text x="932" y="524" class="s">decoded from updater</text>
+<rect x="1100" y="452" width="150" height="100" rx="6" class="box"/>
+<text x="1112" y="473" class="t">Main-CPU radio</text>
+<text x="1112" y="492" class="s">ESN: QS Link task</text>
+<text x="1112" y="508" class="s">= CCA radio layer</text>
+<text x="1112" y="524" class="s">Main Rep: radio chip</text>
+<text x="1112" y="540" class="s">not yet identified</text>
+<rect x="130" y="592" width="210" height="150" rx="6" class="card s-ccx f-ccx"/>
+<text x="142" y="613" class="t">CCX · Thread</text>
+<text x="142" y="633" class="s">2.4 GHz, 802.15.4 channel 25</text>
+<text x="142" y="649" class="s">CBOR messages, integer keys</text>
+<text x="142" y="665" class="s">CoAP :5683 to devices (RLOC)</text>
+<text x="142" y="681" class="s">key from LEAP or Designer DB</text>
+<text x="142" y="697" class="s">codename Pegasus</text>
+<text x="142" y="713" class="s">BLE GATT: app commissions,</text>
+<text x="142" y="729" class="s">delivers key (TLS in GATT)</text>
+<rect x="360" y="592" width="730" height="150" rx="6" class="card s-cca f-cca"/>
+<text x="372" y="613" class="t">CCA · Clear Connect Type A · 433 MHz</text>
+<text x="372" y="633" class="s">433.602844 MHz default (ch 26)</text>
+<text x="372" y="648.5" class="s">15 channels: 431.0 + 0.1 x ch MHz</text>
+<text x="372" y="664" class="s">2-FSK, 62.5 kBd, 41.2 kHz dev</text>
+<text x="372" y="679.5" class="s">async N81 + CRC-16, TDMA slots</text>
+<text x="372" y="695" class="s">24 B and 53 B packets</text>
+<text x="372" y="710.5" class="s">OTA: one channel, 433.566 MHz</text>
+<text x="372" y="726" class="s">same frames as wired QS Link</text>
+<line x1="740" y1="705" x2="1070" y2="705" class="axis"/>
+<line x1="740" y1="705" x2="740" y2="709" class="axis"/>
+<text x="740" y="721" class="s" text-anchor="middle">431</text>
+<line x1="795" y1="705" x2="795" y2="709" class="axis"/>
+<text x="795" y="721" class="s" text-anchor="middle">432</text>
+<line x1="850" y1="705" x2="850" y2="709" class="axis"/>
+<text x="850" y="721" class="s" text-anchor="middle">433</text>
+<line x1="905" y1="705" x2="905" y2="709" class="axis"/>
+<text x="905" y="721" class="s" text-anchor="middle">434</text>
+<line x1="960" y1="705" x2="960" y2="709" class="axis"/>
+<text x="960" y="721" class="s" text-anchor="middle">435</text>
+<line x1="1015" y1="705" x2="1015" y2="709" class="axis"/>
+<text x="1015" y="721" class="s" text-anchor="middle">436</text>
+<line x1="1070" y1="705" x2="1070" y2="709" class="axis"/>
+<text x="1070" y="721" class="s" text-anchor="middle">437</text>
+<line x1="767.5" y1="685" x2="767.5" y2="705" class="tick"/>
+<line x1="816.9999999999987" y1="685" x2="816.9999999999987" y2="705" class="tick"/>
+<line x1="833.4999999999993" y1="685" x2="833.4999999999993" y2="705" class="tick"/>
+<line x1="850" y1="685" x2="850" y2="705" class="tick"/>
+<line x1="866.5000000000007" y1="685" x2="866.5000000000007" y2="705" class="tick"/>
+<line x1="883.0000000000013" y1="671" x2="883.0000000000013" y2="705" class="tick" style="stroke-width:3"/>
+<line x1="899.4999999999987" y1="685" x2="899.4999999999987" y2="705" class="tick"/>
+<line x1="915.9999999999993" y1="685" x2="915.9999999999993" y2="705" class="tick"/>
+<line x1="949.0000000000007" y1="685" x2="949.0000000000007" y2="705" class="tick"/>
+<line x1="965.5000000000013" y1="685" x2="965.5000000000013" y2="705" class="tick"/>
+<line x1="981.9999999999987" y1="685" x2="981.9999999999987" y2="705" class="tick"/>
+<line x1="998.4999999999993" y1="685" x2="998.4999999999993" y2="705" class="tick"/>
+<line x1="1015" y1="685" x2="1015" y2="705" class="tick"/>
+<line x1="1031.5000000000007" y1="685" x2="1031.5000000000007" y2="705" class="tick"/>
+<line x1="1048.0000000000014" y1="685" x2="1048.0000000000014" y2="705" class="tick"/>
+<text x="883.0000000000013" y="665" class="el" text-anchor="middle">ch 26 default</text>
+<text x="905" y="735" class="s" text-anchor="middle">MHz · 15 valid channels, to scale</text>
+<text x="740" y="619" class="s">Per-processor channel; picos need manual re-channel</text>
+<rect x="1100" y="592" width="150" height="150" rx="6" class="card s-qs f-qs"/>
+<text x="1112" y="613" class="t">QS Link · RS-485</text>
+<text x="1112" y="633" class="s">wired, commercial lines</text>
+<text x="1112" y="649" class="s">packet layout CCA</text>
+<text x="1112" y="665" class="s">reuses over the air</text>
+<text x="1112" y="681" class="s">Grafik Eye, HWQS,</text>
+<text x="1112" y="697" class="s">ESN, Quantum</text>
+<rect x="130" y="792" width="190" height="100" rx="6" class="box"/>
+<text x="142" y="813" class="t">Sunnata · Darter</text>
+<text x="142" y="832" class="s">dimmers, keypads (CCX)</text>
+<text x="142" y="848" class="s">RRST = HRST = ARST</text>
+<text x="142" y="864" class="s">CoAP-programmable</text>
+<rect x="360" y="792" width="200" height="100" rx="6" class="box"/>
+<text x="372" y="813" class="t">Picos · sensors</text>
+<text x="372" y="832" class="s">one-way CCA transmitters</text>
+<text x="372" y="848" class="s">DEVICE path: no fade field</text>
+<text x="372" y="864" class="s">we can imitate a Pico</text>
+<rect x="570" y="792" width="200" height="100" rx="6" class="box"/>
+<text x="582" y="813" class="t">Caseta · CCA dimmers</text>
+<text x="582" y="832" class="s">two-way CCA, auto-channel</text>
+<text x="582" y="848" class="s">accept any subnet value</text>
+<text x="582" y="864" class="s">pair to our fake bridge</text>
+<rect x="780" y="792" width="310" height="100" rx="6" class="box"/>
+<text x="792" y="813" class="t">PowPak RMJ / LMJ / RMJS</text>
+<text x="792" y="832" class="s">HCS08 (QE128) + CC1101, factory secured</text>
+<text x="792" y="848" class="s">4-byte DeviceClass sets identity</text>
+<text x="792" y="864" class="s">OTA wake-up + transfer sequence decoded</text>
+<rect x="1100" y="792" width="150" height="100" rx="6" class="box"/>
+<text x="1112" y="813" class="t">Wired QS gear</text>
+<text x="1112" y="832" class="s">Grafik Eye QS</text>
+<text x="1112" y="848" class="s">HomeWorks QS</text>
+<text x="1112" y="864" class="s">ESN-QS</text>
+<rect x="124" y="930" width="702" height="172" rx="8" class="ours"/>
+<text x="140" y="952" class="t">openlutron transceiver</text><text x="582" y="952" class="s">STM32H723 Nucleo · FreeRTOS + lwIP</text>
+<rect x="140" y="966" width="190" height="122" rx="6" class="box"/>
+<text x="152" y="987" class="t">nRF52840 (NCP)</text>
+<text x="152" y="1006" class="s">Spinel/HDLC to STM32</text>
+<text x="152" y="1022" class="s">Thread sniff + TX</text>
+<text x="152" y="1038" class="s">SWD reflash from Nucleo</text>
+<text x="152" y="1054" class="s">CoAP get / scan / observe</text>
+<rect x="350" y="966" width="220" height="122" rx="6" class="box"/>
+<text x="362" y="987" class="t">CC1101 (433 MHz)</text>
+<text x="362" y="1006" class="s">RX on sync-word match</text>
+<text x="362" y="1022" class="s">TX as Pico or bridge</text>
+<text x="362" y="1038" class="s">pairing engine</text>
+<text x="362" y="1054" class="s">OTA TX driver (in dev)</text>
+<rect x="590" y="966" width="224" height="122" rx="6" class="box"/>
+<text x="602" y="987" class="t">Shell + stream</text>
+<text x="602" y="1006" class="s">USART3 to ST-LINK VCP (USB)</text>
+<text x="602" y="1022" class="s">UDP :9433 over Ethernet</text>
+<text x="602" y="1038" class="s">ts + RSSI + CCX source</text>
+<text x="602" y="1054" class="s">flash / debug: ST-LINK USB</text>
+<rect x="846" y="930" width="404" height="172" rx="8" class="ours"/>
+<text x="862" y="952" class="t">Host tooling · TypeScript (tsx)</text>
+<text x="862" y="976" class="s" style="fill:var(--ink)">cli/nucleo.ts: TUI + packet decoder</text>
+<text x="862" y="994" class="s" style="fill:var(--ink)">protocol/*.ts: one source, codegen to C</text>
+<text x="862" y="1012" class="s" style="fill:var(--ink)">tools/: leap-dump, ipl-monitor, ccx, cca</text>
+<text x="862" y="1030" class="s" style="fill:var(--ink)">IPL client, Designer RE notes</text>
+<text x="862" y="1048" class="s" style="fill:var(--ink)">firmware RE: Ghidra / Binary Ninja / BDM</text>
+<text x="862" y="1066" class="s" style="fill:var(--ink)">CCX to WiZ bridge, HA add-on, WiZ bulbs</text>
+<rect x="862" y="1074" width="204.7" height="22" rx="11" class="chip" style="stroke:var(--leap);stroke-dasharray:2 3"/>
+<circle cx="873" cy="1085" r="3.5" class="f-leap"/>
+<text x="882" y="1089" class="s">LEAP to Phoenix, Caseta, Vive</text>
+<rect x="1082" y="1074" width="110.2" height="22" rx="11" class="chip" style="stroke:var(--ipl);stroke-dasharray:2 3"/>
+<circle cx="1093" cy="1085" r="3.5" class="f-ipl"/>
+<text x="1102" y="1089" class="s">IPL to Phoenix</text>
+<path d="M814,1000 L846,1000" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<text x="830" y="991" class="el" text-anchor="middle">UDP</text>
+<path d="M814,1050 L846,1050" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<text x="830" y="1041" class="el" text-anchor="middle">USB</text>
+<text x="20" y="1134" class="bl">DONE HERE</text>
+<rect x="130" y="1120" width="110.2" height="22" rx="11" class="chip" style="stroke:var(--cca)"/>
+<circle cx="141" cy="1131" r="3.5" class="f-cca"/>
+<text x="150" y="1135" class="s">imitate a Pico</text>
+<rect x="248.2" y="1120" width="148" height="22" rx="11" class="chip" style="stroke:var(--cca)"/>
+<circle cx="259.2" cy="1131" r="3.5" class="f-cca"/>
+<text x="268.2" y="1135" class="s">fake bridge + subnet</text>
+<rect x="404.2" y="1120" width="211" height="22" rx="11" class="chip" style="stroke:var(--cca)"/>
+<circle cx="415.2" cy="1131" r="3.5" class="f-cca"/>
+<text x="424.2" y="1135" class="s">pair + configure fade/trim/LED</text>
+<rect x="623.2" y="1120" width="116.5" height="22" rx="11" class="chip" style="stroke:var(--cca)"/>
+<circle cx="634.2" cy="1131" r="3.5" class="f-cca"/>
+<text x="643.2" y="1135" class="s">OTA TX (in dev)</text>
+<rect x="747.7" y="1120" width="122.8" height="22" rx="11" class="chip" style="stroke:var(--ccx)"/>
+<circle cx="758.7" cy="1131" r="3.5" class="f-ccx"/>
+<text x="767.7" y="1135" class="s">CoAP programming</text>
+<rect x="878.5" y="1120" width="160.6" height="22" rx="11" class="chip" style="stroke:var(--leap)"/>
+<circle cx="889.5" cy="1131" r="3.5" class="f-leap"/>
+<text x="898.5" y="1135" class="s">virtual devices to WiZ</text>
+<rect x="1047.1" y="1120" width="148" height="22" rx="11" class="chip" style="stroke:var(--ipl)"/>
+<circle cx="1058.1" cy="1131" r="3.5" class="f-ipl"/>
+<text x="1067.1" y="1135" class="s">cross-family pairing</text>
+<text x="20" y="1177" class="bl">KEY</text>
+<line x1="130" y1="1173" x2="156" y2="1173" class="e s-leap"/>
+<text x="162" y="1177" class="s">LEAP</text>
+<line x1="208.8" y1="1173" x2="234.8" y2="1173" class="e s-ipl"/>
+<text x="240.8" y="1177" class="s">IPL</text>
+<line x1="281.4" y1="1173" x2="307.4" y2="1173" class="e s-cloud"/>
+<text x="313.4" y="1177" class="s">cloud</text>
+<line x1="366.4" y1="1173" x2="392.4" y2="1173" class="e s-cca"/>
+<text x="398.4" y="1177" class="s">CCA 433 MHz</text>
+<line x1="488.59999999999997" y1="1173" x2="514.5999999999999" y2="1173" class="e s-ccx"/>
+<text x="520.5999999999999" y="1177" class="s">CCX Thread</text>
+<line x1="604.5999999999999" y1="1173" x2="630.5999999999999" y2="1173" class="e s-ble dash"/>
+<text x="636.5999999999999" y="1177" class="s">BLE (dashed)</text>
+<line x1="732.9999999999999" y1="1173" x2="758.9999999999999" y2="1173" class="e s-qs"/>
+<text x="764.9999999999999" y="1177" class="s">QS Link wired</text>
+<line x1="867.5999999999999" y1="1173" x2="893.5999999999999" y2="1173" class="e s-gray"/>
+<text x="899.5999999999999" y="1177" class="s">UART / telnet</text>
+<rect x="998.1999999999999" y="1162" width="204.7" height="22" rx="11" class="chip" style="stroke:var(--gray);stroke-dasharray:2 3"/>
+<circle cx="1009.1999999999999" cy="1173" r="3.5" class="f-gray"/>
+<text x="1018.1999999999999" y="1177" class="s">dotted: our LEAP / IPL access</text>
+<path d="M200,210 L200,252" class="e s-leap" marker-end="url(#a-leap)" marker-start="url(#a-leap)"/>
+<text x="208" y="235" class="el" text-anchor="start">LEAP</text>
+<path d="M470,210 L470,252" class="e s-ipl" marker-end="url(#a-ipl)" marker-start="url(#a-ipl)"/>
+<text x="478" y="235" class="el" text-anchor="start">IPL TLS :8902 / WSS</text>
+<path d="M700,210 L700,252" class="e s-cloud" marker-end="url(#a-cloud)" marker-start="url(#a-cloud)"/>
+<text x="708" y="235" class="el" text-anchor="start">LEAP relay</text>
+<path d="M870,210 L870,252" class="e s-leap" marker-end="url(#a-leap)" marker-start="url(#a-leap)"/>
+<text x="878" y="235" class="el" text-anchor="start">LEAP</text>
+<path d="M1000,210 L1000,252" class="e s-leap" marker-end="url(#a-leap)" marker-start="url(#a-leap)"/>
+<path d="M1175,210 L1175,252" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<text x="1183" y="235" class="el" text-anchor="start">telnet</text>
+<path d="M230,412 L230,452" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<text x="238" y="436" class="el" text-anchor="start">UART IPC</text>
+<path d="M450,412 L450,452" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<path d="M735,412 L735,452" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<text x="743" y="436" class="el" text-anchor="start">UART IPC /dev/ttyO1</text>
+<path d="M1000,412 L1000,452" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<path d="M1175,412 L1175,452" class="e s-gray" marker-end="url(#a-gray)" marker-start="url(#a-gray)"/>
+<path d="M230,552 L230,592" class="e s-ccx" marker-end="url(#a-ccx)" marker-start="url(#a-ccx)"/>
+<path d="M450,552 L450,592" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M735,552 L735,592" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M1000,552 L1000,592" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M1175,552 L1175,592" class="e s-qs" marker-end="url(#a-qs)" marker-start="url(#a-qs)"/>
+<path d="M130,130 L123,130 L123,722 L130,722" class="e s-ble dash" marker-end="url(#a-ble)" marker-start="url(#a-ble)"/>
+<path d="M225,742 L225,792" class="e s-ccx" marker-end="url(#a-ccx)" marker-start="url(#a-ccx)"/>
+<path d="M460,742 L460,792" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M670,742 L670,792" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M935,742 L935,792" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<path d="M1175,742 L1175,792" class="e s-qs" marker-end="url(#a-qs)" marker-start="url(#a-qs)"/>
+<path d="M322,966 L322,742" class="e s-ccx" marker-end="url(#a-ccx)" marker-start="url(#a-ccx)"/>
+<text x="316" y="912" class="el" text-anchor="end">sniff + TX</text>
+<path d="M565,966 L565,742" class="e s-cca" marker-end="url(#a-cca)" marker-start="url(#a-cca)"/>
+<text x="573" y="912" class="el" text-anchor="start">sniff · TX · pair · OTA</text>
+</svg>

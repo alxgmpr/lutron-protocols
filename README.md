@@ -4,6 +4,8 @@ Protocol research and firmware tools for Lutron lighting control systems, coveri
 
 Supports Phoenix, Caseta, and Vive product families.
 
+<p align="center"><img src="docs/img/lutron-architecture.svg" alt="Lutron control stack: cloud, processors, coprocessors, radios, end devices, and the openlutron transceiver" width="100%"></p>
+
 <img width="912" height="740" alt="image" src="https://github.com/user-attachments/assets/de5c9715-4d1f-4f45-b770-9e668852199d" />
 
 ## Background
