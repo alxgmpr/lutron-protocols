@@ -22,7 +22,7 @@
 static const uint8_t cca_rx_preset[] = {
     0x02, 0x06, // IOCFG0: sync detect
     0x03, 0x07, // FIFOTHR
-    0x04, 0xAA, // SYNC1  (preamble sync, 15/16 match)
+    0x04, 0xAA, // SYNC1  (preamble sync, 16/16 match)
     0x05, 0xAA, // SYNC0
     0x06, RX_PKT_LEN, // PKTLEN
     0x07, 0x00, // PKTCTRL1
@@ -33,7 +33,7 @@ static const uint8_t cca_rx_preset[] = {
     0x0C, 0x00, // FSCTRL0
     0x10, 0x5B, // MDMCFG4
     0x11, 0x3B, // MDMCFG3  (~62.5 kBd)
-    0x12, 0x01, // MDMCFG2: 2-FSK, 15/16 sync
+    0x12, 0x02, // MDMCFG2: 2-FSK, 16/16 sync (15/16 fires on noise ~8x/s)
     0x13, 0x00, // MDMCFG1
     0x14, 0x00, // MDMCFG0
     0x15, 0x45, // DEVIATN
