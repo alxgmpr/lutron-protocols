@@ -82,6 +82,7 @@ static const uint8_t PKT_PICO_HOLD = 0xE3;
 static const uint8_t PKT_PICO_EXTENDED = 0xE4;
 static const uint8_t PKT_OTA_DATA = 0xE5;
 static const uint8_t PKT_SENSOR_EVENT = 0xE6;
+static const uint8_t PKT_SENSOR_EXTENDED = 0xE7;
 static const uint8_t PKT_UNPAIR = 0xF0;
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;
 static const uint8_t PKT_LED_CONFIG = 0xF2;
