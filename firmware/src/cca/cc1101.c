@@ -330,16 +330,45 @@ static void apply_tx_regs(void)
     cc1101_write_register(CC1101_PKTCTRL0, 0x00);
 }
 
-/* RX: preamble sync 0xAAAA (15/16 match), fixed-length RX_PKT_LEN.
- * The decoder scans for the 7F CB data sync within the captured bytes. */
+/* RX: preamble sync 0xAAAA (16/16 match), fixed-length RX_PKT_LEN.
+ * The decoder scans for the FA DE data sync within the captured bytes.
+ *
+ * 16/16, not 15/16: with a ~-77 dBm noise floor, 15/16 fired on noise ~8x/s (17 matching
+ * patterns vs 1), each one blinding RX for an 80-byte capture. 16/16 cuts that to ~0.5/s
+ * with no loss vs the Flipper reference. Rejected (2026-11-11 A/B): carrier sense (noise
+ * sits above every CS threshold), PQT 16 and 30/32 sync (real preambles too short). */
+static uint8_t rx_sync1_ = 0xAA, rx_sync0_ = 0xAA, rx_mdmcfg2_ = 0x02, rx_pktctrl1_ = 0x00;
+
 static void apply_rx_regs(void)
 {
-    cc1101_write_register(CC1101_SYNC1, 0xAA);
-    cc1101_write_register(CC1101_SYNC0, 0xAA);
-    cc1101_write_register(CC1101_MDMCFG2, 0x01);
+    cc1101_write_register(CC1101_SYNC1, rx_sync1_);
+    cc1101_write_register(CC1101_SYNC0, rx_sync0_);
+    cc1101_write_register(CC1101_MDMCFG2, rx_mdmcfg2_);
     cc1101_write_register(CC1101_PKTCTRL0, 0x00);
-    cc1101_write_register(CC1101_PKTCTRL1, 0x00);
+    cc1101_write_register(CC1101_PKTCTRL1, rx_pktctrl1_);
     cc1101_write_register(CC1101_PKTLEN, RX_PKT_LEN);
+}
+
+/* apply_rx_regs() rewrites these on every RX start, so a live `cca tune reg set`
+ * has to land here too or the next start_rx reverts it. */
+bool cc1101_set_rx_reg(uint8_t reg, uint8_t value)
+{
+    switch (reg) {
+    case CC1101_SYNC1:
+        rx_sync1_ = value;
+        return true;
+    case CC1101_SYNC0:
+        rx_sync0_ = value;
+        return true;
+    case CC1101_MDMCFG2:
+        rx_mdmcfg2_ = value;
+        return true;
+    case CC1101_PKTCTRL1:
+        rx_pktctrl1_ = value;
+        return true;
+    default:
+        return false;
+    }
 }
 
 /* -----------------------------------------------------------------------
@@ -452,9 +481,9 @@ static void restart_rx_fast(void)
 /* -----------------------------------------------------------------------
  * RX start / stop
  *
- * Uses preamble sync (0xAAAA, 15/16 match) + fixed-length mode (80 bytes).
+ * Uses preamble sync (0xAAAA, 16/16 match) + fixed-length mode (80 bytes).
  * The CC1101 locks onto the alternating preamble, then reads 80 bytes
- * of FIFO data containing the packet.  The decoder scans for the 7F CB
+ * of FIFO data containing the packet.  The decoder scans for the FA DE
  * data sync marker within those 80 bytes.
  * ----------------------------------------------------------------------- */
 void cc1101_start_rx(void)

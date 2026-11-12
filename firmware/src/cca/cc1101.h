@@ -184,6 +184,8 @@ bool cc1101_set_runtime_tuning(const cc1101_runtime_tuning_t* in);
 
 /** Apply one of the built-in tuning profiles */
 bool cc1101_apply_tune_profile(cc1101_tune_profile_t profile);
+/* Record an RX-mode sync/packet reg so cc1101_start_rx keeps it. Returns false if not one. */
+bool cc1101_set_rx_reg(uint8_t reg, uint8_t value);
 cc1101_tune_profile_t cc1101_get_tune_profile(void);
 const char* cc1101_tune_profile_name(cc1101_tune_profile_t profile);
 
