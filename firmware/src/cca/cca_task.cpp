@@ -201,7 +201,7 @@ static void on_rx_packet(const uint8_t* data, size_t len, int8_t rssi, uint32_t 
             crc_optional_count++;
         }
         if (pkt.n81_errors > 0) n81_err_count++;
-        if (pkt.type_byte == 0x0B) ack_count++;
+        if (pkt.raw_len == 5) ack_count++; /* any short ACK, not just 0x0B */
         cca_tdma_on_rx(&pkt, timestamp_ms);
 
         /* Stream immediately — bypass the drain-silence window so the host

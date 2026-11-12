@@ -123,7 +123,7 @@ class CcaDecoder {
                 }
             }
 
-            if (!have_dimmer_ack && decoded_len >= 5 && decoded[0] == 0x0B) {
+            if (!have_dimmer_ack && cca_short_ack_valid(decoded, decoded_len)) {
                 if (try_parse_dimmer_ack(decoded, decoded_len, dimmer_ack)) {
                     have_dimmer_ack = true;
                 }
@@ -306,26 +306,31 @@ class CcaDecoder {
         return true;
     }
 
+    /* 5-byte device ACKs (type < 0x40, no CRC). The key table and the
+     * check live in cca_generated.h (protocol/cca.protocol.ts ShortAckKeys). */
     static bool try_parse_dimmer_ack(const uint8_t* decoded, size_t decoded_len, DecodedPacket& packet)
     {
-        if (decoded_len < 5 || decoded[0] != 0x0B) return false;
-        if (decoded[3] != (decoded[1] ^ 0x26)) return false;
+        if (!cca_short_ack_valid(decoded, decoded_len)) return false;
 
         packet.clear();
         packet.valid = true;
-        packet.type_byte = 0x0B;
-        packet.type = 0x0B;
+        packet.type_byte = decoded[0];
+        packet.type = decoded[0];
         packet.sequence = decoded[1];
 
-        uint8_t corrected_2 = decoded[2] ^ 0xFE;
-        uint8_t corrected_4 = decoded[4] ^ 0xFE;
+        /* 0x0B only: the CC1101 reads bytes 2 and 4 XOR 0xFE against RTL-SDR
+         * (docs/protocols/cca/index.md). Not seen on the other short types —
+         * 0x07's byte 2 matches the commanded level uncorrected. */
+        uint8_t fix = decoded[0] == 0x0B ? 0xFE : 0x00;
+        uint8_t corrected_2 = decoded[2] ^ fix;
+        uint8_t corrected_4 = decoded[4] ^ fix;
 
         packet.format_byte = corrected_2;
         packet.has_format = true;
         packet.level = corrected_4;
         packet.crc_valid = true;
 
-        packet.raw[0] = 0x0B;
+        packet.raw[0] = decoded[0];
         packet.raw[1] = decoded[1];
         packet.raw[2] = corrected_2;
         packet.raw[3] = decoded[3];

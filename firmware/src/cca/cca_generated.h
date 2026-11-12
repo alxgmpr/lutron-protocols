@@ -20,10 +20,22 @@ static const size_t CCA_PKT_STANDARD_LEN = 24;
 static const size_t CCA_PKT_PAIRING_LEN = 53;
 
 // Packet type constants
+static const uint8_t PKT_ACK_05 = 0x05;
+static const uint8_t PKT_ACK_06 = 0x06;
+static const uint8_t PKT_ACK_07 = 0x07;
+static const uint8_t PKT_ACK_09 = 0x09;
+static const uint8_t PKT_ACK_0A = 0x0A;
+static const uint8_t PKT_ACK_0B = 0x0B;
+static const uint8_t PKT_ACK_15 = 0x15;
+static const uint8_t PKT_ACK_16 = 0x16;
+static const uint8_t PKT_ACK_17 = 0x17;
 static const uint8_t PKT_STATE_REPORT_80 = 0x80;
 static const uint8_t PKT_STATE_REPORT_81 = 0x81;
 static const uint8_t PKT_STATE_REPORT_82 = 0x82;
 static const uint8_t PKT_STATE_REPORT_83 = 0x83;
+static const uint8_t PKT_SEGMENT_85 = 0x85;
+static const uint8_t PKT_SEGMENT_86 = 0x86;
+static const uint8_t PKT_SEGMENT_87 = 0x87;
 static const uint8_t PKT_BTN_SHORT_A = 0x88;
 static const uint8_t PKT_BTN_LONG_A = 0x89;
 static const uint8_t PKT_BTN_SHORT_B = 0x8A;
@@ -35,7 +47,16 @@ static const uint8_t PKT_CONFIG_A1 = 0xA1;
 static const uint8_t PKT_LEVEL = 0xA2;
 static const uint8_t PKT_SET_LEVEL = 0xA2;
 static const uint8_t PKT_CONFIG_A3 = 0xA3;
+static const uint8_t PKT_SEGMENT_A5 = 0xA5;
+static const uint8_t PKT_SEGMENT_A6 = 0xA6;
+static const uint8_t PKT_SEGMENT_A7 = 0xA7;
+static const uint8_t PKT_CONFIG_A9 = 0xA9;
+static const uint8_t PKT_CONFIG_AA = 0xAA;
+static const uint8_t PKT_CONFIG_AB = 0xAB;
 static const uint8_t PKT_PAIRING_B0 = 0xB0;
+static const uint8_t PKT_PAIR_B1 = 0xB1;
+static const uint8_t PKT_PAIR_B2 = 0xB2;
+static const uint8_t PKT_PAIR_B3 = 0xB3;
 static const uint8_t PKT_PAIRING_B8 = 0xB8;
 static const uint8_t PKT_PAIRING_B9 = 0xB9;
 static const uint8_t PKT_PAIRING_BA = 0xBA;
@@ -59,6 +80,7 @@ static const uint8_t PKT_DIM_STEP = 0xE1;
 static const uint8_t PKT_DIM_STOP = 0xE2;
 static const uint8_t PKT_PICO_HOLD = 0xE3;
 static const uint8_t PKT_PICO_EXTENDED = 0xE4;
+static const uint8_t PKT_OTA_DATA = 0xE5;
 static const uint8_t PKT_UNPAIR = 0xF0;
 static const uint8_t PKT_UNPAIR_PREP = 0xF1;
 static const uint8_t PKT_LED_CONFIG = 0xF2;
@@ -196,6 +218,24 @@ static const uint16_t QS_SENSOR_LUX_MAX = 0x0640;            /* Maximum sensor r
 inline const char* cca_packet_type_name(uint8_t type_byte)
 {
     switch (type_byte) {
+    case 0x05:
+        return "ACK_05";
+    case 0x06:
+        return "ACK_06";
+    case 0x07:
+        return "ACK_07";
+    case 0x09:
+        return "ACK_09";
+    case 0x0A:
+        return "ACK_0A";
+    case 0x0B:
+        return "ACK_0B";
+    case 0x15:
+        return "ACK_15";
+    case 0x16:
+        return "ACK_16";
+    case 0x17:
+        return "ACK_17";
     case 0x80:
         return "STATE_80";
     case 0x81:
@@ -204,6 +244,12 @@ inline const char* cca_packet_type_name(uint8_t type_byte)
         return "STATE_RPT_82";
     case 0x83:
         return "STATE_RPT_83";
+    case 0x85:
+        return "SEGMENT_85";
+    case 0x86:
+        return "SEGMENT_86";
+    case 0x87:
+        return "SEGMENT_87";
     case 0x88:
         return "BTN_SHORT_A";
     case 0x89:
@@ -224,8 +270,26 @@ inline const char* cca_packet_type_name(uint8_t type_byte)
         return "SET_LEVEL";
     case 0xA3:
         return "CONFIG_A3";
+    case 0xA5:
+        return "SEGMENT_A5";
+    case 0xA6:
+        return "SEGMENT_A6";
+    case 0xA7:
+        return "SEGMENT_A7";
+    case 0xA9:
+        return "CONFIG_A9";
+    case 0xAA:
+        return "CONFIG_AA";
+    case 0xAB:
+        return "CONFIG_AB";
     case 0xB0:
         return "PAIR_B0";
+    case 0xB1:
+        return "PAIR_B1";
+    case 0xB2:
+        return "PAIR_B2";
+    case 0xB3:
+        return "PAIR_B3";
     case 0xB8:
         return "PAIR_B8";
     case 0xB9:
@@ -270,11 +334,52 @@ inline const char* cca_packet_type_name(uint8_t type_byte)
 // Get expected packet length for a type byte.
 inline int cca_get_packet_length(uint8_t type_byte)
 {
-    if (type_byte == 0x0B) return 5;
+    switch (type_byte) {
+    case 0x05:
+    case 0x06:
+    case 0x07:
+    case 0x09:
+    case 0x0A:
+    case 0x0B:
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 5;
+    default:
+        break;
+    }
     if (type_byte >= 0x80 && type_byte <= 0x9F) return 24;
     if (type_byte >= 0xA0 && type_byte <= 0xBF) return 53;
     if (type_byte >= 0xC0 && type_byte <= 0xEF) return 24;
     return 0;
+}
+
+// Short ACK check: bytes 3-4 are bytes 1-2 XOR a per-type key (no CRC).
+inline bool cca_short_ack_valid(const uint8_t* b, size_t len)
+{
+    if (len < 5) return false;
+    switch (b[0]) {
+    case 0x05:
+        return (uint8_t)(b[1] ^ b[3]) == 0x76 && (uint8_t)(b[2] ^ b[4]) == 0x2D;
+    case 0x06:
+        return (uint8_t)(b[1] ^ b[3]) == 0xE2 && (uint8_t)(b[2] ^ b[4]) == 0x33;
+    case 0x07:
+        return (uint8_t)(b[1] ^ b[3]) == 0x28 && (uint8_t)(b[2] ^ b[4]) == 0x3C;
+    case 0x09:
+        return (uint8_t)(b[1] ^ b[3]) == 0x78 && (uint8_t)(b[2] ^ b[4]) == 0x44;
+    case 0x0A:
+        return (uint8_t)(b[1] ^ b[3]) == 0xEC && (uint8_t)(b[2] ^ b[4]) == 0x5A;
+    case 0x0B:
+        return (uint8_t)(b[1] ^ b[3]) == 0x26 && (uint8_t)(b[2] ^ b[4]) == 0x55;
+    case 0x15:
+        return (uint8_t)(b[1] ^ b[3]) == 0xD8 && (uint8_t)(b[2] ^ b[4]) == 0xB4;
+    case 0x16:
+        return (uint8_t)(b[1] ^ b[3]) == 0x4C && (uint8_t)(b[2] ^ b[4]) == 0xAA;
+    case 0x17:
+        return (uint8_t)(b[1] ^ b[3]) == 0x86 && (uint8_t)(b[2] ^ b[4]) == 0xA5;
+    default:
+        return false;
+    }
 }
 
 // Check if type byte is a button press
@@ -286,7 +391,7 @@ inline bool cca_is_button_type(uint8_t type_byte)
 // Check if type byte is a pairing announcement
 inline bool cca_is_pairing_type(uint8_t type_byte)
 {
-    return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 || type_byte == 0xBA || type_byte == 0xBB;
+    return (type_byte >= 0xB0 && type_byte <= 0xB3) || (type_byte >= 0xB8 && type_byte <= 0xBB);
 }
 
 // Check if type byte is a handshake
@@ -299,6 +404,18 @@ inline bool cca_is_handshake_type(uint8_t type_byte)
 inline bool cca_uses_be_device_id(uint8_t type_byte)
 {
     switch (type_byte) {
+    case 0x05:
+    case 0x06:
+    case 0x07:
+    case 0x09:
+    case 0x0A:
+    case 0x0B:
+    case 0x15:
+    case 0x16:
+    case 0x17:
+    case 0x85:
+    case 0x86:
+    case 0x87:
     case 0x88:
     case 0x89:
     case 0x8A:
@@ -306,7 +423,13 @@ inline bool cca_uses_be_device_id(uint8_t type_byte)
     case 0x91:
     case 0x92:
     case 0x93:
+    case 0xA5:
+    case 0xA6:
+    case 0xA7:
     case 0xB0:
+    case 0xB1:
+    case 0xB2:
+    case 0xB3:
     case 0xB8:
     case 0xB9:
     case 0xBA:

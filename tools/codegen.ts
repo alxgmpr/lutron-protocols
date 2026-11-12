@@ -11,7 +11,7 @@ import { writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import type { StringLookup } from "../lib/data-values";
-import { CCA } from "../protocol/cca.protocol";
+import { CCA, ShortAckKeys } from "../protocol/cca.protocol";
 import { CCX } from "../protocol/ccx.protocol";
 import type { ConstantGroup, PacketTypeDef } from "../protocol/dsl";
 
@@ -190,11 +190,31 @@ function generateCCAHeader(): string {
 
   out +=
     "// Get expected packet length for a type byte.\ninline int cca_get_packet_length(uint8_t type_byte) {\n";
-  out += "  if (type_byte == 0x0B) return 5;\n";
+  const shortTypes = Object.keys(ShortAckKeys).map(Number);
+  out +=
+    "  switch (type_byte) {\n" +
+    shortTypes.map((t) => "    case " + hex(t) + ":\n").join("") +
+    "      return 5;\n    default:\n      break;\n  }\n";
   out += "  if (type_byte >= 0x80 && type_byte <= 0x9F) return 24;\n";
   out += "  if (type_byte >= 0xA0 && type_byte <= 0xBF) return 53;\n";
   out +=
     "  if (type_byte >= 0xC0 && type_byte <= 0xEF) return 24;\n  return 0;\n}\n\n";
+
+  out +=
+    "// Short ACK check: bytes 3-4 are bytes 1-2 XOR a per-type key (no CRC).\n" +
+    "inline bool cca_short_ack_valid(const uint8_t *b, size_t len) {\n" +
+    "  if (len < 5) return false;\n  switch (b[0]) {\n";
+  for (const [t, [k1, k2]] of Object.entries(ShortAckKeys)) {
+    out +=
+      "    case " +
+      hex(Number(t)) +
+      ": return (uint8_t)(b[1] ^ b[3]) == " +
+      hex(k1) +
+      " && (uint8_t)(b[2] ^ b[4]) == " +
+      hex(k2) +
+      ";\n";
+  }
+  out += "    default: return false;\n  }\n}\n\n";
 
   out +=
     "// Check if type byte is a button press\ninline bool cca_is_button_type(uint8_t type_byte) {\n";
@@ -203,7 +223,7 @@ function generateCCAHeader(): string {
   out +=
     "// Check if type byte is a pairing announcement\ninline bool cca_is_pairing_type(uint8_t type_byte) {\n";
   out +=
-    "  return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 ||\n         type_byte == 0xBA || type_byte == 0xBB;\n}\n\n";
+    "  return (type_byte >= 0xB0 && type_byte <= 0xB3) ||\n         (type_byte >= 0xB8 && type_byte <= 0xBB);\n}\n\n";
 
   out +=
     "// Check if type byte is a handshake\ninline bool cca_is_handshake_type(uint8_t type_byte) {\n";

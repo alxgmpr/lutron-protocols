@@ -115,3 +115,78 @@ test("parseFieldValue decodes broadcast and level fields", () => {
     decoded: "100%",
   });
 });
+
+test("identifyPacket names 5-byte short ACKs by their XOR check", () => {
+  // Captured reply to SET_LEVEL 0xCB7C from an HQR-3LD: status = level high byte
+  const identified = identifyPacket([0x07, 0x05, 0xcb, 0x2d, 0xf7]);
+
+  assert.equal(identified.typeName, "ACK_07");
+  assert.equal(identified.category, "ACK");
+  const status = identified.fields.find((f) => f.name === "status");
+  assert.equal(status?.offset, 2);
+});
+
+test("identifyPacket accepts a short ACK with the tail older firmware appends", () => {
+  // Pre-fix firmware streamed short ACKs through the CRC-optional fallback,
+  // padding them with whatever followed on air.
+  const hex = "072831000d617c614c3924fa";
+  const identified = identifyPacket(Buffer.from(hex, "hex"));
+
+  assert.equal(identified.typeName, "ACK_07");
+});
+
+test("identifyPacket leaves a short type unknown when its check fails", () => {
+  // Same type byte, check bytes off by one bit: a CRC-failed frame, not an ACK
+  const identified = identifyPacket([0x07, 0x05, 0xcb, 0x2d, 0xf6]);
+
+  assert.equal(identified.typeName, "0x07");
+  assert.equal(identified.category, "unknown");
+});
+
+test("identifyPacket names segmented-transfer frames, long and short", () => {
+  // Last of 3 segments (fmt 0x22), broadcast to every link (target 0x7F)
+  const long = new Uint8Array(53).fill(0xcc);
+  long.set([0xa6, 0x01, 0x21, 0x12, 0x34, 0x00, 0x7f, 0x22]);
+  const a6 = identifyPacket(long);
+  assert.equal(a6.typeName, "SEGMENT_A6");
+  assert.equal(a6.category, "CONFIG");
+  assert.equal(a6.fields.find((f) => f.name === "segment")?.offset, 7);
+  assert.equal(a6.fields.find((f) => f.name === "crc")?.offset, 51);
+
+  // 9-byte tail of a 6-segment body (fmt 0x55) fits a short frame
+  const short = new Uint8Array(24).fill(0xcc);
+  short.set([0x87, 0x85, 0x21, 0x12, 0x34, 0x00, 0x7f, 0x55]);
+  const s87 = identifyPacket(short);
+  assert.equal(s87.typeName, "SEGMENT_87");
+  assert.equal(s87.fields.find((f) => f.name === "crc")?.offset, 22);
+});
+
+test("identifyPacket splits B1-B3 into device discovery and OTA TransferData", () => {
+  const discovery = new Uint8Array(53).fill(0xcc);
+  discovery.set([0xb1, 0x01, 0xa1, 0x12, 0x34, 0x7f, 0x21, 0x13, 0x00]);
+  discovery.set([0xff, 0xff, 0xff, 0xff, 0xff, 0x08, 0x05], 9);
+  assert.equal(identifyPacket(discovery).typeName, "PAIR_B1");
+
+  const ota = new Uint8Array(53);
+  ota.set([0xb2, 0x01, 0xa1, 0x12, 0x34, 0x00, 0x21, 0x2b, 0x00]);
+  ota.set(
+    [0x01, 0x02, 0x03, 0x04, 0xfe, 0x06, 0x02, 0x00, 0x00, 0x1f, 0x1f],
+    9,
+  );
+  const data = identifyPacket(ota);
+  assert.equal(data.typeName, "OTA_DATA");
+  assert.equal(data.isVirtual, true);
+  assert.equal(data.fields.find((f) => f.name === "chunk")?.offset, 20);
+});
+
+test("identifyPacket names Vive hub config frames on A9-AB", () => {
+  // 5-byte `28 03 01 ..` prefix ahead of the body: no format match
+  const wrapped = new Uint8Array(53).fill(0xcc);
+  wrapped.set([0xaa, 0x01, 0x01, 0x02, 0x03, 0x04, 0x28, 0x03, 0x01]);
+  assert.equal(identifyPacket(wrapped).typeName, "CONFIG_AA");
+
+  // Plain A1-A3 body, so the format byte discriminates as it does there
+  const plain = new Uint8Array(53).fill(0xcc);
+  plain.set([0xab, 0x01, 0x01, 0x02, 0x03, 0x04, 0x21, 0x14, 0x00]);
+  assert.equal(identifyPacket(plain).typeName, "FUNC_MAP");
+});

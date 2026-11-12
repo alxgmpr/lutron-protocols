@@ -228,6 +228,18 @@ describe("analyzeCapture", () => {
     assert.equal(a.runs[0].sequence.lossPct, 0);
   });
 
+  it("does not read the slot-1 lead frame and the 0x87 train as one span", () => {
+    // Processor SET_LEVEL on the bench: slot 1, then 135..183 by 6. All ten
+    // frames arrived; the 1→135 jump is not 22 lost repeats.
+    const burst = [1, 135, 141, 147, 153, 159, 165, 171, 177, 183];
+    const frames = run("aaaa", [...burst, ...burst]);
+
+    const a = analyzeCapture(frames);
+
+    assert.deepEqual(a.runs[0].sequence.missing, []);
+    assert.equal(a.runs[0].sequence.lossPct, 0);
+  });
+
   it("exposes the segmented bursts so dispersion can be measured", () => {
     // slotDispersion needs the actual slot values per burst, not just a count
     // of them — where a miss landed is the whole question.

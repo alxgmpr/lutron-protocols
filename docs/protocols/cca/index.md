@@ -73,10 +73,13 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 | Type | Name | Size | Description |
 |------|------|------|-------------|
 | 0x81-0x83 | LEVEL | 24 | Level command or dimmer state report |
+| 0x85-0x87 | SEGMENT (short) | 24 | Last segment of a segmented transfer, when it fits in 14 bytes; also the zero trailer of a unicast series (§7) |
 | 0x88-0x8B | BTN / SENSOR | 24 | Button press/release (fmt 0x04/0x0E) or sensor level (fmt 0x0B) / test (fmt 0x09) |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
 | 0xA1-0xA3 | CONFIG | 53 | Configuration commands (53 bytes with 0x00 padding + CRC) |
-| 0xB0/0xB2 | DEVICE_ANNOUNCE | 53 | Device announcement during bridge pairing |
+| 0xA5-0xA7 | SEGMENT (long) | 53 | Segmented transfer: one body split across frames (§7) |
+| 0xA9-0xAB | CONFIG (Vive) | 53 | Vive hub config: the A1-A3 body behind the hub id |
+| 0xB0-0xB3 | DEVICE_ANNOUNCE | 53 | Device announcement during bridge pairing; B1-B3 also carry OTA TransferData (§9) |
 | 0xB8 | PAIR_REQ | 53 | Device pairing request (Vive) / bridge-only pairing (pico) |
 | 0xB9 | PAIR_BEACON | 53 | Direct-pair capable / Vive beacon |
 | 0xBA | PAIR_ACCEPT | 53 | Bridge-only pairing (pico) / Vive accept |
@@ -323,15 +326,40 @@ Sensors announce themselves with PAIR_BA before transfer begins. Device type 0x0
 | 20-23 | serial | Repeat 2 |
 | 28 | 0x0D | Device type repeat |
 
-**Config packet structure (A5/A6/A7/0x85):**
+**Segmented transfer (`0xA5-0xA7` long, `0x85-0x87` short):**
 
-Config packets contain the full device table as a packed serial list:
-- Each entry: `[4-byte serial BE] [0x80 separator]`, last entry uses `[0xA0]` as end-of-list
-- 6 config rounds per pass, format byte = `(round << 4) | page_type`
-- Main series: page_type=5 → formats 0x05, 0x15, 0x25, 0x35, 0x45, 0x55
-- Zone binding series: page_type=2 → formats 0x02, 0x12, 0x22
-- 3 complete passes for redundancy
-- Split across rounds is by packet capacity, NOT by device type
+A body too long for one frame is split across several. In a normal frame byte 6 is the protocol (`0x21`) and byte 7 is the body length (A2 TRIM_CONFIG `0x15` = the 21 bytes that follow). A segment frame gives those two bytes to the destination link and the segment index, and the body itself starts `21 <len>` in segment 0's payload:
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| 0 | type | `A5`/`A6`/`A7` (53 B) or `85`/`86`/`87` (24 B). Low bits step with the segment index: `A6 A7 A5 A6 A7 85`, or `A5 A6 A7 A5 A6 87` |
+| 1 | sequence | |
+| 2 | flags | `0x21` on the device-table series, `0xA1` on the per-device config series. Not an addressing bit: `0x21` series go to link `0x7F` and to single links alike |
+| 3-4 | subnet | Processor subnet (BE) |
+| 5 | `0x00` | |
+| 6 | target | Destination link address; `0x7F` = all |
+| 7 | segment | High nibble = segment index, low nibble = last segment index |
+| 8-50 / 8-21 | payload | 43 bytes per long frame, 14 per short. `CC` padding follows the last body byte |
+
+The reassembled body is `21 <len>` plus `len` bytes, so the total is `len + 2`. A last segment of 14 bytes or fewer goes out short; a longer one goes out long. Three series appear in the captures:
+
+| Segments | Bytes 7 | `len` | Total | Tail | Tail frame |
+|----------|---------|-------|-------|------|------------|
+| 2 | `01 11` | `0x44` | 70 | 27 B | long |
+| 3 | `02 12 22` | `0x68` | 106 | 20 B | long |
+| 6 | `05 15 25 35 45 55` | `0xDE` | 224 | 9 B | short (`85-87`) |
+
+*Device table (3 and 6 segments, flags `0x21`).* These are TransferData-style writes with the same shape as the OTA chunk (§9). The body is `21 len 00 <serial> FE 06 02 <ctr> <addr16> <size>` (or `FF×5` for broadcast) followed by `size` data bytes. Two 6-segment bodies write `0x0000` and `0x00D2` (210 B each, `ctr` 0/1), and the 3-segment body writes `0x01A4` (92 B, `ctr` 2). Together that is one 512-byte (`0x200`) block.
+
+The block is the CCA device table, indexed by link address: a 12-byte header (`FF FF FF FF` + `00×8`), then 100 five-byte slots, with link `L` at offset `12 + 5·L`. A slot is `[4-byte serial BE][flag]`, flag `0x80` or `0xA0` (meaning open), and an unused slot is five zero bytes. The target byte of a link-addressed series is that device's slot index. Slots are not aligned to segments, so serials straddle segment boundaries and the corpus redactor blanks segment payloads whole.
+
+Every segment is sent 8 times, 50 ms apart, sequence +4. The broadcast sends each of the three bodies once per transfer. The link-addressed series (link `0x1C` in the `failed-*` captures) sends each body 4 times.
+
+*Per-device config (2 segments, flags `0xA1`).* Seen in the `mrf3pd-*` transfers, to links `0x0E`/`0x10`/`0x16`/`0x18`/`0x19`, next to the same device's `06 50` A1-A3 frames (fmt `0x15`, `0x1C`, `0x0F`). The body is `21 44 00 <serial> FE 06 50 00 <04|09> 39` plus `0x39` = 57 data bytes: `08 00 06 00 06 00 00 00 00 00 06` then `FF×46`. Segment 0 carries the first 19 `FF`; the 27-byte tail is the other 27, in a long segment-1 frame.
+
+Each long frame of this series was seen once, sequence `01`. No capture holds a CRC-valid segment 1: it shows up twice as the start of a frame the receiver synced onto late (`A5 01 A1 <subnet> 00 0E 11 FF`, `A6 01 A1 <subnet> 00 19 11 FF FF`), and the `FF` matches the expected tail.
+
+A short frame follows with the same target and segment byte `0x11` and six zero bytes (`85 01 A1 <subnet> 00 0E 11 00 00 00 00 00 00 CC×8`). It is not body data. It comes from the processor: for links `0x10` and `0x16` its RSSI matches the processor's frames and sits 10 dB or more below the addressed device's ACKs. Where a segment 1 was caught just ahead of it, the two share their type low bits (`A5` then `85`). It is retried 1 to 4 times with sequence +6, like a unicast frame waiting for its ACK. In one capture it arrives just before a segment 0 / segment 1 pair instead of after, which fits a resend of the series. Its role (commit, or an ACK poll for the series) is open. A reassembler has to skip it: a short frame is body only when the bytes left after the long segments fit in 14.
 
 **Handshake:**
 
@@ -417,6 +445,8 @@ OTA traffic uses runtime CCA framing (§2): preamble + sync delimiter + `FA DE` 
 Two on-air packet shapes carry the OTA conversation:
 
 **Long chunk packets (53 bytes, type `0xB1`/`0xB2`/`0xB3`)** — TransferData carriers, body bytes 14-15 = `06 02`:
+
+The same type bytes also carry device discovery: devices announce on `0xB0` or `0xB1` with the same `08 05` body (PAIR_B0). The TS defs name these frames `PAIR_B1-B3`, and split a frame out as the virtual `OTA_DATA` when byte 7 = `0x2B` and bytes 14-15 = `06 02`.
 
 ```
 byte    field             value/notes
@@ -564,7 +594,7 @@ bun run tools/cca/rtlsdr-cca-decode.ts --rate 2000000 capture.bin
 
 ### 0x0B ACK Packets
 
-Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 24-byte N81 CCA. Decoder rule lives in `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`.
+Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 24-byte N81 CCA. Decoder rule lives in `firmware/src/cca/cca_decoder.h` `try_parse_dimmer_ack`.
 
 ```
 [0] 0x0B
@@ -577,6 +607,20 @@ Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 2
 Validation: `byte[3] == byte[1] ^ 0x26`. Correction: `format = byte[2] ^ 0xFE`, `level = byte[4] ^ 0xFE`. The "level" field is just `format ^ 0x55` in every observed case — it is a redundant XOR-shadow, not an independent value.
 
 Cadence: 1 ACK every 25 ms (40 Hz) when the dimmer is in any active state (set-level, config, or OTA). 3 ACKs at ~25 ms intervals per runtime command.
+
+#### The short-ACK family (every type < 0x40)
+
+`0x0B` is one of nine 5-byte ACK types. Every type byte below `0x40` is a 5-byte frame in Lutron's length rule ([rx-dispatch.md §7](rx-dispatch.md)), and each type uses its own XOR key: `byte[3] = byte[1] ^ k1`, `byte[4] = byte[2] ^ k2`. Each type held a single key pair across 7,020 short frames in the local captures:
+
+| Type | k1 | k2 | Seen after |
+|------|----|----|------------|
+| `05` `06` `07` | `76` `E2` `28` | `2D` `33` `3C` | state reports (fmt `0x08`), SET_LEVEL (fmt `0x0E`), OTA |
+| `09` `0A` `0B` | `78` `EC` `26` | `44` `5A` `55` | fmt `0x0D`, DEVICE_CTRL; `0B` is also the OTA ACK stream |
+| `15` `16` `17` | `D8` `4C` `86` | `B4` `AA` `A5` | config frames (fmt `0x0A`, SCENE_CONFIG), processor reboot |
+
+The low two bits rotate like `81/82/83`. After a SET_LEVEL, an HQR-3LD answers with `07`, and `byte[2]` is the commanded level's high byte (`07 05 CB 2D F7` follows a SET_LEVEL of `0xCB7C`). The `^ 0xFE` correction applies only to `0x0B`. The key table is `ShortAckKeys` in `protocol/cca.protocol.ts`, and codegen emits `cca_short_ack_valid()` from it.
+
+Firmware that predates the generalized parser decodes the other eight types only through the CRC-optional fallback. Those frames count as `crc_fail` and stream with trailing junk. The host checks the first 5 bytes either way.
 
 During an OTA the `format` byte is the **device's state code** — see §9.5 for the OTA-specific state table (`0x2E` in-progress, `0xC1` ready, `0xC2` advancing-page, `0xEC` committing). For non-OTA traffic, `format` carries the response class for the runtime command being acknowledged.
 
@@ -717,7 +761,7 @@ The 6-case TX message-class builder (`FUN_08008848` / `FUN_08006784`):
 | Case | OP byte written | Length | Mapping to existing TS catalog |
 |------|-----------------|--------|--------------------------------|
 | 0 | `0x88 \| (cfg & 7)` → `0x88-0x8F` | 24-byte short pkt | NEW — short-packet state report range above documented `0x80-0x83`; matches CCA "type 0x80-0x9F = 24 bytes" rule from §3 |
-| 1 | `0xA0 \| (cfg & 7)` → `0xA0-0xA7` | 53-byte long pkt | Partial — `CONFIG_A1` (0xA1), `SET_LEVEL` (0xA2), `CONFIG_A3` (0xA3) already in `protocol/cca.protocol.ts`; `0xA0/0xA4-0xA7` are NEW |
+| 1 | `0xA0 \| (cfg & 7)` → `0xA0-0xA7` | 53-byte long pkt | `CONFIG_A1` (0xA1), `SET_LEVEL` (0xA2), `CONFIG_A3` (0xA3), `SEGMENT_A5-A7` (§7) in `protocol/cca.protocol.ts`; `0xA0/0xA4` not yet seen on air |
 | 2 | `0xCE` | 24-byte short pkt | KNOWN — `HS_CE` "Handshake round 3 (bridge)" |
 | 3 | `0xFC` (length=1, byte+0xb=3, byte+0xd=1) | 1-byte | NEW — short broadcast with length=1 only. Distinct from the existing virtual `SENSOR_VACANT` (0xFC, 24-byte, format 0x0C). On-air this is a short control beacon |
 | 4 | `0xFD` followed by `0x82 0x80 ... <product-id-LE16> ...` (14 bytes total) | 14-byte | KNOWN family — UNPAIR group. The product-ID short differs per binary: `0x5006` in 801FB08, `0xA812` in 803A008 — likely the bridge's own QS hardware ID literal |
