@@ -17,6 +17,10 @@
  *   Home/End        — cursor home/end (End also fires onEnd for scroll-to-live)
  *   Page Up/Down    — fire callbacks for log scrolling
  *   Alt-B/F         — word backward/forward
+ *   Esc             — enter packet select mode (detail pane)
+ *
+ * In select mode: Up/Down or k/j move the selection, PgUp/PgDn page it,
+ * Esc/Enter/q leave; any other key leaves and is handled normally.
  *
  * The hook pushes input/cursor/palette state into `store` so Ink components can
  * render without re-rendering on every keystroke through React props.
@@ -36,6 +40,10 @@ export interface LineEditorCallbacks {
   onRedraw?: () => void;
   onQuit?: () => void;
   onAnyKey?: () => void;
+  /** Select mode: whether it's active, move by `step` packets, and leave. */
+  isSelecting?: () => boolean;
+  onSelect?: (step: number) => void;
+  onSelectExit?: () => void;
   /** Optional context-aware completion resolver. Called on Tab with the
    *  text before the cursor; return the candidate list (may be empty). */
   getCompletions?: (lineBeforeCursor: string) => string[];
@@ -220,6 +228,15 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     cb.onAnyKey?.();
     if (!key.tab) resetTab();
 
+    if (cb.isSelecting?.()) {
+      if (key.upArrow || input === "k") return cb.onSelect?.(-1);
+      if (key.downArrow || input === "j") return cb.onSelect?.(1);
+      if (key.pageUp) return cb.onPageUp?.();
+      if (key.pageDown) return cb.onPageDown?.();
+      if (key.escape || key.return || input === "q") return cb.onSelectExit?.();
+      cb.onSelectExit?.();
+    }
+
     if (key.return) return submit();
     if (key.backspace || key.delete) {
       // Ink 5 maps the Backspace key (\x7f) to key.delete and only Ctrl-H
@@ -248,7 +265,7 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     }
     if (key.pageUp) return cb.onPageUp?.();
     if (key.pageDown) return cb.onPageDown?.();
-    if (key.escape) return;
+    if (key.escape) return cb.onSelect?.(0);
 
     if (key.ctrl) {
       switch (input) {

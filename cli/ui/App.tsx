@@ -4,6 +4,7 @@
  * Layout:
  *   ┌──────────────────────────────┐
  *   │ PacketLog (flexGrow)         │
+ *   │ [Detail, if selecting]       │
  *   │ [Overlay, if present]        │
  *   ├──────────────────────────────┤
  *   │ CommandPalette (if tabbing)  │
@@ -14,6 +15,7 @@
 
 import { Box } from "ink";
 import { CommandPalette } from "./components/CommandPalette";
+import { Detail } from "./components/Detail";
 import { Footer } from "./components/Footer";
 import { InputLine } from "./components/InputLine";
 import { Overlay } from "./components/Overlay";
@@ -33,7 +35,7 @@ export interface AppProps {
 
 export function App(props: AppProps) {
   const { columns, rows } = useTerminalSize();
-  const { overlay, palette } = useAppState();
+  const { overlay, palette, selected } = useAppState();
 
   // Reserve rows for the fixed footer region.
   // Base: separator(1) + column headers(1) + status(1) + input(1) = 4.
@@ -49,13 +51,26 @@ export function App(props: AppProps) {
   const overlayRows = overlay
     ? Math.min(overlay.lines.length + 3, Math.floor(rows / 2))
     : 0;
+  // Fixed so a selection made before the pane opens stays in view after.
+  const detailRows = Math.min(12, Math.floor(rows / 2));
   const reserved = 4 + palRows + overlayRows;
-  const logHeight = Math.max(1, rows - reserved);
+  const logHeight = Math.max(1, rows - reserved - (selected ? detailRows : 0));
+  const selectHeight = Math.max(1, rows - reserved - detailRows);
+  const halfPage = Math.max(1, Math.floor(selectHeight / 2));
 
   useLineEditor({
     onSubmit: props.onSubmit,
-    onPageUp: () => store.scrollBy(-1, Math.max(1, Math.floor(logHeight / 2))),
-    onPageDown: () => store.scrollBy(1, Math.max(1, Math.floor(logHeight / 2))),
+    onPageUp: () =>
+      store.getState().selected
+        ? store.moveSelection(-halfPage, selectHeight)
+        : store.scrollBy(-1, Math.max(1, Math.floor(logHeight / 2))),
+    onPageDown: () =>
+      store.getState().selected
+        ? store.moveSelection(halfPage, selectHeight)
+        : store.scrollBy(1, Math.max(1, Math.floor(logHeight / 2))),
+    isSelecting: () => store.getState().selected !== null,
+    onSelect: (step) => store.moveSelection(step, selectHeight),
+    onSelectExit: () => store.clearSelection(),
     onEnd: () => store.scrollToLive(),
     onRedraw: () => {
       store.requestRedraw();
@@ -69,6 +84,9 @@ export function App(props: AppProps) {
   return (
     <Box flexDirection="column" height={rows} width={columns}>
       <PacketLog height={logHeight} />
+      {selected ? (
+        <Detail row={selected} height={detailRows} width={columns} />
+      ) : null}
       {overlay ? <Overlay width={columns} /> : null}
       {palette ? <CommandPalette width={columns} /> : null}
       <Footer width={columns} />

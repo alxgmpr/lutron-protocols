@@ -25,6 +25,7 @@ export const PacketLog = memo(function PacketLog({ height }: Props) {
     state.filter?.match ?? null,
     height,
     -state.scrollOffset,
+    state.selected,
   );
   const padCount = Math.max(0, height - slice.length);
   const visible =

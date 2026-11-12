@@ -8,7 +8,9 @@
 
 import {
   entryLineCount,
+  isText,
   type LogEntry,
+  type PacketRow,
   parseFilter,
   RING_BUFFER_SIZE,
   type RowFilter,
@@ -28,6 +30,8 @@ export interface AppState {
   verbose: boolean;
   /** Active packet filter, or null. */
   filter: { spec: string; match: RowFilter } | null;
+  /** Packet selected for the detail pane; non-null means select mode. */
+  selected: PacketRow | null;
   /** Header text (right side of footer legend). */
   headerLeft: string;
   headerRight: string;
@@ -54,6 +58,7 @@ export class Store {
     raw: true,
     verbose: false,
     filter: null,
+    selected: null,
     headerLeft: "",
     headerRight: "",
     statusText: "",
@@ -97,9 +102,9 @@ export class Store {
     if (entries.length > RING_BUFFER_SIZE) {
       entries = entries.slice(entries.length - RING_BUFFER_SIZE);
     }
-    // If we're scrolled back, keep the same viewport (shift offset).
+    // If scrolled back or selecting, keep the same viewport (shift offset).
     let scrollOffset = this.state.scrollOffset;
-    if (scrollOffset < 0) {
+    if (scrollOffset < 0 || this.state.selected) {
       for (const e of newEntries) scrollOffset -= this.lineCount(e);
     }
     this.state = { ...this.state, entries, scrollOffset };
@@ -108,7 +113,7 @@ export class Store {
 
   /** Change display options; the viewport snaps back to live. */
   setDisplay(opts: { raw?: boolean; verbose?: boolean }): void {
-    this.state = { ...this.state, ...opts, scrollOffset: 0 };
+    this.state = { ...this.state, ...opts, scrollOffset: 0, selected: null };
     this.emit();
   }
 
@@ -117,7 +122,45 @@ export class Store {
     const filter = spec.trim()
       ? { spec: spec.trim(), match: parseFilter(spec) }
       : null;
-    this.state = { ...this.state, filter, scrollOffset: 0 };
+    this.state = { ...this.state, filter, scrollOffset: 0, selected: null };
+    this.emit();
+  }
+
+  /**
+   * Move the selection `step` visible packets (negative = older). With no
+   * selection, selects the newest visible packet. Scrolls so the selected
+   * row stays within a log window of `height` lines.
+   */
+  moveSelection(step: number, height: number): void {
+    const { entries, selected } = this.state;
+    const match = this.state.filter?.match ?? null;
+    const rows: { idx: number; row: PacketRow }[] = [];
+    entries.forEach((e, idx) => {
+      if (!isText(e) && (!match || match(e))) rows.push({ idx, row: e });
+    });
+    if (rows.length === 0) return;
+    const cur = rows.findIndex((r) => r.row === selected);
+    const pos =
+      cur === -1
+        ? rows.length - 1
+        : Math.max(0, Math.min(rows.length - 1, cur + step));
+    const { idx, row } = rows[pos];
+    // Display lines below the selected row's main line.
+    let below = this.state.verbose && row.verboseLine ? 1 : 0;
+    for (let i = idx + 1; i < entries.length; i++) {
+      below += this.lineCount(entries[i]);
+    }
+    const offset = Math.min(
+      below,
+      Math.max(below - height + 1, -this.state.scrollOffset),
+    );
+    this.state = { ...this.state, selected: row, scrollOffset: -offset };
+    this.emit();
+  }
+
+  clearSelection(): void {
+    if (!this.state.selected) return;
+    this.state = { ...this.state, selected: null };
     this.emit();
   }
 

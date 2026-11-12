@@ -753,6 +753,7 @@ function displayCcaPacket(
     state: stateParts.join("  "),
     raw: rawHex,
     delta: deltaText,
+    bytes: Uint8Array.from(data),
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
   });
 
@@ -1048,6 +1049,7 @@ function displayCcxPacket(
       state: compactParts.join("  "),
       raw: rawHex,
       delta: deltaStr,
+      bytes: Uint8Array.from(data),
       verboseLine: [...parts, ...srcDetail(src)].join("  ") || undefined,
     });
   } else {
@@ -1072,6 +1074,7 @@ function displayCcxPacket(
       state: "",
       raw: rawHex,
       delta: deltaStr,
+      bytes: Uint8Array.from(data),
       verboseLine: srcDetail(src).join("  ") || undefined,
     });
   }
@@ -1363,6 +1366,7 @@ function showHelp() {
     `  ${MAGENTA}save${RESET}                                      Save settings to flash`,
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
+    `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
   ]);
 }
 
