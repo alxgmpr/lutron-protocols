@@ -173,6 +173,16 @@ describe("harvestDeviceIds", () => {
     assert.deepEqual(harvestDeviceIds([broadcast]), []);
   });
 
+  it("ignores a device_id field that runs onto 0xCC padding", () => {
+    // device_repeat at 12 reads 3c cc cc cc: one payload byte + padding
+    const padded = Buffer.from(
+      "8a0c00000a01210e03000a013ccccccc00420200001e65f7",
+      "hex",
+    );
+
+    assert.deepEqual(harvestDeviceIds([padded]), []);
+  });
+
   it("deduplicates ids seen in many frames", () => {
     const ids = harvestDeviceIds([BUTTON_FRAME, BUTTON_FRAME, BUTTON_FRAME]);
 
