@@ -1336,11 +1336,11 @@ const sensorVacantFields: FieldDef[] = [
   field("sensor_subtype", 8, 1, "hex", "0x04=occupancy sensor"),
   field("device_repeat", 13, 4, "device_id_be"),
   field(
-    "timeout_param",
+    "cmd_class",
     18,
     1,
     "hex",
-    "Possibly programmed timeout (0x47=71 observed)",
+    "0x47, the same class byte as SENSOR_EVENT (17) and SENSOR_EXTENDED (18)",
   ),
   field("crc", 22, 2, "hex"),
 ];
