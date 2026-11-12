@@ -144,7 +144,17 @@ export class Store {
       cur === -1
         ? rows.length - 1
         : Math.max(0, Math.min(rows.length - 1, cur + step));
-    const { idx, row } = rows[pos];
+    this.select(rows[pos].idx, rows[pos].row, height);
+  }
+
+  /** Select a specific row (e.g. clicked), keeping it in view. */
+  selectRow(row: PacketRow, height: number): void {
+    const idx = this.state.entries.lastIndexOf(row);
+    if (idx !== -1) this.select(idx, row, height);
+  }
+
+  private select(idx: number, row: PacketRow, height: number): void {
+    const { entries } = this.state;
     // Display lines below the selected row's main line.
     let below = this.state.verbose && row.verboseLine ? 1 : 0;
     for (let i = idx + 1; i < entries.length; i++) {
@@ -211,10 +221,12 @@ export class Store {
     this.emit();
   }
 
-  scrollBy(pages: number, pageSize: number): void {
+  /** Scroll by `pages` × `pageSize` lines; `height` is the log window, so
+   *  scrolling stops once the oldest line reaches its top. */
+  scrollBy(pages: number, pageSize: number, height = pageSize): void {
     let total = 0;
     for (const e of this.state.entries) total += this.lineCount(e);
-    const maxBack = -Math.max(0, total - pageSize);
+    const maxBack = -Math.max(0, total - height);
     const offset = Math.max(
       maxBack,
       Math.min(0, this.state.scrollOffset + pages * pageSize),

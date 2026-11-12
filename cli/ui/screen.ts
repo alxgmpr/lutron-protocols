@@ -106,6 +106,26 @@ class PassthroughScreen implements InkScreen {
 }
 
 // ============================================================================
+// Mouse reporting (xterm 1000 = press/release incl. wheel, 1006 = SGR coords).
+// While on, the terminal's own drag-select needs a modifier, so it can be
+// switched off with the `mouse` command.
+// ============================================================================
+let mouseOn = false;
+
+export function setMouse(on: boolean): void {
+  if (on === mouseOn || !process.stdout.isTTY) return;
+  mouseOn = on;
+  process.stdout.write(
+    on ? "\x1b[?1000h\x1b[?1006h" : "\x1b[?1000l\x1b[?1006l",
+  );
+}
+
+export const mouseEnabled = (): boolean => mouseOn;
+
+// Leave the terminal clean however the process ends.
+process.once("exit", () => setMouse(false));
+
+// ============================================================================
 // InkScreenImpl — mounts <App/> and routes all screen/line-editor mutations
 // through ui/store.ts.
 // ============================================================================
@@ -122,6 +142,7 @@ class InkScreenImpl implements InkScreen {
   }
 
   destroy(): void {
+    setMouse(false);
     this.inkInstance?.unmount();
     this.inkInstance = null;
   }
@@ -169,6 +190,7 @@ class InkScreenImpl implements InkScreen {
       }),
       { exitOnCtrlC: false },
     );
+    setMouse(true);
   }
 
   stop(): void {

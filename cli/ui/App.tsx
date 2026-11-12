@@ -14,6 +14,7 @@
  */
 
 import { Box } from "ink";
+import { entryAtLine, isText } from "../core/packets";
 import { CommandPalette } from "./components/CommandPalette";
 import { Detail } from "./components/Detail";
 import { Footer } from "./components/Footer";
@@ -22,7 +23,13 @@ import { Overlay } from "./components/Overlay";
 import { PacketLog } from "./components/PacketLog";
 import { useAppState, useTerminalSize } from "./hooks";
 import { store } from "./store";
-import { useLineEditor } from "./useLineEditor";
+import { type MouseEvent, useLineEditor } from "./useLineEditor";
+
+const WHEEL_UP = 64;
+const WHEEL_DOWN = 65;
+const LEFT = 0;
+/** Shift/meta/ctrl bits in an SGR button code. */
+const MODIFIERS = 4 | 8 | 16;
 
 export interface AppProps {
   /** Returns the candidate list for tab completion given the text before the
@@ -58,16 +65,39 @@ export function App(props: AppProps) {
   const selectHeight = Math.max(1, rows - reserved - detailRows);
   const halfPage = Math.max(1, Math.floor(selectHeight / 2));
 
+  // The log is the top `logHeight` rows, bottom-anchored on the tail.
+  const onMouse = ({ button, y, press }: MouseEvent) => {
+    const b = button & ~MODIFIERS;
+    const s = store.getState();
+    if (b === WHEEL_UP || b === WHEEL_DOWN) {
+      const dir = b === WHEEL_UP ? -1 : 1;
+      if (s.selected) store.moveSelection(dir, selectHeight);
+      else store.scrollBy(dir, 3, logHeight);
+      return;
+    }
+    if (b !== LEFT || !press || y > logHeight) return;
+    const e = entryAtLine(
+      s.entries,
+      s.verbose,
+      s.filter?.match ?? null,
+      -s.scrollOffset + logHeight - y,
+    );
+    if (!e || isText(e)) return;
+    if (e === s.selected) store.clearSelection();
+    else store.selectRow(e, selectHeight);
+  };
+
   useLineEditor({
+    onMouse,
     onSubmit: props.onSubmit,
     onPageUp: () =>
       store.getState().selected
         ? store.moveSelection(-halfPage, selectHeight)
-        : store.scrollBy(-1, Math.max(1, Math.floor(logHeight / 2))),
+        : store.scrollBy(-1, Math.max(1, Math.floor(logHeight / 2)), logHeight),
     onPageDown: () =>
       store.getState().selected
         ? store.moveSelection(halfPage, selectHeight)
-        : store.scrollBy(1, Math.max(1, Math.floor(logHeight / 2))),
+        : store.scrollBy(1, Math.max(1, Math.floor(logHeight / 2)), logHeight),
     isSelecting: () => store.getState().selected !== null,
     onSelect: (step) => store.moveSelection(step, selectHeight),
     onSelectExit: () => store.clearSelection(),

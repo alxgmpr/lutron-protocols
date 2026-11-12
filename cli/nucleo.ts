@@ -66,7 +66,12 @@ import {
   WHITE,
   YELLOW,
 } from "./core/packets";
-import { createScreen, type InkScreen } from "./ui/screen";
+import {
+  createScreen,
+  type InkScreen,
+  mouseEnabled,
+  setMouse,
+} from "./ui/screen";
 import { store } from "./ui/store";
 
 // ============================================================================
@@ -1367,6 +1372,7 @@ function showHelp() {
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
     `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
+    `${DIM}Mouse: wheel scrolls, click a packet to inspect it. \`mouse\` toggles it off to select text.${RESET}`,
   ]);
 }
 
@@ -1647,6 +1653,13 @@ function handleCommand(line: string) {
       return;
     }
 
+    case "mouse":
+      setMouse(!mouseEnabled());
+      screen.appendLine(
+        `Mouse: ${mouseEnabled() ? "on" : "off (terminal text selection works)"}`,
+      );
+      return;
+
     case "diag":
       showDiag = !showDiag;
       screen.appendLine(`Diagnostic logs: ${showDiag ? "on" : "off"}`);
@@ -1868,6 +1881,7 @@ async function startup() {
     "raw",
     "verbose",
     "filter",
+    "mouse",
     "diag",
     "slot",
     "help",
