@@ -761,6 +761,77 @@ const CONFIG_A3 = packetTypeFrom(CONFIG_A1, {
   formatDiscrimination: longFormatDisc,
 });
 
+// Segmented transfer: one body too long for a single frame, split across
+// several. The header loses the protocol byte (0x21) and the body-length
+// byte to the destination link and segment index; the body itself starts
+// `21 <len>` in segment 0's payload, so the reassembled stream is a normal
+// CCA body. 43 payload bytes per long frame; a tail that fits in 14 goes
+// out short (85-87). Type low bits rotate like 81/82/83. Seen during
+// processor transfers: the device-table broadcast (06 02 writes, 3 or 6
+// segments) and per-device 06 50 config.
+const segmentHeader: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("flags", 2, 1, "hex"),
+  field("subnet", 3, 2, "hex", "Processor subnet (BE)"),
+  field("target", 6, 1, "hex", "Destination link address; 0x7F = all"),
+  field(
+    "segment",
+    7,
+    1,
+    "hex",
+    "High nibble = segment index, low nibble = last segment index",
+  ),
+];
+
+const SEGMENT_A5 = packetType(
+  0xa5,
+  53,
+  "CONFIG",
+  "Segmented transfer, long segment (cycles A5→A6→A7)",
+  "big",
+  [
+    ...segmentHeader,
+    field("payload", 8, 43, "hex", "Segment 0 starts 21 <body length>"),
+    field("crc", 51, 2, "hex"),
+  ],
+  { ecosystems: ["RA3", "HOMEWORKS"] },
+);
+
+const SEGMENT_A6 = packetTypeFrom(SEGMENT_A5, {
+  value: 0xa6,
+  description: "Segmented transfer, long segment (cycles A5→A6→A7)",
+});
+
+const SEGMENT_A7 = packetTypeFrom(SEGMENT_A5, {
+  value: 0xa7,
+  description: "Segmented transfer, long segment (cycles A5→A6→A7)",
+});
+
+const SEGMENT_85 = packetType(
+  0x85,
+  24,
+  "CONFIG",
+  "Segmented transfer, short tail segment (cycles 85→86→87)",
+  "big",
+  [
+    ...segmentHeader,
+    field("payload", 8, 14, "hex", "Last bytes of the body, CC-padded"),
+    field("crc", 22, 2, "hex"),
+  ],
+  { ecosystems: ["RA3", "HOMEWORKS"] },
+);
+
+const SEGMENT_86 = packetTypeFrom(SEGMENT_85, {
+  value: 0x86,
+  description: "Segmented transfer, short tail segment (cycles 85→86→87)",
+});
+
+const SEGMENT_87 = packetTypeFrom(SEGMENT_85, {
+  value: 0x87,
+  description: "Segmented transfer, short tail segment (cycles 85→86→87)",
+});
+
 const BEACON_91 = packetType(
   0x91,
   24,
@@ -802,6 +873,49 @@ const PAIR_B0 = packetType(
     field("crc", 51, 2, "hex"),
   ],
   { ecosystems: ["CASETA", "RA3"] },
+);
+
+// B0-B3 rotate like 81/82/83. Real devices answer discovery on B1 with the
+// same `08 05` body PAIR_B0 carries. OTA reuses B1-B3 for TransferData
+// (body length 0x2B, bytes 14-15 = 06 02), split out as OTA_DATA.
+const otaDataDisc: NumberLookup<FormatRule> = {
+  0x2b: [{ name: "OTA_DATA", match: { 14: 0x06, 15: 0x02 } }],
+};
+
+const PAIR_B1 = packetTypeFrom(PAIR_B0, {
+  value: 0xb1,
+  description: "Device discovery (B0 rotation) / OTA TransferData carrier",
+  formatDiscrimination: otaDataDisc,
+});
+
+const PAIR_B2 = packetTypeFrom(PAIR_B1, { value: 0xb2 });
+
+const PAIR_B3 = packetTypeFrom(PAIR_B1, { value: 0xb3 });
+
+// docs/protocols/cca/ota.md §3 TransferData
+const OTA_DATA = packetType(
+  0xe5,
+  53,
+  "CONFIG",
+  "OTA TransferData: one 31-byte firmware chunk (on B1/B2/B3)",
+  "big",
+  [
+    field("type", 0, 1, "hex"),
+    field("sequence", 1, 1, "decimal"),
+    field("flags", 2, 1, "hex"),
+    field("subnet", 3, 2, "hex", "Processor subnet (BE)"),
+    field("protocol", 6, 1, "hex"),
+    field("format", 7, 1, "hex", "0x2B = 43-byte body"),
+    field("device_id", 9, 4, "device_id_be"),
+    field("addr_mode", 13, 1, "hex", "0xFE=unicast"),
+    field("sub_op", 14, 2, "hex", "06 02 = TransferData"),
+    field("sub_counter", 16, 1, "hex"),
+    field("chunk_addr", 17, 2, "hex", "Low 16 bits of the PFF offset"),
+    field("chunk_size", 19, 1, "decimal"),
+    field("chunk", 20, 31, "hex", "PFF bytes, verbatim (encrypted)"),
+    field("crc", 51, 2, "hex"),
+  ],
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "HOMEWORKS"] },
 );
 
 const pairB8Fields: FieldDef[] = [
@@ -1642,13 +1756,22 @@ export const CCA: CCAProtocolDef = {
     STATE_RPT_82,
     STATE_RPT_83,
     STATE_80,
+    SEGMENT_85,
+    SEGMENT_86,
+    SEGMENT_87,
     CONFIG_A1,
     SET_LEVEL,
     CONFIG_A3,
+    SEGMENT_A5,
+    SEGMENT_A6,
+    SEGMENT_A7,
     BEACON_91,
     BEACON_92,
     BEACON_93,
     PAIR_B0,
+    PAIR_B1,
+    PAIR_B2,
+    PAIR_B3,
     PAIR_B8,
     PAIR_B9,
     PAIR_BA,
@@ -1686,6 +1809,7 @@ export const CCA: CCAProtocolDef = {
     DIM_STOP,
     PICO_HOLD,
     PICO_EXTENDED,
+    OTA_DATA,
     ...shortAckTypes,
   },
   sequences,

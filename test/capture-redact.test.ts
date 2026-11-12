@@ -26,6 +26,22 @@ const BUTTON_FRAME = Buffer.from(
 const UNKNOWN_FRAME = Buffer.from("0b1122334455661e8899aabbccddeeff", "hex");
 
 describe("redactCcaFrame", () => {
+  it("blanks a segmented-transfer payload, where ids straddle frames", () => {
+    // Device-table segment: the first byte of a serial ended the previous
+    // segment, so this one opens with the other three (11 22 33).
+    const seg = Buffer.alloc(53, 0xcc);
+    seg.set([0xa6, 0x01, 0x21, 0x12, 0x34, 0x00, 0x7f, 0x45]);
+    seg.set([0x11, 0x22, 0x33, 0x80, 0x44, 0x55, 0x66, 0x77, 0xa0], 8);
+    const out = redactCcaFrame(seg);
+
+    assert.deepEqual(out.subarray(8, 51), Buffer.alloc(43));
+    assert.equal(out[7], 0x45); // segment byte kept
+    assert.equal(
+      decodeCcaFrame(out).fieldsPresent,
+      decodeCcaFrame(seg).fieldsPresent,
+    );
+  });
+
   it("replaces every device_id field in an identified frame", () => {
     const out = redactCcaFrame(BUTTON_FRAME);
 
