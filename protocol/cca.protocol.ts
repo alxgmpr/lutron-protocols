@@ -603,6 +603,8 @@ const buttonFormatDisc: NumberLookup<FormatRule> = {
     // Sensor level: daylight sensor frame=0x00 or occupancy frame=0x03 at byte 8
     // Dim step: zone byte at 12, addr_mode at 13, cmd_class at 14
     { name: "SENSOR_LEVEL", match: { 14: 0xd5 } },
+    // Sensor event: frame=0x03 at byte 8, sensor id repeated at 12-15
+    { name: "SENSOR_EVENT", match: { 8: 0x03 } },
     { name: "DIM_STEP" },
   ],
   0x0c: [
@@ -1218,6 +1220,46 @@ const SENSOR_LEVEL = packetType(
   "Sensor event: daylight level or occupancy detected (format 0x0B)",
   "big",
   sensorLevelFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// Sensor event (format 0x0B, frame 0x03 at byte 8). Same shape as a Pico
+// long-format button frame: kind/action at 10-11, id repeat at 12-15,
+// command pair at 17-18. Emitted by occupancy and daylight sensors.
+const sensorEventFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0B"),
+  field("frame", 8, 1, "hex", "0x03 = sensor event"),
+  field(
+    "sensor_kind",
+    10,
+    1,
+    "hex",
+    "0x01=daylight, 0x04=occupancy, 0x03=occupancy with 0x47 command",
+  ),
+  field("action", 11, 1, "hex", "0x01 in every capture"),
+  field("device_repeat", 12, 4, "device_id_be"),
+  field("cmd_class", 17, 1, "hex", "0x00 (kind 0x01/0x04) or 0x47 (kind 0x03)"),
+  field(
+    "cmd_param",
+    18,
+    1,
+    "hex",
+    "0x00 with class 0x00; 0x02 or 0x03 with class 0x47 (meaning unconfirmed)",
+  ),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_EVENT = packetType(
+  0xe6,
+  24,
+  "SENSOR",
+  "Sensor event: occupancy or daylight (format 0x0B, frame 0x03)",
+  "big",
+  sensorEventFields,
   { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
 );
 
@@ -1840,6 +1882,7 @@ export const CCA: CCAProtocolDef = {
     FADE_CONFIG,
     ZONE_ASSIGN,
     SENSOR_LEVEL,
+    SENSOR_EVENT,
     SENSOR_TEST,
     SENSOR_VACANT,
     PICO_RESET,

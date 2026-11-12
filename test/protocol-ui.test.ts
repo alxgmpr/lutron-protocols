@@ -66,6 +66,24 @@ test("identifyPacket resolves PICO_RESET vs PICO_HOLD vs SENSOR_VACANT", () => {
   assert.equal(identifyPacket(vacant).typeName, "SENSOR_VACANT");
 });
 
+test("identifyPacket resolves SENSOR_EVENT ahead of DIM_STEP on button types", () => {
+  // Occupancy sensor frame from captures (id replaced): format 0x0B, frame 0x03
+  const hex = "8b00deadbeef210b03000301deadbeef004703cccccc0000";
+  const packet = Uint8Array.from(Buffer.from(hex, "hex"));
+  const identified = identifyPacket(packet);
+  assert.equal(identified.typeName, "SENSOR_EVENT");
+  assert.equal(identified.category, "SENSOR");
+  const field = (name: string) =>
+    identified.fields.find((f) => f.name === name)?.offset;
+  assert.equal(field("device_repeat"), 12);
+  assert.equal(field("sensor_kind"), 10);
+  assert.equal(field("cmd_class"), 17);
+
+  // frame byte 0x00 still falls through to DIM_STEP
+  packet[8] = 0x00;
+  assert.equal(identifyPacket(packet).typeName, "DIM_STEP");
+});
+
 test("parseFieldValue resolves named hex fields from constant groups", () => {
   assert.deepEqual(parseFieldValue(["42"], 0, 1, "hex", "cmd_class"), {
     raw: "42",

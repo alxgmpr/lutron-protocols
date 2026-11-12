@@ -223,6 +223,34 @@ Byte 11: Level (0x00-0xFE = 0-100%)
 
 Dimmers send to both unicast (0x80) and broadcast (0x8F) endpoints.
 
+### Sensor Event (format 0x0B, frame 0x03)
+
+Virtual type `SENSOR_EVENT` (0xE6). Sent on button types 0x88-0x8B with byte 7 = 0x0B and byte 8 = 0x03. Byte 14 is part of the repeated sensor ID, never 0xD5, so the daylight `SENSOR_LEVEL` rule does not match. The layout is the Pico long-format layout cut to an 11-byte payload. It is not `DIM_STEP`: bytes 9-12 hold no target ID.
+
+```
+Byte 2-5:   Sensor device ID (BE)
+Byte 8:     0x03 (frame)
+Byte 9:     0x00
+Byte 10:    Sensor kind: 0x01 daylight, 0x04 occupancy, 0x03 occupancy + 0x47 command
+Byte 11:    0x01 (in every capture)
+Byte 12-15: Sensor device ID, repeated
+Byte 16:    0x00
+Byte 17:    Command class: 0x00, or 0x47 when kind = 0x03
+Byte 18:    Command param: 0x00 with class 0x00; 0x02 or 0x03 with class 0x47
+Byte 19-21: 0xCC padding
+```
+
+Values seen in the captures, counting only frames with a valid CRC (`occupancy_*`, `daylight_*`):
+
+| Bytes 10-11 | Bytes 17-18 | Source | Count |
+|-------------|-------------|--------|-------|
+| 04 01 | 00 00 | occupancy sensor | 136 |
+| 03 01 | 47 03 | occupancy sensor | 44 |
+| 03 01 | 47 02 | occupancy sensor | 22 |
+| 01 01 | 00 00 | daylight sensor | 12 |
+
+In `occupancy_2026-03-20T03-29-45`, the `47 03`, `47 02` and `47 03` bursts follow each other within 7 s. We have not confirmed what param 0x02 and 0x03 mean (for example occupied and vacant). Class 0x47 also appears in the format 0x0C vacancy frame (`SENSOR_VACANT`, byte 18) and in format 0x0E frames from the same sensor (byte 18).
+
 ## 6. Vive Variant
 
 Vive uses the same CCA radio but addresses devices by hub ID + zone ID for room-level group control.
