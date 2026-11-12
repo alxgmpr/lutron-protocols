@@ -761,14 +761,34 @@ const CONFIG_A3 = packetTypeFrom(CONFIG_A1, {
   formatDiscrimination: longFormatDisc,
 });
 
+// A Vive hub sends its config on A9/AA/AB: the A1-A3 body (21 <fmt> 00
+// <serial> FE 06 ..) behind the hub id. Seen CRC-valid with fmt 0x12 and
+// 0x14, and with a 5-byte `28 03 01 ..` prefix ahead of a 0x1A body.
+const CONFIG_A9 = packetTypeFrom(CONFIG_A1, {
+  value: 0xa9,
+  description: "Configuration packet, Vive hub (cycles A9→AA→AB)",
+  ecosystems: ["VIVE"],
+});
+
+const CONFIG_AA = packetTypeFrom(CONFIG_A9, { value: 0xaa });
+
+const CONFIG_AB = packetTypeFrom(CONFIG_A9, { value: 0xab });
+
 // Segmented transfer: one body too long for a single frame, split across
 // several. The header loses the protocol byte (0x21) and the body-length
 // byte to the destination link and segment index; the body itself starts
 // `21 <len>` in segment 0's payload, so the reassembled stream is a normal
-// CCA body. 43 payload bytes per long frame; a tail that fits in 14 goes
-// out short (85-87). Type low bits rotate like 81/82/83. Seen during
-// processor transfers: the device-table broadcast (06 02 writes, 3 or 6
-// segments) and per-device 06 50 config.
+// CCA body of len + 2 bytes. 43 payload bytes per long frame; a last
+// segment of 14 bytes or fewer goes out short (85-87), a longer one long.
+// Type low bits step with the segment index (A6 A7 A5 A6 A7 85).
+//
+// Two uses, both from the processor during a transfer:
+// - Device table (06 02 writes; 6 + 6 + 3 segments). Flags 0x21, every
+//   segment repeated 8 times, to link 0x7F or to one link.
+// - Per-device config (06 50, 2 long segments). Flags 0xA1, each long
+//   frame seen once. A short frame with the last segment's header and
+//   six zero bytes follows, retried like any unicast frame; it is not
+//   body data.
 const segmentHeader: FieldDef[] = [
   field("type", 0, 1, "hex"),
   field("sequence", 1, 1, "decimal"),
@@ -816,7 +836,13 @@ const SEGMENT_85 = packetType(
   "big",
   [
     ...segmentHeader,
-    field("payload", 8, 14, "hex", "Last bytes of the body, CC-padded"),
+    field(
+      "payload",
+      8,
+      14,
+      "hex",
+      "Body tail, CC-padded; six zeros on the 0xA1 trailer",
+    ),
     field("crc", 22, 2, "hex"),
   ],
   { ecosystems: ["RA3", "HOMEWORKS"] },
@@ -875,9 +901,9 @@ const PAIR_B0 = packetType(
   { ecosystems: ["CASETA", "RA3"] },
 );
 
-// B0-B3 rotate like 81/82/83. Real devices answer discovery on B1 with the
-// same `08 05` body PAIR_B0 carries. OTA reuses B1-B3 for TransferData
-// (body length 0x2B, bytes 14-15 = 06 02), split out as OTA_DATA.
+// B0-B3 rotate like 81/82/83. Devices announce on B0 or B1 with the same
+// `08 05` body. OTA reuses B1-B3 for TransferData (body length 0x2B,
+// bytes 14-15 = 06 02), split out as OTA_DATA.
 const otaDataDisc: NumberLookup<FormatRule> = {
   0x2b: [{ name: "OTA_DATA", match: { 14: 0x06, 15: 0x02 } }],
 };
@@ -1058,6 +1084,16 @@ const LED_CONFIG = packetType(
   { isVirtual: true },
 );
 
+// Config writes share the QS unicast body `21 <fmt> 00 <serial> FE 06 ..`.
+// Checked on every CRC-valid 0x12/0x14/0x15/0x1A/0x1C frame in the captures.
+const configBodyFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex"),
+  field("target_id", 9, 4, "device_id_be"),
+];
+
 // Virtual config types (format-discriminated, used by firmware for naming)
 const ZONE_BIND = packetType(
   0xf3,
@@ -1065,7 +1101,7 @@ const ZONE_BIND = packetType(
   "CONFIG",
   "Zone bind / final zone assignment (format 0x12, entity selector 0x6E)",
   "little",
-  [],
+  configBodyFields,
   { isVirtual: true },
 );
 
@@ -1085,7 +1121,7 @@ const FUNC_MAP = packetType(
   "CONFIG",
   "Function mapping / conserved table descriptor (format 0x14)",
   "little",
-  [],
+  configBodyFields,
   { isVirtual: true },
 );
 
@@ -1095,7 +1131,7 @@ const TRIM_CONFIG = packetType(
   "CONFIG",
   "Trim / phase config (format 0x15)",
   "little",
-  [],
+  configBodyFields,
   { isVirtual: true },
 );
 
@@ -1105,7 +1141,7 @@ const SCENE_CONFIG = packetType(
   "CONFIG",
   "Scene config (format 0x1A)",
   "little",
-  [],
+  configBodyFields,
   { isVirtual: true },
 );
 
@@ -1115,7 +1151,7 @@ const FADE_CONFIG = packetType(
   "CONFIG",
   "Fade config (format 0x1C)",
   "little",
-  [],
+  configBodyFields,
   { isVirtual: true },
 );
 
@@ -1765,6 +1801,9 @@ export const CCA: CCAProtocolDef = {
     SEGMENT_A5,
     SEGMENT_A6,
     SEGMENT_A7,
+    CONFIG_A9,
+    CONFIG_AA,
+    CONFIG_AB,
     BEACON_91,
     BEACON_92,
     BEACON_93,

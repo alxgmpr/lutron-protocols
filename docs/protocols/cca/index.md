@@ -73,11 +73,12 @@ uint16_t calc_crc(const uint8_t *data, size_t len) {
 | Type | Name | Size | Description |
 |------|------|------|-------------|
 | 0x81-0x83 | LEVEL | 24 | Level command or dimmer state report |
-| 0x85-0x87 | SEGMENT (short) | 24 | Last segment of a segmented transfer, when it fits in 14 bytes |
+| 0x85-0x87 | SEGMENT (short) | 24 | Last segment of a segmented transfer, when it fits in 14 bytes; also the zero trailer of a unicast series (§7) |
 | 0x88-0x8B | BTN / SENSOR | 24 | Button press/release (fmt 0x04/0x0E) or sensor level (fmt 0x0B) / test (fmt 0x09) |
 | 0x91-0x93 | BEACON | 24 | Bridge pairing mode beacon |
 | 0xA1-0xA3 | CONFIG | 53 | Configuration commands (53 bytes with 0x00 padding + CRC) |
 | 0xA5-0xA7 | SEGMENT (long) | 53 | Segmented transfer: one body split across frames (§7) |
+| 0xA9-0xAB | CONFIG (Vive) | 53 | Vive hub config: the A1-A3 body behind the hub id |
 | 0xB0-0xB3 | DEVICE_ANNOUNCE | 53 | Device announcement during bridge pairing; B1-B3 also carry OTA TransferData (§9) |
 | 0xB8 | PAIR_REQ | 53 | Device pairing request (Vive) / bridge-only pairing (pico) |
 | 0xB9 | PAIR_BEACON | 53 | Direct-pair capable / Vive beacon |
@@ -331,25 +332,34 @@ A body too long for one frame is split across several. In a normal frame byte 6 
 
 | Byte | Field | Notes |
 |------|-------|-------|
-| 0 | type | `A5`/`A6`/`A7` (53 B) or `85`/`86`/`87` (24 B); low bits rotate like `81/82/83` |
+| 0 | type | `A5`/`A6`/`A7` (53 B) or `85`/`86`/`87` (24 B). Low bits step with the segment index: `A6 A7 A5 A6 A7 85`, or `A5 A6 A7 A5 A6 87` |
 | 1 | sequence | |
-| 2 | flags | `0x21` broadcast series, `0xA1` unicast |
+| 2 | flags | `0x21` on the device-table series, `0xA1` on the per-device config series. Not an addressing bit: `0x21` series go to link `0x7F` and to single links alike |
 | 3-4 | subnet | Processor subnet (BE) |
 | 5 | `0x00` | |
 | 6 | target | Destination link address; `0x7F` = all |
 | 7 | segment | High nibble = segment index, low nibble = last segment index |
-| 8-50 / 8-21 | payload | 43 bytes per long frame, 14 per short |
+| 8-50 / 8-21 | payload | 43 bytes per long frame, 14 per short. `CC` padding follows the last body byte |
 
-The reassembled body is `21 <len>` plus `len` bytes, so the total is `len + 2`. A tail that fits in 14 bytes goes out short. Both series in the captures check out:
+The reassembled body is `21 <len>` plus `len` bytes, so the total is `len + 2`. A last segment of 14 bytes or fewer goes out short; a longer one goes out long. Three series appear in the captures:
 
 | Segments | Bytes 7 | `len` | Total | Tail | Tail frame |
 |----------|---------|-------|-------|------|------------|
+| 2 | `01 11` | `0x44` | 70 | 27 B | long |
 | 3 | `02 12 22` | `0x68` | 106 | 20 B | long |
-| 6 | `05 15 25 35 45 55` | `0xDE` | 224 | 9 B | short (`85-87`, fmt `0x55`) |
+| 6 | `05 15 25 35 45 55` | `0xDE` | 224 | 9 B | short (`85-87`) |
 
-Both are TransferData-style writes with the same shape as the OTA chunk (§9). The body is `21 len 00 <serial> FE 06 02 <ctr> <addr16> <size>` (or `FF×5` for broadcast) followed by `size` data bytes. The 6-segment body writes `0x0000` and `0x00D2` (210 B each, `ctr` 0/1), and the 3-segment body writes `0x01A4` (92 B, `ctr` 2). Together that is one 512-byte (`0x200`) block. Its data is the CCA device table, a packed serial list: each entry is `[4-byte serial BE][0x80]`, and the last uses `0xA0`. Serials straddle segment boundaries, so the corpus redactor blanks segment payloads whole. The processor sends 3 passes for redundancy.
+*Device table (3 and 6 segments, flags `0x21`).* These are TransferData-style writes with the same shape as the OTA chunk (§9). The body is `21 len 00 <serial> FE 06 02 <ctr> <addr16> <size>` (or `FF×5` for broadcast) followed by `size` data bytes. Two 6-segment bodies write `0x0000` and `0x00D2` (210 B each, `ctr` 0/1), and the 3-segment body writes `0x01A4` (92 B, `ctr` 2). Together that is one 512-byte (`0x200`) block.
 
-A 2-segment series (`01`/`11`, unicast, `06 50` config body like TRIM_CONFIG) also appears. Its `len` (`0x44`) needs a 27-byte tail, but the captured short `0x11` frames carry 6. The tail of that series is still open.
+The block is the CCA device table, indexed by link address: a 12-byte header (`FF FF FF FF` + `00×8`), then 100 five-byte slots, with link `L` at offset `12 + 5·L`. A slot is `[4-byte serial BE][flag]`, flag `0x80` or `0xA0` (meaning open), and an unused slot is five zero bytes. The target byte of a link-addressed series is that device's slot index. Slots are not aligned to segments, so serials straddle segment boundaries and the corpus redactor blanks segment payloads whole.
+
+Every segment is sent 8 times, 50 ms apart, sequence +4. The broadcast sends each of the three bodies once per transfer. The link-addressed series (link `0x1C` in the `failed-*` captures) sends each body 4 times.
+
+*Per-device config (2 segments, flags `0xA1`).* Seen in the `mrf3pd-*` transfers, to links `0x0E`/`0x10`/`0x16`/`0x18`/`0x19`, next to the same device's `06 50` A1-A3 frames (fmt `0x15`, `0x1C`, `0x0F`). The body is `21 44 00 <serial> FE 06 50 00 <04|09> 39` plus `0x39` = 57 data bytes: `08 00 06 00 06 00 00 00 00 00 06` then `FF×46`. Segment 0 carries the first 19 `FF`; the 27-byte tail is the other 27, in a long segment-1 frame.
+
+Each long frame of this series was seen once, sequence `01`. No capture holds a CRC-valid segment 1: it shows up twice as the start of a frame the receiver synced onto late (`A5 01 A1 <subnet> 00 0E 11 FF`, `A6 01 A1 <subnet> 00 19 11 FF FF`), and the `FF` matches the expected tail.
+
+A short frame follows with the same target and segment byte `0x11` and six zero bytes (`85 01 A1 <subnet> 00 0E 11 00 00 00 00 00 00 CC×8`). It is not body data. It comes from the processor: for links `0x10` and `0x16` its RSSI matches the processor's frames and sits 10 dB or more below the addressed device's ACKs. Where a segment 1 was caught just ahead of it, the two share their type low bits (`A5` then `85`). It is retried 1 to 4 times with sequence +6, like a unicast frame waiting for its ACK. In one capture it arrives just before a segment 0 / segment 1 pair instead of after, which fits a resend of the series. Its role (commit, or an ACK poll for the series) is open. A reassembler has to skip it: a short frame is body only when the bytes left after the long segments fit in 14.
 
 **Handshake:**
 
@@ -436,7 +446,7 @@ Two on-air packet shapes carry the OTA conversation:
 
 **Long chunk packets (53 bytes, type `0xB1`/`0xB2`/`0xB3`)** — TransferData carriers, body bytes 14-15 = `06 02`:
 
-The same type bytes also carry device discovery: real devices answer on `0xB1` with the `08 05` body that PAIR_B0 carries. The TS defs name these frames `PAIR_B1-B3`, and split a frame out as the virtual `OTA_DATA` when byte 7 = `0x2B` and bytes 14-15 = `06 02`.
+The same type bytes also carry device discovery: devices announce on `0xB0` or `0xB1` with the same `08 05` body (PAIR_B0). The TS defs name these frames `PAIR_B1-B3`, and split a frame out as the virtual `OTA_DATA` when byte 7 = `0x2B` and bytes 14-15 = `06 02`.
 
 ```
 byte    field             value/notes

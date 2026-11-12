@@ -50,6 +50,9 @@ static const uint8_t PKT_CONFIG_A3 = 0xA3;
 static const uint8_t PKT_SEGMENT_A5 = 0xA5;
 static const uint8_t PKT_SEGMENT_A6 = 0xA6;
 static const uint8_t PKT_SEGMENT_A7 = 0xA7;
+static const uint8_t PKT_CONFIG_A9 = 0xA9;
+static const uint8_t PKT_CONFIG_AA = 0xAA;
+static const uint8_t PKT_CONFIG_AB = 0xAB;
 static const uint8_t PKT_PAIRING_B0 = 0xB0;
 static const uint8_t PKT_PAIR_B1 = 0xB1;
 static const uint8_t PKT_PAIR_B2 = 0xB2;
@@ -273,6 +276,12 @@ inline const char* cca_packet_type_name(uint8_t type_byte)
         return "SEGMENT_A6";
     case 0xA7:
         return "SEGMENT_A7";
+    case 0xA9:
+        return "CONFIG_A9";
+    case 0xAA:
+        return "CONFIG_AA";
+    case 0xAB:
+        return "CONFIG_AB";
     case 0xB0:
         return "PAIR_B0";
     case 0xB1:
@@ -382,7 +391,7 @@ inline bool cca_is_button_type(uint8_t type_byte)
 // Check if type byte is a pairing announcement
 inline bool cca_is_pairing_type(uint8_t type_byte)
 {
-    return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 || type_byte == 0xBA || type_byte == 0xBB;
+    return (type_byte >= 0xB0 && type_byte <= 0xB3) || (type_byte >= 0xB8 && type_byte <= 0xBB);
 }
 
 // Check if type byte is a handshake

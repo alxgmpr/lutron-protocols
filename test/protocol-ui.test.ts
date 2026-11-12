@@ -178,3 +178,15 @@ test("identifyPacket splits B1-B3 into device discovery and OTA TransferData", (
   assert.equal(data.isVirtual, true);
   assert.equal(data.fields.find((f) => f.name === "chunk")?.offset, 20);
 });
+
+test("identifyPacket names Vive hub config frames on A9-AB", () => {
+  // 5-byte `28 03 01 ..` prefix ahead of the body: no format match
+  const wrapped = new Uint8Array(53).fill(0xcc);
+  wrapped.set([0xaa, 0x01, 0x01, 0x02, 0x03, 0x04, 0x28, 0x03, 0x01]);
+  assert.equal(identifyPacket(wrapped).typeName, "CONFIG_AA");
+
+  // Plain A1-A3 body, so the format byte discriminates as it does there
+  const plain = new Uint8Array(53).fill(0xcc);
+  plain.set([0xab, 0x01, 0x01, 0x02, 0x03, 0x04, 0x21, 0x14, 0x00]);
+  assert.equal(identifyPacket(plain).typeName, "FUNC_MAP");
+});

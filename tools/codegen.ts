@@ -223,7 +223,7 @@ function generateCCAHeader(): string {
   out +=
     "// Check if type byte is a pairing announcement\ninline bool cca_is_pairing_type(uint8_t type_byte) {\n";
   out +=
-    "  return type_byte == 0xB0 || type_byte == 0xB8 || type_byte == 0xB9 ||\n         type_byte == 0xBA || type_byte == 0xBB;\n}\n\n";
+    "  return (type_byte >= 0xB0 && type_byte <= 0xB3) ||\n         (type_byte >= 0xB8 && type_byte <= 0xBB);\n}\n\n";
 
   out +=
     "// Check if type byte is a handshake\ninline bool cca_is_handshake_type(uint8_t type_byte) {\n";

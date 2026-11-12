@@ -94,11 +94,11 @@ describe("corpus redaction", () => {
 
       for (const field of info.fields) {
         if (!/device_id/.test(String(field.format))) continue;
-        if (field.offset + field.size > frame.length) continue;
 
+        // subarray clamps, so a truncated frame is checked on what it holds
         const span = frame.subarray(field.offset, field.offset + field.size);
-        const expected = Buffer.alloc(field.size);
-        for (let i = 0; i < field.size; i++) {
+        const expected = Buffer.alloc(span.length);
+        for (let i = 0; i < span.length; i++) {
           expected[i] = REDACTED_ID[i % REDACTED_ID.length];
         }
         if (!span.equals(expected)) {

@@ -172,6 +172,7 @@ TEST(decoder_type_classification)
     ASSERT_TRUE(!cca_is_button_type(0x91));
 
     ASSERT_TRUE(cca_is_pairing_type(0xB0));
+    ASSERT_TRUE(cca_is_pairing_type(0xB1));
     ASSERT_TRUE(cca_is_pairing_type(0xB8));
     ASSERT_TRUE(!cca_is_pairing_type(0x88));
 
