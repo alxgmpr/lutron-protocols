@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { ccaSpans, fmtCbor, hexDump, renderDetail } from "../cli/core/detail";
+import {
+  ccaSpans,
+  changedOffsets,
+  fmtCbor,
+  hexDump,
+  previousFromDevice,
+  renderDetail,
+} from "../cli/core/detail";
 import {
   CYAN,
   DIM,
@@ -123,4 +130,65 @@ test("Store selection: newest first, steps over text/filtered, stays in view", (
   assert.ok(line.startsWith(INVERSE));
   s.clearSelection();
   assert.equal(s.getState().selected, null);
+});
+
+test("previousFromDevice: same proto, device and length; nearest first", () => {
+  const b = (h: string) => Buffer.from(h, "hex");
+  const older = row({ device: "D1", bytes: b("0101") });
+  const other = row({ device: "D2", bytes: b("0102") });
+  const longer = row({ device: "D1", bytes: b("010203") });
+  const ccx = row({ proto: "X", device: "D1", bytes: b("0103") });
+  const nearer = row({ device: "D1", bytes: b("0104") });
+  const sel = row({ device: "D1", bytes: b("0105") });
+  const entries = [older, other, longer, ccx, nearer, { text: "t" }, sel];
+  assert.equal(previousFromDevice(entries, sel), nearer);
+  assert.equal(previousFromDevice(entries, nearer), older);
+  assert.equal(previousFromDevice(entries, older), null);
+  assert.equal(
+    previousFromDevice(entries, row({ device: "", bytes: b("01") })),
+    null,
+  );
+});
+
+test("renderDetail diff: changed bytes and fields are marked and summarised", () => {
+  const prev = row({ ts: "12:00:00.000", device: "DEADBEEF", bytes: DIM_STEP });
+  const next = DIM_STEP.slice();
+  next[1] = 0x08; // sequence
+  next[16] = 0x01; // direction
+  next[17] = 0xff; // covered by no field
+  const lines = renderDetail(
+    row({ device: "DEADBEEF", bytes: next }),
+    120,
+    prev,
+  );
+  const plain = lines.map((l) => stripVTControlCharacters(l));
+  assert.ok(
+    plain.includes(
+      "Δ vs 12:00:00.000 · 3 bytes changed: sequence, direction, unmapped @11",
+    ),
+    plain.join("\n"),
+  );
+  const UL = "\x1b[4m\x1b[1m";
+  const hexLines = lines.filter((l) =>
+    /^\S*00\S* {2}/.test(stripVTControlCharacters(l)),
+  );
+  assert.ok(hexLines[0].includes(`${UL}08`)); // changed byte marked
+  assert.ok(!hexLines[0].includes(`${UL}80`)); // unchanged type byte not
+  assert.equal(changedOffsets(DIM_STEP, next).join(), "1,16,17");
+
+  const same = renderDetail(
+    row({ device: "DEADBEEF", bytes: DIM_STEP }),
+    120,
+    prev,
+  );
+  assert.ok(
+    same.some(
+      (l) => stripVTControlCharacters(l) === "Δ identical to 12:00:00.000",
+    ),
+  );
+  const none = renderDetail(row({ device: "DEADBEEF", bytes: DIM_STEP }), 120);
+  assert.match(
+    stripVTControlCharacters(none[1]),
+    /no earlier 24-byte packet from DEADBEEF/,
+  );
 });
