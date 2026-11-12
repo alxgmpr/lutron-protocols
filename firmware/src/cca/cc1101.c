@@ -483,7 +483,7 @@ static void restart_rx_fast(void)
  *
  * Uses preamble sync (0xAAAA, 16/16 match) + fixed-length mode (80 bytes).
  * The CC1101 locks onto the alternating preamble, then reads 80 bytes
- * of FIFO data containing the packet.  The decoder scans for the 7F CB
+ * of FIFO data containing the packet.  The decoder scans for the FA DE
  * data sync marker within those 80 bytes.
  * ----------------------------------------------------------------------- */
 void cc1101_start_rx(void)

@@ -22,8 +22,9 @@ uint32_t cca_rx_count(void);
 /** Get TX packet count */
 uint32_t cca_tx_count(void);
 
-/** Get count of dropped packets (decode failures with RSSI > -85) */
+/** Get count of dropped packets (decode failures with RSSI > -85 that had an FA DE marker) */
 uint32_t cca_drop_count(void);
+/** Get count of preamble syncs on noise (decode failed, no FA DE marker in the capture) */
 uint32_t cca_noise_count(void);
 
 /** Get count of packets decoded but with CRC failure */
