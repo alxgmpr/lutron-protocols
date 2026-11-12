@@ -26,6 +26,40 @@ const BUTTON_FRAME = Buffer.from(
 const UNKNOWN_FRAME = Buffer.from("0b1122334455661e8899aabbccddeeff", "hex");
 
 describe("redactCcaFrame", () => {
+  it("blanks a segmented-transfer payload, where ids straddle frames", () => {
+    // Device-table segment: the first byte of a serial ended the previous
+    // segment, so this one opens with the other three (11 22 33).
+    const seg = Buffer.alloc(53, 0xcc);
+    seg.set([0xa6, 0x01, 0x21, 0x12, 0x34, 0x00, 0x7f, 0x45]);
+    seg.set([0x11, 0x22, 0x33, 0x80, 0x44, 0x55, 0x66, 0x77, 0xa0], 8);
+    const out = redactCcaFrame(seg);
+
+    assert.deepEqual(out.subarray(8, 51), Buffer.alloc(43));
+    assert.equal(out[7], 0x45); // segment byte kept
+    assert.equal(
+      decodeCcaFrame(out).fieldsPresent,
+      decodeCcaFrame(seg).fieldsPresent,
+    );
+  });
+
+  it("scrubs an id that a misplaced device_id field only half covers", () => {
+    // Occupancy-sensor frame, decoded as DIM_STEP: that layout puts
+    // target_id at 9-12, but here the id repeats at 12-15.
+    const frame = Buffer.from(
+      "880011223344210b0300040111223344000000cccccc0000",
+      "hex",
+    );
+    const out = redactCcaFrame(frame, { knownSerials: [0x11223344] });
+
+    assert.equal(out.includes(Buffer.from("223344", "hex")), false);
+  });
+
+  it("covers the leading bytes of a device_id field cut off by truncation", () => {
+    const out = redactCcaFrame(BUTTON_FRAME.subarray(0, 15));
+
+    assert.deepEqual(out.subarray(12, 15), REDACTED_ID.subarray(0, 3));
+  });
+
   it("replaces every device_id field in an identified frame", () => {
     const out = redactCcaFrame(BUTTON_FRAME);
 

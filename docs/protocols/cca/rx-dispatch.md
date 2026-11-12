@@ -265,8 +265,12 @@ Verified by the byte-state-machine length code: `(type & 0xE0) == 0xA0` → 53 b
 
 These hit the runtime `0x80` arm too because `(0xA0 & 0xC0) == 0x80`. Sub-arm
 discrimination:
-- `(type & 0x18) == 0x00` (so `type` in 0xA0-0xA7) → `CONFIG_A1/A2/A3` family
-- `(type & 0x10) != 0` (so `type` in 0xB0-0xBF) → `PAIR_B0/B2/B8/B9/BA/BB`
+- `(type & 0x18) == 0x00` (so `type` in 0xA0-0xA7) → `CONFIG_A1/A2/A3` family,
+  plus `SEGMENT_A5/A6/A7` (segmented transfer, [index.md §7](index.md))
+- `(type & 0x10) != 0` (so `type` in 0xB0-0xBF) → `PAIR_B0/B1/B2/B3/B8/B9/BA/BB`
+  (B1-B3 also carry OTA TransferData)
+
+`0xA9-0xAB` (`CONFIG_A9/AA/AB`, Vive hub config) match neither test.
 
 The classifier doesn't decode the format byte (`pbVar20[7]`) directly — that's
 handed off downstream to `FUN_0800ECBC` (HDLC IPC TX) which forwards the 53-byte

@@ -84,6 +84,8 @@ function knownSerials(): number[] {
 function framesFromCsv(path: string): Buffer[] {
   const out: Buffer[] = [];
   for (const line of readFileSync(path, "utf8").trim().split("\n").slice(1)) {
+    // Sessions also log CCX (CBOR) rows; as CCA they read as STATE_RPT_82.
+    if (line.includes(",ccx,")) continue;
     const hex = line
       .slice(line.lastIndexOf(",") + 1)
       .trim()

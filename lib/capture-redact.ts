@@ -26,6 +26,13 @@ export const REDACTED_ID = Buffer.from("deadbeef", "hex");
  */
 const UNIDENTIFIED_KEEP_OFFSETS = [0, 7];
 
+/**
+ * Fields blanked whole. A segmented transfer's payload is the device table:
+ * serials packed back to back, and split across segment boundaries, so no
+ * positional or by-value scrub can find them all.
+ */
+const OPAQUE_FIELDS = new Set(["payload"]);
+
 export interface RedactOptions {
   /** Serials to scrub wherever they appear, in either byte order. */
   knownSerials?: number[];
@@ -92,14 +99,24 @@ export function redactCcaFrame(data: Buffer, opts: RedactOptions = {}): Buffer {
   }
 
   const out = Buffer.from(data);
-  for (const field of info.fields) {
-    if (!/device_id/.test(String(field.format))) continue;
-    if (field.offset + field.size > out.length) continue;
-    fillPlaceholder(out, field.offset, field.size);
-  }
 
+  // By value first. A layout can put a device_id field a few bytes off
+  // where this frame really carries its id (an occupancy-sensor frame
+  // decoded as DIM_STEP: field at 9, id at 12). Filling that first
+  // overwrites one byte of the real id and hides the other three from
+  // the scrub.
   for (const serial of opts.knownSerials ?? []) {
     scrubValue(out, serial);
+  }
+
+  for (const field of info.fields) {
+    // A truncated frame still holds the leading bytes of a cut-off field.
+    const end = Math.min(field.offset + field.size, out.length);
+    if (OPAQUE_FIELDS.has(field.name)) {
+      out.fill(0, field.offset, end);
+    } else if (/device_id/.test(String(field.format))) {
+      fillPlaceholder(out, field.offset, end - field.offset);
+    }
   }
 
   return out;
