@@ -108,8 +108,8 @@ TEST(decoder_state_report)
 /* Dimmer ACK validation */
 TEST(decoder_dimmer_ack)
 {
-    /* Dimmer ACK: 5-byte format [0x0B, seq, b2, seq^0x26, b4] */
-    uint8_t pkt[] = {0x0B, 0x42, 0xFE ^ 0x55, 0x42 ^ 0x26, 0xFE ^ 0x99};
+    /* Dimmer ACK: 5-byte format [0x0B, seq, b2, seq^0x26, b2^0x55] */
+    uint8_t pkt[] = {0x0B, 0x42, 0xFE ^ 0x2E, 0x42 ^ 0x26, 0xFE ^ 0x2E ^ 0x55};
 
     /* N81-encode directly (dimmer ACK has no CRC).
      * Pad FIFO to 32 bytes — decoder requires >= 200 bits. */
@@ -127,6 +127,38 @@ TEST(decoder_dimmer_ack)
     ASSERT_TRUE(result.valid);
     ASSERT_EQ(result.type_byte, (uint8_t)0x0B);
     ASSERT_EQ(result.sequence, (uint8_t)0x42);
+}
+
+/* Other short ACK types: same 5-byte shape, per-type XOR key, no 0xFE fix */
+TEST(decoder_short_ack_07)
+{
+    /* Captured reply to SET_LEVEL 0xCB7C: status byte = level high byte */
+    uint8_t pkt[] = {0x07, 0x05, 0xCB, 0x2D, 0xF7};
+    uint8_t fifo[128];
+    memset(fifo, 0, sizeof(fifo));
+    size_t flen = n81_encode_packet(pkt, 5, fifo, sizeof(fifo));
+    if (flen < 32) flen = 32;
+
+    CcaDecoder dec;
+    DecodedPacket result;
+    result.clear();
+    ASSERT_TRUE(dec.decode(fifo, flen, result));
+    ASSERT_EQ(result.type_byte, (uint8_t)0x07);
+    ASSERT_EQ(result.format_byte, (uint8_t)0xCB);
+    ASSERT_EQ(result.raw_len, (size_t)5);
+    ASSERT_TRUE(result.crc_valid);
+}
+
+TEST(short_ack_check_bytes)
+{
+    uint8_t good[] = {0x15, 0x04, 0x10, 0x04 ^ 0xD8, 0x10 ^ 0xB4};
+    uint8_t bad[] = {0x15, 0x04, 0x10, 0x04 ^ 0xD8, 0x10 ^ 0xB5};
+    uint8_t long_type[] = {0x81, 0x04, 0x10, 0x04, 0x10};
+    ASSERT_TRUE(cca_short_ack_valid(good, 5));
+    ASSERT_TRUE(!cca_short_ack_valid(bad, 5));
+    ASSERT_TRUE(!cca_short_ack_valid(good, 4));
+    ASSERT_TRUE(!cca_short_ack_valid(long_type, 5));
+    ASSERT_EQ(cca_get_packet_length(0x15), 5);
 }
 
 /* Packet type classification */

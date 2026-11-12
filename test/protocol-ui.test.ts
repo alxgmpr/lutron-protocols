@@ -115,3 +115,30 @@ test("parseFieldValue decodes broadcast and level fields", () => {
     decoded: "100%",
   });
 });
+
+test("identifyPacket names 5-byte short ACKs by their XOR check", () => {
+  // Captured reply to SET_LEVEL 0xCB7C from an HQR-3LD: status = level high byte
+  const identified = identifyPacket([0x07, 0x05, 0xcb, 0x2d, 0xf7]);
+
+  assert.equal(identified.typeName, "ACK_07");
+  assert.equal(identified.category, "ACK");
+  const status = identified.fields.find((f) => f.name === "status");
+  assert.equal(status?.offset, 2);
+});
+
+test("identifyPacket accepts a short ACK with the tail older firmware appends", () => {
+  // Pre-fix firmware streamed short ACKs through the CRC-optional fallback,
+  // padding them with whatever followed on air.
+  const hex = "072831000d617c614c3924fa";
+  const identified = identifyPacket(Buffer.from(hex, "hex"));
+
+  assert.equal(identified.typeName, "ACK_07");
+});
+
+test("identifyPacket leaves a short type unknown when its check fails", () => {
+  // Same type byte, check bytes off by one bit: a CRC-failed frame, not an ACK
+  const identified = identifyPacket([0x07, 0x05, 0xcb, 0x2d, 0xf6]);
+
+  assert.equal(identified.typeName, "0x07");
+  assert.equal(identified.category, "unknown");
+});

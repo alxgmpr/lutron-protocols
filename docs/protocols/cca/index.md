@@ -564,7 +564,7 @@ bun run tools/cca/rtlsdr-cca-decode.ts --rate 2000000 capture.bin
 
 ### 0x0B ACK Packets
 
-Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 24-byte N81 CCA. Decoder rule lives in `firmware/src/cca/cca_decoder.h:309 try_parse_dimmer_ack`.
+Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 24-byte N81 CCA. Decoder rule lives in `firmware/src/cca/cca_decoder.h` `try_parse_dimmer_ack`.
 
 ```
 [0] 0x0B
@@ -577,6 +577,20 @@ Dimmers send **5-byte XOR-encoded ACK packets** (type `0x0B`) — NOT standard 2
 Validation: `byte[3] == byte[1] ^ 0x26`. Correction: `format = byte[2] ^ 0xFE`, `level = byte[4] ^ 0xFE`. The "level" field is just `format ^ 0x55` in every observed case — it is a redundant XOR-shadow, not an independent value.
 
 Cadence: 1 ACK every 25 ms (40 Hz) when the dimmer is in any active state (set-level, config, or OTA). 3 ACKs at ~25 ms intervals per runtime command.
+
+#### The short-ACK family (every type < 0x40)
+
+`0x0B` is one of nine 5-byte ACK types. Every type byte below `0x40` is a 5-byte frame in Lutron's length rule ([rx-dispatch.md §7](rx-dispatch.md)), and each type uses its own XOR key: `byte[3] = byte[1] ^ k1`, `byte[4] = byte[2] ^ k2`. Each type held a single key pair across 7,020 short frames in the local captures:
+
+| Type | k1 | k2 | Seen after |
+|------|----|----|------------|
+| `05` `06` `07` | `76` `E2` `28` | `2D` `33` `3C` | state reports (fmt `0x08`), SET_LEVEL (fmt `0x0E`), OTA |
+| `09` `0A` `0B` | `78` `EC` `26` | `44` `5A` `55` | fmt `0x0D`, DEVICE_CTRL; `0B` is also the OTA ACK stream |
+| `15` `16` `17` | `D8` `4C` `86` | `B4` `AA` `A5` | config frames (fmt `0x0A`, SCENE_CONFIG), processor reboot |
+
+The low two bits rotate like `81/82/83`. After a SET_LEVEL, an HQR-3LD answers with `07`, and `byte[2]` is the commanded level's high byte (`07 05 CB 2D F7` follows a SET_LEVEL of `0xCB7C`). The `^ 0xFE` correction applies only to `0x0B`. The key table is `ShortAckKeys` in `protocol/cca.protocol.ts`, and codegen emits `cca_short_ack_valid()` from it.
+
+Firmware that predates the generalized parser decodes the other eight types only through the CRC-optional fallback. Those frames count as `crc_fail` and stream with trailing junk. The host checks the first 5 bytes either way.
 
 During an OTA the `format` byte is the **device's state code** — see §9.5 for the OTA-specific state table (`0x2E` in-progress, `0xC1` ready, `0xC2` advancing-page, `0xEC` committing). For non-OTA traffic, `format` carries the response class for the runtime command being acknowledged.
 

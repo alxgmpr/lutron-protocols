@@ -32,12 +32,19 @@ import type { NucleoStatus } from "./nucleo-status";
  *
  * Loss between bursts is not measurable at all — nothing in the frame says
  * how many commands there should have been — so it is not counted.
+ *
+ * The 135… train is also not the whole burst: the processor leads each
+ * command with one frame at slot 1, then jumps to 0x87. Bit 7 of the slot
+ * flipping is therefore a burst edge too. Without it the 1→135 jump is read
+ * as 22 missing repeats per command — measured at 96.8% invented loss on a
+ * SET_LEVEL run where every frame arrived.
  */
 function segmentBursts(seqs: number[]): number[][] {
   const bursts: number[][] = [];
   let current: number[] = [];
   for (const s of seqs) {
-    if (current.length > 0 && s < current[current.length - 1]) {
+    const prev = current[current.length - 1];
+    if (current.length > 0 && (s < prev || ((s ^ prev) & 0x80) !== 0)) {
       bursts.push(current);
       current = [];
     }

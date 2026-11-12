@@ -206,19 +206,28 @@ async function findZone(
   conn: LeapConnection,
   search: string,
 ): Promise<ZoneTarget> {
-  const body = await conn.readBody("/zone");
-  const zones = body?.Zones ?? [];
   const asNum = Number.parseInt(search, 10);
-  const match = !Number.isNaN(asNum)
-    ? zones.find((z: any) => hrefId(z.href) === asNum)
-    : zones.find((z: any) =>
-        (z.Name ?? "").toLowerCase().includes(search.toLowerCase()),
-      );
+  // RA3 answers 405 to a bare /zone list (only Caseta enumerates it), but
+  // every processor serves /zone/{id}, so an id never needs the list.
+  const direct = !Number.isNaN(asNum)
+    ? (await conn.readBody(`/zone/${asNum}`))?.Zone
+    : undefined;
+  const zones = direct ? [] : ((await conn.readBody("/zone"))?.Zones ?? []);
+  const match =
+    direct ??
+    zones.find((z: any) =>
+      (z.Name ?? "").toLowerCase().includes(search.toLowerCase()),
+    );
   if (!match) {
     const names = zones
       .map((z: any) => `  ${hrefId(z.href)}: ${z.Name}`)
       .join("\n");
-    throw new Error(`No zone matching "${search}". Available:\n${names}`);
+    throw new Error(
+      `No zone matching "${search}". ` +
+        (names
+          ? `Available:\n${names}`
+          : "This processor does not list /zone (RA3); pass the zone id."),
+    );
   }
 
   const id = hrefId(match.href);

@@ -32,6 +32,7 @@ export {
   getQSDeviceClassByHex,
   isButtonPacket,
   isPacketCategory,
+  isValidShortAck,
   LENGTHS,
   nextSequence,
   PacketFields,
@@ -52,8 +53,10 @@ import {
   CCA,
   type FieldDef,
   type FieldFormat,
+  isValidShortAck,
   PacketFields,
   PacketTypeInfo,
+  ShortAckKeys,
 } from "./cca.protocol";
 import type { DeviceFingerprint, FormatRule } from "./dsl";
 
@@ -194,9 +197,11 @@ export function identifyPacket(data: Uint8Array | number[]): IdentifiedPacket {
     }
   }
 
-  // Standard type byte lookup
+  // Standard type byte lookup. Short ACKs carry no CRC and the firmware
+  // streams CRC-failed frames, so a short type only counts when its XOR check
+  // bytes hold.
   const info = PacketTypeInfo[typeByte];
-  if (info) {
+  if (info && (!(typeByte in ShortAckKeys) || isValidShortAck(data))) {
     const fields = PacketFields[info.name] ?? [];
     return {
       typeName: info.name,

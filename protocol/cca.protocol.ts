@@ -17,6 +17,7 @@ import {
   type FieldDef,
   type FormatRule,
   field,
+  type PacketTypeDef,
   type PairingPreset,
   packetType,
   packetTypeFrom,
@@ -68,6 +69,7 @@ const categoryEnum = enumDef(
     PAIRING: { value: -1, description: "Pairing announcements" },
     CONFIG: { value: -1, description: "Device configuration" },
     HANDSHAKE: { value: -1, description: "Pairing responses" },
+    ACK: { value: -1, description: "5-byte device ACKs (no CRC)" },
   },
 );
 
@@ -1526,6 +1528,76 @@ const deviceFingerprints: StringLookup<DeviceFingerprint> = {
 };
 
 // ============================================================================
+// SHORT DEVICE ACKS (5 bytes, type < 0x40)
+// ============================================================================
+//
+// Lutron's own length rule makes every type byte below 0x40 a 5-byte frame
+// (docs/protocols/cca/rx-dispatch.md §7). There is no CRC: bytes 3 and 4
+// repeat bytes 1 and 2 XORed with a key that depends only on the type byte.
+// Measured over 7,020 short frames from local captures — every type held a
+// single key pair. Families rotate their low bits the way 81/82/83 do:
+//   05-07  answer state reports (fmt 0x08) and SET_LEVEL (fmt 0x0E);
+//          after SET_LEVEL, `status` is the commanded level's high byte
+//   09-0B  answer fmt 0x0D and DEVICE_CTRL; 0B is also the OTA ACK stream
+//   15-17  answer config frames (fmt 0x0A, SCENE_CONFIG)
+
+/** type byte → [byte1 ^ byte3, byte2 ^ byte4]. */
+export const ShortAckKeys: NumberLookup<readonly [number, number]> = {
+  0x05: [0x76, 0x2d],
+  0x06: [0xe2, 0x33],
+  0x07: [0x28, 0x3c],
+  0x09: [0x78, 0x44],
+  0x0a: [0xec, 0x5a],
+  0x0b: [0x26, 0x55],
+  0x15: [0xd8, 0xb4],
+  0x16: [0x4c, 0xaa],
+  0x17: [0x86, 0xa5],
+};
+
+/** True when a short-ACK type's check bytes hold. False for other types. */
+export function isValidShortAck(data: Uint8Array | number[]): boolean {
+  const key = ShortAckKeys[data[0]];
+  return (
+    key !== undefined &&
+    data.length >= 5 &&
+    (data[1] ^ data[3]) === key[0] &&
+    (data[2] ^ data[4]) === key[1]
+  );
+}
+
+const shortAckFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field(
+    "status",
+    2,
+    1,
+    "hex",
+    "Response code; level high byte after SET_LEVEL",
+  ),
+  field("check", 3, 2, "hex", "Bytes 1-2 XOR the per-type key"),
+];
+
+const shortAckTypes: Record<string, PacketTypeDef> = Object.fromEntries(
+  Object.keys(ShortAckKeys).map((t) => {
+    const value = Number(t);
+    const name = `ACK_${value.toString(16).toUpperCase().padStart(2, "0")}`;
+    return [
+      name,
+      packetType(
+        value,
+        5,
+        "ACK",
+        `Device short ACK (type ${name.slice(4)}, no CRC)`,
+        "big",
+        shortAckFields,
+        { ecosystems: ["CASETA", "RA3", "HOMEWORKS"] },
+      ),
+    ];
+  }),
+);
+
+// ============================================================================
 // PROTOCOL DEFINITION
 // ============================================================================
 
@@ -1614,6 +1686,7 @@ export const CCA: CCAProtocolDef = {
     DIM_STOP,
     PICO_HOLD,
     PICO_EXTENDED,
+    ...shortAckTypes,
   },
   sequences,
   pairingPresets,
