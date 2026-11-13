@@ -48,6 +48,7 @@ import {
 } from "../lib/stream-frame";
 import { DeviceClassNames } from "../protocol/cca.protocol";
 import {
+  describeShortAck,
   fingerprintDevice,
   identifyPacket,
   parseFieldValue,
@@ -324,6 +325,10 @@ function dominantStride(strideCounts: Map<number, number>): number | null {
 // ============================================================================
 // TUI helpers
 // ============================================================================
+/** Last full CCA frame seen, for reading the short ACKs that answer it. */
+let lastCcaCommand: { data: Buffer; at: number } | undefined;
+/** ACKs land within ~130 ms of the frame they answer; the train repeats every 75 ms. */
+const ACK_WINDOW_MS = 300;
 let ccaRxCount = 0;
 let ccaTxCount = 0;
 let ccxRxCount = 0;
@@ -711,7 +716,17 @@ function displayCcaPacket(
   } else if (category === "BEACON") {
     typeActionText = "BEACON";
     typeActionColor = YELLOW;
+  } else if (category === "ACK") {
+    const said =
+      lastCcaCommand && Date.now() - lastCcaCommand.at < ACK_WINDOW_MS
+        ? describeShortAck(data, lastCcaCommand.data)
+        : undefined;
+    if (said) {
+      stateParts.push(said);
+      verboseParts.push(said);
+    }
   }
+  if (data[0] >= 0x80) lastCcaCommand = { data, at: Date.now() };
 
   // Remaining fields
   for (const [name, val] of fieldValues) {
