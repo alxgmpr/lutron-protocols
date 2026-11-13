@@ -739,6 +739,8 @@ C1 20 82 D7 FE BF 00 BE 7F 00 00 3D FE 00 00 00 0A 00 …  table: link 5 = 3D, l
 
 Across the eleven poll trains in the March captures (processor reboot and five pairing sessions), 61 of 61 distinct `15`-`17` answers match the table entry at their computed link. The values are level bytes (`FE`, `BE`, `7E`, `3D` = the 24% scene level, `00`); that they are levels rests on the values and on the same byte being the level in `05`-`07`, not on a commanded sweep. Those captures are from a different address layout than the current project file, which is why links below 5 answer.
 
+A replay of the poll from the openlutron board did not reproduce this on the current link. The board's TX engine rewrites the sequence byte (base 0, stride 8) and retransmits every 75 ms, so the frame never went out as sequence 1 and the retransmits fall in the answer slots. A relay train with the same header (stride 6, heard from `13`) followed the replay, and no `15`-`17` answer was heard in either window. A clean test needs a single-shot raw TX that leaves the sequence byte alone.
+
 During pairing the same table carries `3F`, `02`, `C1` and `D0` at some links in place of a level, in step with the `05`-`07` pairing statuses below, so those four are link-wide pairing phases that the processor distributes. Their names, the two header bytes and the layout of pages `0x40` and up are not decoded.
 
 The link rule does not carry over to the `05`-`07` ACKs seen in pairing. Those answer broadcast frames 1 to 3 slots after the frame, whatever the device's link.
