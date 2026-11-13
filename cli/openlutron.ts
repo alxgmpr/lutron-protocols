@@ -7,8 +7,8 @@
  * an interactive shell mirroring the on-device commands, plus live packet
  * display using the protocol decoders from protocol/.
  *
- * Usage: npx tsx cli/nucleo.ts <host>
- *        npx tsx cli/nucleo.ts                  # uses openBridge from config.json
+ * Usage: npx tsx cli/openlutron.ts <host>
+ *        npx tsx cli/openlutron.ts                  # uses openBridge from config.json
  */
 
 import { decode as cborDecode } from "cbor-x";
@@ -1777,7 +1777,7 @@ function cleanup() {
 
 if (!host) {
   console.error(
-    `Usage: bun cli/nucleo.ts [host] [--update-leap] [--leap-host <ip>]`,
+    `Usage: npx tsx cli/openlutron.ts [host] [--update-leap] [--leap-host <ip>]`,
   );
   console.error(
     `  or set OPEN_BRIDGE_HOST env var, or configure openBridge in config.json`,

@@ -568,7 +568,7 @@ describe("openlutron stream client", () => {
     // dgram reports a failed bind with an `error` event and never calls the
     // listening callback. Awaiting only that callback left connect() pending
     // forever: no keepalive timer, nothing to re-register with the board, and
-    // in cli/nucleo.ts a `await setupStream()` that never returns.
+    // in cli/openlutron.ts a `await setupStream()` that never returns.
     const { stream, socket } = makeStream();
     socket.failBind = new Error("EADDRINUSE");
 

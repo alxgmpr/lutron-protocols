@@ -1,10 +1,10 @@
 /**
  * Screen adapter — exposes the historical IScreen + LineEditor surface
- * used by cli/nucleo.ts, backed by the Ink `<App/>` tree and the
+ * used by cli/openlutron.ts, backed by the Ink `<App/>` tree and the
  * ui/store.ts store.
  *
  * Goals:
- *   - Keep nucleo.ts's call sites unchanged: screen.appendLine(...), etc.
+ *   - Keep openlutron.ts's call sites unchanged: screen.appendLine(...), etc.
  *   - Route all mutations through `store` so Ink components re-render.
  *   - Fall back to a simple passthrough when stdout is not a TTY (piped).
  */
@@ -21,7 +21,7 @@ import { App } from "./App";
 import { store } from "./store";
 
 // ============================================================================
-// Combined screen + line-editor surface. nucleo.ts interacts with this
+// Combined screen + line-editor surface. openlutron.ts interacts with this
 // single object for both packet output (Screen methods) and shell input
 // (LineEditor methods).
 // ============================================================================
@@ -137,7 +137,7 @@ class InkScreenImpl implements InkScreen {
   onRedraw: (() => void) | null = null;
 
   init(): void {
-    // Mount happens in start(); init is a no-op so nucleo.ts's init/start
+    // Mount happens in start(); init is a no-op so openlutron.ts's init/start
     // sequencing still works (init can be called early before onSubmit is set).
   }
 
@@ -197,7 +197,7 @@ class InkScreenImpl implements InkScreen {
     this.destroy();
   }
 
-  /** Default resolver: flat prefix match on the static list. nucleo.ts can
+  /** Default resolver: flat prefix match on the static list. openlutron.ts can
    *  layer on LEAP-driven context by calling setCompletions with a richer
    *  list or by patching resolveCompletions in a future step. */
   private resolveCompletions(_before: string): string[] {

@@ -114,5 +114,5 @@ Universal cross-reference between LEAP and CCA. RA3 link data includes CCA Subne
 - `lib/leap-client.ts` — shared LeapConnection + fetchLeapData() with auto-detect
 - `tools/leap/leap-dump.ts` — CLI for dumps, uses leap-client, supports `--certs`/`--save`
 - `ccx/config.ts` — override mechanism via `setLeapData()`, `getSerialName()` export
-- `cli/nucleo.ts` — `--update-leap` flag fetches live LEAP data at startup
+- `cli/openlutron.ts` — `--update-leap` flag fetches live LEAP data at startup
 - Saved data goes to `data/leap-<host>.json`
