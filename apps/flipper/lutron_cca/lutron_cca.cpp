@@ -368,7 +368,7 @@ extern "C" int32_t lutron_cca_app(void* p) {
     uint8_t buf[RX_PKT_LEN + 4];
     size_t len = 0; // bytes accumulated; > 0 means a packet is in progress (t0/rssi valid)
     int8_t rssi = 0, freqest = 0;
-    uint32_t t0 = 0, last_poll = 0;
+    uint32_t t0 = 0, last_poll = 0, last_blink = 0;
     bool running = true;
 
     while(running) {
@@ -451,7 +451,11 @@ extern "C" int32_t lutron_cca_app(void* p) {
                 if(pkt.crc_valid) {
                     s->ok++;
                     hist_add(s, &pkt, rssi, freqest);
-                    notification_message(notif, &sequence_blink_green_10);
+                    // One blink per burst is enough; repeats arrive faster than a blink lasts.
+                    if(furi_get_tick() - last_blink > 150) {
+                        last_blink = furi_get_tick();
+                        notification_message(notif, &sequence_blink_green_10);
+                    }
                 } else {
                     s->bad++; // counted in the header and logged; values can't be trusted on screen
                 }
