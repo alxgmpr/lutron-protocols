@@ -1,21 +1,30 @@
 // Lutron CCA sniffer/transmitter for Flipper Zero.
-// RX: decoded packets go to the screen and to the log (CLI `log`).
-// TX: OK replays the selected row; /ext/cca_tx.txt is a host-driven TX queue (see send_tx_file).
+// RX: decoded packets go to a scrollable history list and to the log (CLI `log`).
+//     Up/Down scroll, OK opens the packet detail view, Back exits.
+// TX: OK in the detail view replays that packet; /ext/cca_tx.txt is a host-driven TX queue
+//     (see send_tx_file).
 // Closed-loop check against openlutron: tools/flipper/cca-loopback.ts.
 // Reuses the firmware's N81 / CRC / decoder headers unchanged.
 #include <furi.h>
 #include <furi_hal.h>
 #include <gui/gui.h>
+#include <gui/elements.h>
+#include <notification/notification_messages.h>
 #include <input/input.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <storage/storage.h>
 
 #include "../../../firmware/src/cca/cca_decoder.h"
+#include "cca_describe.h"
 
 #define RX_PKT_LEN 80
 #define ACCUM_TIMEOUT_MS 40
-#define ROWS 5
+#define EARLY_LEN 40 // FIFO bytes at which a 24-byte packet (34 bytes N81-encoded) is in
+#define ROWS 5 // list rows on screen
+#define DROWS 4 // detail lines on screen
+#define HIST 64 // scrollback depth
+#define REPEAT_MS 2000 // copies of a packet heard within this window collapse into one row
 
 // Register/value pairs, {0,0} terminator (so register 0x00 cannot be used), then 8-byte PA table.
 // Values mirror firmware/src/cca/cc1101.c (cc1101_init + cc1101_start_rx).
@@ -184,30 +193,108 @@ static bool cca_transmit(const uint8_t* encoded, size_t len) {
 }
 
 typedef struct {
-    char line[ROWS][32];
-    uint32_t total, crc_ok, overflow, syncs, tx;
-    int sel;       // selected row for replay
-    char txr;      // last TX result: ' ' none yet, '+' radio returned to idle, 'x' it did not
+    DecodedPacket pkt; // latest copy
+    uint32_t tick; // when it was last heard
+    uint16_t count; // copies heard
+    int8_t rssi, freqest;
+} Entry;
+
+typedef struct {
+    Entry hist[HIST]; // newest first
+    int n, sel, top; // entries used, selected entry, first entry on screen
+    bool detail; // detail view open
+    Entry d; // snapshot shown in the detail view, so new packets can't shift it
+    char dlines[CCA_DETAIL_MAX][CCA_LINE_LEN];
+    int dn, dtop;
+    uint32_t ok, bad;
+    char txr; // last replay result: ' ' none yet, '+' radio returned to idle, 'x' it did not
     FuriMutex* mutex;
 } State;
+
+static int clampi(int v, int lo, int hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+}
+
+// Keep the selection valid and on screen.
+static void clamp_view(State* s) {
+    s->sel = clampi(s->sel, 0, s->n ? s->n - 1 : 0);
+    s->top = clampi(s->top, s->sel - (ROWS - 1), s->sel);
+    s->top = clampi(s->top, 0, s->n > ROWS ? s->n - ROWS : 0);
+}
+
+// Call with the mutex held.
+static void hist_add(State* s, const DecodedPacket* p, int8_t rssi, int8_t freqest) {
+    uint32_t now = furi_get_tick();
+    Entry* e = NULL;
+    // Bursts from two devices interleave, so look a few rows back for the repeat.
+    for(int i = 0; i < s->n && i < 4 && !e; i++)
+        if(now - s->hist[i].tick < REPEAT_MS && cca_same_packet(s->hist[i].pkt, *p)) e = &s->hist[i];
+    if(e) {
+        e->count++;
+    } else {
+        memmove(&s->hist[1], &s->hist[0], sizeof(Entry) * (HIST - 1));
+        e = &s->hist[0];
+        e->count = 1;
+        if(s->n < HIST) s->n++;
+        // Scrolled away from the newest row: stay on the same packet instead of sliding off it.
+        if(s->sel > 0) s->sel++, s->top++;
+        clamp_view(s);
+    }
+    e->pkt = *p;
+    e->tick = now;
+    e->rssi = rssi;
+    e->freqest = freqest;
+}
 
 static void draw_cb(Canvas* c, void* ctx) {
     State* s = (State*)ctx;
     furi_mutex_acquire(s->mutex, FuriWaitForever);
     canvas_set_font(c, FontSecondary);
-    char hdr[40];
-    snprintf(hdr, sizeof(hdr), "r%lu k%lu o%lu s%lu t%lu%c", s->total, s->crc_ok, s->overflow, s->syncs, s->tx, s->txr);
-    canvas_draw_str(c, 0, 9, hdr);
-    for(int i = 0; i < ROWS; i++) {
-        if(i == s->sel) canvas_draw_str(c, 0, 21 + i * 10, ">");
-        canvas_draw_str(c, 6, 21 + i * 10, s->line[i]);
+    char t[48];
+    if(s->detail) {
+        cca_describe_row(s->d.pkt, t, sizeof(t));
+        canvas_draw_str(c, 0, 8, t);
+        canvas_draw_line(c, 0, 10, 127, 10);
+        for(int i = 0; i < DROWS && s->dtop + i < s->dn; i++)
+            canvas_draw_str(c, 0, 20 + i * 10, s->dlines[s->dtop + i]);
+        if(s->dn > DROWS) elements_scrollbar_pos(c, 127, 12, 40, s->dtop, s->dn - DROWS + 1);
+        if(cca_replayable(s->d.pkt))
+            elements_button_center(c, s->txr == '+' ? "Sent" : s->txr == 'x' ? "TX fail" : "Send");
+    } else {
+        snprintf(t, sizeof(t), "CCA 433.6  %lu ok  %lu bad", s->ok, s->bad);
+        canvas_draw_str(c, 0, 8, t);
+        canvas_draw_line(c, 0, 10, 127, 10);
+        if(!s->n) {
+            canvas_draw_str_aligned(c, 64, 30, AlignCenter, AlignCenter, "Listening...");
+            canvas_draw_str_aligned(c, 64, 42, AlignCenter, AlignCenter, "Press a Pico or dimmer");
+        }
+        for(int i = 0; i < ROWS && s->top + i < s->n; i++) {
+            const Entry* e = &s->hist[s->top + i];
+            int y = 20 + i * 10;
+            bool sel = s->top + i == s->sel;
+            Color fg = sel ? ColorWhite : ColorBlack, bg = sel ? ColorBlack : ColorWhite;
+            if(sel) canvas_draw_box(c, 0, y - 8, 123, 10);
+            canvas_set_color(c, fg);
+            cca_describe_row(e->pkt, t, sizeof(t));
+            canvas_draw_str(c, 2, y, t);
+            if(e->count > 1) { // repeat count, right-aligned over the end of a long row
+                snprintf(t, sizeof(t), "x%u", e->count);
+                int w = canvas_string_width(c, t);
+                canvas_set_color(c, bg);
+                canvas_draw_box(c, 120 - w - 2, y - 8, w + 3, 10);
+                canvas_set_color(c, fg);
+                canvas_draw_str(c, 120 - w, y, t);
+            }
+            canvas_set_color(c, ColorBlack);
+        }
+        if(s->n > ROWS) elements_scrollbar_pos(c, 127, 12, 52, s->top, s->n - ROWS + 1);
     }
     furi_mutex_release(s->mutex);
 }
 
 // Test hook: each line of /ext/cca_tx.txt is a hex packet WITHOUT CRC. Send each once, then delete
 // the file. Lets a host script drive TX over the USB CLI (`storage write`).
-static void send_tx_file(State* s) {
+static void send_tx_file() {
     Storage* st = (Storage*)furi_record_open(RECORD_STORAGE);
     File* f = storage_file_alloc(st);
     static char txt[4096];
@@ -246,8 +333,6 @@ static void send_tx_file(State* s) {
         cca_append_crc(pl, plen, withcrc);
         size_t e = n81_encode_packet(withcrc, plen + 2, enc, sizeof(enc));
         bool ok = e && cca_transmit(enc, e);
-        s->tx++;
-        s->txr = ok ? '+' : 'x';
         char h[CCA_MAX_PACKET_LEN * 2 + 5];
         hex(h, withcrc, plen + 2);
         diag("TX %s ok=%d", h, ok);
@@ -276,59 +361,78 @@ extern "C" int32_t lutron_cca_app(void* p) {
     Gui* gui = (Gui*)furi_record_open(RECORD_GUI);
     gui_add_view_port(gui, vp, GuiLayerFullscreen);
 
+    NotificationApp* notif = (NotificationApp*)furi_record_open(RECORD_NOTIFICATION);
+
+    furi_hal_power_suppress_charge_enter(); // the charger is a noise source on 433 MHz
     radio_start();
 
     uint8_t buf[RX_PKT_LEN + 4];
     size_t len = 0; // bytes accumulated; > 0 means a packet is in progress (t0/rssi valid)
     int8_t rssi = 0, freqest = 0;
-    uint32_t t0 = 0, last_poll = 0;
-    uint8_t rows_raw[ROWS][CCA_MAX_PACKET_LEN];
-    size_t rows_len[ROWS] = {0};
+    uint32_t t0 = 0, last_poll = 0, last_blink = 0;
+    bool running = true, tried_early = false;
 
-    while(true) {
+    while(running) {
         InputEvent ev;
-        if(furi_message_queue_get(q, &ev, 0) == FuriStatusOk && ev.type == InputTypeShort) {
-            if(ev.key == InputKeyBack) break;
-            if(ev.key == InputKeyUp && s->sel > 0) s->sel--;
-            if(ev.key == InputKeyDown && s->sel < ROWS - 1) s->sel++;
-            view_port_update(vp);
-            if(ev.key == InputKeyOk && rows_len[s->sel]) {
-                // Replay the selected packet with fresh sequence numbers (+8 keeps the TDMA
-                // slot in the low 3 bits, like firmware) so the target doesn't dedupe it.
-                const uint8_t* raw = rows_raw[s->sel];
-                size_t plen = rows_len[s->sel] - 2; // strip CRC, recomputed per send
-                s->txr = '+';
+        while(furi_message_queue_get(q, &ev, 0) == FuriStatusOk) {
+            int step = ev.key == InputKeyDown ? 1 : ev.key == InputKeyUp ? -1 : 0;
+            // Holding Up/Down scrolls; everything else acts on a short press only.
+            if(ev.type != InputTypeShort && !(ev.type == InputTypeRepeat && step)) continue;
+            bool send = false;
+            furi_mutex_acquire(s->mutex, FuriWaitForever);
+            if(s->detail) {
+                if(ev.key == InputKeyBack) s->detail = false;
+                s->dtop = clampi(s->dtop + step, 0, s->dn > DROWS ? s->dn - DROWS : 0);
+                send = ev.key == InputKeyOk && cca_replayable(s->d.pkt);
+            } else {
+                if(ev.key == InputKeyBack) running = false;
+                s->sel += step;
+                clamp_view(s);
+                if(ev.key == InputKeyOk && s->n) {
+                    s->d = s->hist[s->sel];
+                    s->dn = cca_detail_lines(
+                        s->d.pkt, s->d.rssi, s->d.freqest, s->d.count, s->dlines, CCA_DETAIL_MAX);
+                    s->dtop = 0;
+                    s->txr = ' ';
+                    s->detail = true;
+                }
+            }
+            furi_mutex_release(s->mutex);
+            if(send) {
+                // Replay with fresh sequence numbers (+8 keeps the TDMA slot in the low 3 bits,
+                // like firmware) so the target doesn't dedupe it. s->d only changes on this thread.
+                const uint8_t* raw = s->d.pkt.raw;
+                size_t plen = s->d.pkt.raw_len - 2; // strip CRC, recomputed per send
+                bool ok = true;
                 for(int i = 0; i < 3; i++) {
                     uint8_t pl[CCA_MAX_PACKET_LEN], withcrc[CCA_MAX_PACKET_LEN + 2], enc[64];
                     memcpy(pl, raw, plen);
                     pl[1] = (uint8_t)(raw[1] + 8 * (i + 1));
                     cca_append_crc(pl, plen, withcrc);
                     size_t n = n81_encode_packet(withcrc, plen + 2, enc, sizeof(enc));
-                    if(n && cca_transmit(enc, n))
-                        s->tx++;
-                    else
-                        s->txr = 'x';
+                    if(!n || !cca_transmit(enc, n)) ok = false;
                     furi_delay_ms(75);
                 }
+                s->txr = ok ? '+' : 'x';
+                notification_message(notif, ok ? &sequence_blink_magenta_10 : &sequence_blink_red_10);
                 len = 0;
-                view_port_update(vp);
             }
+            view_port_update(vp);
         }
 
         if(len == 0 && furi_get_tick() - last_poll > 200) {
             last_poll = furi_get_tick();
-            send_tx_file(s);
+            send_tx_file();
         }
 
         uint8_t rb = cc_rxbytes();
         if(rb & 0x80) { // FIFO overflow
-            s->overflow++;
+            diag("RX fifo overflow");
             radio_restart();
             len = 0;
         } else if(rb > 0) {
             if(len == 0) {
-                s->syncs++;
-                view_port_update(vp);
+                tried_early = false;
                 t0 = furi_get_tick();
                 rssi = cc_rssi_dbm();
                 freqest = (int8_t)cc_status(0x32);
@@ -341,22 +445,29 @@ extern "C" int32_t lutron_cca_app(void* p) {
             }
         }
 
-        if(len >= RX_PKT_LEN) {
-            DecodedPacket pkt;
-            pkt.clear();
-            if(CcaDecoder::decode(buf, len, pkt) && pkt.valid) {
+        // A 24-byte packet is complete long before the 80-byte capture ends. Take it as soon as
+        // it decodes and restart RX, so a packet in the next TDMA slot isn't lost in the tail.
+        bool early = len >= EARLY_LEN && len < RX_PKT_LEN && !tried_early;
+        DecodedPacket pkt;
+        pkt.clear();
+        bool got = (early || len >= RX_PKT_LEN) && CcaDecoder::decode(buf, len, pkt) && pkt.valid;
+        if(early && !(got && pkt.crc_valid && pkt.raw_len == CCA_PKT_STANDARD_LEN)) {
+            tried_early = true; // not a complete short packet; wait for the full capture
+        } else if(early || len >= RX_PKT_LEN) {
+            if(early) radio_restart();
+            if(got) {
                 furi_mutex_acquire(s->mutex, FuriWaitForever);
-                s->total++;
-                if(pkt.crc_valid) s->crc_ok++;
-                memmove(rows_raw[1], rows_raw[0], sizeof(rows_raw[0]) * (ROWS - 1));
-                memmove(&rows_len[1], &rows_len[0], sizeof(rows_len[0]) * (ROWS - 1));
-                memcpy(rows_raw[0], pkt.raw, pkt.raw_len);
-                rows_len[0] = pkt.crc_valid ? pkt.raw_len : 0;
-                memmove(s->line[1], s->line[0], sizeof(s->line[0]) * (ROWS - 1));
-                snprintf(
-                    s->line[0], sizeof(s->line[0]), "%02X s%02X %08lX L%02X %c %d",
-                    pkt.type_byte, pkt.sequence, (unsigned long)pkt.device_id, pkt.level,
-                    pkt.crc_valid ? '+' : '!', rssi);
+                if(pkt.crc_valid) {
+                    s->ok++;
+                    hist_add(s, &pkt, rssi, freqest);
+                    // One blink per burst is enough; repeats arrive faster than a blink lasts.
+                    if(furi_get_tick() - last_blink > 150) {
+                        last_blink = furi_get_tick();
+                        notification_message(notif, &sequence_blink_green_10);
+                    }
+                } else {
+                    s->bad++; // counted in the header and logged; values can't be trusted on screen
+                }
                 furi_mutex_release(s->mutex);
                 view_port_update(vp);
                 char h[CCA_MAX_PACKET_LEN * 2 + 1];
@@ -373,6 +484,8 @@ extern "C" int32_t lutron_cca_app(void* p) {
 
     furi_hal_subghz_idle();
     furi_hal_subghz_sleep();
+    furi_hal_power_suppress_charge_exit();
+    furi_record_close(RECORD_NOTIFICATION);
     gui_remove_view_port(gui, vp);
     view_port_free(vp);
     furi_record_close(RECORD_GUI);
