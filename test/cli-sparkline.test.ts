@@ -60,8 +60,22 @@ test("renderDevicePanel: header plus one line per device", () => {
     8,
   );
   const [header, line] = renderDevicePanel(stats, 8).map((l) =>
-    stripVTControlCharacters(l),
+    stripVTControlCharacters(l).trimEnd(),
   );
-  assert.match(header, /^DEVICE\s+PKTS\s+RSSI/);
-  assert.match(line, /^A AAAA\s+2\s+▁█\s+-40\s+.\s+1\.5s$/);
+  assert.match(header, /^DEVICE\s+PKTS\s+RSSI.*SLOT\s+MISS$/);
+  assert.match(line, /^A AAAA\s+2\s+▁█\s+-40\s+.\s+1\.5s$/); // no slot data
+});
+
+test("slot state: latest reading per device, missed packets summed", () => {
+  const a1 = row("10:00:00.000", "AAAA", "-50");
+  const a2 = row("10:00:00.075", "AAAA", "-50");
+  const a3 = row("10:00:00.300", "AAAA", "-50");
+  a1.slot = { status: "LEARN", confidencePct: 10 };
+  a2.slot = { status: "TRACK", confidencePct: 60, stride: 6, missedPackets: 0 };
+  a3.slot = { status: "LOCK", confidencePct: 92, stride: 6, missedPackets: 2 };
+  const [d] = deviceStats([a1, a2, a3], null, 5, 8);
+  assert.equal(d.slot?.status, "LOCK");
+  assert.equal(d.missed, 2);
+  const line = stripVTControlCharacters(renderDevicePanel([d], 8)[1]);
+  assert.match(line, /LOCK {2}92% s6\s+2$/);
 });

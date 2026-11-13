@@ -64,6 +64,7 @@ import {
   type PacketRow,
   RED,
   RESET,
+  type SlotInfo,
   WHITE,
   YELLOW,
 } from "./core/packets";
@@ -183,15 +184,6 @@ interface CcaSlotFlowState {
   emaAbsErrMs: number;
   strideCounts: Map<number, number>;
   lastSeenTick: number;
-}
-
-interface CcaSlotIndicator {
-  status: "LEARN" | "TRACK" | "LOCK";
-  confidencePct: number;
-  dSeq?: number;
-  dtMs?: number;
-  errMs?: number;
-  missedPackets?: number;
 }
 
 const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
@@ -380,7 +372,7 @@ function updateCcaSlotTracker(
   data: Buffer,
   isTx: boolean,
   radioTs: number,
-): CcaSlotIndicator | null {
+): SlotInfo | null {
   if (!slotTracking || isTx || data.length < 2) return null;
 
   const seq = data[1];
@@ -467,6 +459,7 @@ function updateCcaSlotTracker(
   return {
     status,
     confidencePct,
+    stride: stride ?? undefined,
     dSeq: sampleDSeq,
     dtMs: dtMs > 0 && dtMs <= CCA_SLOT_MAX_DT_MS ? dtMs : undefined,
     errMs,
@@ -775,6 +768,7 @@ function displayCcaPacket(
     delta: deltaText,
     bytes: Uint8Array.from(data),
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
+    slot: slot ?? undefined,
   });
 
   // CSV recording
@@ -1387,7 +1381,7 @@ function showHelp() {
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
     `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
-    `${DIM}\`devices\` toggles per-device RSSI and packet-gap sparklines (follows the filter).${RESET}`,
+    `${DIM}\`devices\` toggles the per-device panel: RSSI and packet-gap sparklines, slot-tracker state and missed packets (follows the filter).${RESET}`,
     `${DIM}Mouse: wheel scrolls, click a packet to inspect it. \`mouse\` toggles it off to select text.${RESET}`,
   ]);
 }
