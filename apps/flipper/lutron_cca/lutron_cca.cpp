@@ -20,6 +20,7 @@
 
 #define RX_PKT_LEN 80
 #define ACCUM_TIMEOUT_MS 40
+#define EARLY_LEN 40 // FIFO bytes at which a 24-byte packet (34 bytes N81-encoded) is in
 #define ROWS 5 // list rows on screen
 #define DROWS 4 // detail lines on screen
 #define HIST 64 // scrollback depth
@@ -369,7 +370,7 @@ extern "C" int32_t lutron_cca_app(void* p) {
     size_t len = 0; // bytes accumulated; > 0 means a packet is in progress (t0/rssi valid)
     int8_t rssi = 0, freqest = 0;
     uint32_t t0 = 0, last_poll = 0, last_blink = 0;
-    bool running = true;
+    bool running = true, tried_early = false;
 
     while(running) {
         InputEvent ev;
@@ -431,6 +432,7 @@ extern "C" int32_t lutron_cca_app(void* p) {
             len = 0;
         } else if(rb > 0) {
             if(len == 0) {
+                tried_early = false;
                 t0 = furi_get_tick();
                 rssi = cc_rssi_dbm();
                 freqest = (int8_t)cc_status(0x32);
@@ -443,10 +445,17 @@ extern "C" int32_t lutron_cca_app(void* p) {
             }
         }
 
-        if(len >= RX_PKT_LEN) {
-            DecodedPacket pkt;
-            pkt.clear();
-            if(CcaDecoder::decode(buf, len, pkt) && pkt.valid) {
+        // A 24-byte packet is complete long before the 80-byte capture ends. Take it as soon as
+        // it decodes and restart RX, so a packet in the next TDMA slot isn't lost in the tail.
+        bool early = len >= EARLY_LEN && len < RX_PKT_LEN && !tried_early;
+        DecodedPacket pkt;
+        pkt.clear();
+        bool got = (early || len >= RX_PKT_LEN) && CcaDecoder::decode(buf, len, pkt) && pkt.valid;
+        if(early && !(got && pkt.crc_valid && pkt.raw_len == CCA_PKT_STANDARD_LEN)) {
+            tried_early = true; // not a complete short packet; wait for the full capture
+        } else if(early || len >= RX_PKT_LEN) {
+            if(early) radio_restart();
+            if(got) {
                 furi_mutex_acquire(s->mutex, FuriWaitForever);
                 if(pkt.crc_valid) {
                     s->ok++;

@@ -9,7 +9,7 @@
  * Packets use a fake device ID (CA FE ..) so no paired device reacts.
  *
  * Usage:
- *   npx tsx tools/flipper/cca-loopback.ts [--dir rx|tx|both] [--n 10] [--no-launch] [--trim N] [--verbose]
+ *   npx tsx tools/flipper/cca-loopback.ts [--dir rx|tx|both] [--n 10] [--gap ms] [--no-launch] [--trim N] [--verbose]
  *       [--port /dev/cu.usbmodemflip_X]
  *
  *   --trim N  sets the Flipper's CC1101 FSCTRL0 (freq offset, N * 1587 Hz) before testing.
@@ -31,6 +31,10 @@ const hasFlag = (name: string) => args.includes(name);
 
 const dir = getArg("--dir") ?? "both";
 const N = Number(getArg("--n") ?? 10);
+// openlutron sends each `tx` as a burst of ~11 copies, one per 75 ms TDMA frame (~825 ms).
+// Bursts that overlap share a slot and go out back to back, which the Flipper cannot separate,
+// so the default gap keeps them apart. Use --gap 400 to exercise the overlapping case.
+const GAP_MS = Number(getArg("--gap") ?? 1000);
 const APP_DIR = fileURLToPath(
   new URL("../../apps/flipper/lutron_cca", import.meta.url),
 );
@@ -166,7 +170,7 @@ async function main() {
     const sent = Array.from({ length: N }, (_, i) => testPacket(0x01, i));
     for (const p of sent) {
       ol.sendText(`tx ${p.toString("hex")}`);
-      await sleep(400);
+      await sleep(GAP_MS);
     }
     await sleep(1000);
     await fz.stopLog();
