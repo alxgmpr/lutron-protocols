@@ -1765,15 +1765,17 @@ const deviceFingerprints: StringLookup<DeviceFingerprint> = {
 // ============================================================================
 //
 // Lutron's own length rule makes every type byte below 0x40 a 5-byte frame
-// (docs/protocols/cca/rx-dispatch.md §7). There is no CRC: bytes 3 and 4
-// repeat bytes 1 and 2 XORed with a key that depends only on the type byte.
-// Measured over 7,020 short frames from local captures — every type held a
-// single key pair. Families rotate their low bits the way 81/82/83 do:
+// (docs/protocols/cca/rx-dispatch.md §7). Bytes 3 and 4 repeat bytes 1 and 2
+// XORed with a key that depends only on the type byte: the link CRC-16
+// (poly 0xCA0F) of that one byte. Measured over 7,020 short frames from local
+// captures — every type held a single key pair. Families rotate their low
+// bits the way 81/82/83 do:
 //   05-07  answer state reports (fmt 0x08) and SET_LEVEL (fmt 0x0E);
 //          after SET_LEVEL, `status` is the commanded level rounded to its
 //          high byte (describeShortAck in protocol-ui.ts)
 //   09-0B  answer fmt 0x0D and DEVICE_CTRL; 0B is also the OTA ACK stream
-//   15-17  answer config frames (fmt 0x0A, SCENE_CONFIG)
+//   15-17  answer the broadcast poll (fmt 0x0A, `09 06`): same link rule as
+//          05-07, `status` is the device's current level
 
 /** type byte → [byte1 ^ byte3, byte2 ^ byte4]. */
 export const ShortAckKeys: NumberLookup<readonly [number, number]> = {

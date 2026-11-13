@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ShortAckKeys } from "../protocol/cca.protocol";
 import {
   describeShortAck,
   identifyPacket,
@@ -268,6 +269,31 @@ test("describeShortAck names each device that answers a scene command", () => {
     ),
     "level=24% link=18",
   );
+});
+
+test("describeShortAck reads link and level out of a 15-17 poll answer", () => {
+  // proc-reboot capture: the processor's own table (C1 page 0x20) puts 0x3D
+  // at link 5, 0x0A at link 10 and 0xFE at link 6
+  const poll = "8001a182d700210a00ffffffffff09060000cccccccc3b64";
+  for (const [ack, said] of [
+    ["17023d8498", "level=24% link=5"],
+    ["16040a48a0", "level=4% link=10"],
+    ["1526fefe4a", "level=100% link=6"],
+  ]) {
+    assert.equal(
+      describeShortAck(Buffer.from(ack, "hex"), Buffer.from(poll, "hex")),
+      said,
+    );
+  }
+});
+
+test("short-ACK keys are the CRC-16 of the type byte", () => {
+  for (const [type, [k1, k2]] of Object.entries(ShortAckKeys)) {
+    let crc = Number(type) << 8;
+    for (let i = 0; i < 8; i++)
+      crc = (crc & 0x8000 ? (crc << 1) ^ 0xca0f : crc << 1) & 0xffff;
+    assert.equal(crc, (k1 << 8) | k2);
+  }
 });
 
 test("describeShortAck stays quiet when the ACK does not answer a level command", () => {

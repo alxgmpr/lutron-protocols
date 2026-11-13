@@ -551,18 +551,29 @@ export function describeShortAck(
     command[0] <= 0x83 &&
     format === 0x0b &&
     command[13] === 0xef;
+  // Broadcast poll (fmt 0x0A, `09 06`): sent at processor boot and around
+  // pairing. Every device answers on 15-17 with its current level.
+  const isPoll =
+    command.length >= 16 &&
+    format === 0x0a &&
+    command[9] === 0xff &&
+    command[14] === 0x09 &&
+    command[15] === 0x06;
   const isRuntimeAck = type >= 0x05 && type <= 0x07;
+  const isPollAck = type >= 0x15 && type <= 0x17;
   if (
     (isSetLevel && (isRuntimeAck || type === 0x0b)) ||
-    (isGroupCommand && isRuntimeAck)
+    (isGroupCommand && isRuntimeAck) ||
+    (isPoll && isPollAck)
   ) {
     const level = Math.min(status << 8, 0xfeff);
     const said = `level=${Math.round((level * 100) / 0xfeff)}%`;
-    // 05-07 answer in a slot of their own: three links share a slot and the
-    // type byte tells them apart. The second ACK comes 35 slots later.
+    // 05-07 and 15-17 answer in a slot of their own: three links share a slot
+    // and the type's low bits tell them apart. The second ACK comes 35 slots
+    // later.
     const slot = ack[1] > ACK_REPEAT_SLOTS ? ack[1] - ACK_REPEAT_SLOTS : ack[1];
     if (type === 0x0b || slot < 1 || slot >= ACK_REPEAT_SLOTS) return said;
-    return `${said} link=${3 * (slot - 1) + (type - 0x05)}`;
+    return `${said} link=${3 * (slot - 1) + ((type & 0x0f) - 0x05)}`;
   }
 
   if (

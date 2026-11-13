@@ -674,7 +674,9 @@ Cadence: 1 ACK every 25 ms (40 Hz) when the dimmer is in any active state (set-l
 |------|----|----|------------|
 | `05` `06` `07` | `76` `E2` `28` | `2D` `33` `3C` | state reports (fmt `0x08`), SET_LEVEL (fmt `0x0E`), OTA |
 | `09` `0A` `0B` | `78` `EC` `26` | `44` `5A` `55` | fmt `0x0D`, DEVICE_CTRL; `0B` is also the OTA ACK stream |
-| `15` `16` `17` | `D8` `4C` `86` | `B4` `AA` `A5` | config frames (fmt `0x0A`, SCENE_CONFIG), processor reboot |
+| `15` `16` `17` | `D8` `4C` `86` | `B4` `AA` `A5` | broadcast poll (fmt `0x0A`, `09 06`) at processor boot and around pairing |
+
+The key is the link CRC-16 (poly `0xCA0F`) of the type byte alone: `CRC16(05) = 762D`, `CRC16(17) = 86A5`, and so on for all nine. So `byte[3..4] = byte[1..2] XOR CRC16(type)`, and any other type below `0x40` can be checked the same way.
 
 The low two bits rotate like `81/82/83`. The `^ 0xFE` correction applies only to `0x0B`.
 
@@ -716,7 +718,30 @@ Swept on 13 RA3 dimmers and checked against the Designer project's address map; 
 
 **Scene and group commands are answered the same way.** After a fmt `0x0B` frame addressed to a group id (`0xEF` at byte 13: keypad scenes, group raise/lower), every dimmer that acts sends a `05`-`07` ACK in its own link slot, and `byte[2]` is the level it went to. A keypad scene in the captures draws `07 03 FE` and `05 2A FE` (links 8 and 18 at 100%); its dimmed variant draws the same two links at `3D` (24%). During a group raise the two office lamps (links 13, 14) report `0F`, `10`, `13` on successive ACKs as they ramp. So the ACKs to one scene frame list which loads took it and where each one landed.
 
-The link rule does not carry over to pairing. There `05`-`07` answer broadcast frames 1 to 3 slots after the frame, whatever the device's link. The `15`-`17` answers to broadcast fmt `0x0A` keep the two windows 35 slots apart, but the links the rule gives for them (3 to 16) include unoccupied addresses, so that family is not decoded.
+**`15`-`17` answer the broadcast poll with the same rule.** The processor sends a broadcast fmt `0x0A` frame with `09 06 00 00` at bytes 14-17 when it boots (four trains, about 4 s apart) and at the start and end of a pairing session. Every device on the link answers it, twice, 35 slots apart:
+
+```
+link  = 3 × (slot − 1) + (type − 0x15)
+level = byte[2]
+```
+
+Three devices share each slot and transmit at once, so a receiver hears at most one of them per slot per window; which one varies from train to train. That is why one capture of a poll shows only some of the links.
+
+The processor then broadcasts what it collected. The `C1`/`C7`/`CD`/`D3`/`D9`/`DF` frames that follow the poll carry a page byte at 1 (`20`, `40`, ... `E0`), the subnet at 2-3, two header bytes at 4-5 and one status byte per link from byte 6. On page `0x20`, byte `6 + link` is that link's status:
+
+```
+80 01 A1 82 D7 00 21 0A 00 FF FF FF FF FF 09 06 00 00    poll
+17 02 3D 84 98                                           slot 2, type 17 → link 5, 0x3D
+16 04 0A 48 A0                                           slot 4, type 16 → link 10, 0x0A
+15 26 FE FE 4A                                           slot 38 → 3, type 15 → link 6, 0xFE
+C1 20 82 D7 FE BF 00 BE 7F 00 00 3D FE 00 00 00 0A 00 …  table: link 5 = 3D, link 6 = FE, link 10 = 0A
+```
+
+Across the eleven poll trains in the March captures (processor reboot and five pairing sessions), 61 of 61 distinct `15`-`17` answers match the table entry at their computed link. The values are level bytes (`FE`, `BE`, `7E`, `3D` = the 24% scene level, `00`); that they are levels rests on the values and on the same byte being the level in `05`-`07`, not on a commanded sweep. Those captures are from a different address layout than the current project file, which is why links below 5 answer.
+
+During pairing the same table carries `3F`, `02`, `C1` and `D0` at some links in place of a level, in step with the `05`-`07` pairing statuses below, so those four are link-wide pairing phases that the processor distributes. Their names, the two header bytes and the layout of pages `0x40` and up are not decoded.
+
+The link rule does not carry over to the `05`-`07` ACKs seen in pairing. Those answer broadcast frames 1 to 3 slots after the frame, whatever the device's link.
 
 **`byte[2]`:**
 
@@ -724,6 +749,7 @@ The link rule does not carry over to pairing. There `05`-`07` answer broadcast f
 |-----|---------|-----------|----------|
 | `05`-`07` | SET_LEVEL (fmt `0x0E`, command `40 02`) | Commanded level rounded to one byte: `0000` → `00`, `0100` → `01`, `5794` → `58`, `BE9B` → `BF`, `CB7C` → `CB`, `FEFF` → `FF` | Two HQR-3LDs, 14 levels, every ACK |
 | `05`-`07` | Scene / group command (fmt `0x0B`, `0xEF` at 13) | Level the answering device went to | Captures: links 8, 13, 14, 17, 18, 23, 24, all dimmers at those addresses |
+| `15`-`17` | Broadcast poll (fmt `0x0A`, `09 06`) | The answering device's current level | 61 of 61 against the processor's table |
 | `0B` | SET_LEVEL | The same, XOR `0xFE` on the raw byte: `FEFF` → raw `00`, `0000` → raw `FE` | Caseta, 79 of 79, only those two levels |
 | `09`, `0B` | fmt `0x0D` | The link address the frame assigns (its byte 20); `0B` XOR `0xFE` | 46 of 46, two devices |
 | `0B` | fmt `0x09` to the same device | That link address again, though the fmt `0x09` frame does not carry it | 45 of 45 |
@@ -731,7 +757,7 @@ The link rule does not carry over to pairing. There `05`-`07` answer broadcast f
 
 Byte 20 of fmt `0x0D` is the link address: `008BEE42` is acked as `0x0D` and `02F9D6BF` as `0x19`, and those are the slots the two serials occupy in the device table (`12 + 5·L`, above).
 
-`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first four rows; the CLI shows `level=NN% link=N` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
+`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first five rows; the CLI shows `level=NN% link=N` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
 
 The `^ 0xFE` on `0B` holds up as a property of the type rather than of one capture: the same device reports link `0x0D` as raw `0D` on type `09` and as raw `F3` on type `0B`. Whether it is on the air or a CC1101 read error is still open, as are the raw `D0` / `2E` and `3F` / `C1` pairs seen on other types.
 
