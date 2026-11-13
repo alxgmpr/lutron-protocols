@@ -78,6 +78,28 @@ inline void cca_describe_what(const DecodedPacket& p, char* out, size_t n)
         snprintf(out, n, "%s", name);
 }
 
+// List filter, cycled with Left/Right.
+enum { CCA_FILTER_ALL, CCA_FILTER_NO_ACK, CCA_FILTER_CONTROL, CCA_FILTER_COUNT };
+
+inline const char* cca_filter_name(int mode)
+{
+    static const char* const names[] = {"All", "No ACK", "Control"};
+    return names[mode];
+}
+
+// NO_ACK hides the background chatter: short ACKs (types below 0x80) and beacons.
+// CONTROL keeps only button presses and level commands/reports.
+inline bool cca_filter_pass(const DecodedPacket& p, int mode)
+{
+    uint8_t t = p.type_byte;
+    if (mode == CCA_FILTER_NO_ACK) return t >= 0x80 && p.raw_len > 5 && !(t >= 0x91 && t <= 0x93);
+    if (mode == CCA_FILTER_CONTROL)
+        return cca_is_button_type(t) || t == 0xA2 ||
+               (t >= 0x81 && t <= 0x83 && p.has_format &&
+                (p.format_byte == QS_FMT_LEVEL || p.format_byte == QS_FMT_STATE));
+    return true;
+}
+
 // One list row: "0595E68D ON press". Short ACKs carry no device ID.
 inline void cca_describe_row(const DecodedPacket& p, char* out, size_t n)
 {

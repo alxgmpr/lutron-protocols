@@ -1,6 +1,6 @@
 // Lutron CCA sniffer/transmitter for Flipper Zero.
 // RX: decoded packets go to a scrollable history list and to the log (CLI `log`).
-//     Up/Down scroll, OK opens the packet detail view, Back exits.
+//     Up/Down scroll, Left/Right change the filter, OK opens the packet detail view, Back exits.
 // TX: OK in the detail view replays that packet; /ext/cca_tx.txt is a host-driven TX queue
 //     (see send_tx_file).
 // Closed-loop check against openlutron: tools/flipper/cca-loopback.ts.
@@ -201,7 +201,8 @@ typedef struct {
 
 typedef struct {
     Entry hist[HIST]; // newest first
-    int n, sel, top; // entries used, selected entry, first entry on screen
+    int n, sel, top; // entries used; selected and first-on-screen rows, counted in visible rows
+    int filter; // CCA_FILTER_*: which entries are visible
     bool detail; // detail view open
     Entry d; // snapshot shown in the detail view, so new packets can't shift it
     char dlines[CCA_DETAIL_MAX][CCA_LINE_LEN];
@@ -215,11 +216,26 @@ static int clampi(int v, int lo, int hi) {
     return v < lo ? lo : v > hi ? hi : v;
 }
 
+// Number of entries that pass the filter.
+static int vis_n(const State* s) {
+    int v = 0;
+    for(int i = 0; i < s->n; i++) v += cca_filter_pass(s->hist[i].pkt, s->filter);
+    return v;
+}
+
+// The k-th visible entry, or NULL.
+static const Entry* vis_at(const State* s, int k) {
+    for(int i = 0; i < s->n; i++)
+        if(cca_filter_pass(s->hist[i].pkt, s->filter) && k-- == 0) return &s->hist[i];
+    return NULL;
+}
+
 // Keep the selection valid and on screen.
 static void clamp_view(State* s) {
-    s->sel = clampi(s->sel, 0, s->n ? s->n - 1 : 0);
+    int v = vis_n(s);
+    s->sel = clampi(s->sel, 0, v ? v - 1 : 0);
     s->top = clampi(s->top, s->sel - (ROWS - 1), s->sel);
-    s->top = clampi(s->top, 0, s->n > ROWS ? s->n - ROWS : 0);
+    s->top = clampi(s->top, 0, v > ROWS ? v - ROWS : 0);
 }
 
 // Call with the mutex held.
@@ -237,13 +253,13 @@ static void hist_add(State* s, const DecodedPacket* p, int8_t rssi, int8_t freqe
         e->count = 1;
         if(s->n < HIST) s->n++;
         // Scrolled away from the newest row: stay on the same packet instead of sliding off it.
-        if(s->sel > 0) s->sel++, s->top++;
-        clamp_view(s);
+        if(s->sel > 0 && cca_filter_pass(*p, s->filter)) s->sel++, s->top++;
     }
     e->pkt = *p;
     e->tick = now;
     e->rssi = rssi;
     e->freqest = freqest;
+    clamp_view(s); // the oldest row may have dropped off the end
 }
 
 static void draw_cb(Canvas* c, void* ctx) {
@@ -261,15 +277,16 @@ static void draw_cb(Canvas* c, void* ctx) {
         if(cca_replayable(s->d.pkt))
             elements_button_center(c, s->txr == '+' ? "Sent" : s->txr == 'x' ? "TX fail" : "Send");
     } else {
-        snprintf(t, sizeof(t), "CCA 433.6  %lu ok  %lu bad", s->ok, s->bad);
+        int v = vis_n(s);
+        snprintf(t, sizeof(t), "<%s>  %lu ok  %lu bad", cca_filter_name(s->filter), s->ok, s->bad);
         canvas_draw_str(c, 0, 8, t);
         canvas_draw_line(c, 0, 10, 127, 10);
-        if(!s->n) {
+        if(!v) {
             canvas_draw_str_aligned(c, 64, 30, AlignCenter, AlignCenter, "Listening...");
             canvas_draw_str_aligned(c, 64, 42, AlignCenter, AlignCenter, "Press a Pico or dimmer");
         }
-        for(int i = 0; i < ROWS && s->top + i < s->n; i++) {
-            const Entry* e = &s->hist[s->top + i];
+        for(int i = 0; i < ROWS && s->top + i < v; i++) {
+            const Entry* e = vis_at(s, s->top + i);
             int y = 20 + i * 10;
             bool sel = s->top + i == s->sel;
             Color fg = sel ? ColorWhite : ColorBlack, bg = sel ? ColorBlack : ColorWhite;
@@ -287,7 +304,7 @@ static void draw_cb(Canvas* c, void* ctx) {
             }
             canvas_set_color(c, ColorBlack);
         }
-        if(s->n > ROWS) elements_scrollbar_pos(c, 127, 12, 52, s->top, s->n - ROWS + 1);
+        if(v > ROWS) elements_scrollbar_pos(c, 127, 12, 52, s->top, v - ROWS + 1);
     }
     furi_mutex_release(s->mutex);
 }
@@ -387,9 +404,15 @@ extern "C" int32_t lutron_cca_app(void* p) {
             } else {
                 if(ev.key == InputKeyBack) running = false;
                 s->sel += step;
+                int f = ev.key == InputKeyRight ? 1 : ev.key == InputKeyLeft ? CCA_FILTER_COUNT - 1 : 0;
+                if(f) {
+                    s->filter = (s->filter + f) % CCA_FILTER_COUNT;
+                    s->sel = s->top = 0;
+                }
                 clamp_view(s);
-                if(ev.key == InputKeyOk && s->n) {
-                    s->d = s->hist[s->sel];
+                const Entry* cur = vis_at(s, s->sel);
+                if(ev.key == InputKeyOk && cur) {
+                    s->d = *cur;
                     s->dn = cca_detail_lines(
                         s->d.pkt, s->d.rssi, s->d.freqest, s->d.count, s->dlines, CCA_DETAIL_MAX);
                     s->dtop = 0;
