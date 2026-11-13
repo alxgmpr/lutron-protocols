@@ -17,6 +17,11 @@
  *   Home/End        — cursor home/end (End also fires onEnd for scroll-to-live)
  *   Page Up/Down    — fire callbacks for log scrolling
  *   Alt-B/F         — word backward/forward
+ *   Esc             — enter packet select mode (detail pane)
+ *   Mouse (SGR)     — reports go to onMouse, never to the line buffer
+ *
+ * In select mode: Up/Down or k/j move the selection, PgUp/PgDn page it,
+ * Esc/Enter/q leave; any other key leaves and is handled normally.
  *
  * The hook pushes input/cursor/palette state into `store` so Ink components can
  * render without re-rendering on every keystroke through React props.
@@ -28,6 +33,26 @@ import { store } from "./store";
 
 const MAX_HISTORY = 50;
 
+/** An SGR mouse report: 1-based cell, button code with modifier bits. */
+export interface MouseEvent {
+  button: number;
+  x: number;
+  y: number;
+  press: boolean;
+}
+
+// Ink strips the first report's ESC, later ones keep it; match without it.
+const MOUSE_RE = /\[<(\d+);(\d+);(\d+)([Mm])/g;
+
+export function parseMouse(input: string): MouseEvent[] {
+  return Array.from(input.matchAll(MOUSE_RE), (m) => ({
+    button: Number(m[1]),
+    x: Number(m[2]),
+    y: Number(m[3]),
+    press: m[4] === "M",
+  }));
+}
+
 export interface LineEditorCallbacks {
   onSubmit: (line: string) => void;
   onPageUp?: () => void;
@@ -36,6 +61,11 @@ export interface LineEditorCallbacks {
   onRedraw?: () => void;
   onQuit?: () => void;
   onAnyKey?: () => void;
+  /** Select mode: whether it's active, move by `step` packets, and leave. */
+  isSelecting?: () => boolean;
+  onSelect?: (step: number) => void;
+  onSelectExit?: () => void;
+  onMouse?: (ev: MouseEvent) => void;
   /** Optional context-aware completion resolver. Called on Tab with the
    *  text before the cursor; return the candidate list (may be empty). */
   getCompletions?: (lineBeforeCursor: string) => string[];
@@ -217,8 +247,24 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
   }, [cb, push]);
 
   useInput((input, key) => {
+    if (input.startsWith("[<")) {
+      const events = parseMouse(input);
+      if (events.length) {
+        for (const ev of events) cb.onMouse?.(ev);
+        return;
+      }
+    }
     cb.onAnyKey?.();
     if (!key.tab) resetTab();
+
+    if (cb.isSelecting?.()) {
+      if (key.upArrow || input === "k") return cb.onSelect?.(-1);
+      if (key.downArrow || input === "j") return cb.onSelect?.(1);
+      if (key.pageUp) return cb.onPageUp?.();
+      if (key.pageDown) return cb.onPageDown?.();
+      if (key.escape || key.return || input === "q") return cb.onSelectExit?.();
+      cb.onSelectExit?.();
+    }
 
     if (key.return) return submit();
     if (key.backspace || key.delete) {
@@ -248,7 +294,7 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
     }
     if (key.pageUp) return cb.onPageUp?.();
     if (key.pageDown) return cb.onPageDown?.();
-    if (key.escape) return;
+    if (key.escape) return cb.onSelect?.(0);
 
     if (key.ctrl) {
       switch (input) {

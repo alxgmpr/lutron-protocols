@@ -20,6 +20,7 @@ export const BLUE = "\x1b[34m";
 export const MAGENTA = "\x1b[35m";
 export const CYAN = "\x1b[36m";
 export const WHITE = "\x1b[37m";
+export const INVERSE = "\x1b[7m";
 
 // ============================================================================
 // Layout constants
@@ -72,6 +73,8 @@ export interface PacketRow {
   delta: string;
   isDetail?: boolean;
   verboseLine?: string;
+  /** Packet bytes, kept for the detail pane. */
+  bytes?: Uint8Array;
 }
 
 // ============================================================================
@@ -299,7 +302,7 @@ export interface TextEntry {
 }
 /** A log entry: a structured packet row, or a text line. */
 export type LogEntry = TextEntry | PacketRow;
-const isText = (e: LogEntry): e is TextEntry => "text" in e;
+export const isText = (e: LogEntry): e is TextEntry => "text" in e;
 export type RowFilter = (row: PacketRow) => boolean;
 
 const FILTER_FIELDS = {
@@ -362,6 +365,10 @@ export function parseFilter(spec: string): RowFilter {
   return (r) => tests.every((t) => t(r));
 }
 
+/** Inverse-video a rendered line, re-applying it after each embedded reset. */
+const highlight = (line: string) =>
+  `${INVERSE}${line.replaceAll(RESET, RESET + INVERSE)}${RESET}`;
+
 /** Display lines an entry occupies under the current filter/verbose state. */
 export function entryLineCount(
   e: LogEntry,
@@ -371,6 +378,24 @@ export function entryLineCount(
   if (isText(e)) return 1;
   if (match && !match(e)) return 0;
   return verbose && e.verboseLine ? 2 : 1;
+}
+
+/**
+ * The entry drawn `linesUp` display lines above the tail (0 = newest line),
+ * or null past the oldest. Inverse of visibleLines, for mouse hit-testing.
+ */
+export function entryAtLine(
+  entries: readonly LogEntry[],
+  verbose: boolean,
+  match: RowFilter | null,
+  linesUp: number,
+): LogEntry | null {
+  let seen = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    seen += entryLineCount(entries[i], verbose, match);
+    if (seen > linesUp) return entries[i];
+  }
+  return null;
 }
 
 /**
@@ -384,6 +409,7 @@ export function visibleLines(
   match: RowFilter | null,
   height: number,
   offset: number,
+  selected: PacketRow | null = null,
 ): string[] {
   const out: string[] = [];
   let skip = offset;
@@ -398,6 +424,7 @@ export function visibleLines(
         renderRow({ ...e, isDetail: true }, layout),
       ];
     else lines = [renderRow(e, layout)];
+    if (e === selected) lines[0] = highlight(lines[0]);
     for (let j = lines.length - 1; j >= 0 && out.length < height; j--) {
       if (skip > 0) skip--;
       else out.push(lines[j]);

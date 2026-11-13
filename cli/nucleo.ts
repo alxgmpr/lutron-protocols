@@ -66,7 +66,12 @@ import {
   WHITE,
   YELLOW,
 } from "./core/packets";
-import { createScreen, type InkScreen } from "./ui/screen";
+import {
+  createScreen,
+  type InkScreen,
+  mouseEnabled,
+  setMouse,
+} from "./ui/screen";
 import { store } from "./ui/store";
 
 // ============================================================================
@@ -753,6 +758,7 @@ function displayCcaPacket(
     state: stateParts.join("  "),
     raw: rawHex,
     delta: deltaText,
+    bytes: Uint8Array.from(data),
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
   });
 
@@ -1048,6 +1054,7 @@ function displayCcxPacket(
       state: compactParts.join("  "),
       raw: rawHex,
       delta: deltaStr,
+      bytes: Uint8Array.from(data),
       verboseLine: [...parts, ...srcDetail(src)].join("  ") || undefined,
     });
   } else {
@@ -1072,6 +1079,7 @@ function displayCcxPacket(
       state: "",
       raw: rawHex,
       delta: deltaStr,
+      bytes: Uint8Array.from(data),
       verboseLine: srcDetail(src).join("  ") || undefined,
     });
   }
@@ -1363,6 +1371,9 @@ function showHelp() {
     `  ${MAGENTA}save${RESET}                                      Save settings to flash`,
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
+    `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
+    `${DIM}\`devices\` toggles per-device RSSI and packet-gap sparklines (follows the filter).${RESET}`,
+    `${DIM}Mouse: wheel scrolls, click a packet to inspect it. \`mouse\` toggles it off to select text.${RESET}`,
   ]);
 }
 
@@ -1643,6 +1654,19 @@ function handleCommand(line: string) {
       return;
     }
 
+    case "devices":
+      screen.appendLine(
+        `Device sparklines: ${store.toggleDevices() ? "on" : "off"}`,
+      );
+      return;
+
+    case "mouse":
+      setMouse(!mouseEnabled());
+      screen.appendLine(
+        `Mouse: ${mouseEnabled() ? "on" : "off (terminal text selection works)"}`,
+      );
+      return;
+
     case "diag":
       showDiag = !showDiag;
       screen.appendLine(`Diagnostic logs: ${showDiag ? "on" : "off"}`);
@@ -1864,6 +1888,8 @@ async function startup() {
     "raw",
     "verbose",
     "filter",
+    "mouse",
+    "devices",
     "diag",
     "slot",
     "help",
