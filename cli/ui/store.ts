@@ -30,6 +30,8 @@ export interface AppState {
   verbose: boolean;
   /** Active packet filter, or null. */
   filter: { spec: string; match: RowFilter } | null;
+  /** Per-device sparkline panel visible. */
+  devices: boolean;
   /** Packet selected for the detail pane; non-null means select mode. */
   selected: PacketRow | null;
   /** Header text (right side of footer legend). */
@@ -58,6 +60,7 @@ export class Store {
     raw: true,
     verbose: false,
     filter: null,
+    devices: false,
     selected: null,
     headerLeft: "",
     headerRight: "",
@@ -166,6 +169,12 @@ export class Store {
     );
     this.state = { ...this.state, selected: row, scrollOffset: -offset };
     this.emit();
+  }
+
+  toggleDevices(): boolean {
+    this.state = { ...this.state, devices: !this.state.devices };
+    this.emit();
+    return this.state.devices;
   }
 
   clearSelection(): void {

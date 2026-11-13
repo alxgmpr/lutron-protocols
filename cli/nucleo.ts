@@ -1372,6 +1372,7 @@ function showHelp() {
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
     `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
+    `${DIM}\`devices\` toggles per-device RSSI and packet-gap sparklines (follows the filter).${RESET}`,
     `${DIM}Mouse: wheel scrolls, click a packet to inspect it. \`mouse\` toggles it off to select text.${RESET}`,
   ]);
 }
@@ -1653,6 +1654,12 @@ function handleCommand(line: string) {
       return;
     }
 
+    case "devices":
+      screen.appendLine(
+        `Device sparklines: ${store.toggleDevices() ? "on" : "off"}`,
+      );
+      return;
+
     case "mouse":
       setMouse(!mouseEnabled());
       screen.appendLine(
@@ -1882,6 +1889,7 @@ async function startup() {
     "verbose",
     "filter",
     "mouse",
+    "devices",
     "diag",
     "slot",
     "help",
