@@ -6,21 +6,34 @@
  * useSyncExternalStore) plus mutation methods called by the IScreen adapter.
  */
 
-import { RING_BUFFER_SIZE } from "../core/packets";
+import {
+  entryLineCount,
+  isText,
+  type LogEntry,
+  type PacketRow,
+  parseFilter,
+  RING_BUFFER_SIZE,
+  type RowFilter,
+} from "../core/packets";
 
 export interface OverlayState {
   lines: string[];
 }
 
 export interface AppState {
-  /** Append-only buffer of rendered log lines (ring buffer). */
-  lines: string[];
-  /** Monotonically increasing generation; changes whenever lines changes. */
-  linesGen: number;
-  /** Scroll offset: 0 = live (tail), negative = scrolled back by N lines. */
+  /** Ring buffer of log entries; packets stay structured until rendered. */
+  entries: LogEntry[];
+  /** Scroll offset in display lines: 0 = live (tail), negative = scrolled back. */
   scrollOffset: number;
-  /** Column header labels (left of footer legend). */
-  columnHeaders: string;
+  /** Packet display options, applied at render time to the whole buffer. */
+  raw: boolean;
+  verbose: boolean;
+  /** Active packet filter, or null. */
+  filter: { spec: string; match: RowFilter } | null;
+  /** Per-device sparkline panel visible. */
+  devices: boolean;
+  /** Packet selected for the detail pane; non-null means select mode. */
+  selected: PacketRow | null;
   /** Header text (right side of footer legend). */
   headerLeft: string;
   headerRight: string;
@@ -42,16 +55,19 @@ export type Listener = () => void;
 
 export class Store {
   private state: AppState = {
-    lines: [],
-    linesGen: 0,
+    entries: [],
     scrollOffset: 0,
-    columnHeaders: "",
+    raw: true,
+    verbose: false,
+    filter: null,
+    devices: false,
+    selected: null,
     headerLeft: "",
     headerRight: "",
     statusText: "",
     inputText: "",
     inputCursor: 0,
-    prompt: "nucleo> ",
+    prompt: "openlutron> ",
     palette: null,
     overlay: null,
   };
@@ -75,29 +91,95 @@ export class Store {
   // Each produces a new AppState object so React can detect the change.
   // ============================================================================
 
-  appendLines(newLines: string[]): void {
-    if (newLines.length === 0) return;
-    let lines = this.state.lines;
-    // Copy-on-write to a new array, enforce ring size.
-    lines = lines.concat(newLines);
-    if (lines.length > RING_BUFFER_SIZE) {
-      lines = lines.slice(lines.length - RING_BUFFER_SIZE);
+  private lineCount(e: LogEntry): number {
+    return entryLineCount(
+      e,
+      this.state.verbose,
+      this.state.filter?.match ?? null,
+    );
+  }
+
+  append(newEntries: LogEntry[]): void {
+    if (newEntries.length === 0) return;
+    let entries = this.state.entries.concat(newEntries);
+    if (entries.length > RING_BUFFER_SIZE) {
+      entries = entries.slice(entries.length - RING_BUFFER_SIZE);
     }
-    // If we're scrolled back, keep the same viewport (shift offset).
+    // If scrolled back or selecting, keep the same viewport (shift offset).
     let scrollOffset = this.state.scrollOffset;
-    if (scrollOffset < 0) scrollOffset -= newLines.length;
-    this.state = {
-      ...this.state,
-      lines,
-      linesGen: this.state.linesGen + 1,
-      scrollOffset,
-    };
+    if (scrollOffset < 0 || this.state.selected) {
+      for (const e of newEntries) scrollOffset -= this.lineCount(e);
+    }
+    this.state = { ...this.state, entries, scrollOffset };
     this.emit();
   }
 
-  setColumnHeaders(labels: string): void {
-    if (this.state.columnHeaders === labels) return;
-    this.state = { ...this.state, columnHeaders: labels };
+  /** Change display options; the viewport snaps back to live. */
+  setDisplay(opts: { raw?: boolean; verbose?: boolean }): void {
+    this.state = { ...this.state, ...opts, scrollOffset: 0, selected: null };
+    this.emit();
+  }
+
+  /** Set the packet filter (empty spec clears it). Throws on a bad spec. */
+  setFilter(spec: string): void {
+    const filter = spec.trim()
+      ? { spec: spec.trim(), match: parseFilter(spec) }
+      : null;
+    this.state = { ...this.state, filter, scrollOffset: 0, selected: null };
+    this.emit();
+  }
+
+  /**
+   * Move the selection `step` visible packets (negative = older). With no
+   * selection, selects the newest visible packet. Scrolls so the selected
+   * row stays within a log window of `height` lines.
+   */
+  moveSelection(step: number, height: number): void {
+    const { entries, selected } = this.state;
+    const match = this.state.filter?.match ?? null;
+    const rows: { idx: number; row: PacketRow }[] = [];
+    entries.forEach((e, idx) => {
+      if (!isText(e) && (!match || match(e))) rows.push({ idx, row: e });
+    });
+    if (rows.length === 0) return;
+    const cur = rows.findIndex((r) => r.row === selected);
+    const pos =
+      cur === -1
+        ? rows.length - 1
+        : Math.max(0, Math.min(rows.length - 1, cur + step));
+    this.select(rows[pos].idx, rows[pos].row, height);
+  }
+
+  /** Select a specific row (e.g. clicked), keeping it in view. */
+  selectRow(row: PacketRow, height: number): void {
+    const idx = this.state.entries.lastIndexOf(row);
+    if (idx !== -1) this.select(idx, row, height);
+  }
+
+  private select(idx: number, row: PacketRow, height: number): void {
+    const { entries } = this.state;
+    // Display lines below the selected row's main line.
+    let below = this.state.verbose && row.verboseLine ? 1 : 0;
+    for (let i = idx + 1; i < entries.length; i++) {
+      below += this.lineCount(entries[i]);
+    }
+    const offset = Math.min(
+      below,
+      Math.max(below - height + 1, -this.state.scrollOffset),
+    );
+    this.state = { ...this.state, selected: row, scrollOffset: -offset };
+    this.emit();
+  }
+
+  toggleDevices(): boolean {
+    this.state = { ...this.state, devices: !this.state.devices };
+    this.emit();
+    return this.state.devices;
+  }
+
+  clearSelection(): void {
+    if (!this.state.selected) return;
+    this.state = { ...this.state, selected: null };
     this.emit();
   }
 
@@ -148,9 +230,12 @@ export class Store {
     this.emit();
   }
 
-  scrollBy(pages: number, pageSize: number): void {
-    const total = this.state.lines.length;
-    const maxBack = -Math.max(0, total - pageSize);
+  /** Scroll by `pages` × `pageSize` lines; `height` is the log window, so
+   *  scrolling stops once the oldest line reaches its top. */
+  scrollBy(pages: number, pageSize: number, height = pageSize): void {
+    let total = 0;
+    for (const e of this.state.entries) total += this.lineCount(e);
+    const maxBack = -Math.max(0, total - height);
     const offset = Math.max(
       maxBack,
       Math.min(0, this.state.scrollOffset + pages * pageSize),

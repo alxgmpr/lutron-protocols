@@ -35,7 +35,7 @@ Extracted from `LinkNetwork` table in Lutron project database:
 
 | Parameter | Example Value |
 |-----------|---------------|
-| Channel | 25 (2480 MHz) |
+| Channel | 25 (2475 MHz) |
 | PAN ID | <pan-id> |
 | Extended PAN ID | XX:XX:XX:XX:XX:XX:XX:XX |
 | Network Master Key | XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX:XX |

@@ -20,6 +20,7 @@ export const BLUE = "\x1b[34m";
 export const MAGENTA = "\x1b[35m";
 export const CYAN = "\x1b[36m";
 export const WHITE = "\x1b[37m";
+export const INVERSE = "\x1b[7m";
 
 // ============================================================================
 // Layout constants
@@ -72,6 +73,8 @@ export interface PacketRow {
   delta: string;
   isDetail?: boolean;
   verboseLine?: string;
+  /** Packet bytes, kept for the detail pane. */
+  bytes?: Uint8Array;
 }
 
 // ============================================================================
@@ -278,7 +281,8 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
     ),
     colorCell(clipCell(row.device, layout.device), row.deviceColor ?? YELLOW),
     colorCell(clipCell(row.zone, layout.zone), row.zoneColor ?? WHITE),
-    clipCell(row.state, layout.state),
+    // With the RAW column hidden, a row with no decoded state shows its hex.
+    clipCell(row.state || (layout.showRaw ? "" : row.raw), layout.state),
   ];
   if (layout.showRaw) {
     cells.push(clipCell(row.raw, layout.raw, "right"));
@@ -286,4 +290,145 @@ export function renderRow(row: PacketRow, layout: PacketLayout): string {
   cells.push(clipCell(row.delta, layout.delta, "right"));
 
   return cells.join(" ");
+}
+
+// ============================================================================
+// Log entries, filtering, and viewport
+// ============================================================================
+
+/** A pre-rendered text line (shell output, notices) in the packet log. */
+export interface TextEntry {
+  text: string;
+}
+/** A log entry: a structured packet row, or a text line. */
+export type LogEntry = TextEntry | PacketRow;
+export const isText = (e: LogEntry): e is TextEntry => "text" in e;
+export type RowFilter = (row: PacketRow) => boolean;
+
+const FILTER_FIELDS = {
+  proto: (r) => r.proto,
+  dir: (r) => r.direction,
+  rssi: (r) => r.rssi,
+  seq: (r) => r.seq,
+  op: (r) => r.opcode,
+  type: (r) => r.typeAction,
+  dev: (r) => r.device,
+  device: (r) => r.device,
+  zone: (r) => r.zone,
+  state: (r) => r.state,
+  raw: (r) => r.raw,
+} satisfies Record<string, (r: PacketRow) => string>;
+const isFilterField = (k: string): k is keyof typeof FILTER_FIELDS =>
+  Object.hasOwn(FILTER_FIELDS, k);
+
+const rowText = (r: PacketRow) =>
+  [
+    r.proto,
+    r.direction,
+    r.opcode,
+    r.typeAction,
+    r.device,
+    r.zone,
+    r.state,
+    r.raw,
+    r.verboseLine ?? "",
+  ].join(" ");
+
+/**
+ * Parse a filter spec into a row predicate. Space-separated terms, all must
+ * match (case-insensitive substring): `term` searches every field,
+ * `field=value` one field, and a leading `-` negates. Throws on unknown field.
+ */
+export function parseFilter(spec: string): RowFilter {
+  const tests = spec
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((term) => {
+      const negate = term.startsWith("-");
+      const body = (negate ? term.slice(1) : term).toLowerCase();
+      const eq = body.indexOf("=");
+      let get = rowText;
+      let needle = body;
+      if (eq > 0) {
+        const key = body.slice(0, eq);
+        if (!isFilterField(key)) {
+          throw new Error(
+            `unknown field '${key}' (${Object.keys(FILTER_FIELDS).join(", ")})`,
+          );
+        }
+        get = FILTER_FIELDS[key];
+        needle = body.slice(eq + 1);
+      }
+      return (r: PacketRow) => get(r).toLowerCase().includes(needle) !== negate;
+    });
+  return (r) => tests.every((t) => t(r));
+}
+
+/** Inverse-video a rendered line, re-applying it after each embedded reset. */
+const highlight = (line: string) =>
+  `${INVERSE}${line.replaceAll(RESET, RESET + INVERSE)}${RESET}`;
+
+/** Display lines an entry occupies under the current filter/verbose state. */
+export function entryLineCount(
+  e: LogEntry,
+  verbose: boolean,
+  match: RowFilter | null,
+): number {
+  if (isText(e)) return 1;
+  if (match && !match(e)) return 0;
+  return verbose && e.verboseLine ? 2 : 1;
+}
+
+/**
+ * The entry drawn `linesUp` display lines above the tail (0 = newest line),
+ * or null past the oldest. Inverse of visibleLines, for mouse hit-testing.
+ */
+export function entryAtLine(
+  entries: readonly LogEntry[],
+  verbose: boolean,
+  match: RowFilter | null,
+  linesUp: number,
+): LogEntry | null {
+  let seen = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    seen += entryLineCount(entries[i], verbose, match);
+    if (seen > linesUp) return entries[i];
+  }
+  return null;
+}
+
+/**
+ * Render the `height` display lines that end `offset` lines (>= 0) above the
+ * tail. Walks backward from the newest entry so cost scales with the window,
+ * not the buffer. Text lines are always shown; the filter hides packets only.
+ */
+export function visibleLines(
+  entries: readonly LogEntry[],
+  layout: PacketLayout,
+  match: RowFilter | null,
+  height: number,
+  offset: number,
+  selected: PacketRow | null = null,
+): string[] {
+  const out: string[] = [];
+  let skip = offset;
+  for (let i = entries.length - 1; i >= 0 && out.length < height; i--) {
+    const e = entries[i];
+    let lines: string[];
+    if (isText(e)) lines = [e.text];
+    else if (match && !match(e)) continue;
+    else if (layout.showVerbose && e.verboseLine)
+      lines = [
+        renderRow(e, layout),
+        renderRow({ ...e, isDetail: true }, layout),
+      ];
+    else lines = [renderRow(e, layout)];
+    if (e === selected) lines[0] = highlight(lines[0]);
+    for (let j = lines.length - 1; j >= 0 && out.length < height; j--) {
+      if (skip > 0) skip--;
+      else out.push(lines[j]);
+    }
+  }
+  return out.reverse();
 }

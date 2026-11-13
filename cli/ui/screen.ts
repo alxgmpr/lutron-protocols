@@ -11,6 +11,12 @@
 
 import { render as inkRender } from "ink";
 import { createElement } from "react";
+import {
+  getPacketLayout,
+  type PacketRow,
+  renderHeader,
+  renderRow,
+} from "../core/packets";
 import { App } from "./App";
 import { store } from "./store";
 
@@ -23,8 +29,8 @@ export interface InkScreen {
   init(): void;
   destroy(): void;
   setHeader(left: string, right?: string): void;
-  setColumnHeaders(labels: string, separator: string): void;
   appendLine(text: string): void;
+  appendRow(row: PacketRow): void;
   setStatusBar(text: string): void;
   showOverlay(lines: string[]): void;
   clearOverlay(): void;
@@ -42,7 +48,7 @@ export interface InkScreen {
 
 // ============================================================================
 // PassthroughScreen — non-TTY fallback (pipe mode).
-// Mirrors the old PassthroughScreen: prints lines directly, ignores layout.
+// Prints lines directly; packet rows are rendered once, at the current width.
 // ============================================================================
 class PassthroughScreen implements InkScreen {
   private headerPrinted = false;
@@ -52,14 +58,21 @@ class PassthroughScreen implements InkScreen {
   init(): void {}
   destroy(): void {}
   setHeader(_left: string, _right?: string): void {}
-  setColumnHeaders(labels: string, _separator: string): void {
-    if (!this.headerPrinted) {
-      console.log(labels);
-      this.headerPrinted = true;
-    }
-  }
   appendLine(text: string): void {
     console.log(text);
+  }
+  appendRow(row: PacketRow): void {
+    const { raw, verbose, filter } = store.getState();
+    if (filter && !filter.match(row)) return;
+    const layout = getPacketLayout(raw, this.width, verbose);
+    if (!this.headerPrinted) {
+      console.log(renderHeader(layout)[0]);
+      this.headerPrinted = true;
+    }
+    console.log(renderRow(row, layout));
+    if (verbose && row.verboseLine) {
+      console.log(renderRow({ ...row, isDetail: true }, layout));
+    }
   }
   setStatusBar(_text: string): void {}
   showOverlay(lines: string[]): void {
@@ -93,6 +106,26 @@ class PassthroughScreen implements InkScreen {
 }
 
 // ============================================================================
+// Mouse reporting (xterm 1000 = press/release incl. wheel, 1006 = SGR coords).
+// While on, the terminal's own drag-select needs a modifier, so it can be
+// switched off with the `mouse` command.
+// ============================================================================
+let mouseOn = false;
+
+export function setMouse(on: boolean): void {
+  if (on === mouseOn || !process.stdout.isTTY) return;
+  mouseOn = on;
+  process.stdout.write(
+    on ? "\x1b[?1000h\x1b[?1006h" : "\x1b[?1000l\x1b[?1006l",
+  );
+}
+
+export const mouseEnabled = (): boolean => mouseOn;
+
+// Leave the terminal clean however the process ends.
+process.once("exit", () => setMouse(false));
+
+// ============================================================================
 // InkScreenImpl — mounts <App/> and routes all screen/line-editor mutations
 // through ui/store.ts.
 // ============================================================================
@@ -109,6 +142,7 @@ class InkScreenImpl implements InkScreen {
   }
 
   destroy(): void {
+    setMouse(false);
     this.inkInstance?.unmount();
     this.inkInstance = null;
   }
@@ -117,12 +151,12 @@ class InkScreenImpl implements InkScreen {
     store.setHeader(left, right);
   }
 
-  setColumnHeaders(labels: string, _separator: string): void {
-    store.setColumnHeaders(labels);
+  appendLine(text: string): void {
+    store.append([{ text }]);
   }
 
-  appendLine(text: string): void {
-    store.appendLines([text]);
+  appendRow(row: PacketRow): void {
+    store.append([row]);
   }
 
   setStatusBar(text: string): void {
@@ -156,6 +190,7 @@ class InkScreenImpl implements InkScreen {
       }),
       { exitOnCtrlC: false },
     );
+    setMouse(true);
   }
 
   stop(): void {
