@@ -513,11 +513,17 @@ export function getCategoryColor(category: string): string {
  *   0xFEFF -> 0xFF); measured on two HQR-3LDs across 14 levels including
  *   both ends. Type 0B carries it XOR 0xFE and has only been seen at 0% and
  *   100%.
+ *   For 05-07 the type and slot give the responder's link address:
+ *   link = 3 * (slot - 1) + (type - 5). Swept on 13 dimmers; it matches the
+ *   device table for 8 of the 9 whose link is known from captures.
  * - After fmt 0x0D the status is the link address that frame assigns (its
  *   byte 20), on types 09 and 0B (0B again XOR 0xFE).
  *
  * Returns undefined when the pair is not one we can read.
  */
+/** Slots between a device's first and second ACK to one SET_LEVEL train. */
+const ACK_REPEAT_SLOTS = 35;
+
 export function describeShortAck(
   ack: Uint8Array | number[],
   command: Uint8Array | number[],
@@ -536,7 +542,12 @@ export function describeShortAck(
     command[15] === 0x02;
   if (isSetLevel && ((type >= 0x05 && type <= 0x07) || type === 0x0b)) {
     const level = Math.min(status << 8, 0xfeff);
-    return `level=${Math.round((level * 100) / 0xfeff)}%`;
+    const said = `level=${Math.round((level * 100) / 0xfeff)}%`;
+    // 05-07 answer in a slot of their own: three links share a slot and the
+    // type byte tells them apart. The second ACK comes 35 slots later.
+    const slot = ack[1] > ACK_REPEAT_SLOTS ? ack[1] - ACK_REPEAT_SLOTS : ack[1];
+    if (type === 0x0b || slot < 1 || slot >= ACK_REPEAT_SLOTS) return said;
+    return `${said} link=${3 * (slot - 1) + (type - 0x05)}`;
   }
 
   if (

@@ -682,9 +682,34 @@ The low two bits rotate like `81/82/83`. The `^ 0xFE` correction applies only to
 
 A short ACK names neither its sender nor the command, so its bytes only have a meaning next to the frame it follows. Pairing each ACK with the frame before it (719 pairs in the local captures, plus bench sweeps of two HQR-3LDs):
 
-**`byte[1]` is the slot the ACK went out in**, on the commander's sequence timebase (one count per 12.5 ms). A SET_LEVEL train starts at sequence 1 and steps by 6; both HQR-3LDs ACK in slot 5 and again in slot 40 (`0x28`), every time. `0B` ACKs land 2 and 4 slots after the frame they answer. It is not a counter the device owns.
+**`byte[1]` is the slot the ACK went out in**, on the commander's sequence timebase (one count per 12.5 ms). A SET_LEVEL train starts at sequence 1 and steps by 6. It is not a counter the device owns. `0B` ACKs land 2 and 4 slots after the frame they answer.
 
-**`byte[0]` picks the family by what is being answered, and its low bits by who answers.** The same HQR-3LD (`008BEE42`) uses `09`/`0B` for the serial-addressed pairing frames and `06` for runtime SET_LEVEL. Two HQR-3LDs on one link answer SET_LEVEL on different types: link `0x0D` on `06`, link `0x0E` on `07`. Two devices are not enough to say how link maps to type. A Caseta dimmer answers SET_LEVEL on `0B`.
+**`byte[0]` picks the family by what is being answered.** The same HQR-3LD (`008BEE42`) uses `09`/`0B` for the serial-addressed pairing frames and `06` for runtime SET_LEVEL. A Caseta dimmer answers SET_LEVEL on `0B`.
+
+**For `05`-`07` after SET_LEVEL, type and slot together are the responder's link address:**
+
+```
+link = 3 × (slot − 1) + (type − 0x05)
+```
+
+Three links share a slot and the type byte tells them apart. Each device ACKs twice, the second time 35 slots after the first. Swept on 13 RA3 plug-in and in-wall dimmers:
+
+| Serial | Link (device table) | ACK type | Slots | Link from ACK |
+|--------|---------------------|----------|-------|---------------|
+| `0296BD72` | 8 | `07` | 3, 38 | 8 |
+| `008BEE42` | 13 | `06` | 5, 40 | 13 |
+| `008BEE45` | 14 | `07` | 5, 40 | 14 |
+| `01CA3F6E` | 16 | `06` | 6, 41 | 16 |
+| `02E07AE8` | 18 | `05` | 42 | 18 |
+| `02F9D6C0` | 22 | `06` | 8 | 22 |
+| `01D4F21B` | 23 | `07` | 8 | 23 |
+| `008BEE43` | 24 | `05` | 9, 44 | 24 |
+| `02F9D6BF` | 25 | `07` | 11, 46 | 32 |
+| `05919908` | not captured | `07` | 10, 45 | 29 |
+| `00B308C1` | not captured | `06` | 11, 46 | 31 |
+| `031807B6` | not captured | `06` | 47 | 34 |
+
+The device-table links come from March captures. `02F9D6BF` is the one mismatch; its link 25 was read from a pairing session, so it may have been re-addressed since. `03F98064` (link 17) returned a single ACK, `07 39 5B`, whose slot and status are each one bit (`0x10`) away from the expected `29` / `4B`; it is left out.
 
 **`byte[2]`:**
 
@@ -698,7 +723,7 @@ A short ACK names neither its sender nor the command, so its bytes only have a m
 
 Byte 20 of fmt `0x0D` is the link address: `008BEE42` is acked as `0x0D` and `02F9D6BF` as `0x19`, and those are the slots the two serials occupy in the device table (`12 + 5·L`, above).
 
-`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first three rows; the CLI shows `level=NN%` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
+`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first three rows; the CLI shows `level=NN% link=N` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
 
 The `^ 0xFE` on `0B` holds up as a property of the type rather than of one capture: the same device reports link `0x0D` as raw `0D` on type `09` and as raw `F3` on type `0B`. Whether it is on the air or a CC1101 read error is still open, as are the raw `D0` / `2E` and `3F` / `C1` pairs seen on other types.
 

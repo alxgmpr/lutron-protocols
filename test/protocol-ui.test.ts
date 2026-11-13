@@ -227,21 +227,26 @@ test("identifyPacket names Vive hub config frames on A9-AB", () => {
   assert.equal(identifyPacket(plain).typeName, "FUNC_MAP");
 });
 
-test("describeShortAck reads the level out of an ACK that follows SET_LEVEL", () => {
-  // Bench sweep, HQR-3LD: status is the commanded level rounded to a byte
+test("describeShortAck reads level and link out of an ACK that follows SET_LEVEL", () => {
+  // Bench sweeps: status is the commanded level rounded to a byte; type and
+  // slot give the link (desk lamp = link 14, standing desk = link 13).
+  const desk = "8101a182d700210e00008bee45fe4002";
+  const standing = "8201a182d700210e00008bee42fe4002";
   const pairs = [
-    ["0705cb2df7", "8101a182d700210e00008bee45fe4002cb7c00010000f1d3", "80%"],
-    ["0728580064", "8201a182d700210e00008bee45fe40025794000100001908", "35%"],
-    ["07057e2d42", "8101a182d700210e00008bee45fe40027e360001000069b9", "49%"],
-    ["0705ff2dc3", "8201a182d700210e00008bee45fe4002feff00010000d725", "100%"],
-    ["0705002d3c", "8101a182d700210e00008bee45fe400200000001000032db", "0%"],
-    // the other HQR-3LD on the link answers on type 06
-    ["060598e7ab", "8201a182d700210e00008bee42fe400297f8000100000000", "60%"],
+    ["0705cb2df7", `${desk}cb7c00010000f1d3`, "level=80% link=14"],
+    // second ACK, 35 slots later
+    ["0728580064", `${desk}5794000100001908`, "level=35% link=14"],
+    ["0705ff2dc3", `${desk}feff00010000d725`, "level=100% link=14"],
+    ["0705002d3c", `${desk}00000001000032db`, "level=0% link=14"],
+    ["060598e7ab", `${standing}97f8000100000000`, "level=60% link=13"],
+    // link 24 (slot 9, type 05) and link 8 (slot 3, type 07)
+    ["0509987fb5", `${desk}97f8000100000000`, "level=60% link=24"],
+    ["07034b2b77", `${desk}4ab3000100000000`, "level=29% link=8"],
   ];
-  for (const [ack, cmd, level] of pairs) {
+  for (const [ack, cmd, said] of pairs) {
     assert.equal(
       describeShortAck(Buffer.from(ack, "hex"), Buffer.from(cmd, "hex")),
-      `level=${level}`,
+      said,
     );
   }
 });
