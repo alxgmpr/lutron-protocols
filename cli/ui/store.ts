@@ -1,5 +1,5 @@
 /**
- * Ink-facing store — central state shared between nucleo.ts business logic
+ * Ink-facing store — central state shared between openlutron.ts business logic
  * and the Ink component tree.
  *
  * Exposes a React-compatible subscribe/getSnapshot surface (for
@@ -87,7 +87,7 @@ export class Store {
   }
 
   // ============================================================================
-  // Mutations — called by the screen adapter / nucleo.ts business logic.
+  // Mutations — called by the screen adapter / openlutron.ts business logic.
   // Each produces a new AppState object so React can detect the change.
   // ============================================================================
 

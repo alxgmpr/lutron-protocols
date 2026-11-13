@@ -1,12 +1,17 @@
 /**
- * DevicePanel — per-device RSSI and inter-packet gap sparklines for the
- * most recently heard devices (see core/sparkline.ts). Toggled by `devices`.
+ * DevicePanel — per-device RSSI and inter-packet gap sparklines and CCA
+ * slot-tracker state for the most recently heard devices (see
+ * core/sparkline.ts). Toggled by `devices`.
  */
 
 import { Box, Text } from "ink";
 import { memo, useMemo } from "react";
 import { DIM, RESET } from "../../core/packets";
-import { deviceStats, renderDevicePanel } from "../../core/sparkline";
+import {
+  deviceStats,
+  PANEL_FIXED_WIDTH,
+  renderDevicePanel,
+} from "../../core/sparkline";
 import { useAppState } from "../hooks";
 
 /** Separator + header + this many device lines. */
@@ -19,8 +24,8 @@ export const DevicePanel = memo(function DevicePanel({
   width: number;
 }) {
   const { entries, filter } = useAppState();
-  // Fixed columns take 33; the two sparklines share the rest.
-  const samples = Math.max(8, Math.floor((width - 34) / 2));
+  // The two sparklines share what the fixed columns leave.
+  const samples = Math.max(8, Math.floor((width - PANEL_FIXED_WIDTH - 1) / 2));
   const lines = useMemo(
     () =>
       renderDevicePanel(

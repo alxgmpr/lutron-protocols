@@ -7,8 +7,8 @@
  * an interactive shell mirroring the on-device commands, plus live packet
  * display using the protocol decoders from protocol/.
  *
- * Usage: npx tsx cli/nucleo.ts <host>
- *        npx tsx cli/nucleo.ts                  # uses openBridge from config.json
+ * Usage: npx tsx cli/openlutron.ts <host>
+ *        npx tsx cli/openlutron.ts                  # uses openBridge from config.json
  */
 
 import { decode as cborDecode } from "cbor-x";
@@ -48,6 +48,7 @@ import {
 } from "../lib/stream-frame";
 import { DeviceClassNames } from "../protocol/cca.protocol";
 import {
+  describeShortAck,
   fingerprintDevice,
   identifyPacket,
   parseFieldValue,
@@ -63,6 +64,7 @@ import {
   type PacketRow,
   RED,
   RESET,
+  type SlotInfo,
   WHITE,
   YELLOW,
 } from "./core/packets";
@@ -182,15 +184,6 @@ interface CcaSlotFlowState {
   emaAbsErrMs: number;
   strideCounts: Map<number, number>;
   lastSeenTick: number;
-}
-
-interface CcaSlotIndicator {
-  status: "LEARN" | "TRACK" | "LOCK";
-  confidencePct: number;
-  dSeq?: number;
-  dtMs?: number;
-  errMs?: number;
-  missedPackets?: number;
 }
 
 const ccaSlotFlows = new Map<string, CcaSlotFlowState>();
@@ -324,6 +317,10 @@ function dominantStride(strideCounts: Map<number, number>): number | null {
 // ============================================================================
 // TUI helpers
 // ============================================================================
+/** Last full CCA frame seen, for reading the short ACKs that answer it. */
+let lastCcaCommand: { data: Buffer; at: number } | undefined;
+/** ACKs land within ~130 ms of the frame they answer; the train repeats every 75 ms. */
+const ACK_WINDOW_MS = 300;
 let ccaRxCount = 0;
 let ccaTxCount = 0;
 let ccxRxCount = 0;
@@ -375,7 +372,7 @@ function updateCcaSlotTracker(
   data: Buffer,
   isTx: boolean,
   radioTs: number,
-): CcaSlotIndicator | null {
+): SlotInfo | null {
   if (!slotTracking || isTx || data.length < 2) return null;
 
   const seq = data[1];
@@ -462,6 +459,7 @@ function updateCcaSlotTracker(
   return {
     status,
     confidencePct,
+    stride: stride ?? undefined,
     dSeq: sampleDSeq,
     dtMs: dtMs > 0 && dtMs <= CCA_SLOT_MAX_DT_MS ? dtMs : undefined,
     errMs,
@@ -711,7 +709,17 @@ function displayCcaPacket(
   } else if (category === "BEACON") {
     typeActionText = "BEACON";
     typeActionColor = YELLOW;
+  } else if (category === "ACK") {
+    const said =
+      lastCcaCommand && Date.now() - lastCcaCommand.at < ACK_WINDOW_MS
+        ? describeShortAck(data, lastCcaCommand.data)
+        : undefined;
+    if (said) {
+      stateParts.push(said);
+      verboseParts.push(said);
+    }
   }
+  if (data[0] >= 0x80) lastCcaCommand = { data, at: Date.now() };
 
   // Remaining fields
   for (const [name, val] of fieldValues) {
@@ -760,6 +768,7 @@ function displayCcaPacket(
     delta: deltaText,
     bytes: Uint8Array.from(data),
     verboseLine: verboseParts.length > 0 ? verboseParts.join("  ") : undefined,
+    slot: slot ?? undefined,
   });
 
   // CSV recording
@@ -1372,7 +1381,7 @@ function showHelp() {
     "",
     `${DIM}All IDs are hex. Fade is in quarter-seconds (4 = 1s). Ctrl-L to redraw.${RESET}`,
     `${DIM}Esc inspects packets (↑↓/jk, PgUp/PgDn, Esc to close). PgUp/PgDn/End scroll the log.${RESET}`,
-    `${DIM}\`devices\` toggles per-device RSSI and packet-gap sparklines (follows the filter).${RESET}`,
+    `${DIM}\`devices\` toggles the per-device panel: RSSI and packet-gap sparklines, slot-tracker state and missed packets (follows the filter).${RESET}`,
     `${DIM}Mouse: wheel scrolls, click a packet to inspect it. \`mouse\` toggles it off to select text.${RESET}`,
   ]);
 }
@@ -1768,7 +1777,7 @@ function cleanup() {
 
 if (!host) {
   console.error(
-    `Usage: bun cli/nucleo.ts [host] [--update-leap] [--leap-host <ip>]`,
+    `Usage: npx tsx cli/openlutron.ts [host] [--update-leap] [--leap-host <ip>]`,
   );
   console.error(
     `  or set OPEN_BRIDGE_HOST env var, or configure openBridge in config.json`,

@@ -237,7 +237,7 @@ text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:var(--
 <text x="602" y="1054" class="s">flash / debug: ST-LINK USB</text>
 <rect x="846" y="930" width="404" height="172" rx="8" class="ours"/>
 <text x="862" y="952" class="t">Host tooling · TypeScript (tsx)</text>
-<text x="862" y="976" class="s" style="fill:var(--ink)">cli/nucleo.ts: TUI + packet decoder</text>
+<text x="862" y="976" class="s" style="fill:var(--ink)">cli/openlutron.ts: TUI + packet decoder</text>
 <text x="862" y="994" class="s" style="fill:var(--ink)">protocol/*.ts: one source, codegen to C</text>
 <text x="862" y="1012" class="s" style="fill:var(--ink)">tools/: leap-dump, ipl-monitor, ccx, cca</text>
 <text x="862" y="1030" class="s" style="fill:var(--ink)">IPL client, Designer RE notes</text>

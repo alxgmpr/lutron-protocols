@@ -498,3 +498,54 @@ export function getCategoryColor(category: string): string {
   };
   return colors[category] ?? "#9E9E9E";
 }
+
+// ============================================================================
+// SHORT ACK CORRELATION
+// ============================================================================
+
+/**
+ * What a short ACK says, given the frame it answers. A short ACK names
+ * neither its sender nor the command, so its status byte only has a meaning
+ * next to the frame that came just before it.
+ *
+ * - After SET_LEVEL (fmt 0x0E, command `40 02`) the status is the commanded
+ *   level as one byte. Types 05-07 round the 16-bit level (0xCB7C -> 0xCB,
+ *   0xFEFF -> 0xFF); measured on two HQR-3LDs across 14 levels including
+ *   both ends. Type 0B carries it XOR 0xFE and has only been seen at 0% and
+ *   100%.
+ * - After fmt 0x0D the status is the link address that frame assigns (its
+ *   byte 20), on types 09 and 0B (0B again XOR 0xFE).
+ *
+ * Returns undefined when the pair is not one we can read.
+ */
+export function describeShortAck(
+  ack: Uint8Array | number[],
+  command: Uint8Array | number[],
+): string | undefined {
+  if (!isValidShortAck(ack)) return undefined;
+  const type = ack[0];
+  const status = type === 0x0b ? ack[2] ^ 0xfe : ack[2];
+  const format = command[7];
+
+  const isSetLevel =
+    command.length >= 18 &&
+    command[0] >= 0x81 &&
+    command[0] <= 0x83 &&
+    format === 0x0e &&
+    command[14] === 0x40 &&
+    command[15] === 0x02;
+  if (isSetLevel && ((type >= 0x05 && type <= 0x07) || type === 0x0b)) {
+    const level = Math.min(status << 8, 0xfeff);
+    return `level=${Math.round((level * 100) / 0xfeff)}%`;
+  }
+
+  if (
+    format === 0x0d &&
+    command.length > 20 &&
+    (type === 0x09 || type === 0x0b) &&
+    status === command[20]
+  ) {
+    return `link=${status}`;
+  }
+  return undefined;
+}

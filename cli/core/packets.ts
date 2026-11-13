@@ -53,6 +53,19 @@ export interface PacketLayout {
   delta: number;
 }
 
+/** CCA slot tracker reading for one packet (RX only, while tracking is on). */
+export interface SlotInfo {
+  status: "LEARN" | "TRACK" | "LOCK";
+  confidencePct: number;
+  /** Dominant sequence step between this flow's packets (6 = 75 ms trains). */
+  stride?: number;
+  dSeq?: number;
+  dtMs?: number;
+  errMs?: number;
+  /** Packets inferred missing just before this one. */
+  missedPackets?: number;
+}
+
 export interface PacketRow {
   ts: string;
   proto: string;
@@ -75,6 +88,7 @@ export interface PacketRow {
   verboseLine?: string;
   /** Packet bytes, kept for the detail pane. */
   bytes?: Uint8Array;
+  slot?: SlotInfo;
 }
 
 // ============================================================================

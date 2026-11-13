@@ -87,6 +87,7 @@ const { values } = parseArgs({
     zone: { type: "string" },
     stimulus: { type: "string", default: "levels" },
     cycles: { type: "string", default: "10" },
+    levels: { type: "string" },
     duration: { type: "string" },
     settle: { type: "string", default: "3000" },
     control: { type: "string", default: "20" },
@@ -108,6 +109,7 @@ if (values.help) {
       "  --zone <id|name>     Zone to drive. Use a plug-in dimmer.",
       "  --stimulus <kind>    levels | raise | none   (default: levels)",
       "  --cycles <n>         Stimulus repetitions (default: 10)",
+      "  --levels <a,b,...>   Levels to step through (default: 20,80,35,65,50)",
       "  --duration <sec>     Capture window for --stimulus none (default: 60)",
       "  --settle <ms>        Quiet period before the closing snapshot",
       "  --control <sec>      Idle window measured before the stimulus (default: 20)",
@@ -268,7 +270,9 @@ async function command(
  * step is a real dim transition rather than a switch event the load may
  * short-circuit.
  */
-const LEVEL_SEQUENCE = [20, 80, 35, 65, 50];
+const LEVEL_SEQUENCE = values.levels
+  ? values.levels.split(",").map(Number)
+  : [20, 80, 35, 65, 50];
 
 async function driveStimulus(
   conn: LeapConnection,

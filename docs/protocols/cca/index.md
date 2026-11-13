@@ -676,7 +676,35 @@ Cadence: 1 ACK every 25 ms (40 Hz) when the dimmer is in any active state (set-l
 | `09` `0A` `0B` | `78` `EC` `26` | `44` `5A` `55` | fmt `0x0D`, DEVICE_CTRL; `0B` is also the OTA ACK stream |
 | `15` `16` `17` | `D8` `4C` `86` | `B4` `AA` `A5` | config frames (fmt `0x0A`, SCENE_CONFIG), processor reboot |
 
-The low two bits rotate like `81/82/83`. After a SET_LEVEL, an HQR-3LD answers with `07`, and `byte[2]` is the commanded level's high byte (`07 05 CB 2D F7` follows a SET_LEVEL of `0xCB7C`). The `^ 0xFE` correction applies only to `0x0B`. The key table is `ShortAckKeys` in `protocol/cca.protocol.ts`, and codegen emits `cca_short_ack_valid()` from it.
+The low two bits rotate like `81/82/83`. The `^ 0xFE` correction applies only to `0x0B`.
+
+#### What a short ACK says
+
+A short ACK names neither its sender nor the command, so its bytes only have a meaning next to the frame it follows. Pairing each ACK with the frame before it (719 pairs in the local captures, plus bench sweeps of two HQR-3LDs):
+
+**`byte[1]` is the slot the ACK went out in**, on the commander's sequence timebase (one count per 12.5 ms). A SET_LEVEL train starts at sequence 1 and steps by 6; both HQR-3LDs ACK in slot 5 and again in slot 40 (`0x28`), every time. `0B` ACKs land 2 and 4 slots after the frame they answer. It is not a counter the device owns.
+
+**`byte[0]` picks the family by what is being answered, and its low bits by who answers.** The same HQR-3LD (`008BEE42`) uses `09`/`0B` for the serial-addressed pairing frames and `06` for runtime SET_LEVEL. Two HQR-3LDs on one link answer SET_LEVEL on different types: link `0x0D` on `06`, link `0x0E` on `07`. Two devices are not enough to say how link maps to type. A Caseta dimmer answers SET_LEVEL on `0B`.
+
+**`byte[2]`:**
+
+| ACK | Follows | `byte[2]` | Evidence |
+|-----|---------|-----------|----------|
+| `05`-`07` | SET_LEVEL (fmt `0x0E`, command `40 02`) | Commanded level rounded to one byte: `0000` → `00`, `0100` → `01`, `5794` → `58`, `BE9B` → `BF`, `CB7C` → `CB`, `FEFF` → `FF` | Two HQR-3LDs, 14 levels, every ACK |
+| `0B` | SET_LEVEL | The same, XOR `0xFE` on the raw byte: `FEFF` → raw `00`, `0000` → raw `FE` | Caseta, 79 of 79, only those two levels |
+| `09`, `0B` | fmt `0x0D` | The link address the frame assigns (its byte 20); `0B` XOR `0xFE` | 46 of 46, two devices |
+| `0B` | fmt `0x09` to the same device | That link address again, though the fmt `0x09` frame does not carry it | 45 of 45 |
+| `05`-`07` | fmt `0x08` during pairing | Not an echo: one repeated frame drew `3F`, `D0`, `D0`, `02`, `C1`, `D0` over 15 s | device state, values unnamed |
+
+Byte 20 of fmt `0x0D` is the link address: `008BEE42` is acked as `0x0D` and `02F9D6BF` as `0x19`, and those are the slots the two serials occupy in the device table (`12 + 5·L`, above).
+
+`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first three rows; the CLI shows `level=NN%` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
+
+The `^ 0xFE` on `0B` holds up as a property of the type rather than of one capture: the same device reports link `0x0D` as raw `0D` on type `09` and as raw `F3` on type `0B`. Whether it is on the air or a CC1101 read error is still open, as are the raw `D0` / `2E` and `3F` / `C1` pairs seen on other types.
+
+Not ACKed at all: an HQR-3LD sent hold-start (fmt `0x09`) and DIM_STEP (fmt `0x0B`) by the processor during a raise answered none of 112 frames.
+
+Fmt `0x0E` pairing frames (bytes 14-15 `06 00`) currently identify as SET_LEVEL; `describeShortAck` checks for `40 02` itself. The key table is `ShortAckKeys` in `protocol/cca.protocol.ts`, and codegen emits `cca_short_ack_valid()` from it.
 
 Firmware that predates the generalized parser decodes the other eight types only through the CRC-optional fallback. Those frames count as `crc_fail` and stream with trailing junk. The host checks the first 5 bytes either way.
 

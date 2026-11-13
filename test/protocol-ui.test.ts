@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  describeShortAck,
   identifyPacket,
   parseDeviceId,
   parseFieldValue,
@@ -224,4 +225,69 @@ test("identifyPacket names Vive hub config frames on A9-AB", () => {
   const plain = new Uint8Array(53).fill(0xcc);
   plain.set([0xab, 0x01, 0x01, 0x02, 0x03, 0x04, 0x21, 0x14, 0x00]);
   assert.equal(identifyPacket(plain).typeName, "FUNC_MAP");
+});
+
+test("describeShortAck reads the level out of an ACK that follows SET_LEVEL", () => {
+  // Bench sweep, HQR-3LD: status is the commanded level rounded to a byte
+  const pairs = [
+    ["0705cb2df7", "8101a182d700210e00008bee45fe4002cb7c00010000f1d3", "80%"],
+    ["0728580064", "8201a182d700210e00008bee45fe40025794000100001908", "35%"],
+    ["07057e2d42", "8101a182d700210e00008bee45fe40027e360001000069b9", "49%"],
+    ["0705ff2dc3", "8201a182d700210e00008bee45fe4002feff00010000d725", "100%"],
+    ["0705002d3c", "8101a182d700210e00008bee45fe400200000001000032db", "0%"],
+    // the other HQR-3LD on the link answers on type 06
+    ["060598e7ab", "8201a182d700210e00008bee42fe400297f8000100000000", "60%"],
+  ];
+  for (const [ack, cmd, level] of pairs) {
+    assert.equal(
+      describeShortAck(Buffer.from(ack, "hex"), Buffer.from(cmd, "hex")),
+      `level=${level}`,
+    );
+  }
+});
+
+test("describeShortAck stays quiet when the ACK does not answer a level command", () => {
+  // Pairing-time fmt 0x0E frame (06 00 at 14, not the 40 02 level command)
+  const pairing = "83012182d700210e00ffffffffff06000060060000d27f51";
+  assert.equal(
+    describeShortAck(
+      Buffer.from("0503d075fd", "hex"),
+      Buffer.from(pairing, "hex"),
+    ),
+    undefined,
+  );
+});
+
+test("describeShortAck reads a 0x0B ACK through its 0xFE XOR", () => {
+  // Caseta dimmer: raw 00 after 100%, raw FE after 0%
+  const on = "8301a1902c00210e0006fe285ffe4002feff00000000a894";
+  const off = "8101a1902c00210e0006fe285ffe400200000000000031eb";
+  assert.equal(
+    describeShortAck(Buffer.from("0b01002755", "hex"), Buffer.from(on, "hex")),
+    "level=100%",
+  );
+  assert.equal(
+    describeShortAck(Buffer.from("0b03fe25ab", "hex"), Buffer.from(off, "hex")),
+    "level=0%",
+  );
+});
+
+test("describeShortAck reads the link address assigned by fmt 0x0D", () => {
+  // Link 0x0D acked on type 09, link 0x19 acked on type 0B (raw E7 ^ FE)
+  const assign13 = "9301a182d700210d00008bee42fe080682d71a010dcceb83";
+  const assign25 = "9187a182d700210d0002f9d6bffe080682d71a0119cc2266";
+  assert.equal(
+    describeShortAck(
+      Buffer.from("09020d7a49", "hex"),
+      Buffer.from(assign13, "hex"),
+    ),
+    "link=13",
+  );
+  assert.equal(
+    describeShortAck(
+      Buffer.from("0b09e72fb2", "hex"),
+      Buffer.from(assign25, "hex"),
+    ),
+    "link=25",
+  );
 });

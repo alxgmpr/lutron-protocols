@@ -1770,7 +1770,8 @@ const deviceFingerprints: StringLookup<DeviceFingerprint> = {
 // Measured over 7,020 short frames from local captures — every type held a
 // single key pair. Families rotate their low bits the way 81/82/83 do:
 //   05-07  answer state reports (fmt 0x08) and SET_LEVEL (fmt 0x0E);
-//          after SET_LEVEL, `status` is the commanded level's high byte
+//          after SET_LEVEL, `status` is the commanded level rounded to its
+//          high byte (describeShortAck in protocol-ui.ts)
 //   09-0B  answer fmt 0x0D and DEVICE_CTRL; 0B is also the OTA ACK stream
 //   15-17  answer config frames (fmt 0x0A, SCENE_CONFIG)
 
@@ -1800,13 +1801,19 @@ export function isValidShortAck(data: Uint8Array | number[]): boolean {
 
 const shortAckFields: FieldDef[] = [
   field("type", 0, 1, "hex"),
-  field("sequence", 1, 1, "decimal"),
+  field(
+    "sequence",
+    1,
+    1,
+    "decimal",
+    "Slot the ACK was sent in, on the commander's sequence timebase",
+  ),
   field(
     "status",
     2,
     1,
     "hex",
-    "Response code; level high byte after SET_LEVEL",
+    "Meaning depends on the frame it answers: level after SET_LEVEL, link address after fmt 0x0D",
   ),
   field("check", 3, 2, "hex", "Bytes 1-2 XOR the per-type key"),
 ];

@@ -36,7 +36,7 @@ This project started with Caseta CCA radios and expanded into reverse engineerin
 ```
   CC1101 (433 MHz CCA)  ──┐                                ┌── UART shell (ST-LINK VCP)
                           ├── STM32H723 Nucleo (FreeRTOS) ─┤
-  nRF52840 (Thread CCX) ──┘   Ethernet, UDP :9433          └── Stream → CLI (cli/nucleo.ts)
+  nRF52840 (Thread CCX) ──┘   Ethernet, UDP :9433          └── Stream → CLI (cli/openlutron.ts)
 ```
 
 The Nucleo board hosts two radios: a CC1101 for CCA (433 MHz FSK) and an nRF52840 NCP for CCX (Thread/802.15.4 at 2.4 GHz). The host CLI connects over UDP for packet display, protocol decoding, and command dispatch.
@@ -60,7 +60,7 @@ npm install
 cp config.example.json config.json  # configure processor IPs and cert paths
 
 # Connect to Nucleo
-npx tsx cli/nucleo.ts
+npx tsx cli/openlutron.ts
 
 # One-shot commands
 npx tsx tools/nucleo-cmd.ts "ccx coap get rloc:4800 fw/it/md"
@@ -87,7 +87,7 @@ Requires `arm-none-eabi-gcc`, CMake, and OpenOCD.
 
 ## CLI
 
-The interactive TUI (`cli/nucleo.ts`) displays decoded packets, dispatches CCA/CCX commands, and supports recording.
+The interactive TUI (`cli/openlutron.ts`) displays decoded packets, dispatches CCA/CCX commands, and supports recording.
 
 ```
 ccx coap get rloc:4800 fw/it/md        # CoAP GET with CBOR decode
@@ -102,7 +102,7 @@ status                                  # Radio/network status
 
 | Tool                         | Purpose                                                   |
 | ---------------------------- | --------------------------------------------------------- |
-| `cli/nucleo.ts`              | Interactive TUI — packet display, commands, CoAP explorer |
+| `cli/openlutron.ts`          | Interactive TUI — packet display, commands, CoAP explorer |
 | `tools/nucleo-cmd.ts`        | Scriptable one-shot Nucleo commands                       |
 | `tools/ccx/coap-probe.ts`        | Scan all CCX devices for CoAP endpoints                   |
 | `tools/ccx/coap-fuzz.ts`         | Rapid CoAP path fuzzer                                    |

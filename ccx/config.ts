@@ -3,7 +3,7 @@
  *
  * Auto-loads from LEAP dump files in data/leap-*.json.
  * Generate with: npx tsx tools/leap-dump.ts
- * Or refresh from CLI: npx tsx cli/nucleo.ts --update-leap
+ * Or refresh from CLI: npx tsx cli/openlutron.ts --update-leap
  */
 
 import { existsSync, readdirSync, readFileSync } from "fs";

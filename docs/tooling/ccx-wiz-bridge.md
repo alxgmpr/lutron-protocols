@@ -661,7 +661,7 @@ Use runtime validation (Zod or manual checks). Invalid config = immediate exit w
 over UDP :9433; the bridge decodes both and publishes to MQTT/HA.
 
 - `lib/openlutron-stream.ts` — the one UDP :9433 client: bind, register,
-  keep registering, notice silence, rebind. Shared with `cli/nucleo.ts` and
+  keep registering, notice silence, rebind. Shared with `cli/openlutron.ts` and
   `tools/cca/capture-rate.ts`, which used to hand-roll it
 - `lib/stream-frame.ts` — the wire framing, including source attribution
 - `lib/bridge/sources/openlutron.ts` — demux on `FLAG_CCX`

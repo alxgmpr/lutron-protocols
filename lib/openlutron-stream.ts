@@ -79,7 +79,7 @@ export interface OpenlutronStreamOptions {
   keepaliveMs?: number;
   /**
    * Silence after which the board counts as gone. Default 12 s — the value
-   * cli/nucleo.ts used, and more than two missed keepalives.
+   * cli/openlutron.ts used, and more than two missed keepalives.
    */
   connectionTimeoutMs?: number;
   /** How long to wait before replacing a socket that errored. Default 1 s. */

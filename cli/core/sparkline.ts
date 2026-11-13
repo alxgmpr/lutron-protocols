@@ -1,6 +1,7 @@
 /**
  * Per-device sparklines — RSSI and inter-packet gap for the most recently
- * heard devices, derived from the log entries at render time.
+ * heard devices, plus each device's CCA slot-tracker state, derived from
+ * the log entries at render time.
  *
  * Pure: entries in, ANSI lines out.
  */
@@ -8,10 +9,13 @@
 import {
   CYAN,
   DIM,
+  GREEN,
   isText,
   type LogEntry,
+  RED,
   RESET,
   type RowFilter,
+  type SlotInfo,
   YELLOW,
 } from "./packets";
 
@@ -37,6 +41,10 @@ export interface DeviceStats {
   rssi: number[];
   /** Milliseconds since the device's previous packet, oldest first. */
   gaps: number[];
+  /** Latest slot-tracker reading, if any packet had one. */
+  slot?: SlotInfo;
+  /** Packets the slot tracker inferred missing, summed over the buffer. */
+  missed: number;
 }
 
 /** "HH:MM:SS.mmm" → ms since midnight. */
@@ -68,6 +76,7 @@ export function deviceStats(
       count: 0,
       rssi: [],
       gaps: [],
+      missed: 0,
     };
     // Skip gaps across midnight (ts wraps).
     if (prevMs !== undefined && ms >= prevMs) d.gaps.push(ms - prevMs);
@@ -77,6 +86,10 @@ export function deviceStats(
     byKey.set(key, d);
     d.count++;
     d.rssi.push(e.rssi ? Number.parseFloat(e.rssi) : Number.NaN);
+    if (e.slot) {
+      d.slot = e.slot;
+      d.missed += e.slot.missedPackets ?? 0;
+    }
   }
   return [...byKey.values()]
     .reverse()
@@ -89,6 +102,22 @@ export function deviceStats(
 }
 
 const finite = (xs: number[]) => xs.filter((x) => !Number.isNaN(x));
+
+const SLOT_COLOR = { LOCK: GREEN, TRACK: YELLOW, LEARN: DIM };
+
+/** Columns the panel uses besides the two sparklines. */
+export const PANEL_FIXED_WIDTH = 52;
+
+/** e.g. "LOCK  92% s6", padded to 12. */
+function slotCell(slot: SlotInfo | undefined): string {
+  if (!slot) return "".padEnd(12);
+  const stride = slot.stride ? ` s${slot.stride}` : "";
+  const text =
+    `${slot.status.padEnd(5)}${`${slot.confidencePct}%`.padStart(4)}${stride}`.padEnd(
+      12,
+    );
+  return `${SLOT_COLOR[slot.status]}${text}${RESET}`;
+}
 
 /**
  * Panel lines: a header, then one line per device. RSSI and gap bars share
@@ -112,7 +141,7 @@ export function renderDevicePanel(
         ? `${(ms / 1000).toFixed(1)}s`
         : `${ms}ms`;
 
-  const header = `${DIM}${"DEVICE".padEnd(12)}${"PKTS".padStart(5)}  ${"RSSI".padEnd(samples)} ${"dBm".padStart(4)}  ${"GAP".padEnd(samples)} ${"last".padStart(6)}${RESET}`;
+  const header = `${DIM}${"DEVICE".padEnd(12)}${"PKTS".padStart(5)}  ${"RSSI".padEnd(samples)} ${"dBm".padStart(4)}  ${"GAP".padEnd(samples)} ${"last".padStart(6)}  ${"SLOT".padEnd(12)} ${"MISS".padStart(4)}${RESET}`;
   const lines = stats.map((d) => {
     const lastRssi = finite(d.rssi).at(-1);
     const rssiBars = spark(d.rssi, rLo, rHi).padStart(samples);
@@ -128,6 +157,10 @@ export function renderDevicePanel(
       ` ${lastRssi === undefined ? "".padStart(4) : String(lastRssi).padStart(4)}`,
       `  ${YELLOW}${gapBars}${RESET}`,
       ` ${fmtGap(d.gaps.at(-1)).padStart(6)}`,
+      `  ${slotCell(d.slot)}`,
+      d.slot
+        ? ` ${d.missed ? RED : DIM}${String(d.missed).padStart(4)}${RESET}`
+        : "",
     ].join("");
   });
   return [header, ...lines];
