@@ -18,6 +18,7 @@
  *   Page Up/Down    — fire callbacks for log scrolling
  *   Alt-B/F         — word backward/forward
  *   Esc             — enter packet select mode (detail pane)
+ *   Mouse (SGR)     — reports go to onMouse, never to the line buffer
  *
  * In select mode: Up/Down or k/j move the selection, PgUp/PgDn page it,
  * Esc/Enter/q leave; any other key leaves and is handled normally.
@@ -32,6 +33,26 @@ import { store } from "./store";
 
 const MAX_HISTORY = 50;
 
+/** An SGR mouse report: 1-based cell, button code with modifier bits. */
+export interface MouseEvent {
+  button: number;
+  x: number;
+  y: number;
+  press: boolean;
+}
+
+// Ink strips the first report's ESC, later ones keep it; match without it.
+const MOUSE_RE = /\[<(\d+);(\d+);(\d+)([Mm])/g;
+
+export function parseMouse(input: string): MouseEvent[] {
+  return Array.from(input.matchAll(MOUSE_RE), (m) => ({
+    button: Number(m[1]),
+    x: Number(m[2]),
+    y: Number(m[3]),
+    press: m[4] === "M",
+  }));
+}
+
 export interface LineEditorCallbacks {
   onSubmit: (line: string) => void;
   onPageUp?: () => void;
@@ -44,6 +65,7 @@ export interface LineEditorCallbacks {
   isSelecting?: () => boolean;
   onSelect?: (step: number) => void;
   onSelectExit?: () => void;
+  onMouse?: (ev: MouseEvent) => void;
   /** Optional context-aware completion resolver. Called on Tab with the
    *  text before the cursor; return the candidate list (may be empty). */
   getCompletions?: (lineBeforeCursor: string) => string[];
@@ -225,6 +247,13 @@ export function useLineEditor(cb: LineEditorCallbacks): void {
   }, [cb, push]);
 
   useInput((input, key) => {
+    if (input.startsWith("[<")) {
+      const events = parseMouse(input);
+      if (events.length) {
+        for (const ev of events) cb.onMouse?.(ev);
+        return;
+      }
+    }
     cb.onAnyKey?.();
     if (!key.tab) resetTab();
 

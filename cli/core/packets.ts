@@ -381,6 +381,24 @@ export function entryLineCount(
 }
 
 /**
+ * The entry drawn `linesUp` display lines above the tail (0 = newest line),
+ * or null past the oldest. Inverse of visibleLines, for mouse hit-testing.
+ */
+export function entryAtLine(
+  entries: readonly LogEntry[],
+  verbose: boolean,
+  match: RowFilter | null,
+  linesUp: number,
+): LogEntry | null {
+  let seen = 0;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    seen += entryLineCount(entries[i], verbose, match);
+    if (seen > linesUp) return entries[i];
+  }
+  return null;
+}
+
+/**
  * Render the `height` display lines that end `offset` lines (>= 0) above the
  * tail. Walks backward from the newest entry so cost scales with the window,
  * not the buffer. Text lines are always shown; the filter hides packets only.

@@ -27,13 +27,17 @@ export const PacketLog = memo(function PacketLog({ height }: Props) {
     -state.scrollOffset,
     state.selected,
   );
-  const padCount = Math.max(0, height - slice.length);
-  const visible =
-    padCount > 0 ? [...Array(padCount).fill(""), ...slice] : slice;
 
+  // Bottom-anchored like the old padded layout (Ink gives an empty <Text>
+  // no height, so padding didn't work). Mouse hit-testing relies on this.
   return (
-    <Box flexDirection="column" height={height} flexShrink={0}>
-      {visible.map((line, i) => (
+    <Box
+      flexDirection="column"
+      justifyContent="flex-end"
+      height={height}
+      flexShrink={0}
+    >
+      {slice.map((line, i) => (
         // Line index is stable within the window; ANSI is preserved by Ink's
         // Text component when the string already contains escape codes.
         // biome-ignore lint/suspicious/noArrayIndexKey: windowed render by position
