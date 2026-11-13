@@ -1,6 +1,7 @@
 /**
  * Packet detail pane — hex dump coloured by protocol field, plus decoded
- * field values (CCA) or the raw CBOR structure (CCX).
+ * field values (CCA) or the raw CBOR structure (CCX). Bytes that changed
+ * since the same device's previous packet are underlined.
  *
  * Pure: takes a PacketRow with bytes, returns ANSI lines for the Ink pane.
  */
@@ -14,6 +15,8 @@ import {
   CYAN,
   DIM,
   GREEN,
+  isText,
+  type LogEntry,
   MAGENTA,
   type PacketRow,
   RED,
@@ -23,6 +26,8 @@ import {
 
 const FIELD_COLORS = [CYAN, YELLOW, GREEN, MAGENTA, BLUE, RED];
 const CELL_WIDTH = 28;
+/** Marks a changed byte/field; orthogonal to the field colour. */
+const CHANGED = "\x1b[4m\x1b[1m";
 
 export interface FieldSpan {
   name: string;
@@ -59,11 +64,42 @@ export function ccaSpans(bytes: Uint8Array): FieldSpan[] {
     });
 }
 
+/**
+ * The nearest earlier packet from the same device with the same length (so
+ * byte offsets line up), or null. Rows without a device never match.
+ */
+export function previousFromDevice(
+  entries: readonly LogEntry[],
+  row: PacketRow,
+): PacketRow | null {
+  if (!row.device || !row.bytes) return null;
+  for (let i = entries.lastIndexOf(row) - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (
+      !isText(e) &&
+      e.proto === row.proto &&
+      e.device === row.device &&
+      e.bytes?.length === row.bytes.length
+    ) {
+      return e;
+    }
+  }
+  return null;
+}
+
+/** Offsets where `bytes` differs from `prev` (same length assumed). */
+export function changedOffsets(bytes: Uint8Array, prev: Uint8Array): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < bytes.length; i++) if (bytes[i] !== prev[i]) out.push(i);
+  return out;
+}
+
 /** Hex dump, each byte coloured by the first span covering it. */
 export function hexDump(
   bytes: Uint8Array,
   spans: readonly FieldSpan[],
   width: number,
+  changed: ReadonlySet<number> = new Set(),
 ): string[] {
   const perLine = width >= 6 + 16 * 3 ? 16 : 8;
   const colorAt = (i: number) =>
@@ -72,7 +108,8 @@ export function hexDump(
   for (let start = 0; start < bytes.length; start += perLine) {
     const cells: string[] = [];
     for (let i = start; i < Math.min(start + perLine, bytes.length); i++) {
-      cells.push(`${colorAt(i)}${hex(bytes[i])}${RESET}`);
+      const mark = changed.has(i) ? CHANGED : "";
+      cells.push(`${colorAt(i)}${mark}${hex(bytes[i])}${RESET}`);
     }
     lines.push(`${DIM}${hex(start)}${RESET}  ${cells.join(" ")}`);
   }
@@ -80,7 +117,11 @@ export function hexDump(
 }
 
 /** Pack `name value` cells into rows that fit the width. */
-function fieldGrid(spans: readonly FieldSpan[], width: number): string[] {
+function fieldGrid(
+  spans: readonly FieldSpan[],
+  width: number,
+  changed: ReadonlySet<string>,
+): string[] {
   const perRow = Math.max(1, Math.floor(width / CELL_WIDTH));
   const cell = (s: FieldSpan) => {
     const text = `${s.name} ${s.value}`;
@@ -88,7 +129,8 @@ function fieldGrid(spans: readonly FieldSpan[], width: number): string[] {
       text.length > CELL_WIDTH - 1
         ? `${text.slice(0, CELL_WIDTH - 2)}…`
         : text.padEnd(CELL_WIDTH - 1);
-    return `${s.color}${clipped.slice(0, s.name.length)}${RESET}${clipped.slice(s.name.length)}`;
+    const mark = changed.has(s.name) ? CHANGED : "";
+    return `${s.color}${mark}${clipped.slice(0, s.name.length)}${RESET}${clipped.slice(s.name.length)}`;
   };
   const rows: string[] = [];
   for (let i = 0; i < spans.length; i += perRow) {
@@ -126,8 +168,29 @@ function wrap(text: string, width: number): string[] {
   return out;
 }
 
-/** Lines for the detail pane of one packet. */
-export function renderDetail(row: PacketRow, width: number): string[] {
+/** Summary line for the diff against `prev`. */
+function diffLine(
+  row: PacketRow,
+  prev: PacketRow | null,
+  offsets: readonly number[],
+  fields: readonly string[],
+): string {
+  if (!prev) {
+    return row.device
+      ? `${DIM}Δ no earlier ${row.bytes?.length}-byte packet from ${row.device}${RESET}`
+      : `${DIM}Δ no device to compare against${RESET}`;
+  }
+  if (offsets.length === 0) return `${DIM}Δ identical to ${prev.ts}${RESET}`;
+  const what = fields.length ? `: ${fields.join(", ")}` : "";
+  return `${CHANGED}Δ${RESET} ${DIM}vs ${prev.ts} · ${offsets.length} byte${offsets.length === 1 ? "" : "s"} changed${what}${RESET}`;
+}
+
+/** Lines for the detail pane of one packet, diffed against `prev` if given. */
+export function renderDetail(
+  row: PacketRow,
+  width: number,
+  prev: PacketRow | null = null,
+): string[] {
   const isCca = row.proto === "A";
   const bytes = row.bytes;
   const title = `${BOLD}${isCca ? "CCA" : "CCX"} ${row.typeAction}${RESET}`;
@@ -136,18 +199,37 @@ export function renderDetail(row: PacketRow, width: number): string[] {
     .join("  ");
   if (!bytes) return [`${title}  ${DIM}${meta}  (no bytes captured)${RESET}`];
 
+  const offsets =
+    prev?.bytes?.length === bytes.length
+      ? changedOffsets(bytes, prev.bytes)
+      : [];
+  const changed = new Set(offsets);
   const lines: string[] = [];
   if (isCca) {
     const spans = ccaSpans(bytes);
     const { description } = identifyPacket(bytes);
+    const changedFields = spans
+      .filter((s) =>
+        offsets.some((o) => o >= s.offset && o < s.offset + s.size),
+      )
+      .map((s) => s.name);
+    // Changes no defined field covers: candidates for undocumented fields.
+    const unmapped = offsets.filter(
+      (o) => !spans.some((s) => o >= s.offset && o < s.offset + s.size),
+    );
+    if (unmapped.length) {
+      changedFields.push(`unmapped @${unmapped.map(hex).join(",")}`);
+    }
     lines.push(
       `${title}  ${DIM}${description} · ${bytes.length} bytes · ${meta}${RESET}`,
     );
-    lines.push(...hexDump(bytes, spans, width));
-    lines.push(...fieldGrid(spans, width));
+    lines.push(diffLine(row, prev, offsets, changedFields));
+    lines.push(...hexDump(bytes, spans, width, changed));
+    lines.push(...fieldGrid(spans, width, new Set(changedFields)));
   } else {
     lines.push(`${title}  ${DIM}${bytes.length} bytes · ${meta}${RESET}`);
-    lines.push(...hexDump(bytes, [], width));
+    lines.push(diffLine(row, prev, offsets, []));
+    lines.push(...hexDump(bytes, [], width, changed));
     try {
       lines.push(...wrap(fmtCbor(cborDecode(bytes)), width));
     } catch {
