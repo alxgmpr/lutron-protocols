@@ -69,7 +69,7 @@ export function harvestDeviceIds(frames: Buffer[]): number[] {
 
       const value = frame.readUInt32BE(field.offset);
       if (value < MIN_PLAUSIBLE_ID) continue;
-      if (isUniform(value)) continue;
+      if (isFiller(value)) continue;
       ids.add(value);
     }
   }
@@ -77,14 +77,19 @@ export function harvestDeviceIds(frames: Buffer[]): number[] {
   return [...ids];
 }
 
-/** All four bytes equal — broadcast (ff ff ff ff) and filler, not identity. */
-function isUniform(value: number): boolean {
-  const b0 = (value >>> 24) & 0xff;
-  return (
-    ((value >>> 16) & 0xff) === b0 &&
-    ((value >>> 8) & 0xff) === b0 &&
-    (value & 0xff) === b0
-  );
+/** CCA pads unused payload bytes with 0xCC. */
+const PAD_BYTE = 0xcc;
+
+/**
+ * Not identity: all four bytes equal (broadcast ff ff ff ff, filler), or
+ * three or more bytes of 0xCC padding. A device_id field that runs onto a
+ * frame's padding reads as e.g. 00 cc cc cc; harvesting that would scrub
+ * every "00 cc cc cc" in the corpus, which is ordinary payload + padding.
+ */
+function isFiller(value: number): boolean {
+  const bytes = [24, 16, 8, 0].map((shift) => (value >>> shift) & 0xff);
+  if (bytes.every((b) => b === bytes[0])) return true;
+  return bytes.filter((b) => b === PAD_BYTE).length >= 3;
 }
 
 export function redactCcaFrame(data: Buffer, opts: RedactOptions = {}): Buffer {

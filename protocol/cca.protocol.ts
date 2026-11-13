@@ -603,6 +603,8 @@ const buttonFormatDisc: NumberLookup<FormatRule> = {
     // Sensor level: daylight sensor frame=0x00 or occupancy frame=0x03 at byte 8
     // Dim step: zone byte at 12, addr_mode at 13, cmd_class at 14
     { name: "SENSOR_LEVEL", match: { 14: 0xd5 } },
+    // Sensor event: frame=0x03 at byte 8, sensor id repeated at 12-15
+    { name: "SENSOR_EVENT", match: { 8: 0x03 } },
     { name: "DIM_STEP" },
   ],
   0x0c: [
@@ -616,7 +618,12 @@ const buttonFormatDisc: NumberLookup<FormatRule> = {
     // Sensor vacancy: fallback for OWT occupancy sensors
     { name: "SENSOR_VACANT" },
   ],
-  0x0e: "PICO_EXTENDED",
+  0x0e: [
+    // Occupancy sensor: frame=0x04 at byte 8, sensor id repeated at 13-16
+    { name: "SENSOR_EXTENDED", match: { 8: 0x04 } },
+    // Pico extended: pico_frame=0x03, device id repeated at 12-15
+    { name: "PICO_EXTENDED" },
+  ],
 };
 
 /** Format discrimination for long packet types (0xA1-0xA3) */
@@ -1221,6 +1228,82 @@ const SENSOR_LEVEL = packetType(
   { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
 );
 
+// Sensor event (format 0x0B, frame 0x03 at byte 8). Same shape as a Pico
+// long-format button frame: kind/action at 10-11, id repeat at 12-15,
+// command pair at 17-18. Emitted by occupancy and daylight sensors.
+const sensorEventFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0B"),
+  field("frame", 8, 1, "hex", "0x03 = sensor event"),
+  field(
+    "sensor_kind",
+    10,
+    1,
+    "hex",
+    "0x01=daylight, 0x04=occupancy, 0x03=occupancy with 0x47 command",
+  ),
+  field("action", 11, 1, "hex", "0x01 in every capture"),
+  field("device_repeat", 12, 4, "device_id_be"),
+  field("cmd_class", 17, 1, "hex", "0x00 (kind 0x01/0x04) or 0x47 (kind 0x03)"),
+  field(
+    "cmd_param",
+    18,
+    1,
+    "hex",
+    "0x00 with class 0x00; 0x02 or 0x03 with class 0x47 (meaning unconfirmed)",
+  ),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_EVENT = packetType(
+  0xe6,
+  24,
+  "SENSOR",
+  "Sensor event: occupancy or daylight (format 0x0B, frame 0x03)",
+  "big",
+  sensorEventFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
+// Occupancy sensor extended frame (format 0x0E, frame 0x04 at byte 8). Same
+// shape as the format 0x0C vacancy frame: id repeat at 13-16, class 0x47 at
+// 18. Seen from LRF2-OWLB-P and LRF2-OCR2B-P sensors.
+const sensorExtendedFields: FieldDef[] = [
+  field("type", 0, 1, "hex"),
+  field("sequence", 1, 1, "decimal"),
+  field("device_id", 2, 4, "device_id_be"),
+  field("protocol", 6, 1, "hex"),
+  field("format", 7, 1, "hex", "0x0E"),
+  field("frame", 8, 1, "hex", "0x04 = occupancy sensor"),
+  field("sensor_kind", 10, 1, "hex", "0x02 in every capture"),
+  field("event_flags", 11, 1, "hex", "0x06 or 0x26"),
+  field("event_state", 12, 1, "hex", "0x00 or 0x03"),
+  field("device_repeat", 13, 4, "device_id_be"),
+  field("cmd_class", 18, 1, "hex", "0x47"),
+  field(
+    "cmd_param",
+    19,
+    1,
+    "hex",
+    "0x00/0x01/0x06/0x07: bit 0 set when byte 12 = 0x00, bits 1-2 set when byte 11 = 0x26",
+  ),
+  field("cmd_arg", 20, 1, "hex", "0xFF or 0x69"),
+  field("crc", 22, 2, "hex"),
+];
+
+const SENSOR_EXTENDED = packetType(
+  0xe7,
+  24,
+  "SENSOR",
+  "Occupancy sensor extended frame (format 0x0E, frame 0x04)",
+  "big",
+  sensorExtendedFields,
+  { isVirtual: true, ecosystems: ["CASETA", "RA3", "VIVE", "HOMEWORKS"] },
+);
+
 const sensorTestFields: FieldDef[] = [
   field("type", 0, 1, "hex"),
   field("sequence", 1, 1, "decimal"),
@@ -1253,11 +1336,11 @@ const sensorVacantFields: FieldDef[] = [
   field("sensor_subtype", 8, 1, "hex", "0x04=occupancy sensor"),
   field("device_repeat", 13, 4, "device_id_be"),
   field(
-    "timeout_param",
+    "cmd_class",
     18,
     1,
     "hex",
-    "Possibly programmed timeout (0x47=71 observed)",
+    "0x47, the same class byte as SENSOR_EVENT (17) and SENSOR_EXTENDED (18)",
   ),
   field("crc", 22, 2, "hex"),
 ];
@@ -1840,6 +1923,8 @@ export const CCA: CCAProtocolDef = {
     FADE_CONFIG,
     ZONE_ASSIGN,
     SENSOR_LEVEL,
+    SENSOR_EVENT,
+    SENSOR_EXTENDED,
     SENSOR_TEST,
     SENSOR_VACANT,
     PICO_RESET,
