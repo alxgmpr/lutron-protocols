@@ -6,6 +6,7 @@
  *   │ PacketLog (flexGrow)         │
  *   │ [Detail, if selecting]       │
  *   │ [Overlay, if present]        │
+ *   │ [DevicePanel, if toggled on] │
  *   ├──────────────────────────────┤
  *   │ CommandPalette (if tabbing)  │
  *   │ Footer (separator + legend)  │
@@ -17,6 +18,7 @@ import { Box } from "ink";
 import { entryAtLine, isText } from "../core/packets";
 import { CommandPalette } from "./components/CommandPalette";
 import { Detail } from "./components/Detail";
+import { DEVICE_PANEL_ROWS, DevicePanel } from "./components/DevicePanel";
 import { Footer } from "./components/Footer";
 import { InputLine } from "./components/InputLine";
 import { Overlay } from "./components/Overlay";
@@ -42,7 +44,7 @@ export interface AppProps {
 
 export function App(props: AppProps) {
   const { columns, rows } = useTerminalSize();
-  const { overlay, palette, selected } = useAppState();
+  const { overlay, palette, selected, devices } = useAppState();
 
   // Reserve rows for the fixed footer region.
   // Base: separator(1) + column headers(1) + status(1) + input(1) = 4.
@@ -60,7 +62,8 @@ export function App(props: AppProps) {
     : 0;
   // Fixed so a selection made before the pane opens stays in view after.
   const detailRows = Math.min(12, Math.floor(rows / 2));
-  const reserved = 4 + palRows + overlayRows;
+  const reserved =
+    4 + palRows + overlayRows + (devices ? DEVICE_PANEL_ROWS : 0);
   const logHeight = Math.max(1, rows - reserved - (selected ? detailRows : 0));
   const selectHeight = Math.max(1, rows - reserved - detailRows);
   const halfPage = Math.max(1, Math.floor(selectHeight / 2));
@@ -118,6 +121,7 @@ export function App(props: AppProps) {
         <Detail row={selected} height={detailRows} width={columns} />
       ) : null}
       {overlay ? <Overlay width={columns} /> : null}
+      {devices ? <DevicePanel width={columns} /> : null}
       {palette ? <CommandPalette width={columns} /> : null}
       <Footer width={columns} />
       <InputLine />
