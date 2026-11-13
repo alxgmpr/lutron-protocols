@@ -515,7 +515,11 @@ export function getCategoryColor(category: string): string {
  *   100%.
  *   For 05-07 the type and slot give the responder's link address:
  *   link = 3 * (slot - 1) + (type - 5). Swept on 13 dimmers; it matches the
- *   device table for 8 of the 9 whose link is known from captures.
+ *   Designer project (AddressOnLink - 1) for all 13.
+ * - After a scene or group command (fmt 0x0B to a group id) 05-07 read the
+ *   same way, one ACK per device that acted: the status is the level that
+ *   device went to. Every link this yields in the captures is a dimmer the
+ *   project file has at that address.
  * - After fmt 0x0D the status is the link address that frame assigns (its
  *   byte 20), on types 09 and 0B (0B again XOR 0xFE).
  *
@@ -540,7 +544,18 @@ export function describeShortAck(
     format === 0x0e &&
     command[14] === 0x40 &&
     command[15] === 0x02;
-  if (isSetLevel && ((type >= 0x05 && type <= 0x07) || type === 0x0b)) {
+  // Scene and group commands: fmt 0x0B addressed to a group id (0xEF at 13).
+  const isGroupCommand =
+    command.length >= 14 &&
+    command[0] >= 0x80 &&
+    command[0] <= 0x83 &&
+    format === 0x0b &&
+    command[13] === 0xef;
+  const isRuntimeAck = type >= 0x05 && type <= 0x07;
+  if (
+    (isSetLevel && (isRuntimeAck || type === 0x0b)) ||
+    (isGroupCommand && isRuntimeAck)
+  ) {
     const level = Math.min(status << 8, 0xfeff);
     const said = `level=${Math.round((level * 100) / 0xfeff)}%`;
     // 05-07 answer in a slot of their own: three links share a slot and the

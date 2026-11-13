@@ -251,6 +251,25 @@ test("describeShortAck reads level and link out of an ACK that follows SET_LEVEL
   }
 });
 
+test("describeShortAck names each device that answers a scene command", () => {
+  // Keypad button -> scene: links 8 and 18 answer with the level they went to
+  const scene = "8301a182d700210b0000000c10ef4000200000cccccc0000";
+  assert.equal(
+    describeShortAck(
+      Buffer.from("0703fe2bc2", "hex"),
+      Buffer.from(scene, "hex"),
+    ),
+    "level=100% link=8",
+  );
+  assert.equal(
+    describeShortAck(
+      Buffer.from("052a3d5c10", "hex"),
+      Buffer.from(scene, "hex"),
+    ),
+    "level=24% link=18",
+  );
+});
+
 test("describeShortAck stays quiet when the ACK does not answer a level command", () => {
   // Pairing-time fmt 0x0E frame (06 00 at 14, not the 40 02 level command)
   const pairing = "83012182d700210e00ffffffffff06000060060000d27f51";

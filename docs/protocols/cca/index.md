@@ -692,30 +692,38 @@ A short ACK names neither its sender nor the command, so its bytes only have a m
 link = 3 × (slot − 1) + (type − 0x05)
 ```
 
-Three links share a slot and the type byte tells them apart. Each device ACKs twice, the second time 35 slots after the first. Swept on 13 RA3 plug-in and in-wall dimmers:
+Three links share a slot and the type byte tells them apart. Each device ACKs twice, the second time 35 slots after the first. `link` is the device's index in the device table, which is Designer's `AddressOnLink − 1` (the same number as the zone byte in state reports).
 
-| Serial | Link (device table) | ACK type | Slots | Link from ACK |
-|--------|---------------------|----------|-------|---------------|
+Swept on 13 RA3 dimmers and checked against the Designer project's address map; all 13 agree:
+
+| Serial | `AddressOnLink − 1` | ACK type | Slots heard | Link from ACK |
+|--------|---------------------|----------|-------------|---------------|
 | `0296BD72` | 8 | `07` | 3, 38 | 8 |
 | `008BEE42` | 13 | `06` | 5, 40 | 13 |
 | `008BEE45` | 14 | `07` | 5, 40 | 14 |
 | `01CA3F6E` | 16 | `06` | 6, 41 | 16 |
+| `03F98064` | 17 | `07` | 6, 41 | 17 |
 | `02E07AE8` | 18 | `05` | 42 | 18 |
 | `02F9D6C0` | 22 | `06` | 8 | 22 |
 | `01D4F21B` | 23 | `07` | 8 | 23 |
 | `008BEE43` | 24 | `05` | 9, 44 | 24 |
-| `02F9D6BF` | 25 | `07` | 11, 46 | 32 |
-| `05919908` | not captured | `07` | 10, 45 | 29 |
-| `00B308C1` | not captured | `06` | 11, 46 | 31 |
-| `031807B6` | not captured | `06` | 47 | 34 |
+| `05919908` | 29 | `07` | 10, 45 | 29 |
+| `00B308C1` | 31 | `06` | 11, 46 | 31 |
+| `02F9D6BF` | 32 | `07` | 11, 46 | 32 |
+| `031807B6` | 34 | `06` | 47 | 34 |
 
-The device-table links come from March captures. `02F9D6BF` is the one mismatch; its link 25 was read from a pairing session, so it may have been re-addressed since. `03F98064` (link 17) returned a single ACK, `07 39 5B`, whose slot and status are each one bit (`0x10`) away from the expected `29` / `4B`; it is left out.
+`02F9D6BF` sits at link 25 in the March device-table captures and at 32 in the project file; it was re-addressed in between, and the ACK follows the current address. `03F98064` is far from the bench: about half its ACKs arrive with a flipped bit in the slot or status and fail the XOR check, and the ones that pass read link 17.
+
+**Scene and group commands are answered the same way.** After a fmt `0x0B` frame addressed to a group id (`0xEF` at byte 13: keypad scenes, group raise/lower), every dimmer that acts sends a `05`-`07` ACK in its own link slot, and `byte[2]` is the level it went to. A keypad scene in the captures draws `07 03 FE` and `05 2A FE` (links 8 and 18 at 100%); its dimmed variant draws the same two links at `3D` (24%). During a group raise the two office lamps (links 13, 14) report `0F`, `10`, `13` on successive ACKs as they ramp. So the ACKs to one scene frame list which loads took it and where each one landed.
+
+The link rule does not carry over to pairing. There `05`-`07` answer broadcast frames 1 to 3 slots after the frame, whatever the device's link. The `15`-`17` answers to broadcast fmt `0x0A` keep the two windows 35 slots apart, but the links the rule gives for them (3 to 16) include unoccupied addresses, so that family is not decoded.
 
 **`byte[2]`:**
 
 | ACK | Follows | `byte[2]` | Evidence |
 |-----|---------|-----------|----------|
 | `05`-`07` | SET_LEVEL (fmt `0x0E`, command `40 02`) | Commanded level rounded to one byte: `0000` → `00`, `0100` → `01`, `5794` → `58`, `BE9B` → `BF`, `CB7C` → `CB`, `FEFF` → `FF` | Two HQR-3LDs, 14 levels, every ACK |
+| `05`-`07` | Scene / group command (fmt `0x0B`, `0xEF` at 13) | Level the answering device went to | Captures: links 8, 13, 14, 17, 18, 23, 24, all dimmers at those addresses |
 | `0B` | SET_LEVEL | The same, XOR `0xFE` on the raw byte: `FEFF` → raw `00`, `0000` → raw `FE` | Caseta, 79 of 79, only those two levels |
 | `09`, `0B` | fmt `0x0D` | The link address the frame assigns (its byte 20); `0B` XOR `0xFE` | 46 of 46, two devices |
 | `0B` | fmt `0x09` to the same device | That link address again, though the fmt `0x09` frame does not carry it | 45 of 45 |
@@ -723,7 +731,7 @@ The device-table links come from March captures. `02F9D6BF` is the one mismatch;
 
 Byte 20 of fmt `0x0D` is the link address: `008BEE42` is acked as `0x0D` and `02F9D6BF` as `0x19`, and those are the slots the two serials occupy in the device table (`12 + 5·L`, above).
 
-`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first three rows; the CLI shows `level=NN% link=N` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
+`describeShortAck()` in `protocol/protocol-ui.ts` decodes the first four rows; the CLI shows `level=NN% link=N` or `link=N` on the ACK line. One level step is 1/255 of full scale, about 0.4%.
 
 The `^ 0xFE` on `0B` holds up as a property of the type rather than of one capture: the same device reports link `0x0D` as raw `0D` on type `09` and as raw `F3` on type `0B`. Whether it is on the air or a CC1101 read error is still open, as are the raw `D0` / `2E` and `3F` / `C1` pairs seen on other types.
 
