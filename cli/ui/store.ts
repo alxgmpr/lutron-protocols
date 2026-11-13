@@ -64,7 +64,7 @@ export class Store {
     statusText: "",
     inputText: "",
     inputCursor: 0,
-    prompt: "nucleo> ",
+    prompt: "openlutron> ",
     palette: null,
     overlay: null,
   };
