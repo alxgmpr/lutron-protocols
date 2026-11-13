@@ -73,3 +73,19 @@ TEST(flipper_describe_detail_53_bytes_fits)
     ASSERT_TRUE(cca_detail_lines(p, -90, 0, 1, lines, CCA_DETAIL_MAX) <= CCA_DETAIL_MAX);
     ASSERT_FALSE(cca_replayable(p));
 }
+
+TEST(flipper_describe_filter)
+{
+    uint8_t btn[22] = {0x88, 0x01, 0x05, 0x95, 0xE6, 0x8D, 0x21, 0x04, 0x03, 0x00, BTN_ON, ACTION_PRESS};
+    uint8_t beacon[22] = {0x91, 0x01, 0x05, 0x95, 0xE6, 0x8D};
+    DecodedPacket b = parse(btn), bc = parse(beacon), ack;
+    ack.clear();
+    ack.type_byte = ack.type = 0x0B;
+    ack.raw_len = 5;
+    ASSERT_TRUE(cca_filter_pass(ack, CCA_FILTER_ALL));
+    ASSERT_FALSE(cca_filter_pass(ack, CCA_FILTER_NO_ACK));
+    ASSERT_FALSE(cca_filter_pass(bc, CCA_FILTER_NO_ACK));
+    ASSERT_TRUE(cca_filter_pass(b, CCA_FILTER_NO_ACK));
+    ASSERT_TRUE(cca_filter_pass(b, CCA_FILTER_CONTROL));
+    ASSERT_FALSE(cca_filter_pass(bc, CCA_FILTER_CONTROL));
+}
