@@ -54,6 +54,7 @@
 struct CcaTxItem {
     uint8_t data[CCA_TX_MAX_LEN];
     size_t len;
+    bool once; /* single shot, sequence byte untouched */
 };
 
 /* -----------------------------------------------------------------------
@@ -414,9 +415,10 @@ static void cca_task_func(void* param)
             CcaTdmaTxRequest req = {};
             memcpy(req.packet, tx_item.data, tx_item.len);
             req.packet_len = (uint8_t)tx_item.len;
-            req.retries = CCA_TX_COUNT_NORMAL;
+            req.retries = tx_item.once ? 1 : CCA_TX_COUNT_NORMAL;
+            req.keep_seq = tx_item.once ? 1 : 0;
             /* State reports (0x81-0x83) rotate type byte across retransmits */
-            req.type_rotate = (tx_item.data[0] >= 0x81 && tx_item.data[0] <= 0x83) ? 1 : 0;
+            req.type_rotate = (!tx_item.once && tx_item.data[0] >= 0x81 && tx_item.data[0] <= 0x83) ? 1 : 0;
             req.priority = 0;
             const CcaTdmaJob* job = cca_tdma_submit(&req);
             if (job) {
@@ -484,15 +486,26 @@ void cca_task_start(void)
     xTaskCreate(cca_task_func, "CCA", CCA_TASK_STACK_SIZE, NULL, CCA_TASK_PRIORITY, &cca_task_handle);
 }
 
-bool cca_tx_enqueue(const uint8_t* packet, size_t len)
+static bool tx_enqueue(const uint8_t* packet, size_t len, bool once)
 {
     if (cca_tx_queue == NULL || len == 0 || len > CCA_TX_MAX_LEN) return false;
 
     CcaTxItem item;
     memcpy(item.data, packet, len);
     item.len = len;
+    item.once = once;
 
     return xQueueSend(cca_tx_queue, &item, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+bool cca_tx_enqueue(const uint8_t* packet, size_t len)
+{
+    return tx_enqueue(packet, len, false);
+}
+
+bool cca_tx_enqueue_once(const uint8_t* packet, size_t len)
+{
+    return tx_enqueue(packet, len, true);
 }
 
 

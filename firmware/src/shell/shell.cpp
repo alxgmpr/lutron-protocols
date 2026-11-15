@@ -13,6 +13,7 @@
  *   rx on    — enable CCA RX (start receiving)
  *   rx off   — disable CCA RX
  *   tx <hex> — transmit raw CCA packet (hex bytes, no spaces)
+ *   tx1 <hex> — the same, sent once with the sequence byte as given
  *   ccx      — CCX Thread control
  *   eth      — Ethernet PHY debug
  *   reboot   — NVIC_SystemReset
@@ -485,7 +486,7 @@ static int parse_button_name(const char* name)
     return -1;
 }
 
-static void cmd_tx(const char* hex)
+static void cmd_tx(const char* hex, bool once)
 {
     uint8_t pkt[64];
     size_t len = hex_to_bytes(hex, pkt, sizeof(pkt));
@@ -499,7 +500,7 @@ static void cmd_tx(const char* hex)
     for (size_t i = 0; i < len; i++) printf(" %02X", pkt[i]);
     printf("\r\n");
 
-    if (cca_tx_enqueue(pkt, len)) {
+    if (once ? cca_tx_enqueue_once(pkt, len) : cca_tx_enqueue(pkt, len)) {
         printf("Queued for TX\r\n");
     }
     else {
@@ -4278,6 +4279,7 @@ static void cmd_help(void)
     printf("  status       — system status\r\n");
     printf("  rx on|off    — enable/disable CCA RX\r\n");
     printf("  tx <hex>     — transmit raw CCA packet\r\n");
+    printf("  tx1 <hex>    — transmit once, sequence byte as given\r\n");
     printf("  cca [cmd]    — CCA commands (button, tune, level, etc.)\r\n");
     printf("  ccx [cmd]    — CCX Thread control\r\n");
     printf("  stream [cmd] — packet stream/log transport\r\n");
@@ -4384,7 +4386,10 @@ bool shell_execute(const char* line)
         reset_requested = true;
     }
     else if (strncmp(line, "tx ", 3) == 0) {
-        cmd_tx(line + 3);
+        cmd_tx(line + 3, false);
+    }
+    else if (strncmp(line, "tx1 ", 4) == 0) {
+        cmd_tx(line + 4, true);
     }
     else if (strcmp(line, "tdma") == 0) {
         cmd_tdma("");

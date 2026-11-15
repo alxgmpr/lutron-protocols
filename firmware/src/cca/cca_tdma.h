@@ -80,6 +80,7 @@ typedef struct CcaTdmaTxRequest {
     uint8_t retries;     /* total retransmissions (5/10/20) */
     uint8_t type_rotate; /* 0=no rotation, 1=rotate type 0x81/82/83 */
     uint8_t priority;    /* 0=normal, 1=high (pairing) */
+    uint8_t keep_seq;    /* 1=send byte 1 as given (replaying a captured frame) */
 
     /* Optional completion callback (called from CCA task context) */
     void (*on_complete)(struct CcaTdmaTxRequest* req, bool success);

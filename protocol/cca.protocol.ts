@@ -1774,8 +1774,9 @@ const deviceFingerprints: StringLookup<DeviceFingerprint> = {
 //          after SET_LEVEL, `status` is the commanded level rounded to its
 //          high byte (describeShortAck in protocol-ui.ts)
 //   09-0B  answer fmt 0x0D and DEVICE_CTRL; 0B is also the OTA ACK stream
-//   15-17  answer the broadcast poll (fmt 0x0A, `09 06`): same link rule as
-//          05-07, `status` is the device's current level
+//   15-17  answer the broadcast poll (fmt 0x0A, `09 06`): `status` is the
+//          device's current level; slot and type index the processor's
+//          status table, not the runtime link
 
 /** type byte → [byte1 ^ byte3, byte2 ^ byte4]. */
 export const ShortAckKeys: NumberLookup<readonly [number, number]> = {

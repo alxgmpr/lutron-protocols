@@ -271,14 +271,14 @@ test("describeShortAck names each device that answers a scene command", () => {
   );
 });
 
-test("describeShortAck reads link and level out of a 15-17 poll answer", () => {
+test("describeShortAck reads level and table entry out of a 15-17 poll answer", () => {
   // proc-reboot capture: the processor's own table (C1 page 0x20) puts 0x3D
-  // at link 5, 0x0A at link 10 and 0xFE at link 6
+  // at entry 5, 0x0A at entry 10 and 0xFE at entry 6
   const poll = "8001a182d700210a00ffffffffff09060000cccccccc3b64";
   for (const [ack, said] of [
-    ["17023d8498", "level=24% link=5"],
-    ["16040a48a0", "level=4% link=10"],
-    ["1526fefe4a", "level=100% link=6"],
+    ["17023d8498", "level=24% entry=5"],
+    ["16040a48a0", "level=4% entry=10"],
+    ["1526fefe4a", "level=100% entry=6"],
   ]) {
     assert.equal(
       describeShortAck(Buffer.from(ack, "hex"), Buffer.from(poll, "hex")),

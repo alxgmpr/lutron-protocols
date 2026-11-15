@@ -67,6 +67,7 @@ struct CcaTdmaJob {
     uint32_t next_fire_ms; /* when to fire next retransmit */
     uint8_t type_rotate;   /* 0=none, 1=rotate 81/82/83 */
     uint8_t priority;
+    uint8_t keep_seq;
 
     /* Completion callback */
     void (*on_complete)(CcaTdmaTxRequest* req, bool success);
@@ -413,7 +414,7 @@ static bool fire_job(CcaTdmaJob* job, uint32_t now_ms)
 {
     /* Update sequence byte in packet */
     uint8_t seq = job->seq_base + (uint8_t)(job->retries_done * job->seq_stride);
-    if (job->packet_len > 1) {
+    if (job->packet_len > 1 && !job->keep_seq) {
         job->packet[1] = seq;
     }
 
@@ -612,6 +613,7 @@ CcaTdmaJob* cca_tdma_submit(const CcaTdmaTxRequest* req)
     job->retries_done = 0;
     job->type_rotate = req->type_rotate;
     job->priority = req->priority;
+    job->keep_seq = req->keep_seq;
     job->on_complete = req->on_complete;
     job->user_data = req->user_data;
 
